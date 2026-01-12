@@ -1,0 +1,12 @@
+# Claude Code 本地設定
+.claude/
+
+# macOS
+.DS_Store
+
+# 備份檔案
+*.backup.*
+
+# 環境變數（含 secrets）
+.env
+.env.local
