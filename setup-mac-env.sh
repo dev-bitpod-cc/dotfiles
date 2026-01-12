@@ -582,7 +582,7 @@ if command -v delta &> /dev/null; then
 fi
 
 # 系統更新
-alias brewup='brew update && brew upgrade && brew cleanup'
+alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup'
 
 # -------------------------------------------
 # fzf 配置

@@ -10,7 +10,7 @@ eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh, httpie
 
 - 檔案：`ll`, `la`, `lt`（eza）
 - Git：`gs`, `gd`, `ga`, `gc`, `gp`, `gl`, `gco`, `gb`
-- 更新：`brewup` (macOS) / `sysup` (Linux)
+- 更新：`brewup` (macOS) / `sysup` (Linux) - 含 dotfiles pull
 
 ## 注意
 
