@@ -404,8 +404,8 @@ else
 
     if [ -n "$DELTA_ARCH" ]; then
         if wget -q "https://github.com/dandavison/delta/releases/download/${DELTA_VERSION}/git-delta_${DELTA_VERSION}_${DELTA_ARCH}.deb" -O /tmp/delta.deb; then
-            sudo dpkg -i /tmp/delta.deb >/dev/null 2>&1
-            rm /tmp/delta.deb
+            sudo dpkg -i /tmp/delta.deb >/dev/null 2>&1 || true
+            rm -f /tmp/delta.deb
             print_success "git-delta 安裝完成"
         else
             print_warning "git-delta 下載失敗，已跳過"
@@ -451,7 +451,7 @@ else
     fi
 
     if [ -n "$LAZYGIT_ARCH" ]; then
-        if curl -Lo /tmp/lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LAZYGIT_VERSION}_Linux_${LAZYGIT_ARCH}.tar.gz" 2>/dev/null; then
+        if curl -fLo /tmp/lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LAZYGIT_VERSION}_Linux_${LAZYGIT_ARCH}.tar.gz" 2>/dev/null; then
             tar xf /tmp/lazygit.tar.gz -C /tmp lazygit
             sudo install /tmp/lazygit /usr/local/bin
             rm /tmp/lazygit.tar.gz /tmp/lazygit
@@ -479,7 +479,7 @@ else
     fi
 
     if [ -n "$DUST_ARCH" ]; then
-        if curl -Lo /tmp/dust.tar.gz "https://github.com/bootandy/dust/releases/download/v${DUST_VERSION}/dust-v${DUST_VERSION}-${DUST_ARCH}.tar.gz" 2>/dev/null; then
+        if curl -fLo /tmp/dust.tar.gz "https://github.com/bootandy/dust/releases/download/v${DUST_VERSION}/dust-v${DUST_VERSION}-${DUST_ARCH}.tar.gz" 2>/dev/null; then
             tar xf /tmp/dust.tar.gz -C /tmp
             sudo install /tmp/dust-v${DUST_VERSION}-${DUST_ARCH}/dust /usr/local/bin
             rm -rf /tmp/dust.tar.gz /tmp/dust-v${DUST_VERSION}-${DUST_ARCH}
@@ -495,13 +495,15 @@ if command -v duf &> /dev/null; then
     print_info "duf 已安裝"
 else
     print_info "安裝 duf..."
+    DUF_VERSION=$(curl -s "https://api.github.com/repos/muesli/duf/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "0.8.1")
     ARCH=$(dpkg --print-architecture)
-    if curl -Lo /tmp/duf.deb "https://github.com/muesli/duf/releases/latest/download/duf_0.8.1_linux_${ARCH}.deb" 2>/dev/null; then
-        sudo dpkg -i /tmp/duf.deb >/dev/null 2>&1
-        rm /tmp/duf.deb
+    if curl -fLo /tmp/duf.deb "https://github.com/muesli/duf/releases/download/v${DUF_VERSION}/duf_${DUF_VERSION}_linux_${ARCH}.deb" 2>/dev/null; then
+        sudo dpkg -i /tmp/duf.deb >/dev/null 2>&1 || true
+        rm -f /tmp/duf.deb
         print_success "duf 安裝完成"
     else
         print_warning "duf 下載失敗，已跳過"
+        rm -f /tmp/duf.deb
     fi
 fi
 
