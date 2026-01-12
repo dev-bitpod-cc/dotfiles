@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 #
 # macOS 現代化開發環境自動安裝腳本
 # 版本：v3.1
@@ -19,6 +19,17 @@
 # 注意：此腳本會覆寫 .zshrc 和 .zprofile（會先備份）
 # 如果您有自訂配置需要保留，請使用 Markdown + Claude Code 方式
 #
+
+# 作業系統檢查（在切換 shell 之前）
+if [ "$(uname)" != "Darwin" ]; then
+    echo "❌ 此腳本僅適用於 macOS"
+    exit 1
+fi
+
+# macOS 上自動使用 zsh 執行（若當前不是 zsh）
+if [ -z "$ZSH_VERSION" ] && [ -x /bin/zsh ]; then
+    exec /bin/zsh "$0" "$@"
+fi
 
 set -e  # 遇到錯誤立即退出
 
@@ -176,13 +187,7 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-# 檢查是否為 macOS
-if [ "$(uname)" != "Darwin" ]; then
-    print_error "此腳本僅適用於 macOS"
-    exit 1
-fi
-
-print_header "macOS 現代化開發環境自動安裝 v3.0"
+print_header "macOS 現代化開發環境自動安裝 v3.1"
 echo "此腳本將："
 echo "  • 檢查並安裝 Homebrew（如需要）"
 echo "  • 安裝 28+ 個開發工具（含 Bun）"

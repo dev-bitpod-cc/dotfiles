@@ -57,8 +57,8 @@ glog=git log --oneline --graph --decorate
 
 ## 開發環境
 
-- **Node.js**: `node`, `npm`, `npx`
-- **Bun** (macOS): `bun`
+- **Bun**: `bun`（主要 JS runtime）
+- **Node.js**: `node`, `npm`, `npx`（相容性備用）
 - **Python**: `python`, `pip`（兩平台都指向 python3）
 - **GitHub CLI**: `gh`
 

@@ -208,6 +208,12 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
+# 檢查是否為 Linux
+if [ "$(uname)" != "Linux" ]; then
+    print_error "此腳本僅適用於 Linux"
+    exit 1
+fi
+
 # 檢查是否為 Ubuntu
 if [ -f /etc/os-release ]; then
     . /etc/os-release
@@ -223,7 +229,7 @@ fi
 
 print_header "Ubuntu 現代化開發環境自動安裝 v3.1"
 echo "此腳本將："
-echo "  • 安裝 28+ 個開發工具"
+echo "  • 安裝 29+ 個開發工具"
 echo "  • 智能統合現有 PATH 設定（去重、排序）"
 echo "  • 保留 conda、nvm 等重要配置"
 echo "  • 所有配置集中在 .bashrc"
@@ -310,6 +316,19 @@ else
     print_info "偵測到 nvm，跳過 npm prefix 設定（由 nvm 管理）"
 fi
 
+# 1.2.1 安裝 Bun（主要 JS runtime）
+if command -v bun &> /dev/null; then
+    print_info "Bun 已安裝 ($(bun --version))"
+else
+    print_info "安裝 Bun..."
+    if curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1; then
+        export PATH="$HOME/.bun/bin:$PATH"
+        print_success "Bun 安裝完成 ($(~/.bun/bin/bun --version 2>/dev/null || echo 'installed'))"
+    else
+        print_warning "Bun 安裝失敗，已跳過"
+    fi
+fi
+
 # 1.3 安裝 GitHub CLI
 if command -v gh &> /dev/null; then
     print_info "GitHub CLI 已安裝"
@@ -348,7 +367,7 @@ else
     print_info "安裝 eza..."
     sudo mkdir -p /etc/apt/keyrings
     wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | \
-        sudo gpg --dearmor -o /etc/apt/keyrings/gierens.gpg 2>/dev/null
+        sudo gpg --dearmor --yes -o /etc/apt/keyrings/gierens.gpg 2>/dev/null
     echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" | \
         sudo tee /etc/apt/sources.list.d/gierens.list > /dev/null
     sudo chmod 644 /etc/apt/keyrings/gierens.gpg /etc/apt/sources.list.d/gierens.list
@@ -384,8 +403,7 @@ else
     fi
 
     if [ -n "$DELTA_ARCH" ]; then
-        wget -q "https://github.com/dandavison/delta/releases/download/${DELTA_VERSION}/git-delta_${DELTA_VERSION}_${DELTA_ARCH}.deb" -O /tmp/delta.deb
-        if [ $? -eq 0 ]; then
+        if wget -q "https://github.com/dandavison/delta/releases/download/${DELTA_VERSION}/git-delta_${DELTA_VERSION}_${DELTA_ARCH}.deb" -O /tmp/delta.deb; then
             sudo dpkg -i /tmp/delta.deb >/dev/null 2>&1
             rm /tmp/delta.deb
             print_success "git-delta 安裝完成"
@@ -433,8 +451,7 @@ else
     fi
 
     if [ -n "$LAZYGIT_ARCH" ]; then
-        curl -Lo /tmp/lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LAZYGIT_VERSION}_Linux_${LAZYGIT_ARCH}.tar.gz" 2>/dev/null
-        if [ $? -eq 0 ]; then
+        if curl -Lo /tmp/lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LAZYGIT_VERSION}_Linux_${LAZYGIT_ARCH}.tar.gz" 2>/dev/null; then
             tar xf /tmp/lazygit.tar.gz -C /tmp lazygit
             sudo install /tmp/lazygit /usr/local/bin
             rm /tmp/lazygit.tar.gz /tmp/lazygit
@@ -462,8 +479,7 @@ else
     fi
 
     if [ -n "$DUST_ARCH" ]; then
-        curl -Lo /tmp/dust.tar.gz "https://github.com/bootandy/dust/releases/download/v${DUST_VERSION}/dust-v${DUST_VERSION}-${DUST_ARCH}.tar.gz" 2>/dev/null
-        if [ $? -eq 0 ]; then
+        if curl -Lo /tmp/dust.tar.gz "https://github.com/bootandy/dust/releases/download/v${DUST_VERSION}/dust-v${DUST_VERSION}-${DUST_ARCH}.tar.gz" 2>/dev/null; then
             tar xf /tmp/dust.tar.gz -C /tmp
             sudo install /tmp/dust-v${DUST_VERSION}-${DUST_ARCH}/dust /usr/local/bin
             rm -rf /tmp/dust.tar.gz /tmp/dust-v${DUST_VERSION}-${DUST_ARCH}
@@ -480,8 +496,7 @@ if command -v duf &> /dev/null; then
 else
     print_info "安裝 duf..."
     ARCH=$(dpkg --print-architecture)
-    curl -Lo /tmp/duf.deb "https://github.com/muesli/duf/releases/latest/download/duf_0.8.1_linux_${ARCH}.deb" 2>/dev/null
-    if [ $? -eq 0 ]; then
+    if curl -Lo /tmp/duf.deb "https://github.com/muesli/duf/releases/latest/download/duf_0.8.1_linux_${ARCH}.deb" 2>/dev/null; then
         sudo dpkg -i /tmp/duf.deb >/dev/null 2>&1
         rm /tmp/duf.deb
         print_success "duf 安裝完成"
@@ -1084,6 +1099,7 @@ check_tool tree && echo "  ✅ tree" || echo "  ❌ tree"
 check_tool tmux && echo "  ✅ tmux" || echo "  ❌ tmux"
 check_tool node && echo "  ✅ node" || echo "  ❌ node"
 check_tool npm && echo "  ✅ npm" || echo "  ❌ npm"
+check_tool bun && echo "  ✅ bun" || echo "  ❌ bun"
 check_tool jq && echo "  ✅ jq" || echo "  ❌ jq"
 
 # 現代化工具
