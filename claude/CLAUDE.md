@@ -4,7 +4,7 @@
 
 ## 可用工具
 
-eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh, httpie
+bun, node, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh, httpie
 
 ## 別名
 

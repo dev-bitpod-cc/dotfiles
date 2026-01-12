@@ -50,17 +50,17 @@ chmod +x setup-linux-env.sh
 
 從高到低：
 1. `~/.local/bin` - 使用者本地程式
-2. Homebrew Python (macOS) / Bun
-3. npm 全域套件
-4. Cargo (Rust)
-5. Go
+2. `~/.bun/bin` - Bun（主要 JS runtime）
+3. `~/.npm-global/bin` - npm 全域套件（相容性備用）
+4. `~/.cargo/bin` - Cargo (Rust)
+5. `~/go/bin` - Go
 6. conda/nvm/pyenv 路徑
 7. 系統路徑
 
 ## 安裝的工具
 
 ### 核心工具
-git, gh, wget, htop, tree, tmux, node, python3, jq, yq
+git, gh, wget, htop, tree, tmux, bun, node, python3, jq, yq
 
 ### 現代化 CLI
 | 工具 | 用途 | 取代 |
