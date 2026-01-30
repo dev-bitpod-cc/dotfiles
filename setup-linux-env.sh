@@ -329,6 +329,19 @@ else
     fi
 fi
 
+# 1.2.2 安裝 uv（Python 套件管理）
+if command -v uv &> /dev/null; then
+    print_info "uv 已安裝 ($(uv --version))"
+else
+    print_info "安裝 uv..."
+    if curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; then
+        export PATH="$HOME/.local/bin:$PATH"
+        print_success "uv 安裝完成 ($(uv --version 2>/dev/null || echo 'installed'))"
+    else
+        print_warning "uv 安裝失敗，已跳過"
+    fi
+fi
+
 # 1.3 安裝 GitHub CLI
 if command -v gh &> /dev/null; then
     print_info "GitHub CLI 已安裝"
@@ -1103,6 +1116,7 @@ check_tool node && echo "  ✅ node" || echo "  ❌ node"
 check_tool npm && echo "  ✅ npm" || echo "  ❌ npm"
 check_tool bun && echo "  ✅ bun" || echo "  ❌ bun"
 check_tool jq && echo "  ✅ jq" || echo "  ❌ jq"
+check_tool uv && echo "  ✅ uv" || echo "  ❌ uv"
 
 # 現代化工具
 check_tool rg && echo "  ✅ ripgrep (rg)" || echo "  ❌ ripgrep"
