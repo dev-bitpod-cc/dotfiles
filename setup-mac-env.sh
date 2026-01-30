@@ -367,16 +367,15 @@ extract_user_settings
 # 顯示將要設定的 PATH 順序（優先級從高到低）
 echo ""
 echo -e "${CYAN:-}PATH 優先級順序（高到低）：${NC:-}"
-echo "  [1]  \$HOME/.local/bin                    # 用戶本地程式"
+echo "  [1]  \$HOME/.local/bin                    # 用戶本地程式（uv 等）"
 echo "  [2]  Homebrew Python libexec/bin         # python 命令（非 python3）"
 echo "  [3]  \$HOME/.bun/bin                      # Bun 全域套件"
-echo "  [4]  \$HOME/.npm-global/bin               # npm 全域套件（如有）"
-echo "  [5]  \$HOME/.cargo/bin                    # Cargo (Rust)"
-echo "  [6]  \$HOME/go/bin                        # Go"
-echo "  [7]  pyenv 路徑                          # 如有安裝"
-echo "  [8]  rbenv 路徑                          # 如有安裝"
-echo "  [9]  nvm 路徑                            # 由 nvm 管理"
-echo "  [10] conda 路徑                          # 由 conda init 管理"
+echo "  [4]  \$HOME/.cargo/bin                    # Cargo (Rust)"
+echo "  [5]  \$HOME/go/bin                        # Go"
+echo "  [6]  pyenv 路徑                          # 如有安裝"
+echo "  [7]  rbenv 路徑                          # 如有安裝"
+echo "  [8]  nvm 路徑                            # 由 nvm 管理"
+echo "  [9]  conda 路徑                          # 由 conda init 管理"
 echo "  [20] /opt/homebrew/bin (Apple Silicon)   # Homebrew"
 echo "  [23] /usr/local/bin (Intel Mac)          # Homebrew"
 echo "  [30] /usr/bin, /bin 等                   # 系統路徑"
@@ -431,9 +430,6 @@ if [ -f "$HOME/.cargo/env" ]; then
 elif [ -d "$HOME/.cargo/bin" ]; then
     export PATH="$HOME/.cargo/bin:$PATH"
 fi
-
-# 優先級 4: npm 全域套件（如果有自訂 prefix）
-[ -d "$HOME/.npm-global/bin" ] && export PATH="$HOME/.npm-global/bin:$PATH"
 
 # 優先級 3: Bun 全域套件
 # Bun 全局安裝的套件（bun install -g）都放在 ~/.bun/bin
@@ -676,13 +672,6 @@ if command -v tokei &> /dev/null; then
 fi
 
 # -------------------------------------------
-# Node.js / npm 配置
-# -------------------------------------------
-#
-# Homebrew 安裝的 Node.js 已經有正確的權限設定
-# 預設 prefix (/opt/homebrew) 即可使用，無需額外配置
-
-# -------------------------------------------
 # 補全系統
 # -------------------------------------------
 autoload -Uz compinit
@@ -902,13 +891,12 @@ print_info "PATH 設定順序（優先級從高到低）："
 echo "  1. \$HOME/.local/bin"
 echo "  2. Homebrew Python libexec/bin"
 echo "  3. \$HOME/.bun/bin"
-echo "  4. \$HOME/.npm-global/bin"
-echo "  5. \$HOME/.cargo/bin"
-echo "  6. \$HOME/go/bin"
-echo "  7. pyenv/rbenv 路徑"
-echo "  8. nvm 路徑"
-echo "  9. conda 路徑"
-echo "  10. Homebrew 路徑"
+echo "  4. \$HOME/.cargo/bin"
+echo "  5. \$HOME/go/bin"
+echo "  6. pyenv/rbenv 路徑"
+echo "  7. nvm 路徑"
+echo "  8. conda 路徑"
+echo "  9. Homebrew 路徑"
 echo "  11. 系統路徑"
 
 # ================================================
@@ -944,7 +932,6 @@ htop --version 2>/dev/null || echo "❌ htop 未安裝"
 tree --version 2>/dev/null || echo "❌ tree 未安裝"
 tmux -V 2>/dev/null || echo "❌ tmux 未安裝"
 node --version 2>/dev/null || echo "❌ node 未安裝"
-npm --version 2>/dev/null || echo "❌ npm 未安裝"
 bun --version 2>/dev/null || echo "❌ bun 未安裝"
 
 # 3. 檢查 Python

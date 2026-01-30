@@ -183,10 +183,7 @@ elif [ -d "$HOME/.cargo/bin" ]; then
     export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
-# 優先級 3: npm 全域套件
-[ -d "$HOME/.npm-global/bin" ] && export PATH="$HOME/.npm-global/bin:$PATH"
-
-# 優先級 2: Bun
+# 優先級 3: Bun
 [ -d "$HOME/.bun/bin" ] && export PATH="$HOME/.bun/bin:$PATH"
 
 # 優先級 1: 用戶本地程式（最高優先級）
@@ -317,16 +314,6 @@ else
     print_success "Node.js 安裝完成 ($(node --version))"
 fi
 
-# 設定 npm 全域路徑（如果沒有使用 nvm）
-if [ ! -d "$HOME/.nvm" ]; then
-    mkdir -p ~/.npm-global
-    npm config set prefix ~/.npm-global 2>/dev/null
-    export PATH="$HOME/.npm-global/bin:$PATH"
-    print_success "npm 全域路徑已設定"
-else
-    print_info "偵測到 nvm，跳過 npm prefix 設定（由 nvm 管理）"
-fi
-
 # 1.2.1 安裝 Bun（主要 JS runtime）
 if command -v bun &> /dev/null; then
     print_info "Bun 已安裝 ($(bun --version))"
@@ -366,10 +353,21 @@ sudo apt install -y -qq \
     fd-find \
     bat \
     fzf \
-    httpie \
     >/dev/null 2>&1
 
 print_success "apt 工具安裝完成"
+
+# 1.4.1 安裝 httpie（透過 uv）
+if command -v http &> /dev/null; then
+    print_info "httpie 已安裝"
+else
+    print_info "安裝 httpie..."
+    if uv tool install httpie >/dev/null 2>&1; then
+        print_success "httpie 安裝完成"
+    else
+        print_warning "httpie 安裝失敗，已跳過"
+    fi
+fi
 
 # 1.5 安裝 eza
 if command -v eza &> /dev/null; then
@@ -441,7 +439,7 @@ if command -v tldr &> /dev/null; then
     print_info "tldr 已安裝"
 else
     print_info "安裝 tldr..."
-    npm install -g tldr >/dev/null 2>&1
+    bun install -g tldr >/dev/null 2>&1
     print_success "tldr 安裝完成"
 fi
 
@@ -567,13 +565,12 @@ print_success "PATH 統合完成"
 # 顯示將要設定的 PATH 順序（優先級從高到低）
 echo ""
 echo -e "${CYAN}PATH 優先級順序（高到低）：${NC}"
-echo "  [1] \$HOME/.local/bin        # 用戶本地程式"
+echo "  [1] \$HOME/.local/bin        # 用戶本地程式（uv 等）"
 echo "  [2] \$HOME/.bun/bin          # Bun"
-echo "  [3] \$HOME/.npm-global/bin   # npm 全域套件"
-echo "  [4] \$HOME/.cargo/bin        # Cargo (Rust)"
-echo "  [5] \$HOME/go/bin            # Go"
-echo "  [6] (conda 路徑)             # 由 conda init 管理"
-echo "  [7] /usr/local/bin 等        # 系統路徑"
+echo "  [3] \$HOME/.cargo/bin        # Cargo (Rust)"
+echo "  [4] \$HOME/go/bin            # Go"
+echo "  [5] (conda 路徑)             # 由 conda init 管理"
+echo "  [6] /usr/local/bin 等        # 系統路徑"
 echo ""
 
 # 建立 .bash_profile（極簡版，只載入 .bashrc）
@@ -839,15 +836,6 @@ venv() {
 }
 
 # -------------------------------------------
-# npm 配置（僅在沒有 nvm 時設定）
-# -------------------------------------------
-
-if command -v npm &> /dev/null && [ ! -d "$HOME/.nvm" ]; then
-    [ ! -d "$HOME/.npm-global" ] && mkdir -p "$HOME/.npm-global"
-    npm config set prefix "$HOME/.npm-global" 2>/dev/null
-fi
-
-# -------------------------------------------
 # 補全系統
 # -------------------------------------------
 
@@ -1110,7 +1098,6 @@ check_tool htop && echo "  ✅ htop" || echo "  ❌ htop"
 check_tool tree && echo "  ✅ tree" || echo "  ❌ tree"
 check_tool tmux && echo "  ✅ tmux" || echo "  ❌ tmux"
 check_tool node && echo "  ✅ node" || echo "  ❌ node"
-check_tool npm && echo "  ✅ npm" || echo "  ❌ npm"
 check_tool bun && echo "  ✅ bun" || echo "  ❌ bun"
 check_tool jq && echo "  ✅ jq" || echo "  ❌ jq"
 check_tool uv && echo "  ✅ uv" || echo "  ❌ uv"
@@ -1146,11 +1133,10 @@ echo ""
 print_info "PATH 設定順序（優先級從高到低）："
 echo "  1. \$HOME/.local/bin"
 echo "  2. \$HOME/.bun/bin"
-echo "  3. \$HOME/.npm-global/bin"
-echo "  4. \$HOME/.cargo/bin"
-echo "  5. \$HOME/go/bin"
-echo "  6. (conda 路徑)"
-echo "  7. 系統路徑"
+echo "  3. \$HOME/.cargo/bin"
+echo "  4. \$HOME/go/bin"
+echo "  5. (conda 路徑)"
+echo "  6. 系統路徑"
 
 # ================================================
 # 完成
