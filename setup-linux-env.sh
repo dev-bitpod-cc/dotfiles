@@ -287,14 +287,25 @@ sudo apt install -y -qq \
     tmux \
     jq \
     python3 \
-    python3-pip \
-    python3-venv \
     python-is-python3 \
     unzip \
     zip \
     >/dev/null 2>&1
 
 print_success "核心工具安裝完成"
+
+# 1.1.1 安裝 uv（Python 套件管理，優先於 pip）
+if command -v uv &> /dev/null; then
+    print_info "uv 已安裝 ($(uv --version))"
+else
+    print_info "安裝 uv..."
+    if curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; then
+        export PATH="$HOME/.local/bin:$PATH"
+        print_success "uv 安裝完成 ($(uv --version 2>/dev/null || echo 'installed'))"
+    else
+        print_warning "uv 安裝失敗，已跳過"
+    fi
+fi
 
 # 1.2 安裝 Node.js
 if command -v node &> /dev/null; then
@@ -326,19 +337,6 @@ else
         print_success "Bun 安裝完成 ($(~/.bun/bin/bun --version 2>/dev/null || echo 'installed'))"
     else
         print_warning "Bun 安裝失敗，已跳過"
-    fi
-fi
-
-# 1.2.2 安裝 uv（Python 套件管理）
-if command -v uv &> /dev/null; then
-    print_info "uv 已安裝 ($(uv --version))"
-else
-    print_info "安裝 uv..."
-    if curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; then
-        export PATH="$HOME/.local/bin:$PATH"
-        print_success "uv 安裝完成 ($(uv --version 2>/dev/null || echo 'installed'))"
-    else
-        print_warning "uv 安裝失敗，已跳過"
     fi
 fi
 
@@ -830,15 +828,14 @@ sysupdate() {
 
 # 建立 Python 虛擬環境
 venv() {
-    if [ -z "$1" ]; then
-        python3 -m venv venv
-        echo "✅ 虛擬環境已建立於 ./venv"
-        echo "啟用方式：source venv/bin/activate"
+    local dir="${1:-venv}"
+    if command -v uv &> /dev/null; then
+        uv venv "$dir"
     else
-        python3 -m venv "$1"
-        echo "✅ 虛擬環境已建立於 ./$1"
-        echo "啟用方式：source $1/bin/activate"
+        python3 -m venv "$dir"
     fi
+    echo "✅ 虛擬環境已建立於 ./$dir"
+    echo "啟用方式：source $dir/bin/activate"
 }
 
 # -------------------------------------------

@@ -951,7 +951,6 @@ bun --version 2>/dev/null || echo "❌ bun 未安裝"
 echo -e "\n=== Python ==="
 python3 --version 2>/dev/null || echo "❌ python3 未安裝"
 python --version 2>/dev/null || echo "⚠️ python 命令不可用（需要新終端）"
-pip3 --version 2>/dev/null || echo "❌ pip3 未安裝"
 uv --version 2>/dev/null || echo "❌ uv 未安裝"
 
 # 4. 檢查現代化 CLI 工具
