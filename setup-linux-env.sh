@@ -353,6 +353,7 @@ sudo apt install -y -qq \
     fd-find \
     bat \
     fzf \
+    shellcheck \
     >/dev/null 2>&1
 
 print_success "apt 工具安裝完成"
@@ -513,6 +514,75 @@ else
     else
         print_warning "duf 下載失敗，已跳過"
         rm -f /tmp/duf.deb
+    fi
+fi
+
+# 1.13 安裝 tokei（程式碼統計）
+if command -v tokei &> /dev/null; then
+    print_info "tokei 已安裝"
+else
+    print_info "安裝 tokei..."
+    TOKEI_VERSION=$(curl -s "https://api.github.com/repos/XAMPPRocky/tokei/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "13.0.0-alpha.7")
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "x86_64" ]; then
+        TOKEI_ARCH="x86_64-unknown-linux-gnu"
+    elif [ "$ARCH" = "aarch64" ]; then
+        TOKEI_ARCH="aarch64-unknown-linux-gnu"
+    else
+        TOKEI_ARCH=""
+    fi
+    if [ -n "$TOKEI_ARCH" ]; then
+        if curl -fLo /tmp/tokei.tar.gz "https://github.com/XAMPPRocky/tokei/releases/download/v${TOKEI_VERSION}/tokei-${TOKEI_ARCH}.tar.gz" 2>/dev/null; then
+            tar xf /tmp/tokei.tar.gz -C /tmp tokei
+            sudo install /tmp/tokei /usr/local/bin
+            rm -f /tmp/tokei.tar.gz /tmp/tokei
+            print_success "tokei 安裝完成"
+        else
+            print_warning "tokei 下載失敗，已跳過"
+        fi
+    fi
+fi
+
+# 1.14 安裝 sd（搜尋替換）
+if command -v sd &> /dev/null; then
+    print_info "sd 已安裝"
+else
+    print_info "安裝 sd..."
+    SD_VERSION=$(curl -s "https://api.github.com/repos/chmln/sd/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "1.0.0")
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "x86_64" ]; then
+        SD_ARCH="x86_64-unknown-linux-gnu"
+    elif [ "$ARCH" = "aarch64" ]; then
+        SD_ARCH="aarch64-unknown-linux-gnu"
+    else
+        SD_ARCH=""
+    fi
+    if [ -n "$SD_ARCH" ]; then
+        if curl -fLo /tmp/sd.tar.gz "https://github.com/chmln/sd/releases/download/v${SD_VERSION}/sd-v${SD_VERSION}-${SD_ARCH}.tar.gz" 2>/dev/null; then
+            tar xf /tmp/sd.tar.gz -C /tmp
+            sudo install /tmp/sd-v${SD_VERSION}-${SD_ARCH}/sd /usr/local/bin
+            rm -rf /tmp/sd.tar.gz /tmp/sd-v${SD_VERSION}-${SD_ARCH}
+            print_success "sd 安裝完成"
+        else
+            print_warning "sd 下載失敗，已跳過"
+        fi
+    fi
+fi
+
+# 1.15 安裝 hyperfine（效能測試）
+if command -v hyperfine &> /dev/null; then
+    print_info "hyperfine 已安裝"
+else
+    print_info "安裝 hyperfine..."
+    HYPERFINE_VERSION=$(curl -s "https://api.github.com/repos/sharkdp/hyperfine/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "1.19.0")
+    ARCH=$(dpkg --print-architecture)
+    if curl -fLo /tmp/hyperfine.deb "https://github.com/sharkdp/hyperfine/releases/download/v${HYPERFINE_VERSION}/hyperfine_${HYPERFINE_VERSION}_${ARCH}.deb" 2>/dev/null; then
+        sudo dpkg -i /tmp/hyperfine.deb >/dev/null 2>&1 || true
+        rm -f /tmp/hyperfine.deb
+        print_success "hyperfine 安裝完成"
+    else
+        print_warning "hyperfine 下載失敗，已跳過"
+        rm -f /tmp/hyperfine.deb
     fi
 fi
 
@@ -694,10 +764,6 @@ alias gco='git checkout'
 alias gb='git branch'
 alias glog='git log --oneline --graph --decorate'
 
-if command -v delta &> /dev/null; then
-    alias gdd='git diff | delta'
-fi
-
 # 系統更新
 alias sysup='(cd ~/.dotfiles && git pull 2>/dev/null); sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
 
@@ -745,8 +811,11 @@ fi
 # -------------------------------------------
 
 export CLICOLOR=1
-HISTSIZE=10000
-HISTFILESIZE=10000
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export EDITOR=vim
+HISTSIZE=50000
+HISTFILESIZE=50000
 HISTCONTROL=ignoredups:erasedups
 shopt -s histappend
 
@@ -792,13 +861,6 @@ if command -v fzf &> /dev/null; then
         fi
 
         [ -n "$dir" ] && cd "$dir"
-    }
-fi
-
-# 美化的 git diff
-if command -v git &> /dev/null && command -v delta &> /dev/null; then
-    gdiff() {
-        git diff "$@" | delta
     }
 fi
 
@@ -939,7 +1001,6 @@ cat >> ~/.bashrc << 'EOF'
 # 自訂函數：
 #   fe         - 搜尋並編輯檔案
 #   proj       - 快速切換專案目錄
-#   gdiff      - 美化的 git diff
 #   sysupdate  - 詳細的系統更新
 #   venv       - 建立 Python 虛擬環境
 #
@@ -995,6 +1056,13 @@ fi
 # Git 基本設定
 git config --global init.defaultBranch main
 git config --global color.ui auto
+git config --global push.autoSetupRemote true
+git config --global pull.rebase true
+git config --global fetch.prune true
+git config --global merge.conflictstyle zdiff3
+git config --global rerere.enabled true
+git config --global diff.algorithm histogram
+git config --global branch.sort -committerdate
 
 # 配置 git-delta
 if command -v delta &> /dev/null; then
@@ -1009,10 +1077,18 @@ fi
 
 # 建立全域 .gitignore
 cat > ~/.gitignore_global << 'EOF'
-# 環境變數檔案
+# 環境變數與機密檔案
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+token.json
+.npmrc
+.pypirc
 
 # Linux 系統檔案
 *~
@@ -1035,8 +1111,12 @@ __pycache__/
 *.egg-info/
 venv/
 .venv/
-env/
 .pytest_cache/
+
+# 資料庫
+*.sqlite
+*.sqlite3
+*.db
 
 # 其他
 *.log
@@ -1116,6 +1196,10 @@ check_tool tldr && echo "  ✅ tldr" || echo "  ❌ tldr"
 check_tool lazygit && echo "  ✅ lazygit" || echo "  ❌ lazygit"
 check_tool dust && echo "  ✅ dust" || echo "  ❌ dust"
 check_tool duf && echo "  ✅ duf" || echo "  ❌ duf"
+check_tool tokei && echo "  ✅ tokei" || echo "  ❌ tokei"
+check_tool sd && echo "  ✅ sd" || echo "  ❌ sd"
+check_tool hyperfine && echo "  ✅ hyperfine" || echo "  ❌ hyperfine"
+check_tool shellcheck && echo "  ✅ shellcheck" || echo "  ❌ shellcheck"
 
 echo ""
 print_success "工具安裝完成: $SUCCESS/$TOTAL"

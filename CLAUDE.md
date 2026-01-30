@@ -44,27 +44,21 @@ glog=git log --oneline --graph --decorate
 
 - `fe` - fzf 搜尋並編輯檔案
 - `proj` - 快速切換專案目錄
-- `stats` - 程式碼統計 (macOS)
-- `venv [name]` - 建立 Python 虛擬環境 (Linux)
+- `stats` - 程式碼統計（tokei）
+- `venv [name]` - 建立 Python 虛擬環境（優先使用 uv）
 
 ## 重要規則
 
 1. **原生命令未被替換**：`ls`, `cat`, `find`, `grep` 仍可正常使用
 2. **不要假設單字母別名**：此環境不使用 `l`, `c` 等別名
 3. **Linux 注意**：`fd` 和 `bat` 是別名（實際命令為 `fdfind`, `batcat`）
-4. **PATH 已包含**：`~/.local/bin`（Claude Code、pip --user 安裝於此）
+4. **PATH 已包含**：`~/.local/bin`（uv、Claude Code 安裝於此）
 5. **API Keys**：存放於 `~/.env`（權限 600，會自動載入）
 
 ## 開發環境
 
-- **Bun**: `bun`（主要 JS runtime）
-- **Node.js**: `node`, `npm`, `npx`（相容性備用）
-- **Python**: `python`, `pip`（兩平台都指向 python3）
+- **Bun**: `bun`（主要 JS runtime，取代 npm/npx）
+- **uv**: `uv`（主要 Python 套件管理，取代 pip/venv）
+- **Node.js**: `node`（相容性備用，不使用 npm）
+- **Python**: `python`（兩平台都指向 python3）
 - **GitHub CLI**: `gh`
-
-## macOS 專屬
-
-- `tokei` / `stats` - 程式碼統計
-- `hyperfine` - 效能測試
-- `sd` - 搜尋替換
-- `swiftlint`, `xcbeautify` - Swift 開發（需 Xcode.app）

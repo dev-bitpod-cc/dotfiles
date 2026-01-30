@@ -294,6 +294,7 @@ brew install \
   lazygit \
   dust \
   duf \
+  shellcheck \
   2>&1 | grep -v "already installed" || true
 
 print_success "工具安裝完成"
@@ -579,10 +580,6 @@ alias gco='git checkout'
 alias gb='git branch'
 alias glog='git log --oneline --graph --decorate'
 
-if command -v delta &> /dev/null; then
-    alias gdd='git diff | delta'
-fi
-
 # 系統更新
 alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup'
 
@@ -625,8 +622,11 @@ fi
 # 其他設定
 # -------------------------------------------
 export CLICOLOR=1
-HISTSIZE=10000
-SAVEHIST=10000
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export EDITOR=vim
+HISTSIZE=50000
+SAVEHIST=50000
 setopt HIST_IGNORE_ALL_DUPS
 setopt HIST_FIND_NO_DUPS
 setopt SHARE_HISTORY
@@ -654,13 +654,6 @@ if command -v fzf &> /dev/null && command -v fd &> /dev/null; then
             dir=$(fd --type d --max-depth 3 . ~ | fzf --preview 'eza --tree --level=2 {}' 2>/dev/null || fzf)
         fi
         [ -n "$dir" ] && cd "$dir"
-    }
-fi
-
-# 快速查看 git diff
-if command -v git &> /dev/null && command -v delta &> /dev/null; then
-    gdiff() {
-        git diff "$@" | delta
     }
 fi
 
@@ -748,6 +741,13 @@ fi
 # Git 基本設定
 git config --global init.defaultBranch main
 git config --global color.ui auto
+git config --global push.autoSetupRemote true
+git config --global pull.rebase true
+git config --global fetch.prune true
+git config --global merge.conflictstyle zdiff3
+git config --global rerere.enabled true
+git config --global diff.algorithm histogram
+git config --global branch.sort -committerdate
 
 # 配置 git-delta
 if command -v delta &> /dev/null; then
@@ -762,10 +762,18 @@ fi
 
 # 建立全域 .gitignore
 cat > ~/.gitignore_global << 'EOF'
-# 環境變數檔案
+# 環境變數與機密檔案
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+token.json
+.npmrc
+.pypirc
 
 # macOS 系統檔案
 .DS_Store
@@ -789,6 +797,11 @@ __pycache__/
 *.egg-info/
 venv/
 .venv/
+
+# 資料庫
+*.sqlite
+*.sqlite3
+*.db
 
 # 其他
 *.log
@@ -872,6 +885,7 @@ check_tool hyperfine && echo "  ✅ hyperfine" || echo "  ❌ hyperfine"
 check_tool lazygit && echo "  ✅ lazygit" || echo "  ❌ lazygit"
 check_tool dust && echo "  ✅ dust" || echo "  ❌ dust"
 check_tool duf && echo "  ✅ duf" || echo "  ❌ duf"
+check_tool shellcheck && echo "  ✅ shellcheck" || echo "  ❌ shellcheck"
 
 echo ""
 print_success "工具安裝完成: $SUCCESS/$TOTAL"
@@ -1020,7 +1034,6 @@ echo $PATH | tr ':' '\n' | head -15 | nl
 echo -e "\n=== 檢查自訂函數 ==="
 type fe 2>/dev/null | grep -q "function" && echo "✅ fe 函數存在" || echo "⚠️ fe 函數不存在（需要新終端）"
 type proj 2>/dev/null | grep -q "function" && echo "✅ proj 函數存在" || echo "⚠️ proj 函數不存在（需要新終端）"
-type gdiff 2>/dev/null | grep -q "function" && echo "✅ gdiff 函數存在" || echo "⚠️ gdiff 函數不存在（需要新終端）"
 type stats 2>/dev/null | grep -q "function" && echo "✅ stats 函數存在" || echo "⚠️ stats 函數不存在（需要新終端）"
 
 echo -e "\n================================================"
@@ -1049,7 +1062,7 @@ echo ""
 echo "需要新終端才能使用的功能："
 echo -e "  • ${BLUE}python${NC} 命令（目前只有 python3 可用）"
 echo -e "  • 所有別名：${BLUE}ll, la, lt, gs, gd${NC} 等"
-echo -e "  • 自訂函數：${BLUE}fe, proj, gdiff, stats${NC}"
+echo -e "  • 自訂函數：${BLUE}fe, proj, stats${NC}"
 echo -e "  • zoxide 智能跳轉：${BLUE}z${NC} 命令"
 echo "  • 新的提示符（顯示 Git 分支）"
 echo ""
