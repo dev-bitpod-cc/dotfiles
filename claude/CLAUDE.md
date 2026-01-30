@@ -4,7 +4,7 @@
 
 ## 可用工具
 
-bun, node, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh, httpie
+bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh, httpie
 
 ## 別名
 
@@ -18,3 +18,5 @@ bun, node, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh,
 2. 不要假設單字母別名
 3. Linux: `fd`/`bat` 是別名（實際為 fdfind/batcat）
 4. PATH 包含 `~/.local/bin`
+5. 永遠使用 `bun` 取代 `npm`/`npx`/`node`，包括安裝、執行、測試
+6. Python 相關操作一律使用 `uv`，取代 `pip`/`python`/`venv`

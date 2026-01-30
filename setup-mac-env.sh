@@ -276,6 +276,7 @@ brew install \
   node \
   oven-sh/bun/bun \
   python \
+  uv \
   jq \
   yq \
   httpie \
@@ -862,6 +863,7 @@ check_tool tmux && echo "  ✅ tmux" || echo "  ❌ tmux"
 check_tool node && echo "  ✅ node" || echo "  ❌ node"
 check_tool bun && echo "  ✅ bun" || echo "  ❌ bun"
 check_tool python3 && echo "  ✅ python3" || echo "  ❌ python3"
+check_tool uv && echo "  ✅ uv" || echo "  ❌ uv"
 check_tool jq && echo "  ✅ jq" || echo "  ❌ jq"
 check_tool yq && echo "  ✅ yq" || echo "  ❌ yq"
 
@@ -950,6 +952,7 @@ echo -e "\n=== Python ==="
 python3 --version 2>/dev/null || echo "❌ python3 未安裝"
 python --version 2>/dev/null || echo "⚠️ python 命令不可用（需要新終端）"
 pip3 --version 2>/dev/null || echo "❌ pip3 未安裝"
+uv --version 2>/dev/null || echo "❌ uv 未安裝"
 
 # 4. 檢查現代化 CLI 工具
 echo -e "\n=== 現代化 CLI 工具 ==="
