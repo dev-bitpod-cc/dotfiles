@@ -254,6 +254,14 @@ echo "Architecture: $(uname -m)"
 print_info "更新套件清單..."
 sudo apt update -qq
 
+print_info "確保 zh_TW.UTF-8 locale 可用..."
+if ! locale -a 2>/dev/null | grep -q zh_TW; then
+    sudo locale-gen zh_TW.UTF-8 >/dev/null 2>&1
+    print_success "zh_TW.UTF-8 locale 已產生"
+else
+    print_info "zh_TW.UTF-8 locale 已存在"
+fi
+
 print_info "安裝基本編譯工具..."
 sudo apt install -y -qq \
     build-essential \
