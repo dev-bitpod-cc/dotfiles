@@ -815,8 +815,8 @@ fi
 # -------------------------------------------
 
 export CLICOLOR=1
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
+export LANG=zh_TW.UTF-8
+export LC_ALL=zh_TW.UTF-8
 export EDITOR=vim
 HISTSIZE=50000
 HISTFILESIZE=50000
