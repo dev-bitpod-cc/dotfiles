@@ -437,6 +437,9 @@ fi
 # Homebrew 安裝的 bun 執行檔在 /opt/homebrew/bin，但全局套件仍在 ~/.bun/bin
 [ -d "$HOME/.bun/bin" ] && export PATH="$HOME/.bun/bin:$PATH"
 
+# npm 全域套件（相容性備用，優先級低於 bun）
+[ -d "$HOME/.npm-global/bin" ] && export PATH="$HOME/.npm-global/bin:$PATH"
+
 # 優先級 2: Homebrew Python 無版本路徑（python 而非 python3）
 if [ -d "/opt/homebrew/opt/python/libexec/bin" ]; then
     # Apple Silicon

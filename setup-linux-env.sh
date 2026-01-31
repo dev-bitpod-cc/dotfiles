@@ -186,6 +186,9 @@ fi
 # 優先級 3: Bun
 [ -d "$HOME/.bun/bin" ] && export PATH="$HOME/.bun/bin:$PATH"
 
+# npm 全域套件（相容性備用，優先級低於 bun）
+[ -d "$HOME/.npm-global/bin" ] && export PATH="$HOME/.npm-global/bin:$PATH"
+
 # 優先級 1: 用戶本地程式（最高優先級）
 [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"
 
