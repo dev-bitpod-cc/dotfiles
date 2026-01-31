@@ -522,7 +522,11 @@ if command -v tokei &> /dev/null; then
     print_info "tokei 已安裝"
 else
     print_info "安裝 tokei..."
-    TOKEI_VERSION=$(curl -s "https://api.github.com/repos/XAMPPRocky/tokei/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "13.0.0-alpha.7")
+    TOKEI_VERSION=$(curl -s "https://api.github.com/repos/XAMPPRocky/tokei/releases" | grep -Po '"tag_name": "v\K[^"]*' | while read -r ver; do
+        ASSETS=$(curl -s "https://api.github.com/repos/XAMPPRocky/tokei/releases/tags/v${ver}" | grep -c '"browser_download_url"' || true)
+        if [ "$ASSETS" -gt 0 ]; then echo "$ver"; break; fi
+    done)
+    TOKEI_VERSION="${TOKEI_VERSION:-12.1.2}"
     ARCH=$(uname -m)
     if [ "$ARCH" = "x86_64" ]; then
         TOKEI_ARCH="x86_64-unknown-linux-gnu"
