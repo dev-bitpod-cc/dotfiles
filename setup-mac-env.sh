@@ -625,8 +625,6 @@ fi
 # 其他設定
 # -------------------------------------------
 export CLICOLOR=1
-export LANG=zh_TW.UTF-8
-export LC_ALL=zh_TW.UTF-8
 export EDITOR=vim
 HISTSIZE=50000
 SAVEHIST=50000
