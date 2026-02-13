@@ -836,6 +836,58 @@ else
 fi
 
 # ================================================
+# 步驟 5.6: 設定 tmux 配置
+# ================================================
+if [ -f "$SCRIPT_DIR/.tmux.conf" ]; then
+    print_info "設定 tmux 配置..."
+    # 移除舊的 symlink 或檔案
+    [ -L ~/.tmux.conf ] && rm ~/.tmux.conf
+    [ -f ~/.tmux.conf ] && mv ~/.tmux.conf ~/.tmux.conf.backup
+    # 建立 symlink
+    ln -sf "$SCRIPT_DIR/.tmux.conf" ~/.tmux.conf
+    print_success "已建立 ~/.tmux.conf symlink"
+
+    # 確保 tmux-256color terminfo 存在（安裝至 ~/.terminfo/）
+    if ! infocmp tmux-256color &>/dev/null; then
+        print_info "安裝 tmux-256color terminfo..."
+        installed=false
+        # 嘗試從 Homebrew ncurses 匯出再編譯到 ~/.terminfo/
+        if command -v brew &>/dev/null; then
+            NCURSES_DB="$(brew --prefix ncurses 2>/dev/null)/share/terminfo"
+            if [ -d "$NCURSES_DB" ]; then
+                tmpfile=$(mktemp)
+                TERMINFO_DIRS="$NCURSES_DB" infocmp -x tmux-256color > "$tmpfile" 2>/dev/null \
+                    && tic -x "$tmpfile" 2>/dev/null \
+                    && installed=true
+                rm -f "$tmpfile"
+            fi
+        fi
+        # Homebrew 沒有的話，用內嵌的最小定義編譯
+        if ! $installed; then
+            tmpfile=$(mktemp)
+            cat > "$tmpfile" << 'TERMINFO_EOF'
+tmux-256color|tmux with 256 colors,
+    use=screen-256color,
+    sitm=\E[3m, ritm=\E[23m,
+    smso=\E[7m, rmso=\E[27m,
+TERMINFO_EOF
+            tic -x "$tmpfile" 2>/dev/null && installed=true
+            rm -f "$tmpfile"
+        fi
+        # 確認結果
+        if infocmp tmux-256color &>/dev/null; then
+            print_success "tmux-256color terminfo 已安裝至 ~/.terminfo/"
+        else
+            print_warning "tmux-256color terminfo 安裝失敗，tmux 將 fallback 至 screen-256color"
+        fi
+    else
+        print_success "tmux-256color terminfo 已存在"
+    fi
+else
+    print_info "未找到 .tmux.conf，跳過 tmux 配置"
+fi
+
+# ================================================
 # 步驟 6: 驗證
 # ================================================
 print_header "步驟 6: 驗證安裝"

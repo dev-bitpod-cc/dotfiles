@@ -1166,6 +1166,54 @@ else
 fi
 
 # ================================================
+# 步驟 4.6: 設定 tmux 配置
+# ================================================
+if [ -f "$SCRIPT_DIR/.tmux.conf" ]; then
+    print_info "設定 tmux 配置..."
+    # 移除舊的 symlink 或檔案
+    [ -L ~/.tmux.conf ] && rm ~/.tmux.conf
+    [ -f ~/.tmux.conf ] && mv ~/.tmux.conf ~/.tmux.conf.backup
+    # 建立 symlink
+    ln -sf "$SCRIPT_DIR/.tmux.conf" ~/.tmux.conf
+    print_success "已建立 ~/.tmux.conf symlink"
+
+    # 確保 tmux-256color terminfo 存在
+    if ! infocmp tmux-256color &>/dev/null; then
+        print_info "安裝 tmux-256color terminfo..."
+        # Linux：嘗試透過套件管理器安裝 ncurses-term
+        if command -v apt-get &>/dev/null; then
+            sudo apt-get install -y ncurses-term &>/dev/null && print_success "已透過 apt 安裝 ncurses-term"
+        elif command -v dnf &>/dev/null; then
+            sudo dnf install -y ncurses-base &>/dev/null && print_success "已透過 dnf 安裝 ncurses-base"
+        elif command -v pacman &>/dev/null; then
+            sudo pacman -S --noconfirm ncurses &>/dev/null && print_success "已透過 pacman 安裝 ncurses"
+        else
+            # 手動編譯 terminfo
+            print_info "嘗試手動編譯 tmux-256color terminfo..."
+            tmpfile=$(mktemp)
+            cat > "$tmpfile" << 'TERMINFO_EOF'
+tmux-256color|tmux with 256 colors,
+    use=screen-256color,
+    sitm=\E[3m, ritm=\E[23m,
+    smso=\E[7m, rmso=\E[27m,
+TERMINFO_EOF
+            tic -x "$tmpfile" 2>/dev/null
+            rm -f "$tmpfile"
+        fi
+        # 再次確認
+        if infocmp tmux-256color &>/dev/null; then
+            print_success "tmux-256color terminfo 已就緒"
+        else
+            print_warning "tmux-256color terminfo 未找到，tmux 將 fallback 至 screen-256color"
+        fi
+    else
+        print_success "tmux-256color terminfo 已存在"
+    fi
+else
+    print_info "未找到 .tmux.conf，跳過 tmux 配置"
+fi
+
+# ================================================
 # 步驟 5: 驗證
 # ================================================
 print_header "步驟 5: 驗證安裝"
