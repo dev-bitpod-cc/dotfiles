@@ -822,17 +822,39 @@ fi
 # 步驟 5.5: 設定 Claude Code 全域配置
 # ================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-if [ -f "$SCRIPT_DIR/claude/CLAUDE.md" ]; then
+if [ -d "$SCRIPT_DIR/claude" ]; then
     print_info "設定 Claude Code 全域配置..."
-    mkdir -p ~/.claude
-    # 移除舊的 symlink 或檔案
-    [ -L ~/.claude/CLAUDE.md ] && rm ~/.claude/CLAUDE.md
-    [ -f ~/.claude/CLAUDE.md ] && mv ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.backup
-    # 建立 symlink
-    ln -sf "$SCRIPT_DIR/claude/CLAUDE.md" ~/.claude/CLAUDE.md
-    print_success "已建立 ~/.claude/CLAUDE.md symlink"
+    mkdir -p ~/.claude ~/.claude/commands
+
+    # CLAUDE.md
+    if [ -f "$SCRIPT_DIR/claude/CLAUDE.md" ]; then
+        [ -L ~/.claude/CLAUDE.md ] && rm ~/.claude/CLAUDE.md
+        [ -f ~/.claude/CLAUDE.md ] && mv ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.backup
+        ln -sf "$SCRIPT_DIR/claude/CLAUDE.md" ~/.claude/CLAUDE.md
+        print_success "已建立 ~/.claude/CLAUDE.md symlink"
+    fi
+
+    # settings.json
+    if [ -f "$SCRIPT_DIR/claude/settings.json" ]; then
+        [ -L ~/.claude/settings.json ] && rm ~/.claude/settings.json
+        [ -f ~/.claude/settings.json ] && mv ~/.claude/settings.json ~/.claude/settings.json.backup
+        ln -sf "$SCRIPT_DIR/claude/settings.json" ~/.claude/settings.json
+        print_success "已建立 ~/.claude/settings.json symlink"
+    fi
+
+    # commands/*.md
+    if [ -d "$SCRIPT_DIR/claude/commands" ]; then
+        for cmd in "$SCRIPT_DIR/claude/commands"/*.md; do
+            [ -f "$cmd" ] || continue
+            cmd_name="$(basename "$cmd")"
+            [ -L ~/.claude/commands/"$cmd_name" ] && rm ~/.claude/commands/"$cmd_name"
+            [ -f ~/.claude/commands/"$cmd_name" ] && mv ~/.claude/commands/"$cmd_name" ~/.claude/commands/"$cmd_name".backup
+            ln -sf "$cmd" ~/.claude/commands/"$cmd_name"
+        done
+        print_success "已建立 ~/.claude/commands/ symlinks"
+    fi
 else
-    print_info "未找到 claude/CLAUDE.md，跳過 Claude Code 配置"
+    print_info "未找到 claude/ 目錄，跳過 Claude Code 配置"
 fi
 
 # ================================================
