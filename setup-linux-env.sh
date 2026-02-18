@@ -780,7 +780,7 @@ alias gb='git branch'
 alias glog='git log --oneline --graph --decorate'
 
 # 系統更新
-alias sysup='(cd ~/.dotfiles && git pull 2>/dev/null); sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y; ~/.dotfiles/claude/update-ecc-rules.sh 2>/dev/null || true'
+alias sysup='(cd ~/.dotfiles && git pull 2>/dev/null); sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
 
 # -------------------------------------------
 # fzf 配置

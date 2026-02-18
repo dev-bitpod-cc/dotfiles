@@ -584,7 +584,7 @@ alias gb='git branch'
 alias glog='git log --oneline --graph --decorate'
 
 # 系統更新
-alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; ~/.dotfiles/claude/update-ecc-rules.sh 2>/dev/null || true'
+alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup'
 
 # -------------------------------------------
 # fzf 配置

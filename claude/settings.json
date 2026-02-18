@@ -1,7 +1,6 @@
 {
   "enabledPlugins": {
-    "swift-lsp@claude-plugins-official": true,
-    "everything-claude-code@everything-claude-code": true
+    "swift-lsp@claude-plugins-official": true
   },
   "language": "繁體中文",
   "alwaysThinkingEnabled": true
