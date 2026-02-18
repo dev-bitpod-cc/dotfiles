@@ -584,7 +584,7 @@ alias gb='git branch'
 alias glog='git log --oneline --graph --decorate'
 
 # 系統更新
-alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup'
+alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; ~/.dotfiles/claude/update-ecc-rules.sh 2>/dev/null || true'
 
 # -------------------------------------------
 # fzf 配置
@@ -824,35 +824,50 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 if [ -d "$SCRIPT_DIR/claude" ]; then
     print_info "設定 Claude Code 全域配置..."
-    mkdir -p ~/.claude ~/.claude/commands
+    mkdir -p ~/.claude
 
-    # CLAUDE.md
+    # Helper: 建立 symlink（檔案或目錄），自動備份既有內容
+    __claude_link() {
+        local src="$1" dst="$2"
+        if [ -L "$dst" ]; then
+            rm "$dst"
+        elif [ -e "$dst" ]; then
+            mv "$dst" "$dst.backup"
+        fi
+        ln -sf "$src" "$dst"
+    }
+
+    # CLAUDE.md (檔案 symlink)
     if [ -f "$SCRIPT_DIR/claude/CLAUDE.md" ]; then
-        [ -L ~/.claude/CLAUDE.md ] && rm ~/.claude/CLAUDE.md
-        [ -f ~/.claude/CLAUDE.md ] && mv ~/.claude/CLAUDE.md ~/.claude/CLAUDE.md.backup
-        ln -sf "$SCRIPT_DIR/claude/CLAUDE.md" ~/.claude/CLAUDE.md
+        __claude_link "$SCRIPT_DIR/claude/CLAUDE.md" ~/.claude/CLAUDE.md
         print_success "已建立 ~/.claude/CLAUDE.md symlink"
     fi
 
-    # settings.json
+    # settings.json (檔案 symlink)
     if [ -f "$SCRIPT_DIR/claude/settings.json" ]; then
-        [ -L ~/.claude/settings.json ] && rm ~/.claude/settings.json
-        [ -f ~/.claude/settings.json ] && mv ~/.claude/settings.json ~/.claude/settings.json.backup
-        ln -sf "$SCRIPT_DIR/claude/settings.json" ~/.claude/settings.json
+        __claude_link "$SCRIPT_DIR/claude/settings.json" ~/.claude/settings.json
         print_success "已建立 ~/.claude/settings.json symlink"
     fi
 
-    # commands/*.md
-    if [ -d "$SCRIPT_DIR/claude/commands" ]; then
-        for cmd in "$SCRIPT_DIR/claude/commands"/*.md; do
-            [ -f "$cmd" ] || continue
-            cmd_name="$(basename "$cmd")"
-            [ -L ~/.claude/commands/"$cmd_name" ] && rm ~/.claude/commands/"$cmd_name"
-            [ -f ~/.claude/commands/"$cmd_name" ] && mv ~/.claude/commands/"$cmd_name" ~/.claude/commands/"$cmd_name".backup
-            ln -sf "$cmd" ~/.claude/commands/"$cmd_name"
-        done
-        print_success "已建立 ~/.claude/commands/ symlinks"
+    # package-manager.json (檔案 symlink)
+    if [ -f "$SCRIPT_DIR/claude/package-manager.json" ]; then
+        __claude_link "$SCRIPT_DIR/claude/package-manager.json" ~/.claude/package-manager.json
+        print_success "已建立 ~/.claude/package-manager.json symlink"
     fi
+
+    # commands/ (目錄 symlink)
+    if [ -d "$SCRIPT_DIR/claude/commands" ]; then
+        __claude_link "$SCRIPT_DIR/claude/commands" ~/.claude/commands
+        print_success "已建立 ~/.claude/commands/ symlink"
+    fi
+
+    # rules/ (目錄 symlink)
+    if [ -d "$SCRIPT_DIR/claude/rules" ]; then
+        __claude_link "$SCRIPT_DIR/claude/rules" ~/.claude/rules
+        print_success "已建立 ~/.claude/rules/ symlink"
+    fi
+
+    unset -f __claude_link
 else
     print_info "未找到 claude/ 目錄，跳過 Claude Code 配置"
 fi
