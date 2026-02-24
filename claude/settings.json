@@ -3,5 +3,6 @@
     "swift-lsp@claude-plugins-official": true
   },
   "language": "繁體中文",
-  "alwaysThinkingEnabled": true
+  "alwaysThinkingEnabled": true,
+  "skipDangerousModePermissionPrompt": true
 }
