@@ -4,13 +4,21 @@
 
 ## 可用工具
 
-bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh, httpie, shellcheck
+bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh, httpie, shellcheck, sd, hyperfine, tokei, tldr, tmux
 
 ## 別名
 
-- 檔案：`ll`, `la`, `lt`（eza）
-- Git：`gs`, `gd`, `ga`, `gc`, `gp`, `gl`, `gco`, `gb`
+- 檔案：`ll`, `la`, `lt`, `llt`（eza）
+- Git：`gs`, `gd`, `ga`, `gc`, `gp`, `gl`, `gco`, `gb`, `glog`
 - 更新：`brewup` (macOS) / `sysup` (Linux) - 含 dotfiles pull
+
+## 自訂函數
+
+- `fe` - fzf 搜尋並編輯檔案
+- `proj` - 快速切換專案目錄
+- `stats` - 程式碼統計（tokei）
+- `venv [name]` - 建立 Python 虛擬環境（優先使用 uv）
+- `sysupdate` - 詳細的系統更新（僅 Linux）
 
 ## 套件管理規則
 

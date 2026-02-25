@@ -14,10 +14,11 @@
 
 | 任務 | 使用 | 取代 |
 |------|------|------|
-| 列出檔案 | `eza` 或 `ll`/`la`/`lt` | ls |
+| 列出檔案 | `eza` 或 `ll`/`la`/`lt`/`llt` | ls |
 | 查看檔案 | `bat` | cat |
 | 搜尋檔案 | `fd` | find |
 | 搜尋內容 | `rg` | grep |
+| 搜尋替換 | `sd` | sed |
 | 目錄跳轉 | `z <keyword>` | cd |
 | HTTP 請求 | `http` (HTTPie) | curl |
 | JSON 處理 | `jq` | - |
@@ -26,12 +27,15 @@
 | Git TUI | `lazygit` | - |
 | 磁碟分析 | `dust` | du |
 | 磁碟使用 | `duf` | df |
+| 效能測試 | `hyperfine` | time |
+| 程式碼統計 | `tokei` | cloc |
+| 指令速查 | `tldr` | man |
 
 ### Git 別名
 
 ```
-gs=git status    gd=git diff    ga=git add    gc=git commit
-gp=git push      gl=git pull    gco=git checkout    gb=git branch
+gs=git status    gd=git diff     ga=git add       gc=git commit
+gp=git push      gl=git pull     gco=git checkout gb=git branch
 glog=git log --oneline --graph --decorate
 ```
 
@@ -46,6 +50,7 @@ glog=git log --oneline --graph --decorate
 - `proj` - 快速切換專案目錄
 - `stats` - 程式碼統計（tokei）
 - `venv [name]` - 建立 Python 虛擬環境（優先使用 uv）
+- `sysupdate` - 詳細的系統更新（僅 Linux）
 
 ## 重要規則
 

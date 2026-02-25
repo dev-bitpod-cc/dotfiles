@@ -1179,22 +1179,10 @@ if [ -d "$SCRIPT_DIR/claude" ]; then
         print_success "已建立 ~/.claude/settings.json symlink"
     fi
 
-    # package-manager.json (檔案 symlink)
-    if [ -f "$SCRIPT_DIR/claude/package-manager.json" ]; then
-        __claude_link "$SCRIPT_DIR/claude/package-manager.json" ~/.claude/package-manager.json
-        print_success "已建立 ~/.claude/package-manager.json symlink"
-    fi
-
     # commands/ (目錄 symlink)
     if [ -d "$SCRIPT_DIR/claude/commands" ]; then
         __claude_link "$SCRIPT_DIR/claude/commands" ~/.claude/commands
         print_success "已建立 ~/.claude/commands/ symlink"
-    fi
-
-    # rules/ (目錄 symlink)
-    if [ -d "$SCRIPT_DIR/claude/rules" ]; then
-        __claude_link "$SCRIPT_DIR/claude/rules" ~/.claude/rules
-        print_success "已建立 ~/.claude/rules/ symlink"
     fi
 
     unset -f __claude_link
