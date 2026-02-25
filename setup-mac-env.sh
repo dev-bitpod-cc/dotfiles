@@ -583,6 +583,9 @@ alias gco='git checkout'
 alias gb='git branch'
 alias glog='git log --oneline --graph --decorate'
 
+# Claude Code
+alias clauded='claude --dangerously-skip-permissions'
+
 # 系統更新
 alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup'
 
