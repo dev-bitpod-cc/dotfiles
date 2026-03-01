@@ -2,6 +2,13 @@
 
 此環境已透過標準化腳本配置，你可以直接使用以下現代化工具。
 
+## 快速安裝
+
+- **macOS 新機**：`curl -fsSL dot.bitpod.cc | sh`（Xcode CLT → clone → setup）
+- **macOS 已有 repo**：`./setup-mac-env.sh`
+- **macOS 系統偏好**：`./write-mac-defaults.sh`（選用，獨立執行）
+- **Linux Ubuntu**：`./setup-linux-env.sh`
+
 ## 平台資訊
 
 - **macOS**: zsh（`~/.zshrc`, `~/.zprofile`）
