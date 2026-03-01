@@ -5,6 +5,11 @@
 # 新 Mac 上只需執行這一行：
 #   curl -fsSL dot.bitpod.cc | sh
 #
+# -f  fail: HTTP 錯誤時回傳非零 exit code，不輸出錯誤頁面
+# -s  silent: 不顯示進度條
+# -S  show error: 靜默模式下仍顯示錯誤訊息
+# -L  location: 自動跟隨 redirect（dot.bitpod.cc 302 → GitHub）
+#
 # 此腳本會依序：
 #   1. 安裝 Xcode Command Line Tools（取得 git）
 #   2. Clone dotfiles repo 至 ~/.dotfiles
