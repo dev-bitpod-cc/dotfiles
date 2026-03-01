@@ -8,7 +8,8 @@
 config/
 ├── README.md              # 本文件（快速入門）
 ├── CLAUDE.md              # Claude Code 環境指引（自動讀取）
-├── setup-mac-env.sh       # macOS 安裝腳本 (v3.1)
+├── setup-mac-env.sh       # macOS 開發環境安裝腳本 (v3.1)
+├── write-mac-defaults.sh  # macOS 系統偏好設定腳本 (v1.0)
 └── setup-linux-env.sh     # Linux Ubuntu 安裝腳本 (v3.1)
 ```
 
@@ -17,8 +18,13 @@ config/
 ### macOS
 
 ```bash
+# 開發工具環境
 chmod +x setup-mac-env.sh
 ./setup-mac-env.sh
+
+# macOS 系統偏好設定（選用，可獨立執行）
+chmod +x write-mac-defaults.sh
+./write-mac-defaults.sh
 ```
 
 ### Linux Ubuntu
