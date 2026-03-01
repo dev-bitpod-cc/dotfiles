@@ -8,8 +8,8 @@
 #   chmod +x setup-mac-env.sh
 #   ./setup-mac-env.sh
 #
-# 或一鍵執行：
-#   bash <(curl -fsSL /path/to/setup-mac-env.sh)
+# 新 Mac 一鍵執行（含 Xcode CLT 安裝 + clone repo）：
+#   curl -fsSL dot.bitpod.cc | sh
 #
 # 特色：
 #   - 智能 PATH 統合（保留現有設定、去重、依 macOS/Homebrew 慣例排序）

@@ -8,6 +8,7 @@
 config/
 ├── README.md              # 本文件（快速入門）
 ├── CLAUDE.md              # Claude Code 環境指引（自動讀取）
+├── bootstrap.sh           # macOS 新機一鍵 bootstrap
 ├── setup-mac-env.sh       # macOS 開發環境安裝腳本 (v3.1)
 ├── write-mac-defaults.sh  # macOS 系統偏好設定腳本 (v1.0)
 └── setup-linux-env.sh     # Linux Ubuntu 安裝腳本 (v3.1)
@@ -15,15 +16,24 @@ config/
 
 ## 快速開始
 
-### macOS
+### macOS（新機一鍵安裝）
+
+```bash
+curl -fsSL dot.bitpod.cc | sh
+```
+
+自動完成：Xcode CLT 安裝 → clone repo → 執行環境設定。
+
+> **Cloudflare 設定**：`dot.bitpod.cc` 302 redirect 至
+> `https://raw.githubusercontent.com/dev-bitpod-cc/dotfiles/main/bootstrap.sh`
+
+### macOS（已有 repo）
 
 ```bash
 # 開發工具環境
-chmod +x setup-mac-env.sh
 ./setup-mac-env.sh
 
 # macOS 系統偏好設定（選用，可獨立執行）
-chmod +x write-mac-defaults.sh
 ./write-mac-defaults.sh
 ```
 
