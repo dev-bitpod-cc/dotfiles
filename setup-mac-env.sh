@@ -870,6 +870,12 @@ if [ -d "$SCRIPT_DIR/claude" ]; then
         print_success "已建立 ~/.claude/commands/ symlink"
     fi
 
+    # skills/ (目錄 symlink)
+    if [ -d "$SCRIPT_DIR/claude/skills" ]; then
+        __claude_link "$SCRIPT_DIR/claude/skills" ~/.claude/skills
+        print_success "已建立 ~/.claude/skills/ symlink"
+    fi
+
     unset -f __claude_link
 else
     print_info "未找到 claude/ 目錄，跳過 Claude Code 配置"
