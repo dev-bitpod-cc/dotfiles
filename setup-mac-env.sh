@@ -884,13 +884,13 @@ fi
 # ================================================
 # 步驟 5.6: 設定 tmux 配置
 # ================================================
-if [ -f "$SCRIPT_DIR/.tmux.conf" ]; then
+if [ -f "$SCRIPT_DIR/tmux.conf" ]; then
     print_info "設定 tmux 配置..."
     # 移除舊的 symlink 或檔案
     [ -L ~/.tmux.conf ] && rm ~/.tmux.conf
     [ -f ~/.tmux.conf ] && mv ~/.tmux.conf ~/.tmux.conf.backup
     # 建立 symlink
-    ln -sf "$SCRIPT_DIR/.tmux.conf" ~/.tmux.conf
+    ln -sf "$SCRIPT_DIR/tmux.conf" ~/.tmux.conf
     print_success "已建立 ~/.tmux.conf symlink"
 
     # 確保 tmux-256color terminfo 存在（安裝至 ~/.terminfo/）
