@@ -27,19 +27,30 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 1. **有引數** → review 指定檔案/目錄（整檔深度審查，不限 diff）
 2. **有 staged changes** → `git diff --cached`
 3. **有 unstaged changes** → `git diff`
-4. **都沒有** → 最新一筆 commit `git diff HEAD~1`
+4. **有多筆 commit 偏離 base branch** → `git diff main...HEAD`（review 整個 branch）
+5. **都沒有** → 最新一筆 commit `git diff HEAD~1`
 
 先用 `git diff --stat` 看概覽，再讀完整 diff。
 
 **指定檔案/目錄模式**：不依賴 diff，直接讀取整個檔案，審查結構、命名、潛在問題。
+
+### 規模策略
+
+| 變更檔案數 | 策略 |
+|-----------|------|
+| ≤ 10 | 逐檔全讀，完整審查 |
+| 11–30 | 先讀 diff，僅對高風險檔案全讀（含業務邏輯、DB、API） |
+| > 30 | 用 Agent 平行審查，分模組各出 sub-report，再彙整 |
 
 ### 2. 載入專案 context
 
 自動讀取以下來源（有就讀，沒有就跳過）：
 
 - **專案 CLAUDE.md** → `<repo_root>/CLAUDE.md`
+- **子目錄 CLAUDE.md** → 變更檔案所在目錄的 CLAUDE.md（如 `crawler/CLAUDE.md`）
 - **自動記憶** → 當前專案的 `memory/MEMORY.md`
 - **全域 CLAUDE.md** → `~/.claude/CLAUDE.md`
+- **專案設定檔** → `pyproject.toml` / `package.json` / `tsconfig.json`（了解依賴與設定）
 
 從中提取作為 checklist：
 - 架構約定（DB 連線模式、error handling 策略、API 模式）
@@ -55,6 +66,8 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 - 這個檔案的職責
 - 變更影響的範圍
 - 相關的其他檔案（import、呼叫方、被呼叫方）
+
+若變更涉及 3 個以上獨立模組，用 Agent 平行讀取各模組上下文，加速審查。
 
 #### 3b. 多維度檢查
 
@@ -89,21 +102,43 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 - 批次 vs 逐筆
 - 大量資料有無分頁/限制
 
+**測試**
+- 新增功能是否有對應測試
+- 變更是否可能破壞既有測試
+- 邊界條件在測試中是否被覆蓋
+- mock/stub 是否合理（不要 mock 掉被測試的邏輯本身）
+
 #### 3c. 跨檔案追蹤
 
-如果變更涉及多個檔案，檢查：
-- 後端 model 新增欄位 → 前端 type 是否同步
-- 新 API 端點 → api.ts 是否有對應函式
-- 新組件 → page.tsx 是否有整合
-- SQL 欄位 → 對應的 DB 是否真的有這個欄位（根據 CLAUDE.md 中的 DB 資訊判斷）
+變更涉及多檔案時，追蹤**契約邊界**是否同步：
+
+- **資料型別變更** → 所有使用端是否同步（type、schema、serializer）
+- **函式簽名變更** → 所有呼叫方是否更新
+- **設定/環境變數新增** → .env.example、部署文件是否同步
+- **新增公開介面** → 對應的 export、文件、測試是否到位
 
 ### 4. 輸出格式
+
+#### 嚴重度定義
+
+| 等級 | 標準 | 範例 |
+|------|------|------|
+| 嚴重 | 會導致 bug、資料損失、安全漏洞，或生產環境錯誤 | SQL injection、未處理 null 導致 crash |
+| 中等 | 不會立即出錯，但增加維護風險或違反架構約定 | 未遵循 error handling 模式、缺少型別 |
+| 建議 | 可改善但不影響功能，屬於加分項 | 更好的命名、效能微優化 |
+
+#### 報告模板
 
 ```markdown
 ## Deep Review
 
 **範圍**: {模式} — {檔案數} 個檔案，{增/刪行數}
 **整體評估**: {一句話總結}
+**問題統計**: {N} 嚴重 / {N} 中等 / {N} 建議
+
+### 亮點
+
+- `file.py:50-80` — 簡述做得好的地方及原因
 
 ### 問題 (需修正)
 
@@ -119,19 +154,14 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 ### 建議 (可改進)
 
 - `file.ts:15` — 描述 + 建議
-- `file.py:88` — 描述 + 建議
 
 ### 跨檔案一致性
 
-- [x] 後端 model ↔ 前端 type 同步
-- [ ] 新端點缺少 api.ts 函式
-- [x] 組件已整合至 page.tsx
+根據實際變更內容，列出需要同步的跨檔案契約，標註是否已同步。
 
 ### 專案慣例檢查
 
-- [x] DB 連線用 context manager
-- [ ] navi 查詢缺少 try/except fallback
-- [x] 符合 commit 慣例
+根據 CLAUDE.md 中的規則，逐條檢查本次變更是否符合。僅列出**相關的**規則。
 ```
 
 ## 審查原則

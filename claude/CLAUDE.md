@@ -1,7 +1,5 @@
 # 環境配置
 
-此環境已安裝現代化 CLI 工具，可直接使用。
-
 ## 可用工具
 
 bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh, httpie, shellcheck, sd, hyperfine, tokei, tldr, tmux
@@ -23,37 +21,20 @@ bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf,
 ## 套件管理規則
 
 1. **JavaScript/TypeScript**：一律用 `bun`，取代 `npm`/`npx`/`node`
-   - 新專案：`bun init`
-   - 安裝套件：`bun add`
-   - 執行：`bun run`
-   - 測試：`bun test`
-   - 全域工具：`bun install -g`
+   - 新專案：`bun init`｜安裝：`bun add`｜執行：`bun run`｜測試：`bun test`｜全域：`bun install -g`
 2. **Python**：一律用 `uv`，取代 `pip`/`python`/`venv`
-   - 新專案：`uv init`
-   - 安裝套件：`uv add`
-   - 執行：`uv run`
-   - 測試：`uv run pytest`
-   - 虛擬環境：`uv venv`
-   - CLI 工具：`uv tool install`
+   - 新專案：`uv init`｜安裝：`uv add`｜執行：`uv run`｜測試：`uv run pytest`｜venv：`uv venv`｜CLI：`uv tool install`
 
 ## Commit 慣例
 
-使用 Conventional Commits 格式：
-
-```
-<type>: <簡短描述>
-```
-
-type: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
+Conventional Commits：`<type>: <簡短描述>`，type: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
 
 ## Notification Center (NC) 整合規範
 
-NC 是統一的 Telegram 通知服務，部署在 db01:8100。
-**所有背景、排程、長時間運行的程序都必須整合 NC。**
-
+NC 是統一的 Telegram 通知服務（db01:8100）。**所有背景、排程、長時間運行的程序都必須整合。**
 完整 API 文件：`~/Projects/notification-center/INTEGRATION.md`
 
-### 何時必須整合
+### 何時整合
 
 | 程序類型 | 通知 | 進度 | 說明 |
 |----------|------|------|------|
@@ -61,92 +42,77 @@ NC 是統一的 Telegram 通知服務，部署在 db01:8100。
 | 背景腳本（爬蟲、回補） | 必須 | 必須 | 長時間任務需進度追蹤 |
 | Pipeline（標註、訓練） | 必須 | 必須 | 每個 phase 回報進度 |
 | 一次性手動腳本 | 建議 | — | 超過 10 分鐘的建議加 |
-| API 服務 | — | — | 不需要（本身就是常駐服務） |
+| API 服務 | — | — | 不需要 |
 
-### 通知 level 規則
+### 通知規則
 
-三級制：`info` / `warning` / `error`（無 success）
+三級制：`info`（正常完成）/ `warning`（非致命異常）/ `error`（失敗、需立即處理）
 
-| level | 使用場景 | 範例 |
-|-------|---------|------|
-| `info` | 正常完成、啟動、階段完成 | `任務完成 (3m12s)` |
-| `warning` | 非致命異常、需注意 | `未達標，需人工介入` |
-| `error` | 失敗、中止、需立即處理 | `爬蟲異常中止: ConnectionError` |
-
-### 通知訊息格式
-
-```
-{動作結果}: {關鍵數據}
-```
-
-規則：
-1. **動作結果**在前 — 「完成」「失敗」「啟動」一眼可辨
-2. **關鍵數據**跟後 — 數量、耗時、錯誤原因
-3. 不加 emoji（NC 會根據 level 自動加）
-4. 不重複 source（NC 會自動加 `[source]` 前綴）
-5. 保持一行，不超過 200 字
-
-範例：
+訊息格式：`{動作結果}: {關鍵數據}`
+- 動作結果在前，關鍵數據跟後，一行不超過 200 字
+- 不加 emoji（NC 根據 level 自動加）、不重複 source（NC 自動加前綴）
 
 ```
 # 好
 "排程完成 (3m12s)"
 "爬蟲完成: 新增 1,200 筆, 更新 350 筆"
-"標註完成: 4,500 筆 (alert=320, watch=890, routine=3290)"
-"IP block 偵測: net::ERR_EMPTY_RESPONSE"
-"訓練未達標 (acc=82.1%), 需人工介入"
-
-# 不好
+# 壞
 "✅ mops-major-news 排程完成"     ← emoji 多餘，source 重複
 "完成"                            ← 缺數據
-"Error occurred in the system"     ← 太模糊
 ```
 
-### 進度追蹤規則
+### 進度追蹤
 
 task 命名：`{功能}-{動作}`，如 `revenue-backfill`、`risk-v12-train`
 
 | 時機 | status | percent | detail |
 |------|--------|---------|--------|
-| 開始 | running | 0 | `共 N 筆` 或 `共 N 個 batch` |
-| 進行中 | running | 計算值 | `{i}/{total}, 已處理 X 筆` |
+| 開始 | running | 0 | `共 N 筆` |
+| 進行中 | running | 計算值 | `{i}/{total}` |
 | 完成 | completed | 100 | `完成` |
 | 失敗 | failed | 當前值 | `錯誤原因` |
-| 中斷 | failed | 當前值 | `使用者中斷` |
 
-### notify_on 自動推播
+- 超過 5 分鐘的任務用 `notify_on` 自動推播（見 INTEGRATION.md）
+- Cron/重試場景用 `dedup_key` 去重（見 INTEGRATION.md）
 
-超過 5 分鐘的背景任務建議設定 `notify_on`，免去手動送 /notify：
-
-```python
-report_progress(
-    task="model-training-v12", percent=0, source="krepo",
-    notify_on=["completed", "failed"], recipient="jjshen",
-    timeout_minutes=120,
-)
-```
-
-### dedup_key 去重
-
-Cron 排程或可能重試的場景，用 dedup_key 避免重複通知：
-
-```python
-send_notify("排程完成", source="mops-daily",
-            dedup_key=f"mops-daily-{date.today()}")
-```
-
-### 環境變數
-
-所有專案統一使用：
+### 環境變數與原則
 
 ```bash
-NC_API_URL=http://localhost:8100   # NC 服務位址
-NC_API_KEY=nc_xxxxx                # API key（由 POST /api/v1/keys 產生）
+NC_API_URL=http://localhost:8100
+NC_API_KEY=nc_xxxxx                # POST /api/v1/keys 產生
 ```
 
-### 靜默失敗原則
+**靜默失敗**：NC 不可用時不能影響主流程，所有 NC 呼叫必須 try/except 靜默處理。
 
-NC 不可用時**不能**影響主流程。所有 NC 呼叫都必須 try/except 靜默處理。
+## 程式碼慣例
+
+### 命名
+
+- **Python**：變數與函式 `snake_case`，類別 `PascalCase`，常數 `UPPER_SNAKE`
+- **TypeScript**：變數與函式 `camelCase`，類別與型別 `PascalCase`，常數 `UPPER_SNAKE`
+- **檔案名**：`kebab-case`（如 `setup-mac-env.sh`、`risk-model.py`）
+
+### Error Handling
+
+- 外部服務呼叫一律 try/except（或 try/catch），不讓第三方錯誤 crash 主流程
+- 失敗時 log 足夠的 context（什麼操作、什麼輸入、什麼錯誤），不只 `except: pass`
+- 可重試的操作（HTTP、DB）考慮加 retry with backoff
+- 使用者輸入在邊界驗證，內部函式之間信任參數
+
+### 已知地雷
+
+- SQL 字串拼接 → 一律用參數化查詢
+- `datetime.now()` → 注意 timezone，需要 UTC 用 `datetime.now(UTC)`
+- float 比較 → 金額、分數不要用 `==` 比較浮點數
+- 大量資料迴圈內呼叫 API/DB → 改用批次操作
+
+### 測試
+
+- **何時需要測試**：新增業務邏輯、修 bug（先寫重現測試再修）、公開 API/函式
+- **不需要測試**：設定檔、純 glue code、一次性腳本
+- **檔案位置**：與原始碼同目錄或 `tests/` 目錄，依專案既有慣例
+- **命名**：Python `test_*.py`，TypeScript `*.test.ts`
+- **原則**：測行為不測實作、mock 外部依賴但不 mock 被測邏輯本身、每個 test case 只驗證一件事
 
 ## 安全規則
 
