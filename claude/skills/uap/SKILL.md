@@ -1,3 +1,13 @@
+---
+description: "更新專案文件並推送至 remote — 自動偵測變更範圍，更新相關 CLAUDE.md / STATUS.md / docs，然後 commit + push"
+user-invocable: true
+disable-model-invocation: true
+argument-hint: "[module...]"
+allowed-tools: Bash, Read, Glob, Grep, Edit
+---
+
+# Update And Push
+
 更新專案文件並推送至 remote。
 
 ## 步驟
