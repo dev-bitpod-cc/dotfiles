@@ -864,12 +864,6 @@ if [ -d "$SCRIPT_DIR/claude" ]; then
         print_success "已建立 ~/.claude/settings.json symlink"
     fi
 
-    # commands/ (目錄 symlink)
-    if [ -d "$SCRIPT_DIR/claude/commands" ]; then
-        __claude_link "$SCRIPT_DIR/claude/commands" ~/.claude/commands
-        print_success "已建立 ~/.claude/commands/ symlink"
-    fi
-
     # skills/ (目錄 symlink)
     if [ -d "$SCRIPT_DIR/claude/skills" ]; then
         __claude_link "$SCRIPT_DIR/claude/skills" ~/.claude/skills
