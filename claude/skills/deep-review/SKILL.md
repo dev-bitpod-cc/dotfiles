@@ -1,7 +1,7 @@
 ---
 description: "深度 code review — 結合專案 CLAUDE.md 慣例與架構知識，對 diff 或指定模組進行多維度審查"
 user-invocable: true
-argument-hint: "[file_or_path]"
+argument-hint: "[file_or_path_or_commit_range]"
 allowed-tools: Bash, Read, Glob, Grep, Agent
 ---
 
@@ -24,15 +24,25 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 依優先順序：
 
-1. **有引數** → review 指定檔案/目錄（整檔深度審查，不限 diff）
-2. **有 staged changes** → `git diff --cached`
-3. **有 unstaged changes** → `git diff`
-4. **有多筆 commit 偏離 base branch** → `git diff main...HEAD`（review 整個 branch）
-5. **都沒有** → 最新一筆 commit `git diff HEAD~1`
+1. **有引數** → 依引數類型決定模式（見下方引數模式表格）
+2. **有 working tree 變更**（staged 或 unstaged）→ `git diff HEAD`（合併 staged + unstaged 一次審查）
+3. **HEAD 偏離 base branch 且 working tree clean** → `git diff main...HEAD`（review 整個 branch）
+4. **都沒有** → 最新一筆 commit `git diff HEAD~1`
 
 先用 `git diff --stat` 看概覽，再讀完整 diff。
 
-**指定檔案/目錄模式**：不依賴 diff，直接讀取整個檔案，審查結構、命名、潛在問題。
+**引數模式表格**：
+
+| 引數格式 | 行為 |
+|----------|------|
+| `path/to/file.py` | 整檔深度審查（不限 diff） |
+| `src/` | 目錄下所有檔案 |
+| `HEAD~1` / `HEAD~3..HEAD` | commit 範圍 diff review |
+| `abc1234` | 單一 commit diff review |
+
+判斷規則：引數符合 `HEAD~N`、`X..Y`、或 7+ 字元 hex → commit 範圍模式；其餘視為檔案/目錄路徑。
+
+> **迭代 review 提示**：在 `deep-review → fix → commit` 迭代流程中，commit 修復後若只想聚焦審查最新修復，可用 `HEAD~1` 引數；省略引數則會 review 整個 branch（規則 3）。
 
 ### 規模策略
 
