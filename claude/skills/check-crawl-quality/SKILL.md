@@ -27,7 +27,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 `$ARGUMENTS` 可能是目錄路徑、檔案路徑/glob、DB 連線（`.db`/`.sqlite`/`sqlite:`）、或自然語言描述。
 
 1. 判斷來源類型，偵測內容欄位（JSON 常見：`content`/`text`/`body`/`markdown`）
-2. 統計總筆數；> 500 筆時抽樣 200-300 筆（分層抽樣，涵蓋不同大小區間）
+2. 統計總筆數，依規模策略決定全量或抽樣（見末尾「規模策略」表格）
 3. 載入每筆：識別碼、內容全文、標題（如有）、內容長度、來源標記
 
 ### Step 2. 來源識別（必要，不可跳過）
@@ -70,7 +70,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 ### 4b. 內容重複（Content Duplication）
 
-取每筆前 200 字元作為指紋，統計相同指紋的文件數。> 3 個文件標記為重複群組。
+取每筆前 200 字元作為指紋，統計相同指紋的文件數。> 3 個文件標記為重複群組。若 4a 已識別出高頻前綴，先去除該前綴再取指紋，避免共用前綴導致誤判。
 
 ### 4c. 連結密度（Link Density）
 
@@ -87,7 +87,7 @@ Per-source 若空佔位檔 > 50%，該來源整體不適合納入。
 
 ### 4e. Web 殘留物（Web Artifacts）
 
-偵測未清理的 web 元素，每個 pattern 統計影響筆數：
+偵測未清理的 web 元素，每個 pattern 統計影響筆數。**豁免**：markdown code block（`` ``` ``）內的匹配不計，避免技術文件誤判。
 
 **程式碼殘留**：
 - HTML 標籤：`<div`、`<span`、`<script`、`</`（`<br>` 可接受）
@@ -138,7 +138,7 @@ Per-source 若空佔位檔 > 50%，該來源整體不適合納入。
 | > 8,000 字元 | 超過 embedding 有效上下文 | 上傳前 chunk splitting |
 | > 100,000 字元 | 災難性大小，很可能是解析錯誤 | 回頭檢查爬蟲/PDF 解析邏輯 |
 
-**自足性**（僅對有 split_index/chunk_id 的資料）：非首 chunk 以代名詞或接續語開頭（「此外」「另外」「其」「該」）表示分割點不佳。
+**自足性**（僅對有 split_index/chunk_id 的資料）：非首 chunk 以代名詞或接續語開頭表示分割點不佳。中文：「此外」「另外」「其」「該」；英文：`However`、`Furthermore`、`Additionally`、`It`、`This`、`These`。
 
 ---
 
