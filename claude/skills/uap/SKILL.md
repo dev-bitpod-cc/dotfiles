@@ -18,6 +18,7 @@ allowed-tools: Bash, Read, Glob, Grep, Edit
    - 合併兩者為完整變更檔案清單
    - `git log --oneline @{upstream}..HEAD` 列出所有未 push 的 commit
    - 若兩者皆為空（無未 push commit 且無 working tree 變更），告知使用者並結束
+   - **Squash 提醒**：若未 push 的 commit 中有連續的 fix/refactor commit（review 迭代痕跡），提醒使用者考慮先 squash 再繼續
 
 2. **偵測變更範圍**
    - 根據完整變更檔案清單（已 commit + 未 commit），識別涉及的模組
