@@ -7,6 +7,7 @@
 # 使用方式：
 #   chmod +x setup-linux-env.sh
 #   ./setup-linux-env.sh
+#   ./setup-linux-env.sh -y    # 跳過確認提示
 #
 # 特色：
 #   - 智能 PATH 統合（保留現有設定、去重、依慣例排序）
@@ -15,6 +16,15 @@
 #
 
 set -e  # 遇到錯誤立即退出
+
+# 解析參數
+AUTO_YES=false
+while getopts "y" opt; do
+    case $opt in
+        y) AUTO_YES=true ;;
+        *) echo "用法: $0 [-y]"; exit 1 ;;
+    esac
+done
 
 # ================================================
 # 顏色定義
@@ -219,10 +229,12 @@ if [ -f /etc/os-release ]; then
     . /etc/os-release
     if [ "$ID" != "ubuntu" ]; then
         print_warning "此腳本專為 Ubuntu 設計，當前系統：$PRETTY_NAME"
-        echo -n "是否繼續？[y/N] "
-        read -r response
-        if [[ ! "$response" =~ ^[Yy]$ ]]; then
-            exit 0
+        if [ "$AUTO_YES" = false ]; then
+            echo -n "是否繼續？[y/N] "
+            read -r response
+            if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                exit 0
+            fi
         fi
     fi
 fi
@@ -237,11 +249,13 @@ echo "  • 預估時間：3-6 分鐘"
 echo ""
 print_warning "現有的 .bashrc 和 .bash_profile 將被備份"
 echo ""
-echo -n "確定要繼續嗎？[Y/n] "
-read -r response
-if [[ "$response" =~ ^[Nn]$ ]]; then
-    print_info "已取消"
-    exit 0
+if [ "$AUTO_YES" = false ]; then
+    echo -n "確定要繼續嗎？[Y/n] "
+    read -r response
+    if [[ "$response" =~ ^[Nn]$ ]]; then
+        print_info "已取消"
+        exit 0
+    fi
 fi
 
 # ================================================

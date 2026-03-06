@@ -7,6 +7,7 @@
 # 使用方式：
 #   chmod +x setup-mac-env.sh
 #   ./setup-mac-env.sh
+#   ./setup-mac-env.sh -y    # 跳過確認提示
 #
 # 新 Mac 一鍵執行（含 Xcode CLT 安裝 + clone repo）：
 #   curl -fsSL dot.bitpod.cc | sh
@@ -32,6 +33,15 @@ if [ -z "$ZSH_VERSION" ] && [ -x /bin/zsh ]; then
 fi
 
 set -e  # 遇到錯誤立即退出
+
+# 解析參數
+AUTO_YES=false
+while getopts "y" opt; do
+    case $opt in
+        y) AUTO_YES=true ;;
+        *) echo "用法: $0 [-y]"; exit 1 ;;
+    esac
+done
 
 # 顏色定義（自動檢測終端是否支持顏色）
 if [ -t 1 ] && command -v tput &> /dev/null && [ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]; then
@@ -198,11 +208,13 @@ echo "  • 預估時間：5-10 分鐘"
 echo ""
 print_warning "現有的 .zshrc 和 .zprofile 將被備份"
 echo ""
-echo -n "確定要繼續嗎？[Y/n] "
-read -r response
-if [[ "$response" =~ ^[Nn]$ ]]; then
-    print_info "已取消"
-    exit 0
+if [ "$AUTO_YES" = false ]; then
+    echo -n "確定要繼續嗎？[Y/n] "
+    read -r response
+    if [[ "$response" =~ ^[Nn]$ ]]; then
+        print_info "已取消"
+        exit 0
+    fi
 fi
 
 # ================================================
