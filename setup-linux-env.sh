@@ -795,6 +795,7 @@ alias glog='git log --oneline --graph --decorate'
 
 # Claude Code
 alias clauded='claude --dangerously-skip-permissions'
+alias claudea='claude --enable-auto-mode'
 
 # 系統更新
 alias sysup='(cd ~/.dotfiles && git pull 2>/dev/null); sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
