@@ -114,6 +114,36 @@ NC_API_KEY=nc_xxxxx                # POST /api/v1/keys 產生
 - **命名**：Python `test_*.py`，TypeScript `*.test.ts`
 - **原則**：測行為不測實作、mock 外部依賴但不 mock 被測邏輯本身、每個 test case 只驗證一件事
 
+## 跨 Repo 工作流
+
+同一 session 經常涉及多個相關 repo（如產品 + 部署）。
+
+### 原則
+
+- 主 agent 是唯一擁有跨 repo 全局 context 的角色
+- 觸發 skill（`/deep-review`、`/uap`）時，主 agent 根據 session 記憶列出涉及的 repo 清單，讓使用者確認後再開始
+- 使用者可確認（ok）、限縮（只看 X）、擴充（還有 Y）
+- 不掃描 `~/Projects/`——靠主 agent 記憶 + 使用者確認，快速且精確
+
+### 確認流程（適用所有跨 repo skill）
+
+```
+主 agent: "本次涉及 2 個 repo：
+  1. rag-platform（3 檔案變更）
+  2. rag-platform-deploy（5 檔案變更）
+  一起處理？或需要調整？"
+
+使用者回覆：
+  "ok"          → 開始
+  "只看 deploy" → 限縮
+  "還有 repo-X" → 擴充
+```
+
+### 注意
+
+- 若 context 被壓縮導致記憶不完整，以當前 pwd 的 repo 為底，讓使用者補充
+- 使用者指定的 repo 即使沒有 diff，也納入處理（可能是需要檢查一致性）
+
 ## 安全規則
 
 1. 不要寫死 secrets、API keys、密碼

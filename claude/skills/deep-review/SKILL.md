@@ -13,11 +13,34 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 **實際審查一律由 subagent（Agent 工具）執行。** 主 agent 只負責準備工作（範圍確定、context 收集、round 偵測），不做審查判斷。Subagent 擁有乾淨的 context window，不帶寫 code 時的推理脈絡，避免 confirmation bias。
 
+跨 repo 時此原則更加重要——主 agent 同時是多個 repo 的作者，**絕不能**由主 agent 判斷跨 repo 一致性。
+
 ## 執行流程
+
+### 0. 識別審查範圍（多 Repo 偵測）
+
+在開始審查前，主 agent 根據本 session 的記憶，列出所有涉及變更的 repo：
+
+1. 回憶本 session 中修改過檔案的所有 repo 根目錄
+2. 加上 pwd 所在的 repo（即使未改檔案）
+3. 對每個 repo 執行 `git diff --stat HEAD` 和 `git log --oneline @{upstream}..HEAD 2>/dev/null` 確認變更狀態
+4. 向使用者展示清單並等待確認：
+
+```
+本次涉及 2 個 repo：
+  1. rag-platform（3 檔案變更）
+  2. rag-platform-deploy（5 檔案變更）
+一起審查？或需要調整？
+```
+
+5. 使用者可：確認（ok）、限縮（只看 X）、擴充（還有 Y）
+6. 若 context 被壓縮導致記憶不完整，以 pwd 的 repo 為底，讓使用者補充
+7. 使用者指定的 repo 即使沒有 diff，也納入（可能需要檢查一致性）
+8. **單一 repo** → 跳過此步驟，直接進入 Step 1
 
 ### 1. 確定審查範圍
 
-依優先順序：
+對每個 repo 獨立判斷，依優先順序：
 
 1. **有引數** → 依引數類型決定模式（見下方）
 2. **有 working tree 變更**（staged 或 unstaged）→ `git diff HEAD`
@@ -30,7 +53,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 ### 2. 偵測迭代輪次
 
-執行 `git log --oneline main..HEAD` 檢查 branch commit 歷史。
+對每個 repo 執行 `git log --oneline main..HEAD` 檢查 branch commit 歷史。
 
 - 無 fix/refactor commit → **Round 1**
 - 有初始 commit + 後續 fix/refactor commit → **Round 2+**（依 fix commit 數推斷）
@@ -40,7 +63,7 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 ### 3. 載入專案 context
 
-讀取以下來源（有就讀，沒有跳過）：
+對每個 repo 讀取以下來源（有就讀，沒有跳過）：
 
 - `<repo_root>/CLAUDE.md` + 變更檔案所在子目錄的 CLAUDE.md
 - 當前專案的 `memory/MEMORY.md`
@@ -49,9 +72,32 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 ### 4. 委派 subagent 審查
 
-**傳給 subagent**：完整 diff（或整檔內容）、變更檔案的完整內容、專案 context（CLAUDE.md 規則摘要）、輪次資訊、下方的審查指引。
+#### 傳給 subagent 的資訊
 
-**不傳**：上一輪 review 報告、寫 code 時的推理脈絡。
+**傳**（事實與規則）：
+- 每個 repo 的完整 diff + 變更檔案的完整內容
+- 每個 repo 的 CLAUDE.md、專案設定檔
+- 每個 repo 的路徑和名稱（識別用）
+- 輪次資訊
+- 下方的審查指引
+
+**不傳**（作者脈絡）：
+- 主 agent 對「為什麼這樣改」的解釋
+- 主 agent 對跨 repo 關聯性的分析
+- 上一輪 review 報告
+- Session 中的對話脈絡
+
+Subagent 拿到多個 repo 的 diff 後，如同 reviewer 同時被 assign 多個關聯 PR——自己讀 diff、自己判斷關聯性、自己檢查一致性。
+
+#### 規模策略
+
+| 跨所有 repo 合計檔案數 | 策略 |
+|----------------------|------|
+| ≤ 20 | 單一 subagent，收到所有 repo 的 diff + context，獨立判斷 repo 內品質與跨 repo 一致性 |
+| 21–40 | 每 repo 各一個 subagent（repo 內審查）+ 一個「跨 repo 一致性」subagent（收所有 repo 的 diff） |
+| > 40 | 同上，但 repo 內可再依模組分拆 |
+
+**重要**：跨 repo 一致性的判斷**永遠由 subagent 執行**，主 agent 不做此判斷。多 subagent 時，主 agent 僅拼接各 subagent 的輸出，不加工、不篩選、不降級。
 
 #### 審查重心隨輪次調整
 
@@ -70,18 +116,11 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 - **測試** — 對應測試、邊界覆蓋、mock 合理性
 - **整體性（Cohesion）**（Round 2+ 加重）— 程式碼是否像一次性寫成；有無重複邏輯、命名不一致、抽象層次混亂、殘留修補痕跡、職責模糊
 - **跨檔案契約** — 型別/簽名變更是否所有使用端同步、新增設定/介面是否文件到位
-
-#### 規模策略
-
-| 變更檔案數 | 策略 |
-|-----------|------|
-| ≤ 10 | 單一 subagent 逐檔全讀 |
-| 11–30 | 單一 subagent，先讀 diff，高風險檔案全讀 |
-| > 30 | 多個 subagent 分模組平行審查，主 agent 彙整 |
+- **跨 Repo 一致性**（多 repo 時）— 介面契約兩端是否同步（env vars、API schema、檔案路徑、port）、文件是否反映最新狀態
 
 ### 5. 彙整輸出
 
-主 agent 接收 subagent 結果，按以下格式輸出。報告的首要讀者是**負責修復的 agent**，其次是人類。
+主 agent 接收 subagent 結果，按以下格式輸出。主 agent **僅做格式化**，不加入自己的審查判斷。報告的首要讀者是**負責修復的 agent**，其次是人類。
 
 #### 嚴重度
 
@@ -93,9 +132,9 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 
 #### 完成判定
 
-**通過標準**（全部滿足）：零嚴重、零中等（或極少且有合理理由）、整體性通過、跨檔案契約一致。
+**通過標準**（全部滿足）：零嚴重、零中等（或極少且有合理理由）、整體性通過、跨檔案契約一致、跨 repo 一致性通過（多 repo 時）。
 
-#### 報告模板 — 未通過
+#### 報告模板 — 未通過（單 repo）
 
 問題**按根因分組**，不按嚴重度排列。共享同一根因的問題放在一起，讓 fixer 一次解決而非逐條修補。
 
@@ -143,16 +182,61 @@ allowed-tools: Bash, Read, Glob, Grep, Agent
 修完後，整段程式碼應讀起來像一次寫成。
 ```
 
+#### 報告模板 — 未通過（多 repo）
+
+```markdown
+## Deep Review — Round {N}
+
+**涉及 Repo**:
+- `repo-a`：{N} 個檔案，+{N}/-{N}
+- `repo-b`：{N} 個檔案，+{N}/-{N}
+
+**整體評估**: {一句話總結}
+**問題統計**: {N} 嚴重 / {N} 中等 / {N} 建議
+
+### repo-a
+
+#### 亮點
+- ...
+
+#### 問題
+（同單 repo 格式，按根因分組）
+
+### repo-b
+
+#### 亮點
+- ...
+
+#### 問題
+（同單 repo 格式，按根因分組）
+
+### 跨 Repo 一致性
+（subagent 獨立判斷的結果，主 agent 不加工）
+- env var `X` 兩端處理方式是否一致
+- 介面契約（port、路徑、schema）是否對齊
+- 文件與實作是否同步
+
+### 整體性評估
+{Round 2+ 輸出}
+
+### 修復計畫
+（同單 repo 格式）
+```
+
 #### 報告模板 — 通過
 
 ```markdown
 ## Deep Review — Round {N} — 審查通過
 
 **範圍**: {模式} — {檔案數} 個檔案，{增/刪行數}
+{多 repo 時列出各 repo}
 **整體評估**: {一句話正面總結}
 
 ### 亮點
 - `file.py:50-80` — 做得好的地方
+
+### 跨 Repo 一致性
+{多 repo 時由 subagent 輸出}
 
 ### 建議 (選擇性改進，不影響通過)
 - （如有）
