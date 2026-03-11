@@ -600,7 +600,7 @@ alias clauded='claude --dangerously-skip-permissions'
 alias claudea='claude --enable-auto-mode'
 
 # 系統更新
-alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && (cd ~ && claude plugins marketplace update < /dev/null) 2>/dev/null; for p in $(jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null); do (cd ~ && claude plugins install "$p" < /dev/null && claude plugins update "$p" < /dev/null) 2>/dev/null; done; } 2>/dev/null'
+alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup'
 
 # -------------------------------------------
 # fzf 配置
@@ -885,18 +885,17 @@ if [ -d "$SCRIPT_DIR/claude" ]; then
 
     unset -f __claude_link
 
-    # Plugins: 從 settings.json 的 enabledPlugins 同步安裝
-    if command -v claude &> /dev/null && [ -f "$SCRIPT_DIR/claude/settings.json" ]; then
-        print_info "同步 Claude Code plugins..."
-        # 確保官方 marketplace 存在
-        # 在 $HOME 執行避免未信任目錄的互動提示
-        (cd ~ && claude plugins marketplace add anthropic < /dev/null 2>/dev/null) || true
-        # 讀取 enabledPlugins 的 key（格式: name@marketplace）並逐一安裝
-        for plugin in $(jq -r '.enabledPlugins // {} | keys[]' "$SCRIPT_DIR/claude/settings.json" 2>/dev/null); do
-            if (cd ~ && claude plugins install "$plugin" < /dev/null 2>/dev/null); then
-                print_success "Plugin 已安裝: $plugin"
-            fi
-        done
+    # Plugins: settings.json 已透過 symlink 同步 enabledPlugins 清單
+    # 實際安裝需在互動式 terminal 中手動執行（claude plugins install 需要 trust prompt）
+    if command -v claude &> /dev/null; then
+        local _plugins
+        _plugins=$(jq -r '.enabledPlugins // {} | keys[]' "$SCRIPT_DIR/claude/settings.json" 2>/dev/null)
+        if [ -n "$_plugins" ]; then
+            print_info "Claude Code plugins 需手動安裝（互動式 terminal）："
+            echo "$_plugins" | while read -r p; do
+                echo "  claude plugins install $p"
+            done
+        fi
     fi
 else
     print_info "未找到 claude/ 目錄，跳過 Claude Code 配置"
