@@ -600,7 +600,7 @@ alias clauded='claude --dangerously-skip-permissions'
 alias claudea='claude --enable-auto-mode'
 
 # 系統更新
-alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup'
+alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude plugins marketplace update 2>/dev/null; for p in $(jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null); do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null'
 
 # -------------------------------------------
 # fzf 配置
@@ -884,6 +884,19 @@ if [ -d "$SCRIPT_DIR/claude" ]; then
     fi
 
     unset -f __claude_link
+
+    # Plugins: 從 settings.json 的 enabledPlugins 同步安裝
+    if command -v claude &> /dev/null && [ -f "$SCRIPT_DIR/claude/settings.json" ]; then
+        print_info "同步 Claude Code plugins..."
+        # 確保官方 marketplace 存在
+        claude plugins marketplace add anthropic 2>/dev/null || true
+        # 讀取 enabledPlugins 的 key（格式: name@marketplace）並逐一安裝
+        for plugin in $(jq -r '.enabledPlugins // {} | keys[]' "$SCRIPT_DIR/claude/settings.json" 2>/dev/null); do
+            if claude plugins install "$plugin" 2>/dev/null; then
+                print_success "Plugin 已安裝: $plugin"
+            fi
+        done
+    fi
 else
     print_info "未找到 claude/ 目錄，跳過 Claude Code 配置"
 fi

@@ -151,6 +151,12 @@ NC_API_KEY=nc_xxxxx                # POST /api/v1/keys 產生
 3. 不要 commit `.env`、`*.pem`、`*.key`、`credentials.json`
 4. 建立新專案時確保 `.gitignore` 包含敏感檔案
 
+## Claude Skill 建立
+
+- 建立或修改 skill 前，**必須先讀** `~/.dotfiles/claude/skill-building-guide.md`（Anthropic 官方指南摘要，2026/03 公開，超出模型知識截止日）
+- 可搭配 `/skill-creator` plugin 加速建立和迭代
+- 現有 skill 位於 `~/.dotfiles/claude/skills/`
+
 ## 注意
 
 1. 原生命令未被替換（ls, cat, find, grep 可用）
