@@ -798,7 +798,7 @@ alias clauded='claude --dangerously-skip-permissions'
 alias claudea='claude --enable-auto-mode'
 
 # 系統更新
-alias sysup='(cd ~/.dotfiles && git pull 2>/dev/null); sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y; { command -v claude &>/dev/null && claude plugins marketplace update < /dev/null 2>/dev/null; for p in $(jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null); do claude plugins install "$p" < /dev/null 2>/dev/null; claude plugins update "$p" < /dev/null 2>/dev/null; done; } 2>/dev/null'
+alias sysup='(cd ~/.dotfiles && git pull 2>/dev/null); sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y; { command -v claude &>/dev/null && (cd ~ && claude plugins marketplace update < /dev/null) 2>/dev/null; for p in $(jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null); do (cd ~ && claude plugins install "$p" < /dev/null && claude plugins update "$p" < /dev/null) 2>/dev/null; done; } 2>/dev/null'
 
 # -------------------------------------------
 # fzf 配置
