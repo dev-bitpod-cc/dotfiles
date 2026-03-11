@@ -1,5 +1,6 @@
 ---
-description: "更新專案文件並推送至 remote — 自動偵測變更範圍，更新相關 CLAUDE.md / STATUS.md / docs，然後 commit + push"
+name: uap
+description: "更新專案文件並推送至 remote — 自動偵測變更範圍，更新相關 CLAUDE.md / STATUS.md / docs，然後 commit + push。Use when user says \"update and push\", \"push changes\", \"uap\", or runs /uap."
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[module...]"
@@ -57,6 +58,7 @@ allowed-tools: Bash, Read, Glob, Grep, Edit
 - 更新 STATUS.md（如檔案存在且有里程碑變動）
 - 更新相關 docs/plans/*.md（如檔案存在）
 - 所有文件的 `updated` 日期欄位更新為今天（格式：YYYY-MM-DD）
+- **防禦原則**：先讀文件現有內容，只更新與本次變更直接相關的段落。若無需更新則跳過，不要為了「更新」而硬塞無意義的修改
 
 ### 4. 提交（逐 repo）
 
