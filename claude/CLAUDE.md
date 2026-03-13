@@ -157,6 +157,10 @@ NC_API_KEY=nc_xxxxx                # POST /api/v1/keys 產生
 - 可搭配 `/skill-creator` plugin 加速建立和迭代
 - 現有 skill 位於 `~/.dotfiles/claude/skills/`
 
+## 第三方審查驗證
+
+使用者貼「第三方審查結果」+ findings 時，逐條讀原始碼獨立驗證，不附和。對每條判定 true positive / false positive / context-dependent。不預設 findings 正確，不預設錯誤。使用者不會告訴你來源或自己的看法，你也不要問。
+
 ## 注意
 
 1. 原生命令未被替換（ls, cat, find, grep 可用）
