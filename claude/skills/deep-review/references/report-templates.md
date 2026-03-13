@@ -119,6 +119,17 @@
 {若只有一筆 commit + clean working tree}
 可以直接 push。
 
+### 第三方審查資訊
+{列出每個涉及的 repo，方便使用者轉交第三方 reviewer}
+
+| Repo | Commit 範圍 | 變更摘要 |
+|------|-------------|----------|
+| `repo-a` | `abc1234..def5678` | {一句話：主要改了什麼} |
+| `repo-b` | `111aaaa..222bbbb` | {一句話：主要改了什麼} |
+
+{commit 範圍用 `base..head` 格式，base 取審查起點（Step 1 判定的 base commit），head 取最終 commit}
+{單 repo 時表格只有一列}
+
 審查通過，可以提交了。
 ```
 
