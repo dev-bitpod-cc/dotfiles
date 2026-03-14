@@ -115,7 +115,7 @@
 
 ### Commit 建議
 {若有多筆 review fix commit（如 fix: R1/R2/R3 review fixes）}
-建議先 squash 成一個有意義的 commit 再 push。
+主 agent 執行 squash：`git reset --soft <base>` 後重新 commit，message 採原始功能變更的語意（如 `feat: 新增 X 功能`），不用 `fix: review fixes`。格式遵循專案 Conventional Commits 慣例。
 {若只有一筆 commit + clean working tree}
 可以直接 push。
 
@@ -129,6 +129,10 @@
 
 {commit 範圍用 `base..head` 格式，base 取審查起點（Step 1 判定的 base commit），head 取最終 commit}
 {單 repo 時表格只有一列}
+
+{多 repo 時}
+**Push 順序**：被依賴的 repo 先 push（例如 platform 定義 interface → deploy 消費 interface，則先 push platform）。錯序 push 可能造成 CI 失敗或部署短暫不一致。
+{單 repo 時省略此段}
 
 審查通過，可以提交了。
 ```
@@ -156,6 +160,14 @@
 
 ### 剩餘問題
 （同未通過格式，按根因分組）
+
+### Branch 狀態處置
+
+目前 branch 上有 {N} 個 review fix commit（`fix: R1~R4 review fixes`）。
+
+{根據剩餘問題的性質選擇建議}
+- 若建議重寫 → `git reset --soft <base>` 回到起點，帶著所有變更重新設計 {區塊}，再重新 commit
+- 若可繼續修 → 保留現有 commit，在此基礎上繼續人工修復，完成後 squash
 
 ### 建議下一步
 
