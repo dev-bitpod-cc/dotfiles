@@ -800,6 +800,36 @@ alias claudea='claude --enable-auto-mode'
 # 系統更新
 alias sysup='(cd ~/.dotfiles && git pull 2>/dev/null); sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y; { command -v claude &>/dev/null && claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null'
 
+# NVIDIA GPU 工具（僅在有 GPU 時載入）
+if command -v nvidia-smi &>/dev/null; then
+    nvidia-check() {
+        echo "Currently held packages:"
+        sudo apt-mark showhold | grep -iE 'nvidia|cuda|libnvidia'
+        echo ""
+        echo "Available updates:"
+        sudo apt update -qq 2>/dev/null
+        sudo apt list --upgradable 2>/dev/null | grep -iE 'nvidia|cuda|libnvidia'
+        echo ""
+        echo "To upgrade, run in Claude Code for guided execution."
+    }
+    nvidia-hold() {
+        local pkgs
+        pkgs=$(dpkg -l | awk '/^ii.*(nvidia|cuda|libnvidia)/{print $2}')
+        if [ -z "$pkgs" ]; then
+            echo "No NVIDIA/CUDA packages found."
+            return 1
+        fi
+        echo "Will hold the following packages:"
+        echo "$pkgs"
+        echo ""
+        read -p "Proceed? [y/N] " confirm
+        [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Cancelled."; return 0; }
+        echo "$pkgs" | xargs sudo apt-mark hold
+        echo ""
+        echo "Done. These packages will not be upgraded by sysup."
+    }
+fi
+
 # -------------------------------------------
 # fzf 配置
 # -------------------------------------------
@@ -1036,6 +1066,11 @@ cat >> ~/.bashrc << 'EOF'
 #   proj       - 快速切換專案目錄
 #   sysupdate  - 詳細的系統更新
 #   venv       - 建立 Python 虛擬環境
+#
+# NVIDIA GPU（有 nvidia-smi 時自動載入）：
+#   nvidia-check - 檢查 NVIDIA/CUDA 套件是否有可用更新
+#   nvidia-hold  - 鎖定已安裝的 NVIDIA/CUDA 套件，避免 sysup 自動升級
+#                  裝完 NVIDIA driver 後執行一次即可
 #
 # ===========================================
 EOF
@@ -1373,6 +1408,14 @@ echo "新增工具試用："
 echo -e "  ${BLUE}lazygit${NC}               # Git TUI 介面"
 echo -e "  ${BLUE}dust${NC}                  # 磁碟空間分析"
 echo -e "  ${BLUE}duf${NC}                   # 磁碟使用量顯示"
+
+if command -v nvidia-smi &>/dev/null; then
+    echo ""
+    echo "NVIDIA GPU 工具："
+    echo -e "  ${BLUE}nvidia-check${NC}           # 檢查 NVIDIA/CUDA 套件是否有可用更新"
+    echo -e "  ${BLUE}nvidia-hold${NC}            # 鎖定 NVIDIA/CUDA 套件，避免 sysup 自動升級"
+    echo "  裝完 NVIDIA driver 後執行一次 nvidia-hold 即可"
+fi
 
 echo ""
 echo -e "${BLUE}享受您的現代化開發環境！🚀${NC}"
