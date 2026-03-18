@@ -144,6 +144,10 @@ NC_API_KEY=nc_xxxxx                # POST /api/v1/keys 產生
 - 若 context 被壓縮導致記憶不完整，以當前 pwd 的 repo 為底，讓使用者補充
 - 使用者指定的 repo 即使沒有 diff，也納入處理（可能是需要檢查一致性）
 
+## PR 合併規則
+
+使用者明確指示 merge（如「bypass merge」「merge」）時照做。**不可自作主張 merge**——若使用者只說「push」或「開 PR」，不要自動加上 merge。
+
 ## 安全規則
 
 1. 不要寫死 secrets、API keys、密碼
