@@ -83,3 +83,16 @@ allowed-tools: Bash, Read, Glob, Grep, Edit
 
 - 使用者確認後，逐 repo 執行 `git -C <repo> push`
 - push 失敗處理：remote 有新 commit → 提示 `git pull --rebase`；無 upstream → 提示 `git push -u origin <branch>`
+
+### Branch Protection 適配
+
+推送前偵測目標分支是否有 branch protection：
+
+1. 檢查當前分支：`git -C <repo> rev-parse --abbrev-ref HEAD`
+2. 若在 `main`（或 `master`），嘗試用 `gh api repos/{owner}/{repo}/branches/main/protection 2>/dev/null` 偵測 protection
+3. **有 protection**：
+   - 若有未 commit 的變更 → 建議先開 feature branch（`git checkout -b feat/update-docs`）
+   - push 後建議 `gh pr create`
+   - 提示使用者：「main 有 branch protection，建議開 PR 合併」
+4. **無 protection / 偵測失敗**（如無 gh CLI、無權限）→ 維持現有行為（直接 push）
+5. 非 main branch → 直接 push，不檢查 protection
