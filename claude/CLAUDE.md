@@ -157,6 +157,16 @@ NC_API_KEY=nc_xxxxx                # POST /api/v1/keys 產生
 - 可搭配 `/skill-creator` plugin 加速建立和迭代
 - 現有 skill 位於 `~/.dotfiles/claude/skills/`
 
+### Skill 同步規則
+
+以下 skill 同時存在於 user level（source of truth）和 project level，修改時必須同步：
+
+| Skill | User level | Project level |
+|-------|-----------|---------------|
+| `uap` | `~/.dotfiles/claude/skills/uap/` | `rag-platform/.claude/skills/uap/` + `rag-platform-deploy/.claude/skills/uap/` |
+| `deep-review` | `~/.dotfiles/claude/skills/deep-review/` | `rag-platform/.claude/skills/deep-review/` |
+| `check-crawl-quality` | `~/.dotfiles/claude/skills/check-crawl-quality/` | `rag-platform/.claude/skills/check-crawl-quality/` |
+
 ## 第三方審查驗證
 
 使用者貼「第三方審查結果」+ findings 時，逐條讀原始碼獨立驗證，不附和。對每條判定 true positive / false positive / context-dependent。不預設 findings 正確，不預設錯誤。使用者不會告訴你來源或自己的看法，你也不要問。
