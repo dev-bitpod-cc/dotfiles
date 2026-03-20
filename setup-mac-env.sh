@@ -305,8 +305,10 @@ brew install \
   hyperfine \
   lazygit \
   dust \
-  duf \
   shellcheck \
+  direnv \
+  just \
+  watchexec \
   2>&1 | grep -v "already installed" || true
 
 print_success "工具安裝完成"
@@ -561,6 +563,11 @@ fi
 # zoxide - 智能目錄跳轉
 if command -v zoxide &> /dev/null; then
     eval "$(zoxide init zsh)"
+fi
+
+# direnv - 目錄環境變數自動載入
+if command -v direnv &> /dev/null; then
+    eval "$(direnv hook zsh)"
 fi
 
 # -------------------------------------------
@@ -1059,8 +1066,10 @@ check_tool sd && echo "  ✅ sd" || echo "  ❌ sd"
 check_tool hyperfine && echo "  ✅ hyperfine" || echo "  ❌ hyperfine"
 check_tool lazygit && echo "  ✅ lazygit" || echo "  ❌ lazygit"
 check_tool dust && echo "  ✅ dust" || echo "  ❌ dust"
-check_tool duf && echo "  ✅ duf" || echo "  ❌ duf"
 check_tool shellcheck && echo "  ✅ shellcheck" || echo "  ❌ shellcheck"
+check_tool direnv && echo "  ✅ direnv" || echo "  ❌ direnv"
+check_tool just && echo "  ✅ just" || echo "  ❌ just"
+check_tool watchexec && echo "  ✅ watchexec" || echo "  ❌ watchexec"
 
 echo ""
 print_success "工具安裝完成: $SUCCESS/$TOTAL"
@@ -1147,7 +1156,9 @@ sd --version 2>/dev/null || echo "❌ sd 未安裝"
 hyperfine --version 2>/dev/null || echo "❌ hyperfine 未安裝"
 lazygit --version 2>/dev/null | head -1 || echo "❌ lazygit 未安裝"
 dust --version 2>/dev/null || echo "❌ dust 未安裝"
-duf --version 2>/dev/null || echo "❌ duf 未安裝"
+direnv --version 2>/dev/null || echo "❌ direnv 未安裝"
+just --version 2>/dev/null || echo "❌ just 未安裝"
+watchexec --version 2>/dev/null || echo "❌ watchexec 未安裝"
 
 # 5. 檢查 Swift 工具
 echo -e "\n=== Swift 工具 ==="
@@ -1281,7 +1292,9 @@ echo ""
 echo "新增工具試用："
 echo -e "  ${BLUE}lazygit${NC}           # Git TUI 介面"
 echo -e "  ${BLUE}dust${NC}              # 磁碟空間分析"
-echo -e "  ${BLUE}duf${NC}               # 磁碟使用量顯示"
+echo -e "  ${BLUE}direnv${NC}            # 目錄環境變數自動載入"
+echo -e "  ${BLUE}just${NC}              # 任務執行器"
+echo -e "  ${BLUE}watchexec${NC}         # 檔案變更監控執行"
 
 echo ""
 echo "PATH 說明："

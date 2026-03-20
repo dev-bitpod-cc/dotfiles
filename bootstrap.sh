@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 #
-# macOS 開發環境 Bootstrap 腳本
+# 雙平台開發環境 Bootstrap 腳本
 #
-# 新 Mac 上只需執行這一行：
+# macOS 新機上只需執行這一行：
+#   curl -fsSL dot.bitpod.cc | sh
+#
+# Linux 新機上：
 #   curl -fsSL dot.bitpod.cc | sh
 #
 # -f  fail: HTTP 錯誤時回傳非零 exit code，不輸出錯誤頁面
@@ -10,10 +13,15 @@
 # -S  show error: 靜默模式下仍顯示錯誤訊息
 # -L  location: 自動跟隨 redirect（dot.bitpod.cc 302 → GitHub）
 #
-# 此腳本會依序：
+# Darwin 流程：
 #   1. 安裝 Xcode Command Line Tools（取得 git）
 #   2. Clone dotfiles repo 至 ~/.dotfiles
 #   3. 執行 setup-mac-env.sh
+#
+# Linux 流程：
+#   1. 用 apt 安裝前置依賴（git, curl, build-essential）
+#   2. Clone dotfiles repo 至 ~/.dotfiles
+#   3. 執行 setup-linux-env.sh
 #
 
 set -e
@@ -37,57 +45,106 @@ print_error()   { echo -e "${RED}❌ $1${NC}"; }
 DOTFILES_REPO="https://github.com/dev-bitpod-cc/dotfiles.git"
 DOTFILES_DIR="$HOME/.dotfiles"
 
-# 作業系統檢查
-if [ "$(uname)" != "Darwin" ]; then
-    print_error "此腳本僅適用於 macOS"
+OS="$(uname)"
+
+# ================================================
+# 作業系統分流
+# ================================================
+
+if [ "$OS" = "Darwin" ]; then
+
+    echo -e "${BLUE}================================================${NC}"
+    echo -e "${BLUE}  macOS 開發環境 Bootstrap${NC}"
+    echo -e "${BLUE}================================================${NC}"
+
+    # ------------------------------------------------
+    # 步驟 1: Xcode Command Line Tools
+    # ------------------------------------------------
+    print_step "步驟 1/3: 檢查 Xcode Command Line Tools"
+
+    if xcode-select -p &> /dev/null; then
+        print_success "Xcode Command Line Tools 已安裝"
+    else
+        print_warning "Xcode Command Line Tools 未安裝，開始安裝..."
+        xcode-select --install
+
+        echo ""
+        echo "請在彈出的視窗中點擊「安裝」，完成後按 Enter 繼續..."
+        read -r
+
+        # 驗證安裝
+        if ! xcode-select -p &> /dev/null; then
+            print_error "Xcode Command Line Tools 安裝失敗，請手動安裝後重新執行此腳本"
+            exit 1
+        fi
+        print_success "Xcode Command Line Tools 安裝完成"
+    fi
+
+    # ------------------------------------------------
+    # 步驟 2: Clone dotfiles
+    # ------------------------------------------------
+    print_step "步驟 2/3: Clone dotfiles repo"
+
+    if [ -d "$DOTFILES_DIR" ]; then
+        print_warning "$DOTFILES_DIR 已存在，執行 git pull..."
+        git -C "$DOTFILES_DIR" pull
+        print_success "dotfiles 已更新"
+    else
+        git clone "$DOTFILES_REPO" "$DOTFILES_DIR"
+        print_success "dotfiles 已 clone 至 $DOTFILES_DIR"
+    fi
+
+    # ------------------------------------------------
+    # 步驟 3: 執行 setup-mac-env.sh
+    # ------------------------------------------------
+    print_step "步驟 3/3: 執行環境安裝腳本"
+
+    chmod +x "$DOTFILES_DIR/setup-mac-env.sh"
+    exec "$DOTFILES_DIR/setup-mac-env.sh"
+
+elif [ "$OS" = "Linux" ]; then
+
+    echo -e "${BLUE}================================================${NC}"
+    echo -e "${BLUE}  Linux 開發環境 Bootstrap${NC}"
+    echo -e "${BLUE}================================================${NC}"
+
+    # ------------------------------------------------
+    # 步驟 1: 安裝前置依賴
+    # ------------------------------------------------
+    print_step "步驟 1/3: 安裝前置依賴"
+
+    if ! command -v git &> /dev/null || ! command -v curl &> /dev/null; then
+        print_warning "安裝 git, curl, build-essential..."
+        sudo apt update -qq
+        sudo apt install -y -qq git curl build-essential >/dev/null 2>&1
+        print_success "前置依賴安裝完成"
+    else
+        print_success "前置依賴已就緒"
+    fi
+
+    # ------------------------------------------------
+    # 步驟 2: Clone dotfiles
+    # ------------------------------------------------
+    print_step "步驟 2/3: Clone dotfiles repo"
+
+    if [ -d "$DOTFILES_DIR" ]; then
+        print_warning "$DOTFILES_DIR 已存在，執行 git pull..."
+        git -C "$DOTFILES_DIR" pull
+        print_success "dotfiles 已更新"
+    else
+        git clone "$DOTFILES_REPO" "$DOTFILES_DIR"
+        print_success "dotfiles 已 clone 至 $DOTFILES_DIR"
+    fi
+
+    # ------------------------------------------------
+    # 步驟 3: 執行 setup-linux-env.sh
+    # ------------------------------------------------
+    print_step "步驟 3/3: 執行環境安裝腳本"
+
+    chmod +x "$DOTFILES_DIR/setup-linux-env.sh"
+    exec "$DOTFILES_DIR/setup-linux-env.sh"
+
+else
+    print_error "不支援的作業系統: $OS（僅支援 macOS 和 Linux）"
     exit 1
 fi
-
-echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}  macOS 開發環境 Bootstrap${NC}"
-echo -e "${BLUE}================================================${NC}"
-
-# ------------------------------------------------
-# 步驟 1: Xcode Command Line Tools
-# ------------------------------------------------
-print_step "步驟 1/3: 檢查 Xcode Command Line Tools"
-
-if xcode-select -p &> /dev/null; then
-    print_success "Xcode Command Line Tools 已安裝"
-else
-    print_warning "Xcode Command Line Tools 未安裝，開始安裝..."
-    xcode-select --install
-
-    echo ""
-    echo "請在彈出的視窗中點擊「安裝」，完成後按 Enter 繼續..."
-    read -r
-
-    # 驗證安裝
-    if ! xcode-select -p &> /dev/null; then
-        print_error "Xcode Command Line Tools 安裝失敗，請手動安裝後重新執行此腳本"
-        exit 1
-    fi
-    print_success "Xcode Command Line Tools 安裝完成"
-fi
-
-# ------------------------------------------------
-# 步驟 2: Clone dotfiles
-# ------------------------------------------------
-print_step "步驟 2/3: Clone dotfiles repo"
-
-if [ -d "$DOTFILES_DIR" ]; then
-    print_warning "$DOTFILES_DIR 已存在，執行 git pull..."
-    git -C "$DOTFILES_DIR" pull
-    print_success "dotfiles 已更新"
-else
-    git clone "$DOTFILES_REPO" "$DOTFILES_DIR"
-    print_success "dotfiles 已 clone 至 $DOTFILES_DIR"
-fi
-
-# ------------------------------------------------
-# 步驟 3: 執行 setup-mac-env.sh
-# ------------------------------------------------
-print_step "步驟 3/3: 執行環境安裝腳本"
-
-chmod +x "$DOTFILES_DIR/setup-mac-env.sh"
-exec "$DOTFILES_DIR/setup-mac-env.sh"

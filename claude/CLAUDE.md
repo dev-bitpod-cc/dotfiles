@@ -171,13 +171,14 @@ NC_API_KEY=nc_xxxxx                # POST /api/v1/keys 產生
 
 ## 可用工具
 
-bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf, gh, httpie, shellcheck, sd, hyperfine, tokei, tldr, tmux
+bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, gh, httpie, shellcheck, sd, hyperfine, tokei, tldr, tmux, direnv, just, watchexec
 
 ## 別名
 
 - 檔案：`ll`, `la`, `lt`, `llt`（eza）
 - Git：`gs`, `gd`, `ga`, `gc`, `gp`, `gl`, `gco`, `gb`, `glog`
-- 更新：`brewup` (macOS) / `sysup` (Linux) - 含 dotfiles pull
+- 更新：`brewup` (macOS/Linux) - brew update/upgrade + dotfiles pull + Claude plugins
+- 更新：`sysup` (Linux only) - apt update/upgrade
 
 ## 自訂函數
 
@@ -191,5 +192,5 @@ bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, duf,
 
 1. 原生命令未被替換（ls, cat, find, grep 可用）
 2. 不要假設單字母別名
-3. Linux: `fd`/`bat` 是別名（實際為 fdfind/batcat）
+3. Linux: 工具透過 Homebrew 安裝，`fd`/`bat` 是原名（保留 fdfind/batcat fallback alias）
 4. PATH 包含 `~/.local/bin`

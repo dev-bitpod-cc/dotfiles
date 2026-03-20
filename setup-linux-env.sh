@@ -1,15 +1,19 @@
 #!/bin/bash
 #
 # Ubuntu 24.04 現代化開發環境自動安裝腳本
-# 版本：v3.1
-# 最後更新：2026-01-12
+# 版本：v4.0
+# 最後更新：2026-03-20
 #
 # 使用方式：
 #   chmod +x setup-linux-env.sh
 #   ./setup-linux-env.sh
 #   ./setup-linux-env.sh -y    # 跳過確認提示
 #
+# 新機一鍵執行（含前置依賴安裝 + clone repo）：
+#   curl -fsSL dot.bitpod.cc | sh
+#
 # 特色：
+#   - 使用 Homebrew on Linux 統一工具安裝（與 macOS 一致）
 #   - 智能 PATH 統合（保留現有設定、去重、依慣例排序）
 #   - 所有配置集中在 .bashrc（Linux 圖形終端預設只讀 .bashrc）
 #   - 保留 conda、nvm 等重要初始化代碼
@@ -98,7 +102,7 @@ LOCAL_EOF
 
             # 提取自訂 alias（排除腳本預設的）
             grep -E "^alias " ~/.bashrc 2>/dev/null | \
-                grep -v "ll=\|la=\|lt=\|llt=\|gs=\|gd=\|ga=\|gc=\|gp=\|gl=\|gco=\|gb=\|glog=\|gdd=\|sysup=\|fd=\|bat=" \
+                grep -v "ll=\|la=\|lt=\|llt=\|gs=\|gd=\|ga=\|gc=\|gp=\|gl=\|gco=\|gb=\|glog=\|gdd=\|sysup=\|brewup=\|fd=\|bat=" \
                 >> ~/.bashrc.local || true
 
             # 提取自訂 export（排除腳本預設的）
@@ -131,7 +135,7 @@ LOCAL_EOF
             echo "# --- 從原有 .bash_profile 提取 ($(date +%Y-%m-%d)) ---" >> ~/.bash_profile.local
 
             grep -E "^export PATH=|^PATH=" ~/.bash_profile 2>/dev/null | \
-                grep -v "\.local/bin\|\.bun/bin\|\.cargo/bin\|go/bin\|\.npm-global" \
+                grep -v "\.local/bin\|\.bun/bin\|\.cargo/bin\|go/bin\|\.npm-global\|linuxbrew\|homebrew" \
                 >> ~/.bash_profile.local || true
         fi
         print_success "已建立 .bash_profile.local"
@@ -180,6 +184,13 @@ __dedupe_path() {
     done
     export PATH="$new_path"
 }
+
+# Homebrew 環境設定（Linux）
+if [ -d "/home/linuxbrew/.linuxbrew" ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+elif [ -d "$HOME/.linuxbrew" ]; then
+    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
+fi
 
 # 按優先級從低到高添加（最後添加的排在最前面）
 
@@ -239,13 +250,14 @@ if [ -f /etc/os-release ]; then
     fi
 fi
 
-print_header "Ubuntu 現代化開發環境自動安裝 v3.1"
+print_header "Ubuntu 現代化開發環境自動安裝 v4.0"
 echo "此腳本將："
-echo "  • 安裝 29+ 個開發工具"
+echo "  • 安裝 Homebrew on Linux（統一工具管理）"
+echo "  • 安裝 30+ 個開發工具（與 macOS 工具集一致）"
 echo "  • 智能統合現有 PATH 設定（去重、排序）"
 echo "  • 保留 conda、nvm 等重要配置"
 echo "  • 所有配置集中在 .bashrc"
-echo "  • 預估時間：3-6 分鐘"
+echo "  • 預估時間：5-10 分鐘"
 echo ""
 print_warning "現有的 .bashrc 和 .bash_profile 將被備份"
 echo ""
@@ -279,7 +291,7 @@ else
     print_info "zh_TW.UTF-8 locale 已存在"
 fi
 
-print_info "安裝基本編譯工具..."
+print_info "安裝 Homebrew 前置依賴..."
 sudo apt install -y -qq \
     build-essential \
     curl \
@@ -289,331 +301,89 @@ sudo apt install -y -qq \
     gnupg \
     lsb-release \
     software-properties-common \
+    procps \
+    file \
+    python-is-python3 \
     >/dev/null 2>&1
 
 print_success "系統準備完成"
+
+# ================================================
+# 步驟 0.5：安裝 Homebrew
+# ================================================
+print_header "步驟 0.5: 安裝 Homebrew"
+
+if command -v brew &> /dev/null; then
+    print_success "Homebrew 已安裝 ($(brew --version | head -1))"
+else
+    print_info "安裝 Homebrew on Linux..."
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+    # 載入 Homebrew 環境
+    if [ -d "/home/linuxbrew/.linuxbrew" ]; then
+        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    elif [ -d "$HOME/.linuxbrew" ]; then
+        eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
+    fi
+    print_success "Homebrew 安裝完成"
+fi
+
+# 更新 Homebrew
+print_info "更新 Homebrew..."
+brew update -q
 
 # ================================================
 # 步驟 1: 安裝開發工具
 # ================================================
 print_header "步驟 1: 安裝開發工具"
 
-# 1.1 安裝核心工具
-print_info "安裝核心工具..."
-sudo apt install -y -qq \
-    git \
-    wget \
-    curl \
-    htop \
-    tree \
-    tmux \
-    jq \
-    python3 \
-    python-is-python3 \
-    unzip \
-    zip \
-    >/dev/null 2>&1
+print_info "安裝核心工具和現代化 CLI 工具..."
+print_info "這可能需要幾分鐘，請耐心等候..."
 
-print_success "核心工具安裝完成"
+# 添加 Bun 官方 Homebrew tap
+print_info "添加 Bun 官方 tap..."
+brew tap oven-sh/bun 2>/dev/null || true
 
-# 1.1.1 安裝 uv（Python 套件管理，優先於 pip）
-if command -v uv &> /dev/null; then
-    print_info "uv 已安裝 ($(uv --version))"
-else
-    print_info "安裝 uv..."
-    if curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; then
-        export PATH="$HOME/.local/bin:$PATH"
-        print_success "uv 安裝完成 ($(uv --version 2>/dev/null || echo 'installed'))"
-    else
-        print_warning "uv 安裝失敗，已跳過"
-    fi
-fi
+# 一次性安裝所有工具（清單與 macOS 對齊）
+brew install \
+  git \
+  gh \
+  wget \
+  htop \
+  tree \
+  tmux \
+  node \
+  oven-sh/bun/bun \
+  python \
+  uv \
+  jq \
+  yq \
+  httpie \
+  git-delta \
+  ripgrep \
+  fd \
+  bat \
+  fzf \
+  eza \
+  zoxide \
+  tlrc \
+  tokei \
+  sd \
+  hyperfine \
+  lazygit \
+  dust \
+  shellcheck \
+  direnv \
+  just \
+  watchexec \
+  2>&1 | grep -v "already installed" || true
 
-# 1.2 安裝 Node.js
-if command -v node &> /dev/null; then
-    print_info "Node.js 已安裝 ($(node --version))"
-else
-    print_info "安裝 Node.js 22.x LTS..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - >/dev/null 2>&1
-    sudo apt install -y nodejs >/dev/null 2>&1
-    print_success "Node.js 安裝完成 ($(node --version))"
-fi
+print_success "工具安裝完成"
 
-# 1.2.1 安裝 Bun（主要 JS runtime）
-if command -v bun &> /dev/null; then
-    print_info "Bun 已安裝 ($(bun --version))"
-else
-    print_info "安裝 Bun..."
-    if curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1; then
-        export PATH="$HOME/.bun/bin:$PATH"
-        print_success "Bun 安裝完成 ($(~/.bun/bin/bun --version 2>/dev/null || echo 'installed'))"
-    else
-        print_warning "Bun 安裝失敗，已跳過"
-    fi
-fi
-
-# 1.3 安裝 GitHub CLI
-if command -v gh &> /dev/null; then
-    print_info "GitHub CLI 已安裝"
-else
-    print_info "安裝 GitHub CLI..."
-    sudo mkdir -p -m 755 /etc/apt/keyrings
-    wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
-        sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
-    sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
-
-    ARCH=$(dpkg --print-architecture)
-    echo "deb [arch=$ARCH signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | \
-        sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-
-    sudo apt update -qq
-    sudo apt install -y gh >/dev/null 2>&1
-    print_success "GitHub CLI 安裝完成"
-fi
-
-# 1.4 安裝現代化 CLI 工具（apt）
-print_info "安裝現代化 CLI 工具..."
-sudo apt install -y -qq \
-    ripgrep \
-    fd-find \
-    bat \
-    fzf \
-    shellcheck \
-    >/dev/null 2>&1
-
-print_success "apt 工具安裝完成"
-
-# 1.4.1 安裝 httpie（透過 uv）
-if command -v http &> /dev/null; then
-    print_info "httpie 已安裝"
-else
-    print_info "安裝 httpie..."
-    if uv tool install httpie >/dev/null 2>&1; then
-        print_success "httpie 安裝完成"
-    else
-        print_warning "httpie 安裝失敗，已跳過"
-    fi
-fi
-
-# 1.5 安裝 eza
-if command -v eza &> /dev/null; then
-    print_info "eza 已安裝"
-else
-    print_info "安裝 eza..."
-    sudo mkdir -p /etc/apt/keyrings
-    wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | \
-        sudo gpg --dearmor --yes -o /etc/apt/keyrings/gierens.gpg 2>/dev/null
-    echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" | \
-        sudo tee /etc/apt/sources.list.d/gierens.list > /dev/null
-    sudo chmod 644 /etc/apt/keyrings/gierens.gpg /etc/apt/sources.list.d/gierens.list
-    sudo apt update -qq
-    sudo apt install -y eza >/dev/null 2>&1
-    print_success "eza 安裝完成"
-fi
-
-# 1.6 安裝 zoxide
-if command -v zoxide &> /dev/null; then
-    print_info "zoxide 已安裝"
-else
-    print_info "安裝 zoxide..."
-    curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh >/dev/null 2>&1
-    print_success "zoxide 安裝完成"
-fi
-
-# 1.7 安裝 git-delta
-if command -v delta &> /dev/null; then
-    print_info "git-delta 已安裝"
-else
-    print_info "安裝 git-delta..."
-    DELTA_VERSION=$(curl -s "https://api.github.com/repos/dandavison/delta/releases/latest" | grep -Po '"tag_name": "\K[^"]*' || echo "0.18.2")
-
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "x86_64" ]; then
-        DELTA_ARCH="amd64"
-    elif [ "$ARCH" = "aarch64" ]; then
-        DELTA_ARCH="arm64"
-    else
-        print_warning "不支援的架構: $ARCH，跳過 git-delta"
-        DELTA_ARCH=""
-    fi
-
-    if [ -n "$DELTA_ARCH" ]; then
-        if wget -q "https://github.com/dandavison/delta/releases/download/${DELTA_VERSION}/git-delta_${DELTA_VERSION}_${DELTA_ARCH}.deb" -O /tmp/delta.deb; then
-            sudo dpkg -i /tmp/delta.deb >/dev/null 2>&1 || true
-            rm -f /tmp/delta.deb
-            print_success "git-delta 安裝完成"
-        else
-            print_warning "git-delta 下載失敗，已跳過"
-            rm -f /tmp/delta.deb
-        fi
-    fi
-fi
-
-# 1.8 安裝 yq
-if command -v yq &> /dev/null; then
-    print_info "yq 已安裝"
-else
-    print_info "安裝 yq..."
-    ARCH=$(dpkg --print-architecture)
-    sudo wget -q "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH}" -O /usr/local/bin/yq
-    sudo chmod +x /usr/local/bin/yq
-    print_success "yq 安裝完成"
-fi
-
-# 1.9 安裝 tldr
-if command -v tldr &> /dev/null; then
-    print_info "tldr 已安裝"
-else
-    print_info "安裝 tldr..."
-    bun install -g tldr >/dev/null 2>&1
-    print_success "tldr 安裝完成"
-fi
-
-# 1.10 安裝 lazygit
-if command -v lazygit &> /dev/null; then
-    print_info "lazygit 已安裝"
-else
-    print_info "安裝 lazygit..."
-    LAZYGIT_VERSION=$(curl -s "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "0.44.1")
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "x86_64" ]; then
-        LAZYGIT_ARCH="x86_64"
-    elif [ "$ARCH" = "aarch64" ]; then
-        LAZYGIT_ARCH="arm64"
-    else
-        print_warning "不支援的架構: $ARCH，跳過 lazygit"
-        LAZYGIT_ARCH=""
-    fi
-
-    if [ -n "$LAZYGIT_ARCH" ]; then
-        if curl -fLo /tmp/lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LAZYGIT_VERSION}_Linux_${LAZYGIT_ARCH}.tar.gz" 2>/dev/null; then
-            tar xf /tmp/lazygit.tar.gz -C /tmp lazygit
-            sudo install /tmp/lazygit /usr/local/bin
-            rm /tmp/lazygit.tar.gz /tmp/lazygit
-            print_success "lazygit 安裝完成"
-        else
-            print_warning "lazygit 下載失敗，已跳過"
-        fi
-    fi
-fi
-
-# 1.11 安裝 dust（磁碟空間分析）
-if command -v dust &> /dev/null; then
-    print_info "dust 已安裝"
-else
-    print_info "安裝 dust..."
-    DUST_VERSION=$(curl -s "https://api.github.com/repos/bootandy/dust/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "1.1.1")
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "x86_64" ]; then
-        DUST_ARCH="x86_64-unknown-linux-gnu"
-    elif [ "$ARCH" = "aarch64" ]; then
-        DUST_ARCH="aarch64-unknown-linux-gnu"
-    else
-        print_warning "不支援的架構: $ARCH，跳過 dust"
-        DUST_ARCH=""
-    fi
-
-    if [ -n "$DUST_ARCH" ]; then
-        if curl -fLo /tmp/dust.tar.gz "https://github.com/bootandy/dust/releases/download/v${DUST_VERSION}/dust-v${DUST_VERSION}-${DUST_ARCH}.tar.gz" 2>/dev/null; then
-            tar xf /tmp/dust.tar.gz -C /tmp
-            sudo install /tmp/dust-v${DUST_VERSION}-${DUST_ARCH}/dust /usr/local/bin
-            rm -rf /tmp/dust.tar.gz /tmp/dust-v${DUST_VERSION}-${DUST_ARCH}
-            print_success "dust 安裝完成"
-        else
-            print_warning "dust 下載失敗，已跳過"
-        fi
-    fi
-fi
-
-# 1.12 安裝 duf（磁碟使用量顯示）
-if command -v duf &> /dev/null; then
-    print_info "duf 已安裝"
-else
-    print_info "安裝 duf..."
-    DUF_VERSION=$(curl -s "https://api.github.com/repos/muesli/duf/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "0.8.1")
-    ARCH=$(dpkg --print-architecture)
-    if curl -fLo /tmp/duf.deb "https://github.com/muesli/duf/releases/download/v${DUF_VERSION}/duf_${DUF_VERSION}_linux_${ARCH}.deb" 2>/dev/null; then
-        sudo dpkg -i /tmp/duf.deb >/dev/null 2>&1 || true
-        rm -f /tmp/duf.deb
-        print_success "duf 安裝完成"
-    else
-        print_warning "duf 下載失敗，已跳過"
-        rm -f /tmp/duf.deb
-    fi
-fi
-
-# 1.13 安裝 tokei（程式碼統計）
-if command -v tokei &> /dev/null; then
-    print_info "tokei 已安裝"
-else
-    print_info "安裝 tokei..."
-    TOKEI_VERSION=$(curl -s "https://api.github.com/repos/XAMPPRocky/tokei/releases" | grep -Po '"tag_name": "v\K[^"]*' | while read -r ver; do
-        ASSETS=$(curl -s "https://api.github.com/repos/XAMPPRocky/tokei/releases/tags/v${ver}" | grep -c '"browser_download_url"' || true)
-        if [ "$ASSETS" -gt 0 ]; then echo "$ver"; break; fi
-    done)
-    TOKEI_VERSION="${TOKEI_VERSION:-12.1.2}"
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "x86_64" ]; then
-        TOKEI_ARCH="x86_64-unknown-linux-gnu"
-    elif [ "$ARCH" = "aarch64" ]; then
-        TOKEI_ARCH="aarch64-unknown-linux-gnu"
-    else
-        TOKEI_ARCH=""
-    fi
-    if [ -n "$TOKEI_ARCH" ]; then
-        if curl -fLo /tmp/tokei.tar.gz "https://github.com/XAMPPRocky/tokei/releases/download/v${TOKEI_VERSION}/tokei-${TOKEI_ARCH}.tar.gz" 2>/dev/null; then
-            tar xf /tmp/tokei.tar.gz -C /tmp tokei
-            sudo install /tmp/tokei /usr/local/bin
-            rm -f /tmp/tokei.tar.gz /tmp/tokei
-            print_success "tokei 安裝完成"
-        else
-            print_warning "tokei 下載失敗，已跳過"
-        fi
-    fi
-fi
-
-# 1.14 安裝 sd（搜尋替換）
-if command -v sd &> /dev/null; then
-    print_info "sd 已安裝"
-else
-    print_info "安裝 sd..."
-    SD_VERSION=$(curl -s "https://api.github.com/repos/chmln/sd/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "1.0.0")
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "x86_64" ]; then
-        SD_ARCH="x86_64-unknown-linux-gnu"
-    elif [ "$ARCH" = "aarch64" ]; then
-        SD_ARCH="aarch64-unknown-linux-gnu"
-    else
-        SD_ARCH=""
-    fi
-    if [ -n "$SD_ARCH" ]; then
-        if curl -fLo /tmp/sd.tar.gz "https://github.com/chmln/sd/releases/download/v${SD_VERSION}/sd-v${SD_VERSION}-${SD_ARCH}.tar.gz" 2>/dev/null; then
-            tar xf /tmp/sd.tar.gz -C /tmp
-            sudo install /tmp/sd-v${SD_VERSION}-${SD_ARCH}/sd /usr/local/bin
-            rm -rf /tmp/sd.tar.gz /tmp/sd-v${SD_VERSION}-${SD_ARCH}
-            print_success "sd 安裝完成"
-        else
-            print_warning "sd 下載失敗，已跳過"
-        fi
-    fi
-fi
-
-# 1.15 安裝 hyperfine（效能測試）
-if command -v hyperfine &> /dev/null; then
-    print_info "hyperfine 已安裝"
-else
-    print_info "安裝 hyperfine..."
-    HYPERFINE_VERSION=$(curl -s "https://api.github.com/repos/sharkdp/hyperfine/releases/latest" | grep -Po '"tag_name": "v\K[^"]*' || echo "1.19.0")
-    ARCH=$(dpkg --print-architecture)
-    if curl -fLo /tmp/hyperfine.deb "https://github.com/sharkdp/hyperfine/releases/download/v${HYPERFINE_VERSION}/hyperfine_${HYPERFINE_VERSION}_${ARCH}.deb" 2>/dev/null; then
-        sudo dpkg -i /tmp/hyperfine.deb >/dev/null 2>&1 || true
-        rm -f /tmp/hyperfine.deb
-        print_success "hyperfine 安裝完成"
-    else
-        print_warning "hyperfine 下載失敗，已跳過"
-        rm -f /tmp/hyperfine.deb
-    fi
-fi
+# 設定 fzf shell 整合
+print_info "設定 fzf Shell 整合..."
+"$(brew --prefix)"/opt/fzf/install --key-bindings --completion --no-update-rc --no-zsh --no-fish 2>/dev/null || true
+print_success "fzf Shell 整合完成"
 
 # ================================================
 # 步驟 2: 建立配置檔案
@@ -669,7 +439,8 @@ echo "  [2] \$HOME/.bun/bin          # Bun"
 echo "  [3] \$HOME/.cargo/bin        # Cargo (Rust)"
 echo "  [4] \$HOME/go/bin            # Go"
 echo "  [5] (conda 路徑)             # 由 conda init 管理"
-echo "  [6] /usr/local/bin 等        # 系統路徑"
+echo "  [6] Homebrew 路徑            # /home/linuxbrew/.linuxbrew"
+echo "  [7] /usr/local/bin 等        # 系統路徑"
 echo ""
 
 # 建立 .bash_profile（極簡版，只載入 .bashrc）
@@ -698,12 +469,13 @@ cat > ~/.bashrc << 'BASHRC_EOF'
 # ===========================================
 # 現代化開發環境配置（Linux）
 # ===========================================
-# 版本：v3.1
-# 最後更新：2026-01-12
+# 版本：v4.0
+# 最後更新：2026-03-20
 # 自動生成於：Ubuntu 環境設定腳本
 #
 # 策略：
 #   - 所有配置集中在此檔案
+#   - 工具透過 Homebrew on Linux 安裝（與 macOS 一致）
 #   - PATH 已統合並依慣例排序
 #   - 保留原生命令（ls, cat, find, grep）
 #   - 現代化工具用原名（eza, bat, fd, rg）
@@ -727,8 +499,10 @@ cat >> ~/.bashrc << 'BASHRC_EOF'
 # 工具初始化
 # -------------------------------------------
 
-# fzf 快捷鍵
-if [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then
+# fzf 快捷鍵（優先 Homebrew 版本）
+if [ -f ~/.fzf.bash ]; then
+    source ~/.fzf.bash
+elif [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then
     source /usr/share/doc/fzf/examples/key-bindings.bash
 fi
 if [ -f /usr/share/doc/fzf/examples/completion.bash ]; then
@@ -738,6 +512,11 @@ fi
 # zoxide（智能目錄跳轉）
 if command -v zoxide &> /dev/null; then
     eval "$(zoxide init bash)"
+fi
+
+# direnv - 目錄環境變數自動載入
+if command -v direnv &> /dev/null; then
+    eval "$(direnv hook bash)"
 fi
 
 # -------------------------------------------
@@ -755,7 +534,8 @@ fi
 # Ubuntu 命令別名修正
 # -------------------------------------------
 
-# Ubuntu 中 fd 叫 fdfind，bat 叫 batcat
+# Ubuntu apt 安裝的 fd 叫 fdfind，bat 叫 batcat
+# Homebrew 安裝的是原名，這段 fallback 保留以防混用
 if command -v fdfind &> /dev/null && ! command -v fd &> /dev/null; then
     alias fd='fdfind'
 fi
@@ -797,8 +577,9 @@ alias glog='git log --oneline --graph --decorate'
 alias clauded='claude --dangerously-skip-permissions'
 alias claudea='claude --enable-auto-mode'
 
-# 系統更新
-alias sysup='(cd ~/.dotfiles && git pull 2>/dev/null); sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y; { command -v claude &>/dev/null && claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null'
+# 系統更新（兩個 alias：brewup 管 Homebrew + dotfiles，sysup 管 apt）
+alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null'
+alias sysup='sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
 
 # NVIDIA GPU 工具（僅在有 GPU 時載入）
 if command -v nvidia-smi &>/dev/null; then
@@ -839,7 +620,7 @@ if command -v fzf &> /dev/null; then
       --height 40%
       --layout=reverse
       --border
-      --preview "bat --color=always --style=numbers --line-range :500 {} 2>/dev/null || batcat --color=always --style=numbers --line-range :500 {} 2>/dev/null || cat {}"
+      --preview "bat --color=always --style=numbers --line-range :500 {} 2>/dev/null || cat {}"
       --preview-window=right:50%
     '
 
@@ -847,10 +628,10 @@ if command -v fzf &> /dev/null; then
         export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
         export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
         export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
-    elif command -v fdfind &> /dev/null; then
-        export FZF_DEFAULT_COMMAND='fdfind --type f --hidden --follow --exclude .git'
-        export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-        export FZF_ALT_C_COMMAND='fdfind --type d --hidden --follow --exclude .git'
+    fi
+
+    if command -v bat &> /dev/null; then
+        export FZF_CTRL_T_OPTS="--preview 'bat --color=always --style=numbers --line-range :500 {}'"
     fi
 
     if command -v eza &> /dev/null; then
@@ -864,7 +645,7 @@ fi
 # bat 配置
 # -------------------------------------------
 
-if command -v bat &> /dev/null || command -v batcat &> /dev/null; then
+if command -v bat &> /dev/null; then
     export BAT_THEME="TwoDark"
     export BAT_PAGER="less -RF"
 fi
@@ -887,42 +668,21 @@ shopt -s histappend
 # -------------------------------------------
 
 # 用 fzf 搜尋並編輯檔案
-if command -v fzf &> /dev/null; then
+if command -v fzf &> /dev/null && command -v fd &> /dev/null; then
     fe() {
         local file
-        local fd_cmd=$(command -v fd || command -v fdfind)
-        local bat_cmd=$(command -v bat || command -v batcat)
-
-        if [ -n "$fd_cmd" ] && [ -n "$bat_cmd" ]; then
-            file=$($fd_cmd --type f --hidden --follow --exclude .git | fzf --preview "$bat_cmd --color=always --style=numbers {}")
-        elif [ -n "$fd_cmd" ]; then
-            file=$($fd_cmd --type f --hidden --follow --exclude .git | fzf)
-        else
-            file=$(find . -type f 2>/dev/null | fzf)
-        fi
-
+        file=$(fd --type f --hidden --follow --exclude .git | fzf --preview 'bat --color=always --style=numbers {}' 2>/dev/null || fzf)
         [ -n "$file" ] && ${EDITOR:-vim} "$file"
     }
 
     # 快速切換專案目錄
     proj() {
         local dir
-        local fd_cmd=$(command -v fd || command -v fdfind)
-
         if [ -d ~/Projects ]; then
-            if [ -n "$fd_cmd" ]; then
-                dir=$($fd_cmd --type d --max-depth 3 . ~/Projects | fzf --preview 'eza --tree --level=2 {} 2>/dev/null || tree -C {} | head -200')
-            else
-                dir=$(find ~/Projects -maxdepth 3 -type d 2>/dev/null | fzf)
-            fi
+            dir=$(fd --type d --max-depth 3 . ~/Projects | fzf --preview 'eza --tree --level=2 {} 2>/dev/null || tree -C {} | head -200')
         else
-            if [ -n "$fd_cmd" ]; then
-                dir=$($fd_cmd --type d --max-depth 3 . ~ | fzf --preview 'eza --tree --level=2 {} 2>/dev/null || tree -C {} | head -200')
-            else
-                dir=$(find ~ -maxdepth 3 -type d 2>/dev/null | fzf)
-            fi
+            dir=$(fd --type d --max-depth 3 . ~ | fzf --preview 'eza --tree --level=2 {} 2>/dev/null || tree -C {} | head -200')
         fi
-
         [ -n "$dir" ] && cd "$dir"
     }
 fi
@@ -1042,7 +802,7 @@ cat >> ~/.bashrc << 'EOF'
 # 原生命令（保持不變）：
 #   ls, cat, find, grep, top
 #
-# 現代化工具（用原名）：
+# 現代化工具（用原名，透過 Homebrew 安裝）：
 #   eza       - 現代化 ls
 #   bat       - 語法高亮的 cat
 #   fd        - 更快的 find
@@ -1050,11 +810,15 @@ cat >> ~/.bashrc << 'EOF'
 #   htop      - 更好的 top
 #   delta     - Git diff 美化
 #   z <name>  - 智能跳轉目錄（zoxide）
+#   direnv    - 目錄環境變數自動載入
+#   just      - 任務執行器
+#   watchexec - 檔案變更監控執行
 #
 # 便捷別名：
 #   ll, la, lt        - eza 別名
 #   gs, gd, ga, gc    - git 別名
-#   sysup             - 快速系統更新
+#   brewup            - Homebrew + dotfiles 更新
+#   sysup             - apt 系統套件更新
 #
 # 快捷鍵：
 #   Ctrl+R  - fzf 搜尋命令歷史
@@ -1368,35 +1132,42 @@ check_tool() {
 
 print_info "檢查已安裝工具..."
 
+# Homebrew
+check_tool brew && echo "  ✅ brew" || echo "  ❌ brew"
+
 # 核心工具
 check_tool git && echo "  ✅ git" || echo "  ❌ git"
+check_tool gh && echo "  ✅ gh" || echo "  ❌ gh"
 check_tool wget && echo "  ✅ wget" || echo "  ❌ wget"
 check_tool htop && echo "  ✅ htop" || echo "  ❌ htop"
 check_tool tree && echo "  ✅ tree" || echo "  ❌ tree"
 check_tool tmux && echo "  ✅ tmux" || echo "  ❌ tmux"
 check_tool node && echo "  ✅ node" || echo "  ❌ node"
 check_tool bun && echo "  ✅ bun" || echo "  ❌ bun"
-check_tool jq && echo "  ✅ jq" || echo "  ❌ jq"
+check_tool python3 && echo "  ✅ python3" || echo "  ❌ python3"
 check_tool uv && echo "  ✅ uv" || echo "  ❌ uv"
+check_tool jq && echo "  ✅ jq" || echo "  ❌ jq"
+check_tool yq && echo "  ✅ yq" || echo "  ❌ yq"
 
 # 現代化工具
 check_tool rg && echo "  ✅ ripgrep (rg)" || echo "  ❌ ripgrep"
-(check_tool fd || check_tool fdfind) && echo "  ✅ fd" || echo "  ❌ fd"
-(check_tool bat || check_tool batcat) && echo "  ✅ bat" || echo "  ❌ bat"
+check_tool fd && echo "  ✅ fd" || echo "  ❌ fd"
+check_tool bat && echo "  ✅ bat" || echo "  ❌ bat"
 check_tool fzf && echo "  ✅ fzf" || echo "  ❌ fzf"
 check_tool eza && echo "  ✅ eza" || echo "  ❌ eza"
 check_tool zoxide && echo "  ✅ zoxide" || echo "  ❌ zoxide"
 check_tool delta && echo "  ✅ git-delta" || echo "  ❌ git-delta"
-check_tool gh && echo "  ✅ GitHub CLI" || echo "  ❌ GitHub CLI"
-check_tool yq && echo "  ✅ yq" || echo "  ❌ yq"
+check_tool http && echo "  ✅ httpie" || echo "  ❌ httpie"
 check_tool tldr && echo "  ✅ tldr" || echo "  ❌ tldr"
-check_tool lazygit && echo "  ✅ lazygit" || echo "  ❌ lazygit"
-check_tool dust && echo "  ✅ dust" || echo "  ❌ dust"
-check_tool duf && echo "  ✅ duf" || echo "  ❌ duf"
 check_tool tokei && echo "  ✅ tokei" || echo "  ❌ tokei"
 check_tool sd && echo "  ✅ sd" || echo "  ❌ sd"
 check_tool hyperfine && echo "  ✅ hyperfine" || echo "  ❌ hyperfine"
+check_tool lazygit && echo "  ✅ lazygit" || echo "  ❌ lazygit"
+check_tool dust && echo "  ✅ dust" || echo "  ❌ dust"
 check_tool shellcheck && echo "  ✅ shellcheck" || echo "  ❌ shellcheck"
+check_tool direnv && echo "  ✅ direnv" || echo "  ❌ direnv"
+check_tool just && echo "  ✅ just" || echo "  ❌ just"
+check_tool watchexec && echo "  ✅ watchexec" || echo "  ❌ watchexec"
 
 echo ""
 print_success "工具安裝完成: $SUCCESS/$TOTAL"
@@ -1417,7 +1188,8 @@ echo "  2. \$HOME/.bun/bin"
 echo "  3. \$HOME/.cargo/bin"
 echo "  4. \$HOME/go/bin"
 echo "  5. (conda 路徑)"
-echo "  6. 系統路徑"
+echo "  6. Homebrew 路徑"
+echo "  7. 系統路徑"
 
 # ================================================
 # 完成
@@ -1460,10 +1232,17 @@ echo -e "  ${BLUE}~/.bash_profile.local${NC}  - 個人 PATH 設定"
 echo "  重複執行腳本時，這些檔案中的設定會被保留"
 
 echo ""
+echo "系統更新："
+echo -e "  ${BLUE}brewup${NC}                # Homebrew + dotfiles + Claude plugins 更新"
+echo -e "  ${BLUE}sysup${NC}                 # apt 系統套件更新"
+
+echo ""
 echo "新增工具試用："
 echo -e "  ${BLUE}lazygit${NC}               # Git TUI 介面"
 echo -e "  ${BLUE}dust${NC}                  # 磁碟空間分析"
-echo -e "  ${BLUE}duf${NC}                   # 磁碟使用量顯示"
+echo -e "  ${BLUE}direnv${NC}                # 目錄環境變數自動載入"
+echo -e "  ${BLUE}just${NC}                  # 任務執行器"
+echo -e "  ${BLUE}watchexec${NC}             # 檔案變更監控執行"
 
 if command -v nvidia-smi &>/dev/null; then
     echo ""

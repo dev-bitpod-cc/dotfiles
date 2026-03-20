@@ -8,12 +8,12 @@
 config/
 ├── README.md              # 本文件（快速入門）
 ├── CLAUDE.md              # Claude Code 環境指引（自動讀取）
-├── bootstrap.sh           # macOS 新機一鍵 bootstrap
+├── bootstrap.sh           # 雙平台一鍵 bootstrap（macOS + Linux）
 ├── claude/                # Claude Code 共用設定與 skills
 ├── codex/                 # Codex 共用設定、rules、skills
 ├── setup-mac-env.sh       # macOS 開發環境安裝腳本 (v3.1)
 ├── write-mac-defaults.sh  # macOS 系統偏好設定腳本 (v1.0)
-└── setup-linux-env.sh     # Linux Ubuntu 安裝腳本 (v3.1)
+└── setup-linux-env.sh     # Linux Ubuntu 安裝腳本 (v4.0, Homebrew)
 ```
 
 ## 快速開始
@@ -25,6 +25,14 @@ curl -fsSL dot.bitpod.cc | sh
 ```
 
 自動完成：Xcode CLT 安裝 → clone repo → 執行環境設定。
+
+### Linux（新機一鍵安裝）
+
+```bash
+curl -fsSL dot.bitpod.cc | sh
+```
+
+自動完成：apt 前置依賴 → clone repo → Homebrew 安裝 → 執行環境設定。
 
 > **Cloudflare 設定**：`dot.bitpod.cc` 302 redirect 至
 > `https://raw.githubusercontent.com/dev-bitpod-cc/dotfiles/main/bootstrap.sh`
@@ -39,7 +47,7 @@ curl -fsSL dot.bitpod.cc | sh
 ./write-mac-defaults.sh
 ```
 
-### Linux Ubuntu
+### Linux Ubuntu（已有 repo）
 
 ```bash
 chmod +x setup-linux-env.sh
@@ -48,7 +56,8 @@ chmod +x setup-linux-env.sh
 
 ## 功能特色
 
-- **31+ 現代化工具**：eza, bat, fd, ripgrep, fzf, zoxide, git-delta, lazygit, dust, duf 等
+- **33+ 現代化工具**：eza, bat, fd, ripgrep, fzf, zoxide, git-delta, lazygit, dust, direnv, just, watchexec 等
+- **Homebrew 統一管理**：macOS 和 Linux 都透過 Homebrew 安裝工具，版本一致、更新方便
 - **智能 PATH 管理**：自動統合、去重、依優先級排序
 - **冪等性**：重複執行不會破壞使用者設定
 - **跨平台一致**：macOS (zsh) 和 Linux (bash) 使用相同工具和別名
@@ -73,12 +82,13 @@ chmod +x setup-linux-env.sh
 4. `~/.cargo/bin` - Cargo (Rust)
 5. `~/go/bin` - Go
 6. conda/nvm/pyenv 路徑
-7. 系統路徑
+7. Homebrew 路徑
+8. 系統路徑
 
 ## 安裝的工具
 
 ### 核心工具
-git, gh, wget, htop, tree, tmux, bun, node, python3, jq, yq
+git, gh, wget, htop, tree, tmux, bun, node, python3, uv, jq, yq
 
 ### 現代化 CLI
 | 工具 | 用途 | 取代 |
@@ -92,7 +102,9 @@ git, gh, wget, htop, tree, tmux, bun, node, python3, jq, yq
 | delta | Git diff 美化 | - |
 | lazygit | Git TUI 介面 | - |
 | dust | 磁碟空間分析 | du |
-| duf | 磁碟使用量 | df |
+| direnv | 目錄環境變數自動載入 | - |
+| just | 任務執行器 | make |
+| watchexec | 檔案變更監控執行 | - |
 
 ### 便捷別名
 
@@ -111,7 +123,7 @@ gp    # git push
 gl    # git pull
 
 # 系統更新
-brewup  # macOS: brew update && upgrade && cleanup
+brewup  # macOS/Linux: brew update && upgrade + dotfiles pull + Claude plugins
 sysup   # Linux: apt update && upgrade && autoremove
 ```
 
@@ -124,7 +136,7 @@ sysup   # Linux: apt update && upgrade && autoremove
 ## 注意事項
 
 1. **原生命令保留**：`ls`, `cat`, `find`, `grep` 仍可使用
-2. **Linux 別名**：`fd` 和 `bat` 已設定別名（實際命令為 `fdfind` 和 `batcat`）
+2. **Linux fd/bat 別名**：保留 fallback alias（`fdfind` → `fd`, `batcat` → `bat`），但 Homebrew 安裝的是原名，不會觸發
 3. **需要新終端**：執行腳本後，開啟新終端視窗以啟用配置
 
 ## Claude Code 整合
@@ -142,6 +154,7 @@ sysup   # Linux: apt update && upgrade && autoremove
 
 ## 版本資訊
 
-- **版本**：v3.1
-- **更新日期**：2026-01-12
+- **版本**：v4.0
+- **更新日期**：2026-03-20
 - **支援系統**：macOS (zsh), Ubuntu 24.04+ (bash)
+- **套件管理**：Homebrew（兩平台統一）

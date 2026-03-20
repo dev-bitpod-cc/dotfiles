@@ -33,10 +33,12 @@
 | Git diff | `gd` (自動使用 delta) | git diff |
 | Git TUI | `lazygit` | - |
 | 磁碟分析 | `dust` | du |
-| 磁碟使用 | `duf` | df |
 | 效能測試 | `hyperfine` | time |
 | 程式碼統計 | `tokei` | cloc |
 | 指令速查 | `tldr` | man |
+| 環境變數自動載入 | `direnv` | - |
+| 任務執行器 | `just` | make |
+| 檔案變更監控 | `watchexec` | - |
 
 ### Git 別名
 
@@ -48,8 +50,8 @@ glog=git log --oneline --graph --decorate
 
 ### 系統更新
 
-- macOS: `brewup`
-- Linux: `sysup`
+- macOS: `brewup`（brew update/upgrade + dotfiles pull + Claude plugins）
+- Linux: `brewup`（同 macOS）+ `sysup`（apt update/upgrade）
 
 ### 自訂函數
 
@@ -63,7 +65,7 @@ glog=git log --oneline --graph --decorate
 
 1. **原生命令未被替換**：`ls`, `cat`, `find`, `grep` 仍可正常使用
 2. **不要假設單字母別名**：此環境不使用 `l`, `c` 等別名
-3. **Linux 注意**：`fd` 和 `bat` 是別名（實際命令為 `fdfind`, `batcat`）
+3. **Linux 注意**：工具透過 Homebrew 安裝，`fd` 和 `bat` 是原名（保留 fdfind/batcat fallback alias）
 4. **PATH 已包含**：`~/.local/bin`（uv、Claude Code 安裝於此）
 5. **API Keys**：存放於 `~/.env`（權限 600，會自動載入）
 
