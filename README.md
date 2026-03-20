@@ -9,6 +9,8 @@ config/
 ├── README.md              # 本文件（快速入門）
 ├── CLAUDE.md              # Claude Code 環境指引（自動讀取）
 ├── bootstrap.sh           # macOS 新機一鍵 bootstrap
+├── claude/                # Claude Code 共用設定與 skills
+├── codex/                 # Codex 共用設定、rules、skills
 ├── setup-mac-env.sh       # macOS 開發環境安裝腳本 (v3.1)
 ├── write-mac-defaults.sh  # macOS 系統偏好設定腳本 (v1.0)
 └── setup-linux-env.sh     # Linux Ubuntu 安裝腳本 (v3.1)
@@ -128,6 +130,15 @@ sysup   # Linux: apt update && upgrade && autoremove
 ## Claude Code 整合
 
 執行腳本後，Claude Code 會自動讀取 `CLAUDE.md` 了解環境中可用的工具。
+
+## Codex 整合
+
+執行 `setup-mac-env.sh` 或 `setup-linux-env.sh` 時，會將 `claude/` 與 `codex/` 內的共用設定同步到對應的 home 目錄。
+
+- Claude：同步到 `~/.claude/`
+- Codex：同步到 `~/.codex/`
+
+其中 `~/.codex/config.local.toml` 保留本機相依設定，不納入版控。
 
 ## 版本資訊
 

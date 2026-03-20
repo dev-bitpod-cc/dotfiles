@@ -1,0 +1,4 @@
+interface:
+  display_name: "Multi-Repo Review"
+  short_description: "Review one or more local git repos from committed diffs only."
+  default_prompt: "Review one or more local repositories using committed diffs only, read the root guidance files first, parallelize repo inspection when possible, and report only concrete findings with file references."

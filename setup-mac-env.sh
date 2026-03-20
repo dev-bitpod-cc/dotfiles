@@ -902,7 +902,63 @@ else
 fi
 
 # ================================================
-# 步驟 5.6: 設定 tmux 配置
+# 步驟 5.6: 設定 Codex 全域配置
+# ================================================
+if [ -d "$SCRIPT_DIR/codex" ]; then
+    print_info "設定 Codex 全域配置..."
+    mkdir -p ~/.codex ~/.codex/skills ~/.codex/rules
+
+    __extract_codex_local_config() {
+        local src="$1" dst="$2"
+        [ -f "$src" ] || return 0
+        [ -f "$dst" ] && return 0
+
+        awk '
+            /^\[projects\."/ { in_projects=1 }
+            /^\[/ && $0 !~ /^\[projects\."/ && in_projects { in_projects=0 }
+            in_projects { print }
+        ' "$src" > "$dst.tmp"
+
+        if [ -s "$dst.tmp" ]; then
+            mv "$dst.tmp" "$dst"
+            print_success "已保留既有 Codex project trust → ~/.codex/config.local.toml"
+        else
+            rm -f "$dst.tmp"
+        fi
+    }
+
+    __sync_codex_dir() {
+        local src="$1" dst="$2"
+        [ -d "$src" ] || return 0
+        mkdir -p "$dst"
+        rsync -a --delete "$src"/ "$dst"/
+    }
+
+    __extract_codex_local_config ~/.codex/config.toml ~/.codex/config.local.toml
+
+    if [ -f "$SCRIPT_DIR/codex/config.toml" ]; then
+        cp "$SCRIPT_DIR/codex/config.toml" ~/.codex/config.toml
+        if [ -s ~/.codex/config.local.toml ]; then
+            printf '\n# Local machine-specific overrides\n' >> ~/.codex/config.toml
+            cat ~/.codex/config.local.toml >> ~/.codex/config.toml
+        fi
+        print_success "已同步 ~/.codex/config.toml"
+    fi
+
+    __sync_codex_dir "$SCRIPT_DIR/codex/rules" ~/.codex/rules
+    [ -d "$SCRIPT_DIR/codex/rules" ] && print_success "已同步 ~/.codex/rules/"
+
+    __sync_codex_dir "$SCRIPT_DIR/codex/skills" ~/.codex/skills
+    [ -d "$SCRIPT_DIR/codex/skills" ] && print_success "已同步 ~/.codex/skills/"
+
+    unset -f __extract_codex_local_config
+    unset -f __sync_codex_dir
+else
+    print_info "未找到 codex/ 目錄，跳過 Codex 配置"
+fi
+
+# ================================================
+# 步驟 5.7: 設定 tmux 配置
 # ================================================
 if [ -f "$SCRIPT_DIR/tmux.conf" ]; then
     print_info "設定 tmux 配置..."

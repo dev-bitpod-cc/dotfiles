@@ -1,0 +1,7 @@
+prefix_rule(pattern=["git", "rev-parse"], decision="allow")
+prefix_rule(pattern=["sort"], decision="allow")
+prefix_rule(pattern=["codex", "--help"], decision="allow")
+prefix_rule(pattern=["codex", "debug", "--help"], decision="allow")
+prefix_rule(pattern=["codex", "sandbox", "--help"], decision="allow")
+prefix_rule(pattern=["codex", "sandbox", "linux", "--help"], decision="allow")
+prefix_rule(pattern=["codex", "sandbox", "linux"], decision="allow")

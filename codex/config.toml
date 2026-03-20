@@ -1,0 +1,12 @@
+# Shared Codex defaults managed by ~/.dotfiles/codex/config.toml
+# Machine-specific project trust should live in ~/.codex/config.local.toml
+
+preferred_auth_method = "apikey"
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "danger-full-access"
+approval_policy = "on-request"
+
+[notice.model_migrations]
+"gpt-5.1-codex" = "gpt-5.3-codex"
+"gpt-5.3-codex" = "gpt-5.4"
