@@ -481,22 +481,36 @@ cat > ~/.bashrc << 'BASHRC_EOF'
 #   - 現代化工具用原名（eza, bat, fd, rg）
 # ===========================================
 
-# 非互動式 shell 直接返回
+BASHRC_EOF
+
+# 插入統合後的 PATH 設定（在非互動 guard 之前，確保腳本和 Claude Code 都有正確 PATH）
+echo "$EXISTING_PATH_CONFIG" >> ~/.bashrc
+
+# 環境變數（也在 guard 之前，腳本和 Claude Code 需要 API keys）
+cat >> ~/.bashrc << 'BASHRC_EOF'
+
+# -------------------------------------------
+# 環境變數
+# -------------------------------------------
+
+# 從 .env 載入 API Keys（如果存在）
+if [ -f ~/.env ]; then
+    set -a
+    source ~/.env
+    set +a
+fi
+
+# -------------------------------------------
+# 非互動式 shell 到此為止
+# （PATH 和環境變數已設定，腳本和 CI 可正常使用 Homebrew 工具）
+# -------------------------------------------
 case $- in
     *i*) ;;
       *) return;;
 esac
 
-BASHRC_EOF
-
-# 插入統合後的 PATH 設定
-echo "$EXISTING_PATH_CONFIG" >> ~/.bashrc
-
-# 繼續寫入其餘配置
-cat >> ~/.bashrc << 'BASHRC_EOF'
-
 # -------------------------------------------
-# 工具初始化
+# 工具初始化（僅互動式）
 # -------------------------------------------
 
 # fzf 快捷鍵（優先 Homebrew 版本）
@@ -517,17 +531,6 @@ fi
 # direnv - 目錄環境變數自動載入
 if command -v direnv &> /dev/null; then
     eval "$(direnv hook bash)"
-fi
-
-# -------------------------------------------
-# 環境變數
-# -------------------------------------------
-
-# 從 .env 載入 API Keys（如果存在）
-if [ -f ~/.env ]; then
-    set -a
-    source ~/.env
-    set +a
 fi
 
 # -------------------------------------------
