@@ -11,7 +11,7 @@
 
 ## 平台資訊
 
-- **macOS**: zsh（`~/.zshrc`, `~/.zprofile`）
+- **macOS**: zsh（`~/.zshenv`, `~/.zprofile`, `~/.zshrc`）
 - **Linux Ubuntu**: bash（`~/.bashrc`, `~/.bash_profile`）
 - **使用者自訂設定**：`.local` 檔案（不會被腳本覆寫）
 

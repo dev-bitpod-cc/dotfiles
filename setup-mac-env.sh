@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # macOS 現代化開發環境自動安裝腳本
-# 版本：v3.1
-# 最後更新：2026-01-12
+# 版本：v4.0
+# 最後更新：2026-03-21
 #
 # 使用方式：
 #   chmod +x setup-mac-env.sh
@@ -14,10 +14,12 @@
 #
 # 特色：
 #   - 智能 PATH 統合（保留現有設定、去重、依 macOS/Homebrew 慣例排序）
-#   - 所有配置集中在 .zprofile（登入時載入）和 .zshrc（互動式 shell）
+#   - .zshenv: PATH + brew shellenv + .env（所有 shell 模式都載入）
+#   - .zprofile: conda/nvm/pyenv 等需要 login shell 的初始化
+#   - .zshrc: 別名、函數、工具配置（僅互動式）
 #   - 保留 conda、nvm、pyenv 等重要初始化代碼
 #
-# 注意：此腳本會覆寫 .zshrc 和 .zprofile（會先備份）
+# 注意：此腳本會覆寫 .zshenv、.zshrc 和 .zprofile（會先備份）
 # 如果您有自訂配置需要保留，請使用 Markdown + Claude Code 方式
 #
 
@@ -155,7 +157,7 @@ LOCAL_EOF
     fi
 }
 
-# 生成 PATH 去重函數（會寫入 .zprofile）
+# 生成 PATH 去重函數（會寫入 .zshenv）
 generate_dedupe_function() {
     cat << 'DEDUPE_EOF'
 # PATH 去重函數：移除重複路徑，保留第一次出現的位置
@@ -197,7 +199,7 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-print_header "macOS 現代化開發環境自動安裝 v3.1"
+print_header "macOS 現代化開發環境自動安裝 v4.0"
 echo "此腳本將："
 echo "  • 檢查並安裝 Homebrew（如需要）"
 echo "  • 安裝 28+ 個開發工具（含 Bun）"
@@ -350,6 +352,11 @@ if [ -f ~/.zprofile ]; then
     print_success "已備份 .zprofile → .zprofile.backup.$BACKUP_SUFFIX"
 fi
 
+if [ -f ~/.zshenv ]; then
+    cp ~/.zshenv ~/.zshenv.backup.$BACKUP_SUFFIX
+    print_success "已備份 .zshenv → .zshenv.backup.$BACKUP_SUFFIX"
+fi
+
 # 檢測並保存重要的初始化代碼
 print_info "分析現有配置..."
 
@@ -396,28 +403,30 @@ echo "  [23] /usr/local/bin (Intel Mac)          # Homebrew"
 echo "  [30] /usr/bin, /bin 等                   # 系統路徑"
 echo ""
 
-# 建立 .zprofile
-print_info "建立 .zprofile..."
-cat > ~/.zprofile << 'ZPROFILE_EOF'
+# 建立 .zshenv
+print_info "建立 .zshenv..."
+cat > ~/.zshenv << 'ZSHENV_EOF'
 # ===========================================
-# 登入 Shell 配置（macOS）
+# 所有 Shell 共用配置（macOS）
 # ===========================================
-# 版本：v3.1
-# 最後更新：2026-01-12
+# 版本：v4.0
+# 最後更新：2026-03-21
 # 自動生成於：macOS 環境設定腳本
 #
+# 載入順序：.zshenv（所有 shell）> .zprofile（login）> .zshrc（互動）
 # 策略：
-#   - PATH 已統合並依 macOS/Homebrew 慣例排序
+#   - PATH + brew shellenv + .env 放在此檔案
+#   - 確保非互動 shell（腳本、Claude Code）也能拿到正確環境
 #   - 高優先級路徑在前（用戶程式 > Homebrew Python > Bun > ...）
 #   - 自動去重，避免重複路徑
 # ===========================================
 
-ZPROFILE_EOF
+ZSHENV_EOF
 
 # 插入 PATH 去重函數
-generate_dedupe_function >> ~/.zprofile
+generate_dedupe_function >> ~/.zshenv
 
-cat >> ~/.zprofile << 'ZPROFILE_EOF'
+cat >> ~/.zshenv << 'ZSHENV_EOF'
 
 # -------------------------------------------
 # Homebrew 環境設定
@@ -466,6 +475,41 @@ fi
 # 優先級 1: 用戶本地程式（最高優先級）
 [ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"
 
+# -------------------------------------------
+# PATH 去重
+# -------------------------------------------
+__dedupe_path
+
+# -------------------------------------------
+# 環境變數
+# -------------------------------------------
+
+# 從 .env 載入 API Keys（如果存在）
+if [ -f ~/.env ]; then
+    set -a
+    source ~/.env
+    set +a
+fi
+
+ZSHENV_EOF
+
+print_success ".zshenv 已建立"
+
+# 建立 .zprofile
+print_info "建立 .zprofile..."
+cat > ~/.zprofile << 'ZPROFILE_EOF'
+# ===========================================
+# 登入 Shell 配置（macOS）
+# ===========================================
+# 版本：v4.0
+# 最後更新：2026-03-21
+# 自動生成於：macOS 環境設定腳本
+#
+# 策略：
+#   - PATH 和環境變數已集中在 .zshenv
+#   - 此檔案僅保留需要 login shell 才初始化的工具（conda/nvm/pyenv）
+# ===========================================
+
 ZPROFILE_EOF
 
 # 插入保留的 conda 配置
@@ -508,18 +552,13 @@ EOF
     print_success "已保留 pyenv 配置"
 fi
 
-# 添加 PATH 去重和載入使用者設定
+# 載入使用者設定
 cat >> ~/.zprofile << 'EOF'
-
-# -------------------------------------------
-# PATH 去重
-# -------------------------------------------
-__dedupe_path
 
 # -------------------------------------------
 # 載入使用者自訂設定（如果存在）
 # -------------------------------------------
-# .zprofile.local 用於保留使用者原有的自訂 PATH 和環境變數
+# .zprofile.local 用於保留需要 login shell 初始化的個人設定
 # 此檔案不會被腳本覆寫，可安全地添加個人設定
 [ -f ~/.zprofile.local ] && source ~/.zprofile.local
 
@@ -533,13 +572,13 @@ cat > ~/.zshrc << 'EOF'
 # ===========================================
 # 現代化開發環境配置（macOS）
 # ===========================================
-# 版本：v3.1
-# 最後更新：2026-01-12
+# 版本：v4.0
+# 最後更新：2026-03-21
 # 自動生成於：macOS 環境設定腳本
 #
 # 策略：
-#   - PATH 設定已集中在 .zprofile
-#   - 此檔案專注於別名、函數、工具配置
+#   - PATH 和環境變數已集中在 .zshenv
+#   - 此檔案專注於別名、函數、工具配置（僅互動式 shell）
 #   - 保留原生命令（ls, cat, find, grep）
 #   - 現代化工具用原名（eza, bat, fd, rg）
 # ===========================================
@@ -568,15 +607,6 @@ fi
 # direnv - 目錄環境變數自動載入
 if command -v direnv &> /dev/null; then
     eval "$(direnv hook zsh)"
-fi
-
-# -------------------------------------------
-# 環境變數
-# -------------------------------------------
-if [ -f ~/.env ]; then
-    set -a
-    source ~/.env
-    set +a
 fi
 
 # -------------------------------------------
@@ -1077,6 +1107,7 @@ print_success "工具安裝完成: $SUCCESS/$TOTAL"
 # 檢查配置檔案
 echo ""
 print_info "檢查配置檔案..."
+[ -f ~/.zshenv ] && echo "  ✅ .zshenv" || echo "  ❌ .zshenv"
 [ -f ~/.zshrc ] && echo "  ✅ .zshrc" || echo "  ❌ .zshrc"
 [ -f ~/.zprofile ] && echo "  ✅ .zprofile" || echo "  ❌ .zprofile"
 [ -f ~/.env ] && echo "  ✅ .env" || echo "  ❌ .env"
@@ -1107,6 +1138,7 @@ cat > /tmp/verify_setup.sh << 'VERIFY_EOF'
 #!/bin/zsh
 
 # 載入配置
+source ~/.zshenv 2>/dev/null
 source ~/.zprofile 2>/dev/null
 source ~/.zshrc 2>/dev/null
 
@@ -1206,6 +1238,7 @@ fi
 
 # 10. 檢查配置檔案
 echo -e "\n=== 配置檔案 ==="
+[ -f ~/.zshenv ] && echo "✅ .zshenv 存在 ($(wc -l < ~/.zshenv) 行)" || echo "❌ .zshenv 不存在"
 [ -f ~/.zshrc ] && echo "✅ .zshrc 存在 ($(wc -l < ~/.zshrc) 行)" || echo "❌ .zshrc 不存在"
 [ -f ~/.zprofile ] && echo "✅ .zprofile 存在" || echo "❌ .zprofile 不存在"
 [ -f ~/.env ] && echo "✅ .env 存在 (權限: $(stat -f %Lp ~/.env))" || echo "❌ .env 不存在"
@@ -1279,6 +1312,7 @@ if command -v gh &> /dev/null; then
 fi
 
 echo "備份檔案位置："
+[ -f ~/.zshenv.backup.$BACKUP_SUFFIX ] && echo "  ~/.zshenv.backup.$BACKUP_SUFFIX"
 [ -f ~/.zshrc.backup.$BACKUP_SUFFIX ] && echo "  ~/.zshrc.backup.$BACKUP_SUFFIX"
 [ -f ~/.zprofile.backup.$BACKUP_SUFFIX ] && echo "  ~/.zprofile.backup.$BACKUP_SUFFIX"
 
