@@ -614,6 +614,22 @@ if command -v nvidia-smi &>/dev/null; then
         echo ""
         echo "Done. These packages will not be upgraded by sysup."
     }
+    nvidia-unhold() {
+        local pkgs
+        pkgs=$(sudo apt-mark showhold | grep -iE 'nvidia|cuda|libnvidia')
+        if [ -z "$pkgs" ]; then
+            echo "No held NVIDIA/CUDA packages found."
+            return 0
+        fi
+        echo "Will unhold the following packages:"
+        echo "$pkgs"
+        echo ""
+        read -p "Proceed? [y/N] " confirm < /dev/tty
+        [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Cancelled."; return 0; }
+        echo "$pkgs" | xargs sudo apt-mark unhold
+        echo ""
+        echo "Done. These packages will be upgraded by sysup again."
+    }
 fi
 
 # -------------------------------------------
@@ -837,9 +853,9 @@ cat >> ~/.bashrc << 'EOF'
 #   venv       - 建立 Python 虛擬環境
 #
 # NVIDIA GPU（有 nvidia-smi 時自動載入）：
-#   nvidia-check - 檢查 NVIDIA/CUDA 套件是否有可用更新
-#   nvidia-hold  - 鎖定已安裝的 NVIDIA/CUDA 套件，避免 sysup 自動升級
-#                  裝完 NVIDIA driver 後執行一次即可
+#   nvidia-check  - 檢查 NVIDIA/CUDA 套件是否有可用更新
+#   nvidia-hold   - 鎖定已安裝的 NVIDIA/CUDA 套件，避免 sysup 自動升級
+#   nvidia-unhold - 解除鎖定，恢復 sysup 自動升級
 #
 # ===========================================
 EOF
@@ -1254,7 +1270,7 @@ if command -v nvidia-smi &>/dev/null; then
     echo "NVIDIA GPU 工具："
     echo -e "  ${BLUE}nvidia-check${NC}           # 檢查 NVIDIA/CUDA 套件是否有可用更新"
     echo -e "  ${BLUE}nvidia-hold${NC}            # 鎖定 NVIDIA/CUDA 套件，避免 sysup 自動升級"
-    echo "  裝完 NVIDIA driver 後執行一次 nvidia-hold 即可"
+    echo -e "  ${BLUE}nvidia-unhold${NC}          # 解除鎖定，恢復 sysup 自動升級"
 fi
 
 echo ""
