@@ -265,6 +265,8 @@ else
     exit 1
 fi
 
+mkdir -p "$HOME/.local/bin"
+
 print_success "系統準備完成"
 
 # ================================================

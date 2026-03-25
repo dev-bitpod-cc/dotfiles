@@ -306,6 +306,8 @@ sudo apt install -y -qq \
     python-is-python3 \
     >/dev/null 2>&1
 
+mkdir -p "$HOME/.local/bin"
+
 print_success "系統準備完成"
 
 # ================================================
