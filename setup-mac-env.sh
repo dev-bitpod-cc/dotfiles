@@ -212,7 +212,7 @@ print_warning "現有的 .zshrc 和 .zprofile 將被備份"
 echo ""
 if [ "$AUTO_YES" = false ]; then
     echo -n "確定要繼續嗎？[Y/n] "
-    read -r response
+    read -r response < /dev/tty
     if [[ "$response" =~ ^[Nn]$ ]]; then
         print_info "已取消"
         exit 0

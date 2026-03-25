@@ -70,7 +70,7 @@ if [ "$OS" = "Darwin" ]; then
 
         echo ""
         echo "請在彈出的視窗中點擊「安裝」，完成後按 Enter 繼續..."
-        read -r
+        read -r < /dev/tty
 
         # 驗證安裝
         if ! xcode-select -p &> /dev/null; then

@@ -263,7 +263,7 @@ print_warning "現有的 .bashrc 和 .bash_profile 將被備份"
 echo ""
 if [ "$AUTO_YES" = false ]; then
     echo -n "確定要繼續嗎？[Y/n] "
-    read -r response
+    read -r response < /dev/tty
     if [[ "$response" =~ ^[Nn]$ ]]; then
         print_info "已取消"
         exit 0
@@ -606,7 +606,7 @@ if command -v nvidia-smi &>/dev/null; then
         echo "Will hold the following packages:"
         echo "$pkgs"
         echo ""
-        read -p "Proceed? [y/N] " confirm
+        read -p "Proceed? [y/N] " confirm < /dev/tty
         [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Cancelled."; return 0; }
         echo "$pkgs" | xargs sudo apt-mark hold
         echo ""
