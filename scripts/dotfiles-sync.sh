@@ -50,12 +50,7 @@ SSHEOF
 fi
 
 if [ -f "$DOTFILES_DIR/ssh/known_hosts" ]; then
-    if [ -f ~/.ssh/known_hosts ]; then
-        cat "$DOTFILES_DIR/ssh/known_hosts" ~/.ssh/known_hosts | sort -u > ~/.ssh/known_hosts.tmp
-        [ -s ~/.ssh/known_hosts.tmp ] && mv ~/.ssh/known_hosts.tmp ~/.ssh/known_hosts || rm -f ~/.ssh/known_hosts.tmp
-    else
-        cp "$DOTFILES_DIR/ssh/known_hosts" ~/.ssh/known_hosts
-    fi
+    cp "$DOTFILES_DIR/ssh/known_hosts" ~/.ssh/known_hosts
 fi
 
 echo -e "${GREEN}  ✅ 本機完成${NC}"
@@ -78,14 +73,9 @@ $(cat ssh/config)
 SSHEOF
                 chmod 600 ~/.ssh/config
             fi
-            # 合併 known_hosts
+            # 覆蓋 known_hosts
             if [ -f ssh/known_hosts ]; then
-                if [ -f ~/.ssh/known_hosts ]; then
-                    cat ssh/known_hosts ~/.ssh/known_hosts | sort -u > ~/.ssh/known_hosts.tmp
-                    [ -s ~/.ssh/known_hosts.tmp ] && mv ~/.ssh/known_hosts.tmp ~/.ssh/known_hosts || rm -f ~/.ssh/known_hosts.tmp
-                else
-                    cp ssh/known_hosts ~/.ssh/known_hosts
-                fi
+                cp ssh/known_hosts ~/.ssh/known_hosts
             fi
             echo "OK"
         else

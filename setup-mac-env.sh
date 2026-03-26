@@ -642,7 +642,7 @@ alias claudea='claude --enable-auto-mode'
 dotsync() { ~/.dotfiles/scripts/dotfiles-sync.sh "$@"; }
 
 # 系統更新
-alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && [ -f ~/.ssh/known_hosts ] && cat ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null | sort -u > ~/.ssh/known_hosts.tmp && [ -s ~/.ssh/known_hosts.tmp ] && mv ~/.ssh/known_hosts.tmp ~/.ssh/known_hosts || rm -f ~/.ssh/known_hosts.tmp; } 2>/dev/null'
+alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && cp ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null; } 2>/dev/null'
 
 # -------------------------------------------
 # fzf 配置
@@ -829,15 +829,9 @@ EOF
     print_success "SSH config.local 已建立"
 fi
 
-# 4e. known_hosts（合併策略：保留本地新增的 host）
+# 4e. known_hosts（覆蓋策略：repo 版本為 source of truth）
 if [ -f "$SCRIPT_DIR/ssh/known_hosts" ]; then
-    if [ -f ~/.ssh/known_hosts ]; then
-        # 合併：repo 版本 + 本地獨有的行
-        cat "$SCRIPT_DIR/ssh/known_hosts" ~/.ssh/known_hosts | sort -u > ~/.ssh/known_hosts.tmp
-        [ -s ~/.ssh/known_hosts.tmp ] && mv ~/.ssh/known_hosts.tmp ~/.ssh/known_hosts || rm -f ~/.ssh/known_hosts.tmp
-    else
-        cp "$SCRIPT_DIR/ssh/known_hosts" ~/.ssh/known_hosts
-    fi
+    cp "$SCRIPT_DIR/ssh/known_hosts" ~/.ssh/known_hosts
     chmod 644 ~/.ssh/known_hosts
     print_success "known_hosts 已同步"
 fi
