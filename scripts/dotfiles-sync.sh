@@ -83,7 +83,9 @@ SSHEOF
         fi
     ' 2>/dev/null)
 
-    case "$result" in
+    local last_line
+    last_line="$(echo "$result" | tail -1)"
+    case "$last_line" in
         OK)           echo -e "${GREEN}  ✅ ${host}${NC}" ;;
         NO_DOTFILES)  echo -e "${YELLOW}  ⚠️  ${host}：~/.dotfiles 不存在${NC}" ;;
         *)            echo -e "${RED}  ❌ ${host}：連線失敗${NC}" ;;
