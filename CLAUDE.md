@@ -48,10 +48,12 @@ gp=git push      gl=git pull     gco=git checkout gb=git branch
 glog=git log --oneline --graph --decorate
 ```
 
-### 系統更新
+### 系統更新與同步
 
-- macOS: `brewup`（brew update/upgrade + dotfiles pull + Claude plugins）
+- macOS: `brewup`（brew update/upgrade + dotfiles pull + Claude plugins + known_hosts 同步）
 - Linux: `brewup`（同 macOS）+ `sysup`（apt update/upgrade）
+- `dotsync` - 同步 dotfiles 到所有遠端主機（並行 SSH pull + 重新套用 config）
+- `dotsync eagle03 db01` - 只同步指定主機
 
 ### 自訂函數
 
@@ -61,6 +63,48 @@ glog=git log --oneline --graph --decorate
 - `venv [name]` - 建立 Python 虛擬環境（優先使用 uv）
 - `sysupdate` - 詳細的系統更新（僅 Linux）
 
+## SSH 配置
+
+### 認證架構
+
+- **內網伺服器**：SSH CA certificate 認證（`id_autogen` + cert）
+- **GitHub 個人**：`id_github`（Host `github.com`）
+- **GitHub 工作**：`id_github_work`（Host `github-work`）
+- **終端設備 fallback**：伺服器 `authorized_keys` 保留舊公鑰
+
+### 管理的檔案
+
+| 檔案 | 說明 |
+|------|------|
+| `ssh/config` | 共用 SSH config（setup 腳本生成到 `~/.ssh/config`） |
+| `ssh/config.local.example` | 機器特定設定範本 |
+| `ssh/known_hosts` | `@cert-authority` + GitHub fingerprint |
+| `ssh/host_ca.pub` | Host CA 公鑰 |
+| `ssh/user_ca.pub` | User CA 公鑰 |
+
+### CA 簽署工具
+
+```
+scripts/sign-host-keys.sh [server...]     # 批次簽署 host key + 部署 User CA
+scripts/sign-user-cert.sh <pubkey>        # 簽署使用者 SSH public key
+scripts/rotate-user-key.sh [server...]    # 遠端重新產生 key + 簽 cert
+```
+
+### 新機器流程
+
+1. `curl -fsSL dot.bitpod.cc | sh`（環境 + SSH config 就位）
+2. `ssh-keygen -t ed25519 -f ~/.ssh/id_autogen -N ""`
+3. 從有 CA 的機器：`./scripts/sign-user-cert.sh`（簽 cert）
+4. 填 `~/.env`
+
+## 內網工具
+
+```
+scripts/routing_10.10.sh     # 新增 10.10.0.0/16 路由
+scripts/routing_172.18.sh    # 新增 172.18.0.0/16 路由
+scripts/dotfiles-sync.sh     # 同步 dotfiles 到所有主機
+```
+
 ## 重要規則
 
 1. **原生命令未被替換**：`ls`, `cat`, `find`, `grep` 仍可正常使用
@@ -68,6 +112,8 @@ glog=git log --oneline --graph --decorate
 3. **Linux 注意**：工具透過 Homebrew 安裝，`fd` 和 `bat` 是原名（保留 fdfind/batcat fallback alias）
 4. **PATH 已包含**：`~/.local/bin`（uv、Claude Code 安裝於此）
 5. **API Keys**：存放於 `~/.env`（權限 600，會自動載入）
+6. **Git 設定**：透過 `include.path` 引入 `git/config`，`user.name`/`email` 在各機器的 `~/.gitconfig` 設定
+7. **SSH keys**：`id_github`（GitHub）、`id_github_work`（工作 GitHub）、`id_autogen`（內網 cert）
 
 ## 開發環境
 
