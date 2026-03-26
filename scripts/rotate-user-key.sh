@@ -3,9 +3,10 @@
 # rotate-user-key.sh — 在遠端機器上重新產生 SSH key 並簽署 cert
 #
 # 用法：
+#   ./scripts/rotate-user-key.sh localhost         # 本機
 #   ./scripts/rotate-user-key.sh eagle03          # 指定機器
 #   ./scripts/rotate-user-key.sh eagle03 db01     # 多台
-#   ./scripts/rotate-user-key.sh --all            # ALL_SERVERS
+#   ./scripts/rotate-user-key.sh --all            # ALL_SERVERS（不含本機）
 #
 # 前提：
 #   - User CA private key 在 iCloud
@@ -60,14 +61,45 @@ fi
 SUCCESS=0
 FAILED=0
 
-for server in "${SERVERS[@]}"; do
+rotate_local() {
+    print_info "處理 localhost..."
+
+    # 1. 本機產生新 key pair
+    if ! echo y | ssh-keygen -t ed25519 -f ~/.ssh/id_autogen -N "" -q 2>/dev/null; then
+        print_error "localhost：產生 key 失敗"
+        FAILED=$((FAILED + 1))
+        return
+    fi
+
+    # 2. 本地簽署
+    identity="$(hostname -s)-$(date +%Y%m%d)"
+    if ! ssh-keygen -s "$USER_CA" \
+        -I "$identity" \
+        -n "$DEFAULT_PRINCIPALS" \
+        -V "$VALIDITY" \
+        ~/.ssh/id_autogen.pub 2>/dev/null; then
+        print_error "localhost：簽署失敗"
+        FAILED=$((FAILED + 1))
+        return
+    fi
+
+    # 3. 修正權限
+    chmod 600 ~/.ssh/id_autogen
+    chmod 644 ~/.ssh/id_autogen.pub ~/.ssh/id_autogen-cert.pub
+
+    print_success "localhost：key 已重新產生並簽署"
+    SUCCESS=$((SUCCESS + 1))
+}
+
+rotate_remote() {
+    local server="$1"
     print_info "處理 ${server}..."
 
     # 1. 遠端產生新 key pair
     if ! ssh "$server" "echo y | ssh-keygen -t ed25519 -f ~/.ssh/id_autogen -N '' -q" 2>/dev/null; then
         print_error "${server}：產生 key 失敗"
         FAILED=$((FAILED + 1))
-        continue
+        return
     fi
 
     # 2. 取回 public key
@@ -75,7 +107,7 @@ for server in "${SERVERS[@]}"; do
     if ! scp "$server:~/.ssh/id_autogen.pub" "$local_pub" 2>/dev/null; then
         print_error "${server}：取回 public key 失敗"
         FAILED=$((FAILED + 1))
-        continue
+        return
     fi
 
     # 3. 本地簽署
@@ -87,7 +119,7 @@ for server in "${SERVERS[@]}"; do
         "$local_pub" 2>/dev/null; then
         print_error "${server}：簽署失敗"
         FAILED=$((FAILED + 1))
-        continue
+        return
     fi
 
     # 4. 上傳 cert
@@ -95,7 +127,7 @@ for server in "${SERVERS[@]}"; do
     if ! scp "$local_cert" "$server:~/.ssh/id_autogen-cert.pub" 2>/dev/null; then
         print_error "${server}：上傳 cert 失敗"
         FAILED=$((FAILED + 1))
-        continue
+        return
     fi
 
     # 5. 修正權限
@@ -103,6 +135,14 @@ for server in "${SERVERS[@]}"; do
 
     print_success "${server}：key 已重新產生並簽署"
     SUCCESS=$((SUCCESS + 1))
+}
+
+for server in "${SERVERS[@]}"; do
+    if [ "$server" = "localhost" ]; then
+        rotate_local
+    else
+        rotate_remote "$server"
+    fi
 done
 
 echo ""
