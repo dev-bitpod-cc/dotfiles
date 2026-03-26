@@ -638,8 +638,11 @@ alias glog='git log --oneline --graph --decorate'
 alias clauded='claude --dangerously-skip-permissions'
 alias claudea='claude --enable-auto-mode'
 
+# Dotfiles 同步
+dotsync() { ~/.dotfiles/scripts/dotfiles-sync.sh "$@"; }
+
 # 系統更新
-alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null'
+alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && [ -f ~/.ssh/known_hosts ] && cat ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null | sort -u > ~/.ssh/known_hosts.tmp && [ -s ~/.ssh/known_hosts.tmp ] && mv ~/.ssh/known_hosts.tmp ~/.ssh/known_hosts || rm -f ~/.ssh/known_hosts.tmp; } 2>/dev/null'
 
 # -------------------------------------------
 # fzf 配置
@@ -763,10 +766,98 @@ EOF
 print_success ".zshrc 已建立"
 
 # ================================================
-# 步驟 4: 建立 .env
+# 步驟 4: SSH 設定
 # ================================================
-print_header "步驟 4: 設定環境變數"
+print_header "步驟 4: 設定 SSH"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+# 4a. iCloud symlink 遷移（複製現有檔案到真實目錄）
+if [ -L ~/.ssh ] && [[ "$(readlink ~/.ssh)" == *"Documents/shell"* ]]; then
+    print_warning "偵測到 iCloud SSH symlink，遷移為真實目錄..."
+    ICLOUD_SSH="$(readlink ~/.ssh)"
+    rm ~/.ssh
+    mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    if [ -d "$ICLOUD_SSH" ]; then
+        cp -a "$ICLOUD_SSH"/. ~/.ssh/ 2>/dev/null || true
+        print_info "已從 $ICLOUD_SSH 複製現有 SSH 檔案"
+    fi
+fi
+
+# 4b. 確保 ~/.ssh 存在
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+
+# 4c. SSH config
+if [ -f "$SCRIPT_DIR/ssh/config" ]; then
+    cat > ~/.ssh/config << SSHEOF
+# 此檔案由 dotfiles setup 腳本產生
+# 共用設定來自 $SCRIPT_DIR/ssh/config
+# 機器特定設定請編輯 ~/.ssh/config.local
+
+$(cat "$SCRIPT_DIR/ssh/config")
+SSHEOF
+    chmod 600 ~/.ssh/config
+    print_success "SSH config 已設定"
+fi
+
+# 4d. SSH config.local（首次建立）
+if [ ! -f ~/.ssh/config.local ]; then
+    cat > ~/.ssh/config.local << 'EOF'
+# 機器特定的 SSH 設定（此檔案不受 dotfiles 管理）
+
+# macOS: 重啟後自動從 Keychain 載入 key passphrase
+Host *
+    UseKeychain yes
+
+# OrbStack:
+# Include ~/.orbstack/ssh/config
+EOF
+    # 如果 OrbStack 已安裝，自動啟用
+    if [ -d ~/.orbstack ]; then
+        cat > ~/.ssh/config.local << 'EOF'
+# 機器特定的 SSH 設定（此檔案不受 dotfiles 管理）
+
+# macOS: 重啟後自動從 Keychain 載入 key passphrase
+Host *
+    UseKeychain yes
+
+# macOS + OrbStack
+Include ~/.orbstack/ssh/config
+EOF
+    fi
+    chmod 600 ~/.ssh/config.local
+    print_success "SSH config.local 已建立"
+fi
+
+# 4e. known_hosts（合併策略：保留本地新增的 host）
+if [ -f "$SCRIPT_DIR/ssh/known_hosts" ]; then
+    if [ -f ~/.ssh/known_hosts ]; then
+        # 合併：repo 版本 + 本地獨有的行
+        cat "$SCRIPT_DIR/ssh/known_hosts" ~/.ssh/known_hosts | sort -u > ~/.ssh/known_hosts.tmp
+        [ -s ~/.ssh/known_hosts.tmp ] && mv ~/.ssh/known_hosts.tmp ~/.ssh/known_hosts || rm -f ~/.ssh/known_hosts.tmp
+    else
+        cp "$SCRIPT_DIR/ssh/known_hosts" ~/.ssh/known_hosts
+    fi
+    chmod 644 ~/.ssh/known_hosts
+    print_success "known_hosts 已同步"
+fi
+
+# 4f. SSH key 檢查
+if [ ! -f ~/.ssh/id_autogen ]; then
+    print_warning "SSH key（id_autogen）不存在，請執行以下指令產生並簽署："
+    echo "  ssh-keygen -t ed25519 -f ~/.ssh/id_autogen -N ''"
+    echo "  ~/.dotfiles/scripts/sign-user-cert.sh ~/.ssh/id_autogen.pub"
+else
+    print_success "SSH key（id_autogen）已存在"
+    if [ -f ~/.ssh/id_autogen-cert.pub ]; then
+        print_success "User certificate 已存在"
+    else
+        print_warning "User certificate 不存在，請執行："
+        echo "  ~/.dotfiles/scripts/sign-user-cert.sh ~/.ssh/id_autogen.pub"
+    fi
+fi
+
+# 4g. .env
 if [ ! -f ~/.env ]; then
     cat > ~/.env << 'EOF'
 # ===========================================
@@ -783,7 +874,7 @@ if [ ! -f ~/.env ]; then
 # ===========================================
 EOF
     chmod 600 ~/.env
-    print_success ".env 已建立（權限: 600）"
+    print_success ".env 已建立（權限: 600）— 請手動填入 API keys"
 else
     print_info ".env 已存在，跳過建立"
 fi
@@ -806,78 +897,17 @@ else
     print_success "Git 用戶: $GIT_USER <$GIT_EMAIL>"
 fi
 
-# Git 基本設定
-git config --global init.defaultBranch main
-git config --global color.ui auto
-git config --global push.autoSetupRemote true
-git config --global pull.rebase true
-git config --global fetch.prune true
-git config --global merge.conflictstyle zdiff3
-git config --global rerere.enabled true
-git config --global diff.algorithm histogram
-git config --global branch.sort -committerdate
-
-# 配置 git-delta
-if command -v delta &> /dev/null; then
-    git config --global core.pager "delta"
-    git config --global interactive.diffFilter "delta --color-only"
-    git config --global delta.navigate true
-    git config --global delta.side-by-side true
-    git config --global delta.line-numbers true
-    git config --global delta.light false
-    print_success "git-delta 已配置"
+# Git 共用設定（透過 include.path 引入 dotfiles 中的 git/config）
+if [ -f "$SCRIPT_DIR/git/config" ]; then
+    git config --global include.path "~/.dotfiles/git/config"
+    print_success "Git 共用設定已載入（include.path）"
 fi
 
-# 建立全域 .gitignore
-cat > ~/.gitignore_global << 'EOF'
-# 環境變數與機密檔案
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*.p12
-*.pfx
-credentials.json
-token.json
-.npmrc
-.pypirc
-
-# macOS 系統檔案
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# IDE 和編輯器
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Node.js
-node_modules/
-npm-debug.log*
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-venv/
-.venv/
-
-# 資料庫
-*.sqlite
-*.sqlite3
-*.db
-
-# 其他
-*.log
-.cache/
-EOF
-
-git config --global core.excludesfile ~/.gitignore_global
-print_success "全域 .gitignore 已設定"
+# 全域 .gitignore（symlink 到 dotfiles）
+if [ -f "$SCRIPT_DIR/git/gitignore_global" ]; then
+    ln -sf "$SCRIPT_DIR/git/gitignore_global" ~/.gitignore_global
+    print_success "全域 .gitignore 已設定（symlink）"
+fi
 
 # 更新 tldr 快取
 if command -v tldr &> /dev/null; then
@@ -888,7 +918,6 @@ fi
 # ================================================
 # 步驟 5.5: 設定 Claude Code 全域配置
 # ================================================
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 if [ -d "$SCRIPT_DIR/claude" ]; then
     print_info "設定 Claude Code 全域配置..."
     mkdir -p ~/.claude
@@ -997,7 +1026,29 @@ else
 fi
 
 # ================================================
-# 步驟 5.7: 設定 tmux 配置
+# 步驟 5.7a: 設定 GitHub CLI 配置
+# ================================================
+if [ -f "$SCRIPT_DIR/gh/config.yml" ]; then
+    mkdir -p ~/.config/gh
+    if [ -L ~/.config/gh/config.yml ]; then
+        rm ~/.config/gh/config.yml
+    elif [ -f ~/.config/gh/config.yml ]; then
+        mv ~/.config/gh/config.yml ~/.config/gh/config.yml.backup
+    fi
+    ln -sf "$SCRIPT_DIR/gh/config.yml" ~/.config/gh/config.yml
+    print_success "已建立 ~/.config/gh/config.yml symlink"
+fi
+
+# ================================================
+# 步驟 5.7b: 清理過期 symlink
+# ================================================
+if [ -L ~/.claude/commands ]; then
+    rm ~/.claude/commands
+    print_info "已移除過期的 ~/.claude/commands symlink（已由 skills/ 取代）"
+fi
+
+# ================================================
+# 步驟 5.8: 設定 tmux 配置
 # ================================================
 if [ -f "$SCRIPT_DIR/tmux.conf" ]; then
     print_info "設定 tmux 配置..."
@@ -1115,6 +1166,10 @@ print_info "檢查配置檔案..."
 [ -f ~/.env ] && echo "  ✅ .env" || echo "  ❌ .env"
 [ -f ~/.fzf.zsh ] && echo "  ✅ .fzf.zsh" || echo "  ❌ .fzf.zsh"
 [ -f ~/.gitignore_global ] && echo "  ✅ .gitignore_global" || echo "  ❌ .gitignore_global"
+[ -d ~/.ssh ] && [ ! -L ~/.ssh ] && echo "  ✅ .ssh（真實目錄）" || echo "  ⚠️  .ssh（symlink 或不存在）"
+[ -f ~/.ssh/config ] && echo "  ✅ .ssh/config" || echo "  ❌ .ssh/config"
+[ -f ~/.ssh/id_autogen ] && echo "  ✅ SSH key（id_autogen）" || echo "  ⚠️  id_autogen 未產生"
+[ -f ~/.ssh/id_autogen-cert.pub ] && echo "  ✅ User certificate" || echo "  ⚠️  User certificate 未簽署"
 
 # 顯示 PATH 統合結果
 echo ""

@@ -1,0 +1,74 @@
+# 統一 SSH 配置（由 dotfiles 管理）
+# 機器特定設定請編輯 ~/.ssh/config.local
+
+Include ~/.ssh/config.local
+
+# 私人帳號
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_github
+    AddKeysToAgent yes
+    IdentitiesOnly yes
+
+# 工作帳號 (jjshen-eland)
+Host github-work
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_github_work
+    AddKeysToAgent yes
+    IdentitiesOnly yes
+
+Host eagle03
+    HostName 10.10.12.130
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host eagle06
+    HostName 10.10.12.6
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host macs
+    HostName 10.10.12.140
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host db01
+    HostName 10.10.12.150
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host ap01
+    HostName 10.10.12.151
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host ap02
+    HostName 172.18.110.11
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host macmini
+    HostName 10.10.12.30
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host m4mini
+    HostName 172.17.13.50
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host agent01
+    HostName 10.10.12.161
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22

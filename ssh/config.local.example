@@ -1,0 +1,7 @@
+# 機器特定的 SSH 設定
+# 此檔案不受 dotfiles 管理，可自由修改
+#
+# macOS + OrbStack:
+# Include ~/.orbstack/ssh/config
+#
+# 在此加入機器特定的 Host 定義

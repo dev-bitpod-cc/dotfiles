@@ -1,0 +1,44 @@
+# 環境變數與機密檔案
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+token.json
+.npmrc
+.pypirc
+
+# macOS 系統檔案
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE 和編輯器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# 資料庫
+*.sqlite
+*.sqlite3
+*.db
+
+# 其他
+*.log
+.cache/

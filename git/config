@@ -1,0 +1,42 @@
+# 共用 Git 設定（由 dotfiles 管理）
+# user.name 和 user.email 請在各機器的 ~/.gitconfig 設定
+
+[init]
+    defaultBranch = main
+
+[color]
+    ui = auto
+
+[push]
+    autoSetupRemote = true
+
+[pull]
+    rebase = true
+
+[fetch]
+    prune = true
+
+[merge]
+    conflictstyle = zdiff3
+
+[rerere]
+    enabled = true
+
+[diff]
+    algorithm = histogram
+
+[branch]
+    sort = -committerdate
+
+[core]
+    pager = delta
+    excludesfile = ~/.gitignore_global
+
+[interactive]
+    diffFilter = delta --color-only
+
+[delta]
+    navigate = true
+    side-by-side = true
+    line-numbers = true
+    light = false
