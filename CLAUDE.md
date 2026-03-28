@@ -139,6 +139,8 @@ scripts/rotate-user-key.sh [server...]    # 遠端重新產生 key + 簽 cert
 
 完成後新主機即加入 cert 互信網路，可用 cert 認證 SSH 到其他所有主機。
 
+> **known_hosts 清理**：bootstrap 階段 SSH 連線會在本機 `~/.ssh/known_hosts` 留下個別 host fingerprint。步驟 7 的 `dotfiles-sync.sh` 會用 repo 的 `ssh/known_hosts`（僅含 `@cert-authority` + GitHub）覆蓋本機和所有遠端主機的 known_hosts，自動清除這些殘留條目。
+
 #### 6. /etc/hosts 更新
 
 所有主機（含新舊）的 `/etc/hosts` 都要有完整的 `# pilot-infra-start/end` block。
