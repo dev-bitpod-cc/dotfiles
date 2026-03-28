@@ -90,12 +90,90 @@ scripts/sign-user-cert.sh <pubkey>        # 簽署使用者 SSH public key
 scripts/rotate-user-key.sh [server...]    # 遠端重新產生 key + 簽 cert
 ```
 
-### 新機器流程
+### 新主機加入開發環境
 
-1. `curl -fsSL dot.bitpod.cc | sh`（環境 + SSH config 就位）
-2. `ssh-keygen -t ed25519 -f ~/.ssh/id_autogen -N ""`
-3. 從有 CA 的機器：`./scripts/sign-user-cert.sh`（簽 cert）
-4. 填 `~/.env`
+將已完成基礎安裝的主機納入 SSH CA 認證、主機名稱解析、dotfiles 同步等基礎設施。
+
+**前提條件**（使用者在新主機上已完成）：
+- `curl -fsSL dot.bitpod.cc | sh`（自動 clone dotfiles + 執行平台對應的 setup script）
+- 能從本機 SSH 連線（使用者需先用 `ssh-copy-id` 放臨時公鑰）
+
+**執行步驟**（從本機 .dotfiles 目錄操作）：
+
+#### 1. 修改 dotfiles 配置
+
+需要修改的檔案與位置：
+
+| 檔案 | 修改內容 |
+|------|----------|
+| `ssh/config` | 新增 Host block（HostName、User jjshen、IdentityFile ~/.ssh/id_autogen、Port 22） |
+| `scripts/dotfiles-sync.sh` | `ALL_HOSTS` 陣列加入新主機 |
+| `scripts/sign-host-keys.sh` | `ALL_SERVERS` 陣列加入新主機 |
+| `scripts/rotate-user-key.sh` | `ALL_SERVERS` 陣列加入新主機 |
+
+`ssh/known_hosts` 使用 `@cert-authority` 萬用字元，通常不需修改（確認新 IP 在已涵蓋的範圍：`10.10.12.*`、`10.10.40.*`、`172.17.13.*`、`172.18.110.*`）。
+
+#### 2. 套用本機 SSH config
+
+修改 dotfiles 後，立即將 `ssh/config` 寫入 `~/.ssh/config`，讓 host alias 可用。
+
+#### 3. SSH keys 部署
+
+複製到新主機（兩組 GitHub key 都要）：
+- `~/.ssh/id_github` + `.pub` — GitHub 個人帳號 + fallback 認證
+- `~/.ssh/id_github_work` + `.pub` — GitHub 工作帳號
+
+設定 `~/.ssh/authorized_keys`：放入 `id_github.pub`（所有伺服器統一的 fallback key，用於不支援 cert 的終端設備連入）。bootstrap 期間可暫時保留 `id_autogen.pub`，CA 設定完成後可移除。
+
+#### 4. SSH config + known_hosts 套用到新主機
+
+將 `ssh/config` 寫入新主機的 `~/.ssh/config`，`ssh/known_hosts` 複製到 `~/.ssh/known_hosts`。建立空的 `~/.ssh/config.local`（如不存在）。
+
+#### 5. CA 簽署
+
+依序執行（需要 iCloud 中的 CA private key）：
+```bash
+./scripts/sign-host-keys.sh <new_hosts...>    # Host CA：簽署 host key + 部署 User CA
+./scripts/rotate-user-key.sh <new_hosts...>   # User cert：產生各機器 id_autogen + 簽 cert
+```
+
+完成後新主機即加入 cert 互信網路，可用 cert 認證 SSH 到其他所有主機。
+
+#### 6. /etc/hosts 更新
+
+所有主機（含新舊）的 `/etc/hosts` 都要有完整的 `# pilot-infra-start/end` block。
+
+格式範例：
+```
+# pilot-infra-start
+10.10.12.6    eagle06
+10.10.12.7    eagle07
+...
+# pilot-infra-end
+```
+
+- **遠端主機**：透過 SSH 用 `sudo sed` 刪除舊 block + `sudo tee -a` 寫入新 block
+- **本機 Mac**：需要 `sudo`，提示使用者手動執行（Claude Code sandbox 無法 sudo）
+
+#### 7. Commit、Push、Sync
+
+```bash
+git add ssh/config scripts/dotfiles-sync.sh scripts/sign-host-keys.sh scripts/rotate-user-key.sh
+git commit -m "feat: 新增 <hostname> 至 SSH config 與主機清單"
+git push
+./scripts/dotfiles-sync.sh    # 同步到所有主機
+```
+
+#### 8. 驗證
+
+- 本機 → 新主機 SSH（cert 認證，不應要求密碼）
+- 新主機 → 既有主機 SSH（`ssh <host> "ssh <other_host> hostname"`）
+- `/etc/hosts` 解析（`ssh <new_host> "getent hosts <any_host>"`）
+
+#### 使用者仍需手動完成
+
+- 新主機上填寫 `~/.env`（API keys 等機密）
+- 新主機上設定 `~/.gitconfig` 的 `user.name` / `user.email`
 
 ## 內網工具
 
