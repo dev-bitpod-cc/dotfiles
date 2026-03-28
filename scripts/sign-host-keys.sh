@@ -38,7 +38,7 @@ print_error()   { echo -e "${RED}  ❌ $1${NC}"; }
 HOST_CA="$HOME/Documents/shell/security/ssh/sshca/hostca/host_ca_key"
 
 # 所有內網伺服器（Host alias → 用於 SSH 連線）
-ALL_SERVERS=(eagle03 eagle06 macs db01 ap01 ap02 macmini m4mini agent01)
+ALL_SERVERS=(eagle03 eagle06 eagle07 eagle08 eagle09 macs db01 ap01 ap02 macmini m4mini agent01)
 
 # Certificate 有效期（預設 52 週）
 VALIDITY="+52w"

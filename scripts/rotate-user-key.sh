@@ -36,7 +36,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_CA="$HOME/Documents/shell/security/ssh/sshca/userca/user_ca_key"
 DEFAULT_PRINCIPALS="jjshen"
 VALIDITY="+52w"
-ALL_SERVERS=(eagle03 eagle06 macs db01 ap01 ap02 macmini m4mini agent01)
+ALL_SERVERS=(eagle03 eagle06 eagle07 eagle08 eagle09 macs db01 ap01 ap02 macmini m4mini agent01)
 
 WORK_DIR="$(mktemp -d)"
 cleanup() { rm -rf "$WORK_DIR"; }

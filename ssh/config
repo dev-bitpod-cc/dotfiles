@@ -31,6 +31,24 @@ Host eagle06
     IdentityFile ~/.ssh/id_autogen
     Port 22
 
+Host eagle07
+    HostName 10.10.12.7
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host eagle08
+    HostName 10.10.12.8
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host eagle09
+    HostName 10.10.12.9
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
 Host macs
     HostName 10.10.12.140
     User jjshen
