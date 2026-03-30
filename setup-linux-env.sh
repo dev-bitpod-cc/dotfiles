@@ -586,7 +586,7 @@ alias claudea='claude --enable-auto-mode'
 dotsync() { ~/.dotfiles/scripts/dotfiles-sync.sh "$@"; }
 
 # 系統更新（兩個 alias：brewup 管 Homebrew + dotfiles，sysup 管 apt）
-alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && cp ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null; } 2>/dev/null'
+alias brewup='(cd ~/.dotfiles && git pull 2>/dev/null); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude update 2>/dev/null; claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && cp ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null; } 2>/dev/null'
 alias sysup='sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
 
 # NVIDIA GPU 工具（僅在有 GPU 時載入）
