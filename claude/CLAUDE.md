@@ -188,6 +188,10 @@ bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, gh, 
 - `venv [name]` - 建立 Python 虛擬環境（優先使用 uv）
 - `sysupdate` - 詳細的系統更新（僅 Linux）
 
+## 工具安裝原則
+
+需要 CLI 工具時，先 `command -v <tool>` 檢查，沒有就 `brew install`，直接使用。不要因為工具不在就繞路。僅限標準 CLI 工具，專案依賴走 uv/bun 管理。
+
 ## 注意
 
 1. 原生命令未被替換（ls, cat, find, grep 可用）
