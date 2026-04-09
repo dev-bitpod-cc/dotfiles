@@ -90,3 +90,15 @@ Host agent01
     User jjshen
     IdentityFile ~/.ssh/id_autogen
     Port 22
+
+Host fe01
+    HostName 10.200.50.11
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
+
+Host be01
+    HostName 10.200.50.12
+    User jjshen
+    IdentityFile ~/.ssh/id_autogen
+    Port 22
