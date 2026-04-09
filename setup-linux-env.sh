@@ -281,7 +281,7 @@ echo "Kernel: $(uname -r)"
 echo "Architecture: $(uname -m)"
 
 print_info "更新套件清單..."
-sudo apt update -qq
+sudo DEBIAN_FRONTEND=noninteractive apt update -qq
 
 print_info "確保 zh_TW.UTF-8 locale 可用..."
 if ! locale -a 2>/dev/null | grep -q zh_TW; then
@@ -292,7 +292,7 @@ else
 fi
 
 print_info "安裝 Homebrew 前置依賴..."
-sudo apt install -y -qq \
+sudo DEBIAN_FRONTEND=noninteractive apt install -y -qq \
     build-essential \
     curl \
     wget \
@@ -1113,7 +1113,7 @@ if [ -f "$SCRIPT_DIR/tmux.conf" ]; then
         print_info "安裝 tmux-256color terminfo..."
         # Linux：嘗試透過套件管理器安裝 ncurses-term
         if command -v apt-get &>/dev/null; then
-            sudo apt-get install -y ncurses-term &>/dev/null && print_success "已透過 apt 安裝 ncurses-term"
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ncurses-term &>/dev/null && print_success "已透過 apt 安裝 ncurses-term"
         elif command -v dnf &>/dev/null; then
             sudo dnf install -y ncurses-base &>/dev/null && print_success "已透過 dnf 安裝 ncurses-base"
         elif command -v pacman &>/dev/null; then
