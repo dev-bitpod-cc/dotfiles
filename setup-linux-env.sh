@@ -601,7 +601,7 @@ if command -v nvidia-smi &>/dev/null; then
         echo ""
         echo "To upgrade, run in Claude Code for guided execution."
     }
-    nvidia-hold() {
+    nvidia-lock() {
         local pkgs
         pkgs=$(dpkg -l | awk '/^ii.*(nvidia|cuda|libnvidia)/{print $2}')
         if [ -z "$pkgs" ]; then
@@ -617,7 +617,7 @@ if command -v nvidia-smi &>/dev/null; then
         echo ""
         echo "Done. These packages will not be upgraded by sysup."
     }
-    nvidia-unhold() {
+    nvidia-unlock() {
         local pkgs
         pkgs=$(sudo apt-mark showhold | grep -iE 'nvidia|cuda|libnvidia')
         if [ -z "$pkgs" ]; then
@@ -857,8 +857,8 @@ cat >> ~/.bashrc << 'EOF'
 #
 # NVIDIA GPU（有 nvidia-smi 時自動載入）：
 #   nvidia-check  - 檢查 NVIDIA/CUDA 套件是否有可用更新
-#   nvidia-hold   - 鎖定已安裝的 NVIDIA/CUDA 套件，避免 sysup 自動升級
-#   nvidia-unhold - 解除鎖定，恢復 sysup 自動升級
+#   nvidia-lock   - 鎖定已安裝的 NVIDIA/CUDA 套件，避免 sysup 自動升級
+#   nvidia-unlock - 解除鎖定，恢復 sysup 自動升級
 #
 # ===========================================
 EOF
@@ -1285,8 +1285,8 @@ if command -v nvidia-smi &>/dev/null; then
     echo ""
     echo "NVIDIA GPU 工具："
     echo -e "  ${BLUE}nvidia-check${NC}           # 檢查 NVIDIA/CUDA 套件是否有可用更新"
-    echo -e "  ${BLUE}nvidia-hold${NC}            # 鎖定 NVIDIA/CUDA 套件，避免 sysup 自動升級"
-    echo -e "  ${BLUE}nvidia-unhold${NC}          # 解除鎖定，恢復 sysup 自動升級"
+    echo -e "  ${BLUE}nvidia-lock${NC}            # 鎖定 NVIDIA/CUDA 套件，避免 sysup 自動升級"
+    echo -e "  ${BLUE}nvidia-unlock${NC}          # 解除鎖定，恢復 sysup 自動升級"
 fi
 
 echo ""
