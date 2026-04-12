@@ -12,6 +12,22 @@
 
 使用者貼「第三方審查結果」+ findings 時，逐條讀原始碼獨立驗證，不附和。對每條判定 true positive / false positive / context-dependent。不預設 findings 正確，不預設錯誤。使用者不會告訴你來源或自己的看法，你也不要問。
 
+### 觸發詞：「由 codex 進行第三方審查」
+
+使用者說這句話時（或變體「交給 codex 審查」、「codex 第三方」），觸發固定流程：
+
+1. 從最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊取出 repo 路徑 + commit range（例如 `HEAD~1..HEAD`、`origin/main..HEAD`、或具體 hash 範圍）
+2. 呼叫 `codex:rescue`，**prompt 只含一行**：
+   ```
+   Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.
+   ```
+3. **絕對不要**：寫自訂 focus points、要求跑測試、加 context files、解釋要審什麼、傳專案慣例文件
+4. 收到 Codex findings 後依當前模式處理（autofix → 自動修復 commit；否則列出等使用者決定）
+
+**Why**：Codex 的 `repo-review` skill 有自己的 workflow（讀 diff + 必要的周邊 context）。自訂 prompt 會讓它偏離既有流程、嘗試不可用的 sandbox 操作（uv/pytest），拉長審查時間。最精簡的 prompt 才能讓它用最有效率的路徑完成。
+
+**注意**：若「第三方審查資訊」已被 push（`origin/main..HEAD` 為空），改用 `HEAD~1..HEAD`（或前 N 個 commits 的範圍）。
+
 ## 安全規則
 
 1. 不要寫死 secrets、API keys、密碼
