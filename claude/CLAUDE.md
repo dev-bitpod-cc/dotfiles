@@ -2,6 +2,13 @@
 
 > 本段為硬性約束，違反會造成實質影響。
 
+## 實作前先 Think
+
+- 歧義任務**不要 silent pick**。多重合理解讀時先列出、讓使用者選，不要自己挑一個就開始寫
+- 非 trivial 任務先講 success criteria（「完成」怎麼驗證），再動手
+- 不確定就停下來問，不要為了維持推進感而 assume
+- Bug fix 一律先寫能重現的 test，再改
+
 ## PR 與 Git
 
 - **不可自作主張 merge**——使用者明確說 merge / bypass merge 時才執行。只說「push」或「開 PR」時不要加 merge
@@ -91,17 +98,7 @@
 
 ### 確認流程（適用所有跨 repo skill）
 
-```
-主 agent: "本次涉及 2 個 repo：
-  1. ais-platform（3 檔案變更）
-  2. ais-platform-deploy（5 檔案變更）
-  一起處理？或需要調整？"
-
-使用者回覆：
-  "ok"          → 開始
-  "只看 deploy" → 限縮
-  "還有 repo-X" → 擴充
-```
+確認流程：列出 `(repo, 檔案數)` 清單、等使用者確認（ok）/ 限縮（只看 X）/ 擴充（還有 Y）。
 
 ### 注意
 
@@ -114,72 +111,21 @@
 - 可搭配 `/skill-creator` plugin 加速建立和迭代
 - 現有 skill 位於 `~/.dotfiles/claude/skills/`
 
-### Skill 同步規則
-
-以下 skill 同時存在於 user level（source of truth）和 project level，修改時必須同步：
-
-| Skill | User level | Project level |
-|-------|-----------|---------------|
-| `uap` | `~/.dotfiles/claude/skills/uap/` | `ais-platform/.claude/skills/uap/` + `ais-platform-deploy/.claude/skills/uap/` |
-| `deep-review` | `~/.dotfiles/claude/skills/deep-review/` | `ais-platform/.claude/skills/deep-review/` |
-| `check-crawl-quality` | `~/.dotfiles/claude/skills/check-crawl-quality/` | `ais-platform/.claude/skills/check-crawl-quality/` |
-
 ---
 
 # Notification Center (NC) 整合規範
 
-NC 是統一的 Telegram 通知服務（db01:8100）。**所有背景、排程、長時間運行的程序都必須整合。**
-完整 API 文件：`~/Projects/notification-center/INTEGRATION.md`
+NC 是統一的 Telegram 通知服務（db01:8100）。完整 API 文件與範例：`~/Projects/notification-center/INTEGRATION.md` — 細節（status 欄位、notify_on、dedup_key 用法、範例訊息）去那裡查。
 
-## 何時整合
+**何時必須整合**：cron 排程、背景腳本（爬蟲/回補）、pipeline（標註/訓練）的開始/完成/失敗必發通知；長時間任務（>5 分鐘）加進度追蹤。一次性手動腳本 >10 分鐘建議加。API 服務不需要。
 
-| 程序類型 | 通知 | 進度 | 說明 |
-|----------|------|------|------|
-| Cron 排程 | 必須 | — | 完成/失敗都要通知 |
-| 背景腳本（爬蟲、回補） | 必須 | 必須 | 長時間任務需進度追蹤 |
-| Pipeline（標註、訓練） | 必須 | 必須 | 每個 phase 回報進度 |
-| 一次性手動腳本 | 建議 | — | 超過 10 分鐘的建議加 |
-| API 服務 | — | — | 不需要 |
+**訊息格式**：`{動作結果}: {關鍵數據}`，動作在前、數據在後、一行 ≤200 字。**不加 emoji**（NC 依 level 自動加）、**不重複 source**（NC 自動加前綴）。三級制：`info`（完成）/ `warning`（非致命異常）/ `error`（需立即處理）。
 
-## 通知規則
+**進度追蹤**：task 命名 `{功能}-{動作}`（如 `revenue-backfill`、`risk-v12-train`）。
 
-三級制：`info`（正常完成）/ `warning`（非致命異常）/ `error`（失敗、需立即處理）
+**環境變數**：`NC_API_URL` + `NC_API_KEY`。
 
-訊息格式：`{動作結果}: {關鍵數據}`
-- 動作結果在前，關鍵數據跟後，一行不超過 200 字
-- 不加 emoji（NC 根據 level 自動加）、不重複 source（NC 自動加前綴）
-
-```
-# 好
-"排程完成 (3m12s)"
-"爬蟲完成: 新增 1,200 筆, 更新 350 筆"
-# 壞
-"✅ mops-major-news 排程完成"     ← emoji 多餘，source 重複
-"完成"                            ← 缺數據
-```
-
-## 進度追蹤
-
-task 命名：`{功能}-{動作}`，如 `revenue-backfill`、`risk-v12-train`
-
-| 時機 | status | percent | detail |
-|------|--------|---------|--------|
-| 開始 | running | 0 | `共 N 筆` |
-| 進行中 | running | 計算值 | `{i}/{total}` |
-| 完成 | completed | 100 | `完成` |
-| 失敗 | failed | 當前值 | `錯誤原因` |
-
-- 超過 5 分鐘的任務用 `notify_on` 自動推播（見 INTEGRATION.md）
-- Cron/重試場景用 `dedup_key` 去重（見 INTEGRATION.md）
-
-## 環境變數與原則
-
-```bash
-NC_API_URL=http://localhost:8100
-NC_API_KEY=nc_xxxxx                # POST /api/v1/keys 產生
-```
-
-**靜默失敗**：NC 不可用時不能影響主流程，所有 NC 呼叫必須 try/except 靜默處理。
+**靜默失敗**：NC 不可用不能影響主流程，所有 NC 呼叫必須 try/except 靜默處理。
 
 ---
 
@@ -189,28 +135,6 @@ NC_API_KEY=nc_xxxxx                # POST /api/v1/keys 產生
 
 bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, gh, httpie, shellcheck, sd, hyperfine, tokei, tldr, tmux, direnv, just, watchexec
 
-## 別名
-
-- 檔案：`ll`, `la`, `lt`, `llt`（eza）
-- Git：`gs`, `gd`, `ga`, `gc`, `gp`, `gl`, `gco`, `gb`, `glog`
-- 更新：`brewup` (macOS/Linux) - brew update/upgrade + dotfiles pull + Claude plugins
-- 更新：`sysup` (Linux only) - apt update/upgrade
-
-## 自訂函數
-
-- `fe` - fzf 搜尋並編輯檔案
-- `proj` - 快速切換專案目錄
-- `stats` - 程式碼統計（tokei）
-- `venv [name]` - 建立 Python 虛擬環境（優先使用 uv）
-- `sysupdate` - 詳細的系統更新（僅 Linux）
-
 ## 工具安裝原則
 
 需要 CLI 工具時，先 `command -v <tool>` 檢查，沒有就 `brew install`，直接使用。不要因為工具不在就繞路。僅限標準 CLI 工具，專案依賴走 uv/bun 管理。
-
-## 注意
-
-1. 原生命令未被替換（ls, cat, find, grep 可用）
-2. 不要假設單字母別名
-3. Linux: 工具透過 Homebrew 安裝，`fd`/`bat` 是原名（保留 fdfind/batcat fallback alias）
-4. PATH 包含 `~/.local/bin`
