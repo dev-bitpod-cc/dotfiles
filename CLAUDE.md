@@ -82,91 +82,74 @@ glog=git log --oneline --graph --decorate
 | `ssh/host_ca.pub` | Host CA 公鑰 |
 | `ssh/user_ca.pub` | User CA 公鑰 |
 
-### CA 簽署工具
+### 主機清單（Single Source of Truth）
+
+`scripts/inventory.conf` 是內網主機的唯一來源，格式 `<alias> <ip>`。
+以下內容皆從它生成或 source，**不要手動改**：
+
+- `ssh/config` 的 `# BEGIN inventory hosts` ... `# END inventory hosts` 區塊
+- `/etc/hosts` 的 `# pilot-infra-start` ... `# pilot-infra-end` 區塊
+- `sign-host-keys.sh` / `sign-user-key.sh` / `dotfiles-sync.sh` 內的主機清單（透過 `scripts/lib/inventory.sh` source）
+
+### CA 簽署與主機管理工具
 
 ```
+scripts/add-new-host.sh <alias> <ip>      # 新增主機：單一入口（推薦）
+scripts/render-ssh-config.sh              # 從 inventory 重生 ssh/config 區塊
+scripts/render-etc-hosts.sh               # 從 inventory 生成 /etc/hosts 區塊（--apply / --remote）
 scripts/sign-host-keys.sh [server...]     # 批次簽署 host key + 部署 User CA
 scripts/sign-user-cert.sh <pubkey>        # 簽署使用者 SSH public key
-scripts/rotate-user-key.sh [server...]    # 遠端重新產生 key + 簽 cert
+scripts/sign-user-key.sh [server...]      # 遠端重新產生 key + 簽 cert
+scripts/dotfiles-sync.sh [host...]        # 同步 dotfiles 到所有主機
 ```
 
 ### 新主機加入開發環境
 
-將已完成基礎安裝的主機納入 SSH CA 認證、主機名稱解析、dotfiles 同步等基礎設施。
-
 **前提條件**（使用者在新主機上已完成）：
 - `curl -fsSL dot.bitpod.cc | sh`（自動 clone dotfiles + 執行平台對應的 setup script）
 - 能從本機 SSH 連線（使用者需先用 `ssh-copy-id` 放臨時公鑰）
+- 新主機 IP 需在 `ssh/known_hosts` 的 `@cert-authority` 涵蓋範圍內（`10.10.12.*`、`10.10.40.*`、`10.200.50.*`、`172.17.13.*`、`172.18.110.*`），否則先擴充
 
-**執行步驟**（從本機 .dotfiles 目錄操作）：
+#### 主要流程
 
-#### 1. 修改 dotfiles 配置
-
-需要修改的檔案與位置：
-
-| 檔案 | 修改內容 |
-|------|----------|
-| `ssh/config` | 新增 Host block（HostName、User jjshen、IdentityFile ~/.ssh/id_autogen、Port 22） |
-| `scripts/dotfiles-sync.sh` | `ALL_HOSTS` 陣列加入新主機 |
-| `scripts/sign-host-keys.sh` | `ALL_SERVERS` 陣列加入新主機 |
-| `scripts/rotate-user-key.sh` | `ALL_SERVERS` 陣列加入新主機 |
-
-`ssh/known_hosts` 使用 `@cert-authority` 萬用字元，通常不需修改（確認新 IP 在已涵蓋的範圍：`10.10.12.*`、`10.10.40.*`、`172.17.13.*`、`172.18.110.*`）。
-
-#### 2. 套用本機 SSH config
-
-修改 dotfiles 後，立即將 `ssh/config` 寫入 `~/.ssh/config`，讓 host alias 可用。
-
-#### 3. SSH keys 部署
-
-複製到新主機（兩組 GitHub key 都要）：
-- `~/.ssh/id_github` + `.pub` — GitHub 個人帳號 + fallback 認證
-- `~/.ssh/id_github_work` + `.pub` — GitHub 工作帳號
-
-設定 `~/.ssh/authorized_keys`：放入 `id_github.pub`（所有伺服器統一的 fallback key，用於不支援 cert 的終端設備連入）。bootstrap 期間可暫時保留 `id_autogen.pub`，CA 設定完成後可移除。
-
-#### 4. SSH config + known_hosts 套用到新主機
-
-將 `ssh/config` 寫入新主機的 `~/.ssh/config`，`ssh/known_hosts` 複製到 `~/.ssh/known_hosts`。建立空的 `~/.ssh/config.local`（如不存在）。
-
-#### 5. CA 簽署
-
-依序執行（需要 iCloud 中的 CA private key）：
-```bash
-./scripts/sign-host-keys.sh <new_hosts...>    # Host CA：簽署 host key + 部署 User CA
-./scripts/rotate-user-key.sh <new_hosts...>   # User cert：產生各機器 id_autogen + 簽 cert
-```
-
-完成後新主機即加入 cert 互信網路，可用 cert 認證 SSH 到其他所有主機。
-
-> **known_hosts 清理**：bootstrap 階段 SSH 連線會在本機 `~/.ssh/known_hosts` 留下個別 host fingerprint。步驟 7 的 `dotfiles-sync.sh` 會用 repo 的 `ssh/known_hosts`（僅含 `@cert-authority` + GitHub）覆蓋本機和所有遠端主機的 known_hosts，自動清除這些殘留條目。
-
-#### 6. /etc/hosts 更新
-
-所有主機（含新舊）的 `/etc/hosts` 都要有完整的 `# pilot-infra-start/end` block。
-
-格式範例：
-```
-# pilot-infra-start
-10.10.12.6    eagle06
-10.10.12.7    eagle07
-...
-# pilot-infra-end
-```
-
-- **遠端主機**：透過 SSH 用 `sudo sed` 刪除舊 block + `sudo tee -a` 寫入新 block
-- **本機 Mac**：需要 `sudo`，提示使用者手動執行（Claude Code sandbox 無法 sudo）
-
-#### 7. Commit、Push、Sync
+在**有 iCloud CA 的管理 Mac** 上，從 `~/.dotfiles` 目錄執行：
 
 ```bash
-git add ssh/config scripts/dotfiles-sync.sh scripts/sign-host-keys.sh scripts/rotate-user-key.sh
-git commit -m "feat: 新增 <hostname> 至 SSH config 與主機清單"
+./scripts/add-new-host.sh <alias> <ip>
+```
+
+腳本自動完成：
+
+1. **Phase A（metadata）**：驗證 → 寫入 `inventory.conf` → 重生 `ssh/config` → 套用 `~/.ssh/config` → 更新本機 `/etc/hosts`（需 sudo）→ git commit（不 push）
+2. **Phase B（金鑰部署 + CA 簽署）**：部署 `id_github` / `id_github_work` / `authorized_keys` / `ssh/config` / `known_hosts` 到新主機 → `sign-host-keys.sh` → `sign-user-key.sh`
+
+Phase B 結束後，手動完成 Phase C：
+
+```bash
 git push
-./scripts/dotfiles-sync.sh    # 同步到所有主機
+./scripts/dotfiles-sync.sh                      # 同步到所有主機
+./scripts/render-etc-hosts.sh --remote <host>   # 更新其他主機 /etc/hosts（每台逐一，選用）
 ```
 
-#### 8. 驗證
+#### 降級情境：沒 iCloud CA 的 Mac
+
+腳本會偵測到 CA 缺失，只跑 Phase A 並提示：
+
+```
+Phase A 已完成。在有 CA 的管理機上執行：
+    cd ~/.dotfiles && git pull
+    ./scripts/add-new-host.sh --resume <alias>
+```
+
+先在無 CA Mac commit + push，再到管理機 `--resume` 接著跑 Phase B。
+
+#### 預覽模式
+
+```bash
+./scripts/add-new-host.sh --dry-run <alias> <ip>    # 只印出會做什麼，不動檔案
+```
+
+#### 驗證
 
 - 本機 → 新主機 SSH（cert 認證，不應要求密碼）
 - 新主機 → 既有主機 SSH（`ssh <host> "ssh <other_host> hostname"`）
@@ -176,6 +159,8 @@ git push
 
 - 新主機上填寫 `~/.env`（API keys 等機密）
 - 新主機上設定 `~/.gitconfig` 的 `user.name` / `user.email`
+
+> **known_hosts 清理**：bootstrap 階段 SSH 連線會在本機 `~/.ssh/known_hosts` 留下個別 host fingerprint。`dotfiles-sync.sh` 會用 repo 的 `ssh/known_hosts`（僅含 `@cert-authority` + GitHub）覆蓋本機和所有遠端主機的 known_hosts，自動清除這些殘留條目。
 
 ## 內網工具
 

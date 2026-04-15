@@ -14,7 +14,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DOTFILES_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-ALL_HOSTS=(eagle03 eagle06 eagle07 eagle08 eagle09 macs db01 ap01 ap02 macmini m4mini agent01 fe01 be01)
+# 主機清單：從 inventory.conf 載入
+# shellcheck source=lib/inventory.sh
+source "$SCRIPT_DIR/lib/inventory.sh"
+ALL_HOSTS=()
+while IFS= read -r _host; do
+    [ -n "$_host" ] && ALL_HOSTS+=("$_host")
+done < <(inventory_hosts)
 
 if [ $# -gt 0 ]; then
     HOSTS=("$@")

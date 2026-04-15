@@ -19,6 +19,7 @@ Host github-work
     AddKeysToAgent yes
     IdentitiesOnly yes
 
+# BEGIN inventory hosts (由 scripts/render-ssh-config.sh 生成，勿手動編輯)
 Host eagle03
     HostName 10.10.12.130
     User jjshen
@@ -102,3 +103,4 @@ Host be01
     User jjshen
     IdentityFile ~/.ssh/id_autogen
     Port 22
+# END inventory hosts

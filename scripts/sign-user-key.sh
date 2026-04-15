@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# rotate-user-key.sh — 在遠端機器上重新產生 SSH key 並簽署 cert
+# sign-user-key.sh — 在遠端機器上重新產生 SSH key 並簽署 cert
 #
 # 用法：
-#   ./scripts/rotate-user-key.sh localhost         # 本機
-#   ./scripts/rotate-user-key.sh eagle03          # 指定機器
-#   ./scripts/rotate-user-key.sh eagle03 db01     # 多台
-#   ./scripts/rotate-user-key.sh --all            # ALL_SERVERS（不含本機）
+#   ./scripts/sign-user-key.sh localhost         # 本機
+#   ./scripts/sign-user-key.sh eagle03          # 指定機器
+#   ./scripts/sign-user-key.sh eagle03 db01     # 多台
+#   ./scripts/sign-user-key.sh --all            # ALL_SERVERS（不含本機）
 #
 # 前提：
 #   - User CA private key 在 iCloud
@@ -36,7 +36,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_CA="$HOME/Documents/shell/security/ssh/sshca/userca/user_ca_key"
 DEFAULT_PRINCIPALS="jjshen"
 VALIDITY="+52w"
-ALL_SERVERS=(eagle03 eagle06 eagle07 eagle08 eagle09 macs db01 ap01 ap02 macmini m4mini agent01 fe01 be01)
+
+# 主機清單：從 inventory.conf 載入
+# shellcheck source=lib/inventory.sh
+source "$SCRIPT_DIR/lib/inventory.sh"
+ALL_SERVERS=()
+while IFS= read -r _host; do
+    [ -n "$_host" ] && ALL_SERVERS+=("$_host")
+done < <(inventory_hosts)
 
 WORK_DIR="$(mktemp -d)"
 cleanup() { rm -rf "$WORK_DIR"; }

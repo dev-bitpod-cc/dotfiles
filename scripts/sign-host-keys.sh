@@ -37,15 +37,20 @@ print_error()   { echo -e "${RED}  ❌ $1${NC}"; }
 # Host CA private key（iCloud）
 HOST_CA="$HOME/Documents/shell/security/ssh/sshca/hostca/host_ca_key"
 
-# 所有內網伺服器（Host alias → 用於 SSH 連線）
-ALL_SERVERS=(eagle03 eagle06 eagle07 eagle08 eagle09 macs db01 ap01 ap02 macmini m4mini agent01 fe01 be01)
-
 # Certificate 有效期（預設 52 週）
 VALIDITY="+52w"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DOTFILES_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORK_DIR="$(mktemp -d)"
+
+# 主機清單：從 inventory.conf 載入
+# shellcheck source=lib/inventory.sh
+source "$SCRIPT_DIR/lib/inventory.sh"
+ALL_SERVERS=()
+while IFS= read -r _host; do
+    [ -n "$_host" ] && ALL_SERVERS+=("$_host")
+done < <(inventory_hosts)
 
 cleanup() {
     rm -rf "$WORK_DIR"
