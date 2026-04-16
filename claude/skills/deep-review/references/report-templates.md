@@ -178,3 +178,64 @@
 
 改完後可再跑 `/deep-review` 或 `/deep-review autofix`。
 ```
+
+## 報告模板 — Codex 第三方審查通過
+
+```markdown
+## Codex 第三方審查 — 通過
+
+**審查範圍**:
+{每個 repo 的路徑和 commit range}
+
+### Codex 審查軌跡
+
+| 輪次 | Findings | True Positive | 修復 | 說明 |
+|------|----------|---------------|------|------|
+| C1 | {N} | {N} | {N} | {一句話：主要修了什麼，或「全為 false positive」} |
+| C2 | {N} | {N} | — | 無 blocking findings |
+
+{若 C1 即無 true positive}
+| C1 | {N} | 0 | — | 全為 false positive，無需修復 |
+
+### False Positive 記錄
+{列出被判定為 false positive 的 findings 及理由，供使用者參考}
+- [FP] {finding 描述} — {為何是 false positive}
+
+### Commit 建議
+{與通過報告相同——squash 所有 review fix commits（CC 階段 + codex 階段），message 採原始功能語意}
+
+CC 審查 + Codex 第三方審查皆通過，可以提交了。
+```
+
+## 報告模板 — Codex 第三方審查終止（C3 仍有 true positive）
+
+```markdown
+## Codex 第三方審查 — 終止（C3 仍有 true positive）
+
+**審查範圍**:
+{每個 repo 的路徑和 commit range}
+
+### Codex 審查軌跡
+
+| 輪次 | Findings | True Positive | 修復 | 說明 |
+|------|----------|---------------|------|------|
+| C1 | {N} | {N} | {N} | {一句話} |
+| C2 | {N} | {N} | {N} | {一句話} |
+| C3 | {N} | {N} | — | 未自動修復 |
+
+### 收斂失敗分析
+{為什麼兩輪修不完——是修 A 引入 B？還是 codex 持續在不同角度發現新問題？}
+
+### 剩餘 True Positive
+{列出 C3 中被判定為 true positive 的 findings}
+- [TP] `file.py:42` — {問題描述} — {影響}
+
+### False Positive 記錄
+- [FP] {finding 描述} — {為何是 false positive}
+
+### 建議下一步
+{具體建議：手動修復剩餘問題後可再跑 `/deep-review autocodex`}
+
+### Branch 狀態
+目前 branch 上有 CC 審查 fix commits + codex fix commits。修復剩餘問題後，一併 squash 成乾淨 commit。
+```
