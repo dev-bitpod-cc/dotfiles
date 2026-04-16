@@ -989,11 +989,33 @@ if [ -d "$SCRIPT_DIR/codex" ]; then
         fi
     }
 
-    __sync_codex_dir() {
+    __codex_link() {
         local src="$1" dst="$2"
-        [ -d "$src" ] || return 0
-        mkdir -p "$dst"
-        rsync -a --delete "$src"/ "$dst"/
+        [ -e "$src" ] || [ -L "$src" ] || return 0
+        if [ -L "$dst" ] || [ -e "$dst" ]; then
+            rm -rf "$dst"
+        fi
+        ln -sf "$src" "$dst"
+    }
+
+    __codex_link_skills() {
+        local src_root="$1" dst_root="$2" skill_dir skill_name target
+        [ -d "$src_root" ] || return 0
+        mkdir -p "$dst_root"
+
+        for skill_dir in "$src_root"/*; do
+            [ -d "$skill_dir" ] || continue
+            [ -f "$skill_dir/SKILL.md" ] || continue
+
+            skill_name=$(basename "$skill_dir")
+            target="$dst_root/$skill_name"
+
+            if [ -L "$target" ] || [ -e "$target" ]; then
+                rm -rf "$target"
+            fi
+
+            ln -sf "$skill_dir" "$target"
+        done
     }
 
     __extract_codex_local_config ~/.codex/config.toml ~/.codex/config.local.toml
@@ -1007,14 +1029,15 @@ if [ -d "$SCRIPT_DIR/codex" ]; then
         print_success "已同步 ~/.codex/config.toml"
     fi
 
-    __sync_codex_dir "$SCRIPT_DIR/codex/rules" ~/.codex/rules
-    [ -d "$SCRIPT_DIR/codex/rules" ] && print_success "已同步 ~/.codex/rules/"
+    __codex_link "$SCRIPT_DIR/codex/rules" ~/.codex/rules
+    [ -d "$SCRIPT_DIR/codex/rules" ] && print_success "已建立 ~/.codex/rules symlink"
 
-    __sync_codex_dir "$SCRIPT_DIR/codex/skills" ~/.codex/skills
-    [ -d "$SCRIPT_DIR/codex/skills" ] && print_success "已同步 ~/.codex/skills/"
+    __codex_link_skills "$SCRIPT_DIR/codex/skills" ~/.codex/skills
+    [ -d "$SCRIPT_DIR/codex/skills" ] && print_success "已建立 ~/.codex/skills/<skill> symlink"
 
     unset -f __extract_codex_local_config
-    unset -f __sync_codex_dir
+    unset -f __codex_link
+    unset -f __codex_link_skills
 else
     print_info "未找到 codex/ 目錄，跳過 Codex 配置"
 fi
