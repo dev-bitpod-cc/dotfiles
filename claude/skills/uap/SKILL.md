@@ -24,8 +24,8 @@ allowed-tools: Bash, Read, Glob, Grep, Edit
 
 ```
 本次涉及 2 個 repo：
-  1. rag-platform（3 檔案未提交 + 2 commit 未 push）
-  2. rag-platform-deploy（5 檔案未提交）
+  1. ais-platform（3 檔案未提交 + 2 commit 未 push）
+  2. ais-platform-deploy（5 檔案未提交）
 一起處理？或需要調整？
 ```
 
@@ -71,10 +71,10 @@ allowed-tools: Bash, Read, Glob, Grep, Edit
 
 ```
 推送摘要：
-  rag-platform
+  ais-platform
     - 3 commits 待推送
     - 變更：src/env.ts, src/config/registry.ts, CLAUDE.md
-  rag-platform-deploy
+  ais-platform-deploy
     - 2 commits 待推送
     - 變更：scripts/configure.sh, scripts/init.sh, CLAUDE.md
 

@@ -115,8 +115,8 @@ Round N review — 通過
 
 ```
 本次涉及 2 個 repo：
-  1. rag-platform（3 檔案變更）
-  2. rag-platform-deploy（5 檔案變更）
+  1. ais-platform（3 檔案變更）
+  2. ais-platform-deploy（5 檔案變更）
 一起審查？或需要調整？
 ```
 
