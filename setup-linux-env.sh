@@ -280,6 +280,19 @@ echo "OS: $(lsb_release -ds 2>/dev/null || cat /etc/os-release | grep PRETTY_NAM
 echo "Kernel: $(uname -r)"
 echo "Architecture: $(uname -m)"
 
+print_info "強制 apt Ubuntu mirror 使用 HTTPS（避免透明 HTTP 代理污染 InRelease hash）..."
+mapfile -t _apt_http_files < <(sudo grep -lE "http://(tw\.archive|security|archive)\.ubuntu\.com" \
+    /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null)
+if [[ ${#_apt_http_files[@]} -gt 0 ]]; then
+    sudo sed -i -E 's|http://(tw\.archive\.ubuntu\.com\|security\.ubuntu\.com\|archive\.ubuntu\.com)|https://\1|g' \
+        "${_apt_http_files[@]}"
+    sudo apt-get clean >/dev/null 2>&1
+    sudo rm -rf /var/lib/apt/lists/*
+    print_success "已切換 ${#_apt_http_files[@]} 個 apt 來源檔到 HTTPS"
+else
+    print_info "apt 來源已是 HTTPS，略過"
+fi
+
 print_info "更新套件清單..."
 sudo DEBIAN_FRONTEND=noninteractive apt update -qq
 
