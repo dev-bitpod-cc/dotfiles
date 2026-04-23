@@ -16,6 +16,7 @@
   "alwaysThinkingEnabled": true,
   "skipDangerousModePermissionPrompt": true,
   "skipAutoPermissionPrompt": true,
+  "useAutoModeDuringPlan": true,
   "permissions": {
     "defaultMode": "auto"
   }
