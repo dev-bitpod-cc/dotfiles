@@ -1,4 +1,13 @@
 {
+  "permissions": {
+    "defaultMode": "auto",
+    "allow": [
+      "Bash(git push origin main)",
+      "Bash(git push origin main:main)",
+      "Bash(git -C * push origin main)",
+      "Bash(git -C * push origin main:main)"
+    ]
+  },
   "enabledPlugins": {
     "swift-lsp@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
@@ -17,7 +26,6 @@
   "skipDangerousModePermissionPrompt": true,
   "skipAutoPermissionPrompt": true,
   "useAutoModeDuringPlan": true,
-  "permissions": {
-    "defaultMode": "auto"
-  }
+  "remoteControlAtStartup": true,
+  "agentPushNotifEnabled": true
 }
