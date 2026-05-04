@@ -4,6 +4,8 @@
     "allow": [
       "Bash(git push origin main)",
       "Bash(git push origin main:main)",
+      "Bash(cd * && git push origin main)",
+      "Bash(cd * && git push origin main:main)",
       "Bash(git -C * push origin main)",
       "Bash(git -C * push origin main:main)"
     ]
