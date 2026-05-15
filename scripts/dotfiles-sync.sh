@@ -41,7 +41,7 @@ fi
 
 # 本機先同步
 echo -e "${BLUE}▶ 本機同步${NC}"
-(cd "$DOTFILES_DIR" && git pull 2>/dev/null) || true
+(cd "$DOTFILES_DIR" && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1) || true
 
 # 重新套用 SSH config + known_hosts
 if [ -f "$DOTFILES_DIR/ssh/config" ]; then
@@ -69,7 +69,7 @@ sync_remote() {
     local result
     result=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "$host" '
         if [ -d ~/.dotfiles ]; then
-            cd ~/.dotfiles && git pull 2>/dev/null
+            cd ~/.dotfiles && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1
             # 重新套用 SSH config
             if [ -f ssh/config ]; then
                 SCRIPT_DIR="$(pwd)"
