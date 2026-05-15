@@ -52,6 +52,12 @@ glog=git log --oneline --graph --decorate
 
 - macOS: `brewup`（brew update/upgrade + dotfiles pull + Claude plugins + known_hosts 同步）
 - Linux: `brewup`（同 macOS）+ `sysup`（apt update/upgrade）
+
+> **Claude Code settings 同步模型**：`claude/settings.json` 為唯一權威，由選定的權威機器刻意 `commit + push`。
+> 其他機器 `brewup` 會在 pull 前 `git checkout -- claude/settings.json`，**丟棄本機 harness runtime drift、用 repo 版覆蓋**（drift 是拋棄式的）。
+> `git/config` 設 `rebase.autoStash` 作為其他偶發 dirty 檔的安全網。
+> 真正屬於單機的 key 放 `~/.claude/settings.local.json`（untracked、harness 不寫、優先級高於 settings.json）。
+> Caveat：在權威機器上要先 `commit` 再跑 `brewup`，否則未提交的刻意改動會被丟棄。
 - `dotsync` - 同步 dotfiles 到所有遠端主機（並行 SSH pull + 重新套用 config）
 - `dotsync eagle03 db01` - 只同步指定主機
 
