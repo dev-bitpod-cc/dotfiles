@@ -107,7 +107,7 @@
 
 ## Claude Skill 建立
 
-- 建立或修改 skill 前，**必須先讀** `~/.dotfiles/claude/skill-building-guide.md`（Anthropic 官方指南摘要，2026/03 公開，超出模型知識截止日）
+- 建立或修改 skill 前，**必須先讀** `~/.dotfiles/claude/skill-building-guide.md`（整併 Anthropic PDF 指南 + 官方 "Skill authoring best practices" 線上頁面，內含來源 URL 與擷取日期；該頁持續更新，距擷取日久遠時重抓確認）
 - 可搭配 `/skill-creator` plugin 加速建立和迭代
 - 現有 skill 位於 `~/.dotfiles/claude/skills/`
 
