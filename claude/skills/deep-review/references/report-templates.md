@@ -202,9 +202,9 @@
 - [FP] {finding 描述} — {為何是 false positive}
 
 ### Commit 建議
-{與通過報告相同——squash 所有 review fix commits（CC 階段 + codex 階段），message 採原始功能語意}
+{與通過報告相同——squash 所有 review fix commits（主 agent 審查階段 + codex 階段），message 採原始功能語意}
 
-CC 審查 + Codex 第三方審查皆通過，可以提交了。
+主 agent 審查 + Codex 第三方審查皆通過，可以提交了。
 ```
 
 ## 報告模板 — Codex 第三方審查終止（C3 仍有 true positive）
@@ -237,5 +237,5 @@ CC 審查 + Codex 第三方審查皆通過，可以提交了。
 {具體建議：手動修復剩餘問題後可再跑 `/deep-review autocodex`}
 
 ### Branch 狀態
-目前 branch 上有 CC 審查 fix commits + codex fix commits。修復剩餘問題後，一併 squash 成乾淨 commit。
+目前 branch 上有主 agent 審查 fix commits + codex fix commits。修復剩餘問題後，一併 squash 成乾淨 commit。
 ```
