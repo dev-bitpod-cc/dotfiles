@@ -31,7 +31,7 @@
 3. **絕對不要**：寫自訂 focus points、要求跑測試、加 context files、解釋要審什麼、傳專案慣例文件
 4. 收到 Codex findings 後依當前模式處理（autofix → 自動修復 commit；否則列出等使用者決定）
 
-**Why**：Codex 的 `repo-review` skill 有自己的 workflow（讀 diff + 必要的周邊 context）。自訂 prompt 會讓它偏離既有流程、嘗試不可用的 sandbox 操作（uv/pytest），拉長審查時間。最精簡的 prompt 才能讓它用最有效率的路徑完成。
+**Why**：Codex 的 `repo-review` skill 有自己的 workflow（讀 diff + 必要的周邊 context）。自訂 prompt 會讓它偏離既有流程、嘗試不可用的 sandbox 操作（uv/pytest），拉長審查時間。最精簡的 prompt 才能讓它用最有效率的路徑完成。另：Codex 的 `repo-review` 會自行開 subagent 平行審查並切分 scope，因此那行 prompt **更不該**加 subagent/focus/平行化指示——Codex 內部會處理，多寫只會干擾。
 
 **注意**：若「第三方審查資訊」已被 push（`origin/main..HEAD` 為空），改用 `HEAD~1..HEAD`（或前 N 個 commits 的範圍）。
 
