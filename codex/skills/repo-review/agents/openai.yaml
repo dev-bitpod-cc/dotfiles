@@ -1,4 +1,4 @@
 interface:
   display_name: "Multi-Repo Review"
-  short_description: "Review one or more local git repos from committed diffs only."
-  default_prompt: "Use repo-review. Review one or more local repositories using committed diffs only, read the root guidance files first, default to HEAD~1..HEAD when no range is provided, parallelize repo inspection when possible, and report only concrete findings with file references."
+  short_description: "Subagent-assisted review and optional autofix for local git repos."
+  default_prompt: "Use repo-review. Review one or more local repositories using committed diffs only. Default to HEAD~1..HEAD when no range is provided, read applicable guidance first, spawn fresh-context subagents with bounded repo/module scopes for the first pass when available, and report only concrete findings with file references. Use autofix mode only when explicitly requested; default max_rounds=3 and commit_each_round=true."
