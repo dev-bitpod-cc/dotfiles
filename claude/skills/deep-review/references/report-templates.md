@@ -122,12 +122,12 @@
 ### 第三方審查資訊
 {列出每個涉及的 repo，方便使用者轉交第三方 reviewer}
 
-| Repo | Commit 範圍 | 變更摘要 |
-|------|-------------|----------|
-| `repo-a` | `abc1234..def5678` | {一句話：主要改了什麼} |
-| `repo-b` | `111aaaa..222bbbb` | {一句話：主要改了什麼} |
+| Repo | 模式 | Commit 範圍 | 變更摘要 |
+|------|------|-------------|----------|
+| `repo-a` | diff | `abc1234..def5678` | {一句話：主要改了什麼} |
+| `repo-b` | baseline | `∅..222bbbb` | {一句話：主要改了什麼} |
 
-{commit 範圍用 `base..head` 格式，base 取審查起點（Step 1 判定的 base commit），head 取最終 commit}
+{模式欄填 diff / baseline（codex_base_mode）；commit 範圍用 `base..head` 格式，base 取審查起點（Step 1 判定的 base commit，baseline 模式為 empty-tree 以 `∅` 表示），head 取最終 commit}
 {單 repo 時表格只有一列}
 
 {多 repo 時}
@@ -189,13 +189,19 @@
 
 ### Codex 審查軌跡
 
-| 輪次 | Findings | True Positive | 修復 | 說明 |
-|------|----------|---------------|------|------|
-| C1 | {N} | {N} | {N} | {一句話：主要修了什麼，或「全為 false positive」} |
-| C2 | {N} | {N} | — | 無 blocking findings |
+| 輪次 | 範圍 | Findings | True Positive | 修復 | 說明 |
+|------|------|----------|---------------|------|------|
+| C1 | 全量稽核 `∅..HEAD` | {N} | {N} | {N} | {一句話：主要修了什麼，或「全為 false positive」} |
+| C2 | 增量 `<C1 HEAD>..HEAD` | {N} | {N} | — | 無 blocking findings |
 
+{diff 模式：範圍欄全部填 `<起點>..HEAD`。baseline 模式：C1 = 全量稽核、C2+ = 增量，讓使用者一眼看出全庫只稽核了 C1 一次}
 {若 C1 即無 true positive}
-| C1 | {N} | 0 | — | 全為 false positive，無需修復 |
+| C1 | {範圍} | {N} | 0 | — | 全為 false positive，無需修復 |
+
+### 基線 backlog（non-blocking，僅 baseline 模式）
+{baseline 模式下 codex 指出、但屬既有基線 completeness 深井、非本輪修復觸及的問題。列出供使用者排優先序，不阻擋通過}
+- [Backlog] {finding 描述} — {completeness 類別：a11y / edge case / 測試覆蓋 …}
+{若無或 diff 模式則省略此區塊}
 
 ### False Positive 記錄
 {列出被判定為 false positive 的 findings 及理由，供使用者參考}
@@ -217,14 +223,18 @@
 
 ### Codex 審查軌跡
 
-| 輪次 | Findings | True Positive | 修復 | 說明 |
-|------|----------|---------------|------|------|
-| C1 | {N} | {N} | {N} | {一句話} |
-| C2 | {N} | {N} | {N} | {一句話} |
-| C3 | {N} | {N} | — | 未自動修復 |
+| 輪次 | 範圍 | Findings | True Positive | 修復 | 說明 |
+|------|------|----------|---------------|------|------|
+| C1 | 全量稽核 `∅..HEAD` | {N} | {N} | {N} | {一句話} |
+| C2 | 增量 `<C1 HEAD>..HEAD` | {N} | {N} | {N} | {一句話} |
+| C3 | 增量 `<C2 HEAD>..HEAD` | {N} | {N} | — | 未自動修復 |
+
+{diff 模式：範圍欄填 `<起點>..HEAD`}
 
 ### 收斂失敗分析
-{為什麼兩輪修不完——是修 A 引入 B？還是 codex 持續在不同角度發現新問題？}
+{先區分剩餘 true positive 的性質：}
+- **修復震盪 / 修復本身有問題**（修 A 引入 B、或修復未修對）→ 這才是真正的收斂失敗，屬本終止報告。
+- **baseline [基線 backlog] 深井**（codex 持續換角度在既有基線挖出新 completeness 問題，非本輪修復觸及）→ **不應走終止報告**。改判定為通過，把深井項列入通過報告的「基線 backlog（non-blocking）」。baseline 模式 C2+ 本就只該驗增量修復；深井不阻擋通過。
 
 ### 剩餘 True Positive
 {列出 C3 中被判定為 true positive 的 findings}

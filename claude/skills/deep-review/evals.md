@@ -73,19 +73,20 @@
 }
 ```
 
-### F4 — autocodex 第三方循環
+### F4 — autocodex 第三方循環（diff 模式）
 
 ```json
 {
   "skills": ["deep-review"],
   "query": "/deep-review autocodex",
-  "setup": "單一 repo，主 agent 手動審查可通過",
+  "setup": "單一 repo，working tree 有變更或 HEAD 偏離 origin/main（diff 模式，base 為有界祖先），主 agent 手動審查可通過",
   "expected_behavior": [
+    "Step 1 後判定 codex_base_mode = diff（base 非 empty-tree、非全庫語意）",
     "主 agent 審查通過後才進入 Codex 階段",
     "對該 repo 呼叫 codex:rescue，prompt 嚴格一行：Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.",
     "不附加自訂 focus points / 不要求跑測試 / 不傳專案慣例文件",
     "收到 codex findings 後逐條讀原始碼獨立驗證，標 true/false positive，只修 true positive",
-    "commit range base 端錨在審查起點 hash，不退化成 HEAD~1..HEAD"
+    "diff 模式：commit range base 端錨在審查起點 hash，每輪沿用 <起點>..HEAD，不退化成 HEAD~1..HEAD"
   ]
 }
 ```
@@ -101,6 +102,40 @@
     "偵測到 working tree clean 且 HEAD 偏離 base，使用 git diff <base>...HEAD 審查整個 branch",
     "base 偵測解析 remote HEAD → main → master 順序",
     "Step 2 依 git log 推斷輪次"
+  ]
+}
+```
+
+### F6 — autocodex baseline 模式收斂（全庫稽核）
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autocodex",
+  "setup": "repo 已 push 到 origin、HEAD 與 origin/main 同步（origin/main..HEAD 為空）、working tree clean，無近期有意義 diff；使用者選擇審查範圍=整個 repo → base 設為 git empty-tree",
+  "expected_behavior": [
+    "Step 1 偵測 working tree clean 且與 upstream 同步，先問使用者審查範圍而非逕自 HEAD~1",
+    "選全庫後判定 codex_base_mode = baseline（base == empty-tree），並印一行告知（提示 codex full 可推翻）",
+    "C1：commit range = <empty-tree>..HEAD 全量稽核一次",
+    "C2：commit range = <C1 時的 HEAD>..HEAD，只審本輪修復 commit，不重審整個基線",
+    "codex 在增量範圍外、屬既有基線的 completeness 深井 finding（更多 a11y / edge case / 測試）→ 歸基線 backlog，non-blocking，不阻擋通過、不觸發再一輪修復、不無限延長",
+    "通過/終止報告軌跡表標出 C1=全量稽核、C2+=增量，並列基線 backlog 區塊"
+  ]
+}
+```
+
+### F7 — autocodex path 模式 range 推導
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autocodex src/components/",
+  "setup": "單一 repo，引數為子目錄 path",
+  "expected_behavior": [
+    "判定 codex_base_mode = baseline（path 模式）",
+    "進入 codex 階段前告知使用者：codex repo-review 以 repo root 為單位、無法限縮子目錄，將審整個 repo（比 path scope 廣）",
+    "codex:rescue 的 repo_path = repo root（非子目錄），range 依 baseline 規則",
+    "若 path 有未 commit 變更，先 commit 再呼叫 codex（codex 只審 committed）"
   ]
 }
 ```
