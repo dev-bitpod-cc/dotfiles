@@ -1,56 +1,45 @@
-# 行為規則
+# Behavior Rules（行為規則）
 
-> 本段為硬性約束，違反會造成實質影響。
+> Hard constraints. Violations have real consequences.
 
-## 實作前先 Think
+## Think Before Implementing
 
-- 歧義任務**不要 silent pick**。多重合理解讀時先列出、讓使用者選，不要自己挑一個就開始寫
-- 非 trivial 任務先講 success criteria（「完成」怎麼驗證），再動手
-- 不確定就停下來問，不要為了維持推進感而 assume
-- Bug fix 一律先寫能重現的 test，再改
+- Ambiguous task: NEVER silently pick one reading. List the plausible interpretations and let the user choose before writing anything.
+- Non-trivial task: state the success criteria (how "done" is verified) before starting.
+- Uncertain? Stop and ask. Do NOT assume just to keep momentum.
+- Bug fix: ALWAYS write a reproducing test FIRST, then fix. → load `systematic-debugging` skill (find root cause before fixing).
 
-## PR 與 Git
+## PR / Git
 
-- **不可自作主張 merge**——使用者明確說 merge / bypass merge 時才執行。只說「push」或「開 PR」時不要加 merge
-- **不可自作主張 push**——完成 issue 實作或 review 修復後，commit 即停，等使用者指示下一步
-- Conventional Commits：`<type>: <簡短描述>`，type: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
+- **NEVER merge on your own** — only when the user explicitly says merge / bypass merge. "push" or "open a PR" alone does NOT include merge.
+- **NEVER push on your own** — after finishing an issue implementation or review fixes, commit and STOP; wait for the user's next instruction.
+- Conventional Commits: `<type>: <short desc>`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
 
-## 第三方審查驗證
+## Third-party Review Verification
 
-使用者貼「第三方審查結果」+ findings 時，逐條讀原始碼獨立驗證，不附和。對每條判定 true positive / false positive / context-dependent。不預設 findings 正確，不預設錯誤。使用者不會告訴你來源或自己的看法，你也不要問。
+When the user pastes third-party review findings, read the source code and verify each finding independently — do not just agree. Judge each as true positive / false positive / context-dependent. Assume neither correct nor wrong by default. The user won't reveal the source or their own opinion, and you should not ask.
 
-### 觸發詞：「由 codex 進行第三方審查」
+### 觸發詞「由 codex 進行第三方審查」（變體：「交給 codex 審查」「codex 第三方」）
 
-使用者說這句話時（或變體「交給 codex 審查」、「codex 第三方」），觸發固定流程：
+取最近一次 `/deep-review` 輸出「第三方審查資訊」區塊的 repo 路徑 + commit range，依 `deep-review` skill 的 Codex 呼叫協議執行：呼叫 `codex:rescue`，**prompt 只含一行** `Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.`。**絕對不要**：自訂 focus、要求跑測試、加 context files、加 subagent/平行化指示、傳慣例文件（codex repo-review 有自己的 workflow，會自行切 scope/開 subagent，多寫只會干擾、拖長時間）。收到 findings 後依當前模式處理（autofix → 自動修復 commit；否則列出等使用者決定）。
+注意：若該資訊已被 push（`origin/main..HEAD` 為空），改用 `HEAD~1..HEAD`。
 
-1. 從最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊取出 repo 路徑 + commit range（例如 `HEAD~1..HEAD`、`origin/main..HEAD`、或具體 hash 範圍）
-2. 呼叫 `codex:rescue`，**prompt 只含一行**：
-   ```
-   Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.
-   ```
-3. **絕對不要**：寫自訂 focus points、要求跑測試、加 context files、解釋要審什麼、傳專案慣例文件
-4. 收到 Codex findings 後依當前模式處理（autofix → 自動修復 commit；否則列出等使用者決定）
+## Security
 
-**Why**：Codex 的 `repo-review` skill 有自己的 workflow（讀 diff + 必要的周邊 context）。自訂 prompt 會讓它偏離既有流程、嘗試不可用的 sandbox 操作（uv/pytest），拉長審查時間。最精簡的 prompt 才能讓它用最有效率的路徑完成。另：Codex 的 `repo-review` 會自行開 subagent 平行審查並切分 scope，因此那行 prompt **更不該**加 subagent/focus/平行化指示——Codex 內部會處理，多寫只會干擾。
-
-**注意**：若「第三方審查資訊」已被 push（`origin/main..HEAD` 為空），改用 `HEAD~1..HEAD`（或前 N 個 commits 的範圍）。
-
-## 安全規則
-
-1. 不要寫死 secrets、API keys、密碼
-2. 使用環境變數或 `.env` 檔案管理機密
-3. 不要 commit `.env`、`*.pem`、`*.key`、`credentials.json`
-4. 建立新專案時確保 `.gitignore` 包含敏感檔案
+- NEVER hardcode secrets, API keys, or passwords.
+- Manage secrets via environment variables or a `.env` file.
+- NEVER commit `.env`, `*.pem`, `*.key`, `credentials.json`.
+- New project: ensure `.gitignore` covers sensitive files.
 
 ---
 
-# 程式碼慣例
+# Code Conventions（程式碼慣例）
 
-## 命名
+## Naming
 
-- **Python**：變數與函式 `snake_case`，類別 `PascalCase`，常數 `UPPER_SNAKE`
-- **TypeScript**：變數與函式 `camelCase`，類別與型別 `PascalCase`，常數 `UPPER_SNAKE`
-- **檔案名**：`kebab-case`（如 `setup-mac-env.sh`、`risk-model.py`）
+- **Python**: vars/functions `snake_case`, classes `PascalCase`, constants `UPPER_SNAKE`
+- **TypeScript**: vars/functions `camelCase`, classes/types `PascalCase`, constants `UPPER_SNAKE`
+- **Filenames**: `kebab-case`（如 `setup-mac-env.sh`、`risk-model.py`）
 
 ## Error Handling
 
@@ -65,100 +54,54 @@
 - `datetime.now()` → 注意 timezone，需要 UTC 用 `datetime.now(UTC)`
 - float 比較 → 金額、分數不要用 `==` 比較浮點數
 - 大量資料迴圈內呼叫 API/DB → 改用批次操作
+- 遇 bug / 測試失敗 / 非預期行為 → 先 root cause 再修（`systematic-debugging` skill）
 
 ## 測試
 
-- **何時需要測試**：新增業務邏輯、修 bug（先寫重現測試再修）、公開 API/函式
-- **不需要測試**：設定檔、純 glue code、一次性腳本
-- **檔案位置**：與原始碼同目錄或 `tests/` 目錄，依專案既有慣例
+- **何時需要**：新增業務邏輯、修 bug（先寫重現測試再修）、公開 API/函式
+- **不需要**：設定檔、純 glue code、一次性腳本
+- **檔案位置**：與原始碼同目錄或 `tests/`，依專案既有慣例
 - **命名**：Python `test_*.py`，TypeScript `*.test.ts`
 - **原則**：測行為不測實作、mock 外部依賴但不 mock 被測邏輯本身、每個 test case 只驗證一件事
 
 ---
 
-# 工作流
+# Workflow（工作流）
 
-## 套件管理
+## Package Management
 
-1. **JavaScript/TypeScript**：一律用 `bun`，取代 `npm`/`npx`/`node`
-   - 新專案：`bun init`｜安裝：`bun add`｜執行：`bun run`｜測試：`bun test`｜全域：`bun install -g`
-2. **Python**：一律用 `uv`，取代 `pip`/`python`/`venv`
-   - 新專案：`uv init`｜安裝：`uv add`｜執行：`uv run`｜測試：`uv run pytest`｜venv：`uv venv`｜CLI：`uv tool install`
+- **JavaScript/TypeScript**: ALWAYS use `bun` (replaces `npm`/`npx`/`node`). init `bun init`｜add `bun add`｜run `bun run`｜test `bun test`｜global `bun install -g`
+- **Python**: ALWAYS use `uv` (replaces `pip`/`python`/`venv`). init `uv init`｜add `uv add`｜run `uv run`｜test `uv run pytest`｜venv `uv venv`｜CLI `uv tool install`
 
 ## 跨 Repo 工作流
 
-同一 session 經常涉及多個相關 repo（如產品 + 部署）。
+主 agent 是唯一擁有跨 repo 全局 context 的角色。觸發跨 repo skill（`/deep-review`、`/uap`）時，依 session 記憶列出 `(repo, 檔案數)` 清單讓使用者確認（ok / 只看 X / 還有 Y），**不掃描** `~/Projects/`。確認流程細節見各 skill 的 Step 0。context 被壓縮就以 pwd 的 repo 為底讓使用者補充；使用者指定的 repo 即使無 diff 也納入（檢查一致性）。
 
-### 原則
+## Skill 建立
 
-- 主 agent 是唯一擁有跨 repo 全局 context 的角色
-- 觸發 skill（`/deep-review`、`/uap`）時，主 agent 根據 session 記憶列出涉及的 repo 清單，讓使用者確認後再開始
-- 使用者可確認（ok）、限縮（只看 X）、擴充（還有 Y）
-- 不掃描 `~/Projects/`——靠主 agent 記憶 + 使用者確認，快速且精確
-
-### 確認流程（適用所有跨 repo skill）
-
-確認流程：列出 `(repo, 檔案數)` 清單、等使用者確認（ok）/ 限縮（只看 X）/ 擴充（還有 Y）。
-
-### 注意
-
-- 若 context 被壓縮導致記憶不完整，以當前 pwd 的 repo 為底，讓使用者補充
-- 使用者指定的 repo 即使沒有 diff，也納入處理（可能是需要檢查一致性）
-
-## Claude Skill 建立
-
-- 建立或修改 skill 前，**必須先讀** `~/.dotfiles/claude/skill-building-guide.md`（整併 Anthropic PDF 指南 + 官方 "Skill authoring best practices" 線上頁面，內含來源 URL 與擷取日期；該頁持續更新，距擷取日久遠時重抓確認）
-- 可搭配 `/skill-creator` plugin 加速建立和迭代
-- 現有 skill 位於 `~/.dotfiles/claude/skills/`
+- 建立或修改 skill 前，**必須先讀** `~/.dotfiles/claude/skill-building-guide.md`（含 Anthropic 官方 best-practices、TDD-for-skills 紀律測試、定向英文語言政策）
+- 可搭配 `/skill-creator` plugin；現有 skill 位於 `~/.dotfiles/claude/skills/`
 
 ---
 
-# Notification Center (NC) 整合規範
+# 技能載入指標（Skill Pointers）
 
-NC 是統一的 Telegram 通知服務（db01:8100）。完整 API 文件與範例：`~/Projects/notification-center/INTEGRATION.md` — 細節（status 欄位、notify_on、dedup_key 用法、範例訊息）去那裡查。
+特定情境下，相關 SOP 已抽成 skill 按需載入。遇以下情境**主動載入對應 skill**（避免 silent miss）：
 
-**何時必須整合**：cron 排程、背景腳本（爬蟲/回補）、pipeline（標註/訓練）的開始/完成/失敗必發通知；長時間任務（>5 分鐘）加進度追蹤。一次性手動腳本 >10 分鐘建議加。API 服務不需要。
-
-**訊息格式**：`{動作結果}: {關鍵數據}`，動作在前、數據在後、一行 ≤200 字。**不加 emoji**（NC 依 level 自動加）、**不重複 source**（NC 自動加前綴）。三級制：`info`（完成）/ `warning`（非致命異常）/ `error`（需立即處理）。
-
-**進度追蹤**：task 命名 `{功能}-{動作}`（如 `revenue-backfill`、`risk-v12-train`）。
-
-**環境變數**：`NC_API_URL` + `NC_API_KEY`。
-
-**靜默失敗**：NC 不可用不能影響主流程，所有 NC 呼叫必須 try/except 靜默處理。
+- 寫 **cron / 背景腳本（爬蟲/回補）/ pipeline** 的開始·完成·失敗 → `nc-notify`（必發通知；NC 不可用須靜默不影響主流程）
+- 使用者要求**「寄信 / mail 給我」** → `send-mail`（代名詞收件人 = `jjshen@eland.com.tw`）
+- 遇 **bug / 測試失敗 / 非預期行為** → `systematic-debugging`（先 root cause 再修）
 
 ---
 
-# Email (SMTP) 寄送
+# 撰寫語言政策（Language Policy）
 
-內部 SMTP relay：`172.17.1.143:25`，**no auth**（內網 open relay）。適合寄報表、查詢結果、長任務輸出給內部 `*@eland.com.tw` 收件人。
+> Meta-rule：編輯本檔或任何 skill 時一律遵循。完整版見 `skill-building-guide.md`。
 
-**何時用**：使用者明確要求「寄信」「mail 給我」；或需要把表格/結果用比 chat 更可讀的形式交付（HTML email）。一般 chat 訊息不要走 email。
-
-**收件人解析**：
-- 「寄給我」「mail 給我」「寄到我信箱」等代名詞 → `jjshen@eland.com.tw`（user 主要工作信箱）
-- 其他收件人由使用者明確指定，**不要用 `# userEmail` 等系統變數推斷**（sandbox 會擋）。沒指定就先問。
-
-**寄件人格式**：`<repo-or-task>@eland.com.tw`（如 `aism-news-classifier@eland.com.tw`）。
-
-**Python 範例**：
-```python
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-
-msg = MIMEMultipart("alternative")
-msg["From"] = "<task>@eland.com.tw"
-msg["To"] = "<user-confirmed>@eland.com.tw"
-msg["Subject"] = "..."
-msg.attach(MIMEText(text_body, "plain", "utf-8"))
-msg.attach(MIMEText(html_body, "html", "utf-8"))  # HTML 可選
-
-with smtplib.SMTP("172.17.1.143", 25, timeout=10) as s:
-    s.sendmail(msg["From"], [msg["To"]], msg.as_string())
-```
-
-**內容原則**：HTML + plain text 雙版本（plain text fallback）；不放 secrets / API keys；表格用 `<table border>` 或 plain text aligned columns。
+- 硬約束 / 否定句 / 紀律強制塊（Iron Law、rationalization table、red flags）→ **英文**
+- 程序步驟 / 領域 SOP / 概念解說 → **繁中**
+- 觸發詞 / description → **中英關鍵字並列**
+- 面向使用者的輸出 → **繁中**
 
 ---
 
