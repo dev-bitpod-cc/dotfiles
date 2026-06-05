@@ -62,10 +62,18 @@ allowed-tools: Bash, Read, Glob, Grep, Edit
 
 ### 4. 提交（逐 repo）
 
-- 若有文件需更新：`git -C <repo> add` 僅加入文件類檔案（CLAUDE.md、STATUS.md、docs/），commit message：`docs: 更新專案文件（涉及模組列表）`
+- 若有文件需更新：`git -C <repo> add` 僅加入文件類檔案（CLAUDE.md、STATUS.md、docs/）。commit message 用 Conventional Commits 並附 trailer：
+
+  ```
+  docs: 更新專案文件（涉及模組列表）
+
+  Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+  ```
 - 若無文件需更新：跳過 commit
 
 ### 5. 統一推送
+
+> **NEVER push without explicit user confirmation in this step.** Show the summary, wait for an affirmative reply, then push. No confirmation → STOP.
 
 處理完所有 repo 後，統一顯示摘要並推送：
 
