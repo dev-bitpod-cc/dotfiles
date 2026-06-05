@@ -1,11 +1,11 @@
 ---
-name: systematic-debugging
+name: root-cause-first
 description: "系統化除錯 — 先找 root cause 再動手，杜絕亂槍打鳥式修補。Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes. Chinese triggers：「這個 bug」「test 一直失敗」「為什麼會這樣」「怎麼修都修不好」「debug」「卡住了」. Includes multi-component evidence gathering and backward root-cause tracing."
 user-invocable: true
 allowed-tools: Bash, Read, Glob, Grep, Edit
 ---
 
-# Systematic Debugging
+# Root-Cause-First Debugging
 
 ## Overview
 

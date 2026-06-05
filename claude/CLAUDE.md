@@ -7,7 +7,7 @@
 - Ambiguous task: NEVER silently pick one reading. List the plausible interpretations and let the user choose before writing anything.
 - Non-trivial task: state the success criteria (how "done" is verified) before starting.
 - Uncertain? Stop and ask. Do NOT assume just to keep momentum.
-- Bug fix: ALWAYS write a reproducing test FIRST, then fix. → load `systematic-debugging` skill (find root cause before fixing).
+- Bug fix: ALWAYS write a reproducing test FIRST, then fix. → load `root-cause-first` skill (find root cause before fixing).
 
 ## PR / Git
 
@@ -54,7 +54,7 @@ When the user pastes third-party review findings, read the source code and verif
 - `datetime.now()` → 注意 timezone，需要 UTC 用 `datetime.now(UTC)`
 - float 比較 → 金額、分數不要用 `==` 比較浮點數
 - 大量資料迴圈內呼叫 API/DB → 改用批次操作
-- 遇 bug / 測試失敗 / 非預期行為 → 先 root cause 再修（`systematic-debugging` skill）
+- 遇 bug / 測試失敗 / 非預期行為 → 先 root cause 再修（`root-cause-first` skill）
 
 ## 測試
 
@@ -90,7 +90,7 @@ When the user pastes third-party review findings, read the source code and verif
 
 - 寫 **cron / 背景腳本（爬蟲/回補）/ pipeline** 的開始·完成·失敗 → `nc-notify`（必發通知；NC 不可用須靜默不影響主流程）
 - 使用者要求**「寄信 / mail 給我」** → `send-mail`（代名詞收件人 = `jjshen@eland.com.tw`）
-- 遇 **bug / 測試失敗 / 非預期行為** → `systematic-debugging`（先 root cause 再修）
+- 遇 **bug / 測試失敗 / 非預期行為** → `root-cause-first`（先 root cause 再修）
 
 ---
 
