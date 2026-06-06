@@ -38,7 +38,7 @@ task 命名 `{功能}-{動作}`，如 `revenue-backfill`、`risk-v12-train`。
 
 ## 靜默失敗（硬性）
 
-**NC 不可用不能影響主流程**，所有 NC 呼叫必須 `try/except` 靜默處理。
+**NEVER let NC failures affect the main flow.** Every NC call MUST be wrapped in `try/except` and fail silently — log a warning, never raise.
 
 ```python
 import os, logging

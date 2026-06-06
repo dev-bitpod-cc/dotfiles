@@ -1,5 +1,6 @@
 ---
-description: "檢查爬蟲清理後的內容品質 — 偵測 noise 殘留、boilerplate、metadata 混入，並評估 RAG 檢索適用性"
+name: check-crawl-quality
+description: "檢查爬蟲清理後的內容品質——偵測 noise 殘留、boilerplate、metadata 混入，並評估 RAG 檢索適用性。Use when assessing crawled or cleaned content quality before RAG indexing, or checking crawler output for leftover noise / boilerplate. Chinese triggers：「檢查爬蟲品質」「爬蟲內容品質」「清理後品質」「RAG 適用性」「noise 殘留」."
 user-invocable: true
 argument-hint: "<path_or_source> [context_description]"
 allowed-tools: Bash, Read, Glob, Grep, Agent
