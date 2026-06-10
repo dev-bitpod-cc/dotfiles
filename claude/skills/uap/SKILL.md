@@ -147,8 +147,9 @@ Ship 摘要：
 確認後逐 repo 執行（完整指令序列見 `references/ship-paths.md`）：
 
 - **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`，多 repo 須 `-R <owner/repo>` 綁定）：有則指向、無則 `gh pr create`（同樣 `-R` 綁定；title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。完整綁定指令見 `references/ship-paths.md`。輸出 PR URL。**不 push default branch、不 merge。**
-- **直接 push 路徑**（確定無保護）：push **當前 branch**（branch-first 無條件，故此處一定是 feature branch、非 default）：`git -C <repo> push -u origin <feature-branch>`（**顯式 remote + branch**，不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref；`origin` 為 stand-in）。在 feature branch 時可**附帶提示**是否開 PR（不強制；尊重「無保護→直接 push」）。push 失敗：remote 有新 commit → 提示 `git pull --rebase` 後重試。
+- **直接 push 路徑**（確定無保護）：push **當前 branch**（branch-first 無條件，故此處一定是 feature branch、非 default）：`git -C <repo> push -u origin <feature-branch>`（**顯式 remote + branch**，不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref；`origin` 為 stand-in）。在 feature branch 時可**附帶提示**是否開 PR（不強制；尊重「無保護→直接 push」）。
 - 多 repo：逐 repo 送出，最後彙總（各 repo 的 PR URL / push 結果）。
+- push 失敗處理（`rejected` / 無 upstream / gh 未登入）→ 見 `references/ship-paths.md`「push 失敗處理」（單一來源）。
 
 ---
 
