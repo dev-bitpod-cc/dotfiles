@@ -3,7 +3,7 @@ name: uap
 description: "Ship reviewed changes — 同步受影響文檔（CLAUDE.md/STATUS.md/docs）、依 Conventional Commits 一致提交，再依該 repo 的 branch-protection 流程 push 或開 PR。Use after code review when finalizing or submitting changes, or when the user says 「uap」「ship」「提交」「送 PR」「update and push」「推上去」. Branches first on protected default branches; never pushes to the default branch directly and never merges PRs."
 user-invocable: true
 disable-model-invocation: true
-argument-hint: "[module...]"
+argument-hint: "[repo|.] [module...]"
 allowed-tools: Bash, Read, Glob, Grep, Edit
 ---
 
@@ -55,7 +55,20 @@ These are hard constraints. Read them before touching git.
 
 ---
 
-## Step 0：多 Repo 偵測
+## Step 0：範圍鎖定
+
+### 引數前處理（repo 鎖定）
+
+`$ARGUMENTS` 第一個 token 若是 **repo 指定**，直接鎖定該 repo、**跳過下方多 repo 偵測互動**；其餘 token 當 module 過濾（Step 2 用）。判定第一個 token 是否為 repo：
+
+- `.` → pwd 所在的 git repo 根（`git rev-parse --show-toplevel`）。
+- 含 `/` 或可解析為 git repo 的路徑 → 該 repo。
+- 否則比對 session 記憶中的 repo 根 basename（如 `krepo`、`dotfiles`）→ 命中即該 repo。
+- 都不命中 → 第一個 token 也當 module，走下方多 repo 偵測。
+
+鎖定單一 repo 後 → 直接進 Step 1（不問多 repo 清單）。
+
+### 多 Repo 偵測（無 repo 引數時）
 
 依本 session 記憶列出所有涉及變更的 repo（**不掃 `~/Projects/`**）：
 
@@ -96,7 +109,7 @@ These are hard constraints. Read them before touching git.
 - `STATUS.md`（存在且有里程碑變動時）。
 - 相關 `docs/plans/*.md`（存在時）。
 - 所有更動文檔頂部的 `updated` 日期改為今天（YYYY-MM-DD）。
-- `$ARGUMENTS` 有指定模組名 → 限縮掃描範圍。
+- `$ARGUMENTS` 中（repo token 之後的）module 名 → 限縮文檔掃描範圍。
 
 ## Step 3：Adaptive 提交
 
