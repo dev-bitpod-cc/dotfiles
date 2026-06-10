@@ -22,7 +22,7 @@ When the user pastes third-party review findings, read the source code and verif
 ### 觸發詞「由 codex 進行第三方審查」（變體：「交給 codex 審查」「codex 第三方」）
 
 取最近一次 `/deep-review` 輸出「第三方審查資訊」區塊的 repo 路徑 + commit range，依 `deep-review` skill 的 Codex 呼叫協議執行：呼叫 `codex:rescue`，**prompt 只含一行** `Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.`。**絕對不要**：自訂 focus、要求跑測試、加 context files、加 subagent/平行化指示、傳慣例文件（codex repo-review 有自己的 workflow，會自行切 scope/開 subagent，多寫只會干擾、拖長時間）。收到 findings 後依當前模式處理（autofix → 自動修復 commit；否則列出等使用者決定）。
-注意：若該資訊已被 push（`origin/main..HEAD` 為空），改用 `HEAD~1..HEAD`。
+注意：commit range 直接沿用報告「第三方審查資訊」記錄的 `base..head`（base 已錨定）；即使該變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。只有報告未記錄 base 時，才回退用 `HEAD~1..HEAD`。
 
 ## Security
 

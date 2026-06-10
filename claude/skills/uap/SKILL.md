@@ -62,7 +62,7 @@ These are hard constraints. Read them before touching git.
 `$ARGUMENTS` 第一個 token 若是 **repo 指定**，直接鎖定該 repo、**跳過下方多 repo 偵測互動**；其餘 token 當 module 過濾（Step 2 用）。判定第一個 token 是否為 repo：
 
 - `.` → pwd 所在的 git repo 根（`git rev-parse --show-toplevel`）。
-- **解析得到 git repo 根**的路徑（`git -C <token> rev-parse --show-toplevel` 成功，且該 token 的 realpath == toplevel，即指向 repo 根、非子目錄）→ 該 repo。**僅含 `/` 不足以判定 repo**——`docs/plans`、`knowledge-commander/`、`src/foo` 這類 module/子路徑 scope 同樣含 `/`，會解析到所屬 repo 根（≠ token 本身）→ 不鎖定，續當 module。
+- **解析得到 git repo 根**的路徑（`git -C <token> rev-parse --show-toplevel` 成功，且 `realpath <token>` == 該 toplevel 輸出——**兩端都正規化後比對，勿裸字串比對**：`--show-toplevel` 回傳已解 symlink 的絕對路徑，token 可能是相對路徑/含 symlink，直接比字串會 false-negative；相等即指向 repo 根、非子目錄）→ 該 repo。**僅含 `/` 不足以判定 repo**——`docs/plans`、`knowledge-commander/`、`src/foo` 這類 module/子路徑 scope 同樣含 `/`，會解析到所屬 repo 根（≠ token 本身）→ 不鎖定，續當 module。
 - 否則比對 session 記憶中的 repo 根 basename（如 `krepo`、`dotfiles`）→ 命中即該 repo。
 - 都不命中 → 第一個 token 也當 module，走下方多 repo 偵測。
 
@@ -124,10 +124,7 @@ These are hard constraints. Read them before touching git.
 - **mixed state**（部分 code 已 commit、部分仍在 working tree——如 Step 1 情況 B 搬移後又改了東西）：**先**把 working-tree 的 code 補成語意 commit（與已 commit 的同 branch），**不可只補 `docs:` commit 就送出、把未 commit 的 code 留在 working tree**；code 全部 commit 後再依「code 已 commit」處理文檔。
 - 無文檔需更新且 code 已 commit → 本步不產生 commit。
 
-commit message 用 Conventional Commits，附 trailer：
-```
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
-```
+commit message 用 Conventional Commits，附環境指定的 `Co-Authored-By` trailer（以 runtime system prompt 的 Git 區塊為權威，**勿在 skill 寫死 model 名稱/版本**——它每次升 model 就漂移）。
 
 ## Step 4：Ship 摘要 → 確認（critical-op gate）
 
