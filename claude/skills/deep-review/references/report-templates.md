@@ -115,7 +115,7 @@
 
 ### Commit 建議
 {若有多筆 review fix commit（如 fix: R1/R2/R3 review fixes）}
-主 agent 執行 squash：`git reset --soft <base>` 後重新 commit，message 採原始功能變更的語意（如 `feat: 新增 X 功能`），不用 `fix: review fixes`。格式遵循專案 Conventional Commits 慣例。
+主 agent 執行 squash：`git reset --soft <squash base hash>`（定義見 SKILL.md Autofix 段的表；固定 hash，勿用會移動的 ref 如 `origin/<default>`）後重新 commit，message 採原始功能變更的語意（如 `feat: 新增 X 功能`），不用 `fix: review fixes`。格式遵循專案 Conventional Commits 慣例。
 {若只有一筆 commit + clean working tree}
 可以直接 push。
 
@@ -166,7 +166,7 @@
 目前 branch 上有 {N} 個 review fix commit（`fix: R1~R4 review fixes`）。
 
 {根據剩餘問題的性質選擇建議}
-- 若建議重寫 → `git reset --soft <base>` 回到起點，帶著所有變更重新設計 {區塊}，再重新 commit
+- 若建議重寫 → `git reset --soft <squash base hash>`（定義見 SKILL.md Autofix 段的表；勿用會移動的 ref）回到起點，帶著所有變更重新設計 {區塊}，再重新 commit
 - 若可繼續修 → 保留現有 commit，在此基礎上繼續人工修復，完成後 squash
 
 ### 建議下一步

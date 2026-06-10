@@ -7,6 +7,19 @@
 
 ---
 
+## 這份 evals 是 skill 的收斂判準（oracle）
+
+判斷這兩個 skill「對不對 / 改好了沒」**以通過這份 evals（+ uap 的 `pressure-tests.md`）為準**，**不以「再對 SKILL.md 跑一次 `/deep-review` 找不找得到東西」為準**。
+
+原因：deep-review 的 reviewer 是對抗式、目標就是挑問題；SKILL.md 是散文 SOP，精確度上限無限（永遠能再補一個 edge case、再消一句歧義）。對 prose 重跑對抗式 review **永遠會 R1–R5**——挖到的多是措辭 / completeness 深井（baseline backlog 類），**non-blocking，不代表 skill 有 bug**。把它當收斂門 → 每輪加字 → 攻擊面更大 → 更不收斂（補丁 ratchet）。
+
+- **算 bug**：agent 照 SKILL.md 會做出**錯誤行為**（reset 到錯目標、commit 到 default branch、漏審變更集前段…）→ 必須有對應 eval 紅燈才算數。
+- **不算 bug**：換句話更清楚、可以再補一類 edge case 的「還能更完整」→ 記 backlog，不阻擋。
+
+改 skill 的流程因此是 **TDD**：先在這裡加一條會紅的 eval（重現錯誤行為），再改 SKILL.md 讓它綠——而不是反覆跑 deep-review 追問題。
+
+---
+
 ## A. Triggering tests（描述觸發是否準確）
 
 | # | 使用者輸入 | 期望 | 測什麼 |
@@ -136,6 +149,61 @@
     "進入 codex 階段前告知使用者：codex repo-review 以 repo root 為單位、無法限縮子目錄，將審整個 repo（比 path scope 廣）",
     "codex:rescue 的 repo_path = repo root（非子目錄），range 依 baseline 規則",
     "若 path 有未 commit 變更，先 commit 再呼叫 codex（codex 只審 committed）"
+  ]
+}
+```
+
+### F8 — autofix squash base 錨定（固定 hash，逐模式）
+
+> 釘死 R1–R5 反覆重新發現的不變式。對應 SKILL.md Autofix 段的 squash base 表。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix",
+  "setup": "三子情境各跑一次：(a) commit-range /deep-review autofix HEAD~3..HEAD，range 下界之前另有不相關 commit；(b) baseline（base=empty-tree，全庫稽核）；(c) review 期間 origin/<default> 前進（模擬他人 push）",
+  "expected_behavior": [
+    "進修復循環前、第一個 fix commit 之前記下 squash base hash（與 branch-first 是否觸發解耦，無條件記錄）",
+    "(a) commit-range：squash base = range 下界，squash 不吃到 range 下界之前的不相關 commit（不 over-squash）",
+    "(b) baseline：squash base = 進入時 HEAD（pre-fix HEAD），不嘗試 reset 到 empty-tree（empty-tree 非 commit，reset 會 fatal）",
+    "(c) 最終 squash 用記下的固定 hash，NOT origin/<default> 等會移動的 ref——default 前進不改變 squash 目標，squash 範圍仍等於審查範圍",
+    "squash 後 commit message 採原始功能語意，附 runtime 指定的 Co-Authored-By trailer（skill 不寫死 model 版本）"
+  ]
+}
+```
+
+### F9 — autofix branch-first（絕不 commit 到 default branch / detached HEAD）
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix",
+  "setup": "兩子情境：(a) HEAD == default branch（main），working tree 有可修問題；(b) detached HEAD（checkout 到某 commit），working tree 有可修問題",
+  "expected_behavior": [
+    "第一個 fix commit 之前先 git switch -c <type>/<slug> 開 feature branch",
+    "(a) 在 main 上：絕不把 fix / squash commit 落在 main",
+    "(b) detached HEAD：先開 branch 接走變更再 commit，不留 commit 在 detached HEAD",
+    "已在 feature branch（如 priority 3 branch diff）→ 跳過開 branch，不重複切",
+    "全程不 push、不 merge"
+  ]
+}
+```
+
+### F10 — review range 含 prose artifact（skill / doc）的 blocking 判準
+
+> 對應 SKILL.md「Completeness 深井」節的 prose artifact 規則。釘死「審 prose 不該進 R1–R5 措辭打磨」。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review",
+  "setup": "diff 模式（有界變更），range 含兩類：(a) 一個 .py 有真 bug；(b) 一個 skill SKILL.md / README，內含：一處夾帶 git 指令用錯 A..B 兩點語意（會 misbehave）、一處步驟自相矛盾、外加多處『可以更清楚 / 還能再補一個 edge case』的措辭問題",
+  "expected_behavior": [
+    "(a) .py 真 bug 照常 blocking",
+    "(b) prose 裡『夾帶指令 misbehave』『步驟自相矛盾』判 blocking（照做會錯）",
+    "(b) prose 的措辭清晰度 /『還能更完整』判 completeness 深井 = non-blocking，列報告但不阻擋通過、不觸發再一輪修復",
+    "即使 diff 模式（非 baseline），prose 的措辭/完整度 nits 仍套深井判準，不因『有界變更集全審』而當 blocking",
+    "不對 prose 進入 R1–R5 措辭打磨循環"
   ]
 }
 ```
