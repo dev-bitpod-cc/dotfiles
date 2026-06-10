@@ -5,6 +5,7 @@ SKILL.md Step 1/5 的展開。涵蓋 repo 解析、protection 偵測、branch-fi
 ## 目錄
 - [Repo / default branch 解析](#repo--default-branch-解析)
 - [Branch protection 偵測](#branch-protection-偵測)
+- [gh 帳號權限 vs git push 身分（身分分離）](#gh-帳號權限-vs-git-push-身分身分分離)
 - [Branch-first 與誤 commit 搬移](#branch-first-與誤-commit-搬移)
 - [PR 路徑](#pr-路徑)
 - [直接 push 路徑](#直接-push-路徑)
@@ -44,6 +45,24 @@ rules=$(gh api "repos/{owner}/{repo}/rules/branches/{default}" 2>/dev/null)
 
 > 注意：404「Branch not protected」是 GitHub 對「該分支無 classic 保護」的明確回應（即使你是 ADMIN 也是 404），**不是**權限錯誤——要靠訊息字串分辨，別只看 exit code。
 > 額外訊號（輔助判斷團隊習慣，非決策依據）：repo 有 `.github/PULL_REQUEST_TEMPLATE*` 或 `CODEOWNERS` → 偏向 PR 流程。
+
+## gh 帳號權限 vs git push 身分（身分分離）
+
+protection classic 回 **`Not Found`**（非 `Branch not protected`）常代表 **gh 帳號對該 repo 沒有 admin/read-protection 權限**（GitHub 對非 admin 隱藏 protection 狀態），而**不是**「無保護」。此時 `gh repo view --json viewerPermission` 多半是 `READ`。
+
+關鍵：**gh 帳號的權限 ≠ git push 用的身分**。git remote 走 SSH（如 `git@github.com:org/repo`）時，push 用的是 **SSH key 對應的 GitHub 身分**，可能與 gh CLI 登入的帳號**不同**——常見「gh 帳號 READ（開不了 PR / 讀不到 protection）、但 SSH key 有 WRITE（推得動）」。
+
+偵測到此情境時：
+1. `gh repo view --json viewerPermission -q .viewerPermission` → 若 `READ` 且 protection 回 `Not Found` → **主動向使用者點明身分分離**（別假設無權限就停、也別假設無保護就直推）。
+2. **用 `git push --dry-run` 探實際 push 權限**（不實際推送、不修改 remote）：
+   ```bash
+   git -C <repo> push --dry-run -u origin <branch> 2>&1
+   # 成功印 "[new branch] ... -> ..." / "Would set upstream" → SSH 身分有 write
+   # 403 / "permission denied" → 無 write
+   ```
+3. 把「protection 無法判定 + dry-run 的 push 權限結果」一併放進 Step 4 ship 摘要，讓使用者定奪（PR / 直接 push / 換身分）。**仍不在確認前實際 push。**
+
+> protection 是 GitHub **伺服器端強制**：即使使用者明確要求 push 受保護 default branch，硬推也只會被 remote 擋（無害）。所以「protection 未知 + 使用者知情後明確指示直推」→ 可照做，讓 remote 當最終裁判；push 被拒再 fallback PR。
 
 ## Branch-first 與誤 commit 搬移
 
