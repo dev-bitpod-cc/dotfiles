@@ -194,7 +194,7 @@
 | C1 | 全量稽核 `∅..HEAD` | {N} | {N} | {N} | {一句話：主要修了什麼，或「全為 false positive」} |
 | C2 | 增量 `<C1 HEAD>..HEAD` | {N} | {N} | — | 無 blocking findings |
 
-{diff 模式：範圍欄全部填 `<起點>..HEAD`。baseline 模式：C1 = 全量稽核、C2+ = 增量，讓使用者一眼看出全庫只稽核了 C1 一次}
+{兩模式皆 C1 = 全審（diff 範圍 `<起點>..HEAD`、baseline `<empty-tree>..HEAD`）、C2+ = 增量 `<上輪 codex HEAD>..HEAD`，讓使用者一眼看出只在 C1 全審一次}
 {若 C1 即無 true positive}
 | C1 | {範圍} | {N} | 0 | — | 全為 false positive，無需修復 |
 
@@ -229,7 +229,7 @@
 | C2 | 增量 `<C1 HEAD>..HEAD` | {N} | {N} | {N} | {一句話} |
 | C3 | 增量 `<C2 HEAD>..HEAD` | {N} | {N} | — | 未自動修復 |
 
-{diff 模式：範圍欄填 `<起點>..HEAD`}
+{diff 模式：C1 範圍 `<起點>..HEAD`、C2+ 範圍 `<上輪 codex HEAD>..HEAD`（增量）}
 
 ### 收斂失敗分析
 {先區分剩餘 true positive 的性質：}

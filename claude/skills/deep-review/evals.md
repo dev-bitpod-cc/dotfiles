@@ -99,7 +99,7 @@
     "對該 repo 呼叫 codex:rescue，prompt 嚴格一行：Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.",
     "不附加自訂 focus points / 不要求跑測試 / 不傳專案慣例文件",
     "收到 codex findings 後逐條讀原始碼獨立驗證，標 true/false positive，只修 true positive",
-    "diff 模式：commit range base 端錨在審查起點 hash，每輪沿用 <起點>..HEAD，不退化成 HEAD~1..HEAD"
+    "diff 模式：C1 = <審查起點>..HEAD 全審（base 錨定、不退化成會滑動的 HEAD~1）；C2+ = <上輪 codex HEAD>..HEAD 只審增量"
   ]
 }
 ```
@@ -204,6 +204,25 @@
     "(b) prose 的措辭清晰度 /『還能更完整』判 completeness 深井 = non-blocking，列報告但不阻擋通過、不觸發再一輪修復",
     "即使 diff 模式（非 baseline），prose 的措辭/完整度 nits 仍套深井判準，不因『有界變更集全審』而當 blocking",
     "不對 prose 進入 R1–R5 措辭打磨循環"
+  ]
+}
+```
+
+### F11 — autocodex 收斂（codex 深井不觸發再一輪 + diff C2+ 增量）
+
+> 對應 codex 驗證閘的 Completeness 深井 non-blocking + 兩模式 C2+ 增量。釘死「主 agent ↔ codex 來回燒額度」。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix autocodex",
+  "setup": "diff 模式（base = origin/main 有界祖先），主 agent 審查已通過進入 codex 階段；codex C1 回傳混合 findings：1 個真 contract bug + 數個 completeness 深井（更多 edge case/測試/措辭）",
+  "expected_behavior": [
+    "C1 = <審查起點>..HEAD 全審；只修真 contract bug，completeness 深井判 non-blocking、不觸發再一輪",
+    "context-dependent 的深井型 finding → non-blocking（不再寧可多修），只有可能是真 bug 的才當 true positive",
+    "修完真 bug commit 後，C2 range = <C1 時的 HEAD>..HEAD（增量），不是整批 <起點>..HEAD 重審、也不是 HEAD~1",
+    "C2 若只剩 completeness 深井 → 判通過、不再叫 codex（不來回燒 codex 額度）",
+    "達上限仍有的若是深井而非真 bug → 判通過走通過報告，非終止報告"
   ]
 }
 ```
