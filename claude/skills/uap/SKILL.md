@@ -1,106 +1,144 @@
 ---
 name: uap
-description: "更新專案文件並推送至 remote — 自動偵測變更範圍，更新相關 CLAUDE.md / STATUS.md / docs，然後 commit + push。Use when user says \"update and push\", \"push changes\", \"uap\", or runs /uap."
+description: "Ship reviewed changes — 同步受影響文檔（CLAUDE.md/STATUS.md/docs）、依 Conventional Commits 一致提交，再依該 repo 的 branch-protection 流程 push 或開 PR。Use after code review when finalizing or submitting changes, or when the user says 「uap」「ship」「提交」「送 PR」「update and push」「推上去」. Branches first on protected default branches; never pushes to the default branch directly and never merges PRs."
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[module...]"
 allowed-tools: Bash, Read, Glob, Grep, Edit
 ---
 
-# Update And Push
+# UAP — Ship Reviewed Changes
 
-更新專案文件並推送至 remote。支援跨 repo 操作——逐 repo 處理文件更新與 commit，最後統一推送。
+把（通常已通過 review 的）變更收尾送出：偵測狀態 → 依 repo 流程定路徑（**branch 先決，先於 commit**）→ 同步必要文檔 → adaptive 提交 → 依 protection 走 PR 或直接 push。支援跨 repo。銜接 `/deep-review` 結尾（feature branch + 乾淨 commit + 未 push）。
 
-## 步驟
+**Violating the letter of the rules below is violating their spirit.** Do not rationalize around them.
 
-### 0. 識別 Repo 範圍（多 Repo 偵測）
-
-主 agent 根據本 session 的記憶，列出所有涉及變更的 repo：
-
-1. 回憶本 session 中修改過檔案的所有 repo 根目錄
-2. 加上 pwd 所在的 repo
-3. 對每個 repo 執行 `git status --porcelain` 和 `git log --oneline @{upstream}..HEAD 2>/dev/null` 確認變更狀態
-4. 向使用者展示清單並等待確認：
+開始前**複製這份 checklist 進回應**並逐項勾選：
 
 ```
-本次涉及 2 個 repo：
-  1. ais-platform（3 檔案未提交 + 2 commit 未 push）
-  2. ais-platform-deploy（5 檔案未提交）
-一起處理？或需要調整？
+UAP 進度：
+- [ ] Step 0：多 repo 偵測（單 repo 跳過）
+- [ ] Step 1：逐 repo 狀態 + 流程偵測（default branch / 變更集 / protection / ship 路徑 / branch-first）
+- [ ] Step 2：同步受影響文檔
+- [ ] Step 3：adaptive 提交（未 commit→code+docs 同 commit；已 commit→獨立 docs commit）
+- [ ] Step 4：印 ship 摘要 → 等使用者確認（無確認 → STOP）
+- [ ] Step 5：依路徑送出（PR 或直接 push）；輸出 PR URL / push 結果
 ```
 
-5. 使用者可：確認（ok）、限縮（只推 X）、擴充（還有 Y）
-6. 若 context 被壓縮導致記憶不完整，以 pwd 的 repo 為底，讓使用者補充
-7. **單一 repo** → 跳過此步驟，直接進入 Step 1
-8. 若所有 repo 都沒有未 push commit 且無 working tree 變更，告知使用者並結束
+## Critical — Guardrails
 
-### 1. 前置檢查（逐 repo）
+These are hard constraints. Read them before touching git.
 
-對每個 repo 依序執行：
+- **NEVER push without explicit user confirmation.** Always show the Step 4 ship summary first and wait for an affirmative reply. No confirmation → STOP.
+- **NEVER push to the default / protected branch directly.** On a protected default branch, open a PR instead.
+- **NEVER merge the PR.** Opening a PR ≠ merging it. Merge only on an explicit user instruction.
+- **Branch FIRST, before any commit.** If changes must be committed while `HEAD` is the default branch and the ship path is PR (or protection is on/unknown), create a feature branch **before** committing — not at push time.
+- **Unknown protection = protected.** If `gh` is missing or the protection query fails, treat the default branch as protected (PR path). Do not assume it is open.
 
-- 偵測未 push 的變更：`git -C <repo> diff --name-only @{upstream}...HEAD`（fallback：無 upstream 時用 `origin/main`）
-- 偵測 working tree 變更：`git -C <repo> diff --name-only HEAD`
-- 合併兩者為完整變更檔案清單
-- `git -C <repo> log --oneline @{upstream}..HEAD` 列出所有未 push 的 commit
-- 若該 repo 無變更，跳過
-- **Squash 提醒**：若未 push 的 commit 中有連續的 fix/refactor commit（review 迭代痕跡），提醒使用者考慮先 squash 再繼續
-- **Squash 時機**：所有 repo 的前置檢查完成後，若有任何 repo 需要 squash，統一在此步驟處理完畢再進入 Step 2。避免 docs commit 蓋在未 squash 的 commit 上面
+### Rationalization table — STOP if you hear yourself say these
 
-### 2. 偵測變更範圍（逐 repo）
+| Excuse | Reality |
+|--------|---------|
+| "User said push, so push to main." | "push" means push the *feature branch*. A protected default branch needs a PR. |
+| "The PR is open now, might as well merge it." | Opening ≠ merging. Merge only on an explicit, separate instruction. |
+| "Docs are already committed on main, just push them." | You should have branched first. Move the commit to a feature branch; never push to protected main. |
+| "Can't detect protection, so it's probably fine to push to main." | Unknown protection → treat as protected. Branch + PR, or stop and ask. |
+| "Branching now is extra work; commit here first, move later." | Branch-first is one command and prevents an awkward main commit. Do it before the commit, every time. |
+| "It's just a docs commit, the protection won't mind." | Protection does not care what the commit is. Same rules. |
 
-- 根據完整變更檔案清單（已 commit + 未 commit），識別涉及的模組
-- 掃描該 repo 中所有 `**/CLAUDE.md`，判斷哪些屬於受影響模組
-- 若 `$ARGUMENTS` 有指定模組名，則限縮範圍
+### Red Flags — STOP and re-read Critical
 
-### 3. 更新文件（逐 repo）
+- About to run `git push origin <default-branch>` or `git push` while on the default branch.
+- About to run `gh pr merge` / any merge.
+- About to `git commit` while `HEAD == default branch` without having branched.
+- About to push without having shown the Step 4 summary and received confirmation.
 
-- 更新涉及模組的 CLAUDE.md（僅更新受影響的，不動其他的）
-- 更新 STATUS.md（如檔案存在且有里程碑變動）
-- 更新相關 docs/plans/*.md（如檔案存在）
-- 所有文件的 `updated` 日期欄位更新為今天（格式：YYYY-MM-DD）
-- **防禦原則**：先讀文件現有內容，只更新與本次變更直接相關的段落。若無需更新則跳過，不要為了「更新」而硬塞無意義的修改
+---
 
-### 4. 提交（逐 repo）
+## Step 0：多 Repo 偵測
 
-- 若有文件需更新：`git -C <repo> add` 僅加入文件類檔案（CLAUDE.md、STATUS.md、docs/）。commit message 用 Conventional Commits 並附 trailer：
+依本 session 記憶列出所有涉及變更的 repo（**不掃 `~/Projects/`**）：
 
-  ```
-  docs: 更新專案文件（涉及模組列表）
+1. 回憶 session 中改過檔案的所有 repo 根目錄 + pwd 所在 repo。
+2. 每個 repo 跑 `git -C <repo> status --porcelain` 與 `git -C <repo> log --oneline @{upstream}..HEAD 2>/dev/null` 確認狀態。
+3. 展示清單等使用者確認（ok / 只看 X / 還有 Y）：
+   ```
+   本次涉及 2 個 repo：
+     1. krepo（2 commit 未 push）
+     2. pilot-api（3 檔未提交）
+   一起 ship？或需要調整？
+   ```
+4. context 被壓縮 → 以 pwd 的 repo 為底讓使用者補充；使用者指定的 repo 即使無變更也納入。
+5. 全部 repo 既無未 push commit 又無 working tree 變更 → 告知並結束。
+6. **單一 repo → 跳過此步，直接 Step 1。**
 
-  Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
-  ```
-- 若無文件需更新：跳過 commit
+## Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）
 
-### 5. 統一推送
+對每個 repo：
 
-> **NEVER push without explicit user confirmation in this step.** Show the summary, wait for an affirmative reply, then push. No confirmation → STOP.
+1. **default branch**：`git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null`（取 basename）；失敗則依序試 `main`、`master`。
+2. **變更集**：已 commit 未 push（`git -C <repo> log --oneline origin/<default>..HEAD`）+ working-tree（`git -C <repo> diff --name-only HEAD`）。合併為完整清單。無變更 → 跳過此 repo。
+3. **branch protection**（classic + ruleset 都查；細節見 `references/ship-paths.md`）：
+   - `gh api repos/{owner}/{repo}/branches/{default}/protection`（classic）+ `gh api repos/{owner}/{repo}/rules/branches/{default}`（ruleset）。
+   - classic 回 200 **或** ruleset 非空 → **protected**。
+   - classic 回 404「Branch not protected」**且** ruleset = `[]` → **確定無保護**。
+   - 其他錯誤（403 / 網路 / 無 gh，無法分辨）→ **未知 → 視為 protected**（Unknown = protected）。
+4. **決定 ship 路徑**：protected（或未知）→ **PR 路徑**；確定無保護 → **直接 push 路徑**。
+5. **Branch-first（無條件，依全域「if on default branch, branch first」）**：只要「有變更要 commit」且「當前 branch == default branch」→ **立刻開 feature branch**（**不論 protection**）：`git -C <repo> switch -c <type>/<slug>`（type 取自變更語意 feat/fix/docs…，slug kebab-case）。working-tree 變更會跟著切過去。已在 feature branch（如 deep-review 結尾）→ 跳過。
+   - 若變更**已誤 commit 在本地 default branch**（且未 push）：先 `git switch -c <feature>` 保住 commit，再回 default branch `git reset --hard origin/<default>`。詳見 `references/ship-paths.md`。
+6. **Squash 提醒**：未 push commit 中若有連續 `fix:`/`refactor:`（review 迭代痕跡）→ 提醒使用者考慮先 squash 再繼續（deep-review 正常已 squash，通常無需）。
 
-處理完所有 repo 後，統一顯示摘要並推送：
+## Step 2：同步受影響文檔
+
+由**完整變更集**（已 commit + 未 commit）識別涉及模組，更新文檔（防禦原則：**先讀、只改相關段落、無需更新就跳過，不硬塞**）：
+
+- 涉及模組的 `**/CLAUDE.md`（只動受影響的）。
+- `STATUS.md`（存在且有里程碑變動時）。
+- 相關 `docs/plans/*.md`（存在時）。
+- 所有更動文檔頂部的 `updated` 日期改為今天（YYYY-MM-DD）。
+- `$ARGUMENTS` 有指定模組名 → 限縮掃描範圍。
+
+## Step 3：Adaptive 提交
+
+依 reviewed code 的狀態決定文檔如何「一起提交」：
+
+- **code 未 commit**（review 在 working tree）：`git add` 程式 + 文檔 → 一個或多個語意 commit（Conventional Commits），code 與其文檔**同 commit**。
+- **code 已 commit**（如 deep-review 已 squash）：文檔另起 `docs: …` commit，**同 branch**（同 PR 一起出）。**不 amend、不重寫已 review 的 commit。**
+- 無文檔需更新且 code 已 commit → 本步不產生 commit。
+
+commit message 用 Conventional Commits，附 trailer：
+```
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+```
+
+## Step 4：Ship 摘要 → 確認（critical-op gate）
+
+push **之前**，逐 repo 印摘要等使用者確認（plan → validate → execute）：
 
 ```
-推送摘要：
-  ais-platform
-    - 3 commits 待推送
-    - 變更：src/env.ts, src/config/registry.ts, CLAUDE.md
-  ais-platform-deploy
-    - 2 commits 待推送
-    - 變更：scripts/configure.sh, scripts/init.sh, CLAUDE.md
-
-確認推送？
+Ship 摘要：
+  krepo  路徑=PR（main 受保護）
+    feature branch: feat/mops-announce-backfill
+    待 push commit: 2 feat + 1 docs
+    變更檔: src/..., scripts/..., CLAUDE.md
+    PR: feat/... → main（將開，不 merge）
+確認送出？
 ```
 
-- 使用者確認後，逐 repo 執行 `git -C <repo> push`
-- push 失敗處理：remote 有新 commit → 提示 `git pull --rebase`；無 upstream → 提示 `git push -u origin <branch>`
+**無確認 → STOP。** 這是硬 gate（見 Critical）。
 
-### Branch Protection 適配
+## Step 5：依路徑送出
 
-推送前偵測目標分支是否有 branch protection：
+確認後逐 repo 執行（完整指令序列見 `references/ship-paths.md`）：
 
-1. 檢查當前分支：`git -C <repo> rev-parse --abbrev-ref HEAD`
-2. 若在 `main`（或 `master`），嘗試用 `gh api repos/{owner}/{repo}/branches/main/protection 2>/dev/null` 偵測 protection
-3. **有 protection**：
-   - 若有未 commit 的變更 → 建議先開 feature branch（`git checkout -b feat/update-docs`）
-   - push 後建議 `gh pr create`
-   - 提示使用者：「main 有 branch protection，建議開 PR 合併」
-4. **無 protection / 偵測失敗**（如無 gh CLI、無權限）→ 維持現有行為（直接 push）
-5. 非 main branch → 直接 push，不檢查 protection
+- **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`）：有則指向、無則 `gh pr create`（title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。輸出 PR URL。**不 push default branch、不 merge。**
+- **直接 push 路徑**（確定無保護）：push **當前 branch**（branch-first 後通常是 feature branch）：`git -C <repo> push`（無 upstream → `-u origin <branch>`）。在 feature branch 時可**附帶提示**是否開 PR（不強制；尊重「無保護→直接 push」）。push 失敗：remote 有新 commit → 提示 `git pull --rebase` 後重試。
+- 多 repo：逐 repo 送出，最後彙總（各 repo 的 PR URL / push 結果）。
+
+---
+
+## 設計備忘
+
+- 本 skill 是 **ship 階段**，不自己跑 review。大變更未審查 → 建議使用者先 `/deep-review`，但不強制。
+- 與 `/deep-review` 銜接：deep-review 結尾 = feature branch + 乾淨 commit + 未 push → 本 skill 多走 Step 2（docs）+ Step 4/5（ship）。
+- 詳細 git/gh 指令與邊界 → `references/ship-paths.md`；紀律驗收情境 → `references/pressure-tests.md`。
