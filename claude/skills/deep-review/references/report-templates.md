@@ -198,10 +198,11 @@
 {若 C1 即無 true positive}
 | C1 | {範圍} | {N} | 0 | — | 全為 false positive，無需修復 |
 
-### 基線 backlog（non-blocking，僅 baseline 模式）
-{baseline 模式下 codex 指出、但屬既有基線 completeness 深井、非本輪修復觸及的問題。列出供使用者排優先序，不阻擋通過}
-- [Backlog] {finding 描述} — {completeness 類別：a11y / edge case / 測試覆蓋 …}
-{若無或 diff 模式則省略此區塊}
+### Completeness 深井（non-blocking）
+{codex 指出但屬深井、非本輪修復觸及的問題（見 SKILL.md「Completeness 深井」節）。含兩種來源：baseline 基線 backlog（僅 baseline 模式）與 prose artifact 深井（不分模式——skill/.md/runbook 的措辭清晰度、「還可以更完整」類）。列出供使用者排優先序，不阻擋通過}
+- [Backlog] {finding 描述} — {baseline 完整度類別：a11y / edge case / 測試覆蓋 …}
+- [Prose] {finding 描述} — {措辭/完整度類，非事實錯誤、非夾帶指令 misbehave、非 cross-ref 斷掉}
+{若無深井項則省略此區塊；diff 模式仍可能有 prose 深井，勿因模式略過}
 
 ### False Positive 記錄
 {列出被判定為 false positive 的 findings 及理由，供使用者參考}
@@ -234,7 +235,7 @@
 ### 收斂失敗分析
 {先區分剩餘 true positive 的性質：}
 - **修復震盪 / 修復本身有問題**（修 A 引入 B、或修復未修對）→ 這才是真正的收斂失敗，屬本終止報告。
-- **baseline [基線 backlog] 深井**（codex 持續換角度在既有基線挖出新 completeness 問題，非本輪修復觸及）→ **不應走終止報告**。改判定為通過，把深井項列入通過報告的「基線 backlog（non-blocking）」。baseline 模式 C2+ 本就只該驗增量修復；深井不阻擋通過。
+- **Completeness 深井（不分模式）**（codex 持續換角度挖出新 completeness 問題，非本輪修復觸及——baseline 模式的既有基線 backlog，或任一模式下 prose artifact 的措辭/完整度 nits）→ **不應走終止報告**。改判定為通過，把深井項列入通過報告的「Completeness 深井（non-blocking）」。C2+ 本就只該驗增量修復；深井不阻擋通過。
 
 ### 剩餘 True Positive
 {列出 C3 中被判定為 true positive 的 findings}
