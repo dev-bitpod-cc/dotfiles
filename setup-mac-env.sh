@@ -280,6 +280,8 @@ print_info "這可能需要幾分鐘，請耐心等候..."
 # 添加 Bun 官方 Homebrew tap
 print_info "添加 Bun 官方 tap..."
 brew tap oven-sh/bun 2>/dev/null || true
+# 信任第三方 tap 的 bun formula（Homebrew tap-trust 機制，否則 install/upgrade 會被忽略並噴 untrusted 警告）
+brew trust --formula oven-sh/bun/bun 2>/dev/null || true
 
 # 一次性安裝所有工具
 brew install \
@@ -642,7 +644,7 @@ alias claudea='claude --enable-auto-mode'
 dotsync() { ~/.dotfiles/scripts/dotfiles-sync.sh "$@"; }
 
 # 系統更新
-alias brewup='(cd ~/.dotfiles && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1); brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude update 2>/dev/null; claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && cp ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null; } 2>/dev/null'
+alias brewup='(cd ~/.dotfiles && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1); brew trust --formula oven-sh/bun/bun 2>/dev/null; brew update && brew upgrade && brew cleanup; { command -v claude &>/dev/null && claude update 2>/dev/null; claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && cp ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null; } 2>/dev/null'
 
 # -------------------------------------------
 # fzf 配置
