@@ -38,22 +38,12 @@ Ready4Quit 進度：
 - **Memory writes are additive but still surface them.** 新增 memory 檔是可逆的附加動作，可在報告後直接寫，但**必須在報告中列出寫了什麼、跳過什麼**，不靜默塞。
 - **Don't rubber-stamp.** 每個面向都要**實際跑指令/掃描**才能標 GREEN。沒查就說「應該沒問題」= 違規。
 
-### Rationalization table — STOP if you hear yourself say these
-
-| Excuse | Reality |
-|--------|---------|
-| "User is quitting anyway, no need to flush memory." | The session's learned context dies on /quit. Next session re-learns from zero. Flush now. |
-| "Working tree's probably clean, I'll just say ready." | "Probably" is not a check. Run `git status` on every session repo before any green verdict. |
-| "The background task will finish on its own." | A backgrounded task / loop / wakeup is tied to this session. Surface it; let the user decide to wait or kill. |
-| "Nothing worth remembering this session." | You don't decide that silently. List the durable-fact candidates; let the user veto. Empty is fine — but say so explicitly. |
-| "I'll commit and push to tidy up git." | Not this skill's job. Recommend /uap. Never push here. |
-
 ### Red Flags — STOP and re-read Critical
 
-- About to print a "可以 /quit" verdict without having run `git status` per repo.
-- About to `git push` / `gh pr` / `git commit` from inside this skill.
-- About to kill a background task or delete a wakeup/cron/memory file without listing it and getting a yes.
-- Declaring a dimension GREEN you never actually inspected.
+- Declaring any dimension GREEN you never actually inspected (no `git status` output, no `TaskList`/`CronList` check, no scan).
+- About to `git push` / `gh pr` / kill a task / delete a wakeup/cron/memory file from inside this skill without listing it and getting an explicit yes.
+
+> 此 skill 的核心不是「對抗合理化」（baseline 顯示 agent 天生會查 git、不擅自動手），而是**覆蓋度**——提醒別只顧 git，還要 flush memory、盤點 async 狀態、掃 loose ends，這些是 fresh agent 想不到要查的。
 
 ---
 
