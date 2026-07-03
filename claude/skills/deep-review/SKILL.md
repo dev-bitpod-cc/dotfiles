@@ -85,7 +85,7 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 **上限**：3 輪 codex 審查、2 輪修復（**diff / baseline 模式皆維持此上限，不放寬**——放寬只會鼓勵深井追逐）。到此階段 code 已通過主 agent 完整審查，剩餘問題應快速收斂。兩模式 C2+ 皆只驗增量修復、completeness 深井（baseline backlog / prose artifact）不阻擋通過，因此 2 輪修復足以收斂。若第 3 輪仍有 true positive blocking findings（指向修復本身、非 completeness 深井）→ 停止，輸出 codex 終止報告交使用者。
 
-**Codex 呼叫協議**（與 CLAUDE.md 觸發詞流程一致）：
+**Codex 呼叫協議**（單一權威——全域 CLAUDE.md 的「由 codex 進行第三方審查」觸發詞段指向此節，改標題須同步）：
 
 呼叫 `codex:rescue`，**prompt 只含一行**：
 ```
