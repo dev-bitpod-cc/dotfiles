@@ -1,5 +1,14 @@
 # Deep Review 報告模板
 
+## 目錄
+
+- 報告模板 — 未通過（單 repo）
+- 報告模板 — 未通過（多 repo）
+- 報告模板 — 通過（含第三方審查資訊、Commit/squash 建議）
+- 報告模板 — Autofix 終止（R5 未通過）
+- 報告模板 — Codex 第三方審查通過（含 Completeness 深井、False Positive 記錄）
+- 報告模板 — Codex 第三方審查終止（C3 仍有 true positive）
+
 ## 報告模板 — 未通過（單 repo）
 
 問題**按根因分組**，不按嚴重度排列。共享同一根因的問題放在一起，讓 fixer 一次解決而非逐條修補。

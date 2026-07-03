@@ -1,5 +1,14 @@
 # Root Cause Tracing（反向追蹤）
 
+## 目錄
+
+- Overview
+- 何時使用
+- 追蹤流程（觀察症狀 → 直接原因 → 往上追 → 原始觸發點）
+- 追不動時：加 instrumentation
+- 找出是哪個 test 污染了狀態
+- 核心原則
+
 ## Overview
 
 Bug 常常在 call stack 很深的地方才爆出來（檔案寫錯位置、DB 用錯路徑開啟、空字串當參數傳下去）。直覺是「在報錯的地方修」，但那是治標。
