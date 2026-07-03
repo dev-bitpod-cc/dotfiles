@@ -1,6 +1,6 @@
 ---
 name: nc-notify
-description: "整合 Notification Center（NC）統一 Telegram 通知服務到 cron / 背景腳本 / pipeline。Use when writing or modifying a cron job, background script (crawler / backfill), or annotation/training pipeline that needs start/done/fail notifications or progress tracking. Chinese triggers：「加通知」「cron」「背景腳本」「回補」「爬蟲」「pipeline」「排程」「跑完通知我」. NC API 細節見 ~/Projects/notification-center/INTEGRATION.md。"
+description: "整合 Notification Center（NC）統一 Telegram 通知服務到 cron / 背景腳本 / pipeline。Use when writing or modifying a cron job, background script (crawler / backfill), or annotation/training pipeline that needs start/done/fail notifications or progress tracking. Chinese triggers：「加通知」「cron」「背景腳本」「回補」「爬蟲」「pipeline」「排程」「跑完通知我」."
 user-invocable: true
 allowed-tools: Read, Bash, Edit, Write, Glob, Grep
 ---
