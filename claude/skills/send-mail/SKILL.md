@@ -47,15 +47,16 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+recipients = ["<resolved>@eland.com.tw"]      # 依收件人解析 fallback：明文 email→代名詞/未指定→jjshen；不確定先問
 msg = MIMEMultipart("alternative")
 msg["From"] = "<task>@eland.com.tw"          # 依當前 repo/task 命名
-msg["To"] = "<resolved>@eland.com.tw"         # 依收件人解析 fallback：明文 email→代名詞/未指定→jjshen；不確定先問
+msg["To"] = ", ".join(recipients)             # header 的逗號字串僅供顯示
 msg["Subject"] = "..."
 msg.attach(MIMEText(text_body, "plain", "utf-8"))
 msg.attach(MIMEText(html_body, "html", "utf-8"))  # HTML 可選
 
 with smtplib.SMTP("172.17.1.143", 25, timeout=10) as s:
-    s.sendmail(msg["From"], [msg["To"]], msg.as_string())
+    s.sendmail(msg["From"], recipients, msg.as_string())  # envelope 必須逐址 list；傳逗號字串會被當單一地址而寄失敗
 ```
 
 ## 寄送前 checklist
