@@ -2,7 +2,7 @@
 
 > **來源**（兩份，後者較新且為準）：
 > 1. Anthropic "The Complete Guide to Building Skills for Claude"（PDF，2026/03 公開）
->    - 原始 PDF：`~/Projects/Documents/The-Complete-Guide-to-Building-Skill-for-Claude.pdf`
+>    - 原始 PDF：`~/Projects/Documents/The-Complete-Guide-to-Building-Skill-for-Claude.pdf`（工作機路徑；本機不存在時略過，逕以下方線上文件為準）
 > 2. **官方 "Skill authoring best practices" 線上文件**（持續更新，規則以此為準）
 >    - <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>
 >    - <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview>

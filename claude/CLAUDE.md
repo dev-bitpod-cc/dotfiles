@@ -24,7 +24,7 @@ When the user pastes third-party review findings, read the source code and verif
 載入 `deep-review` skill，依其「**Codex 呼叫協議**」節呼叫 `codex:rescue`（一行 prompt、禁加 focus/測試/context——以該節為唯一權威，勿憑記憶重組 prompt）。本觸發的專屬規則：
 
 - repo 路徑 + commit range 取最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊，range 直接沿用其 `base..head`（base 已錨定）；即使變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。只有報告未記錄 base 時，才回退用 `HEAD~1..HEAD`。
-- 收到 findings 後依當前模式處理（autofix → 自動修復 commit；否則列出等使用者決定）。
+- 收到 findings 後的處理判準：**最近一次 `/deep-review` 帶 `autofix`** → 驗證後自動修復並 commit；否則、或無法確定當時是否帶 autofix（如新 session）→ 列出 findings 等使用者決定。
 
 ## Security
 
@@ -41,7 +41,7 @@ When the user pastes third-party review findings, read the source code and verif
 
 - **Python**: vars/functions `snake_case`, classes `PascalCase`, constants `UPPER_SNAKE`
 - **TypeScript**: vars/functions `camelCase`, classes/types `PascalCase`, constants `UPPER_SNAKE`
-- **Filenames**: `kebab-case`（如 `setup-mac-env.sh`、`risk-model.py`）
+- **Filenames**: `kebab-case`（如 `setup-mac-env.sh`）；例外：**Python 可 import 的模組/套件檔一律 `snake_case`**（如 `risk_model.py`——kebab-case 無法 import），僅獨立執行腳本可 kebab-case
 
 ## Error Handling
 

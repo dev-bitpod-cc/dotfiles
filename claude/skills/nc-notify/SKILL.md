@@ -9,6 +9,8 @@ allowed-tools: Read, Bash, Edit, Write, Glob, Grep
 
 NC 是統一的 Telegram 通知服務（`db01:8100`）。完整 API 文件與範例：`~/Projects/notification-center/INTEGRATION.md` — status 欄位、`notify_on`、`dedup_key` 用法、完整 payload schema、範例訊息都在那裡查。
 
+該路徑僅存在於工作機。檔案不存在（非工作機）→ 明告使用者查不到完整 schema，payload 只用本檔內嵌欄位（`message` / `level` / `task`）。**NEVER invent payload fields that are not documented here or verified in INTEGRATION.md.**
+
 ## 何時必須整合
 
 | 情境 | 通知 |
