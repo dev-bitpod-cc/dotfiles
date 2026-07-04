@@ -1,0 +1,11 @@
+# 測試用 ssh config fixture
+Include config.local
+
+# BEGIN inventory hosts (由 scripts/render-ssh-config.sh 生成，勿手動編輯)
+Host stale-host
+    HostName 1.2.3.4
+# END inventory hosts
+
+Host github.com
+    User git
+    IdentityFile ~/.ssh/id_github

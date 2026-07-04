@@ -123,6 +123,11 @@ scripts/routing_172.18.sh    # 新增 172.18.0.0/16 路由
 scripts/dotfiles-sync.sh     # 同步 dotfiles 到所有主機
 ```
 
+## 測試
+
+- `./tests/run.sh` — 腳本驗證一鍵跑完：shellcheck + bash -n 全腳本 gate、inventory/render 純邏輯行為測試、`add-new-host.sh --dry-run` 煙霧測試。改動 `scripts/` 或 setup 腳本後必跑。
+- Skill 行為測試（弱模型 evals）：`claude/evals/README.md`（沙盒建置 + 手動 runner），各 skill 情境在其目錄的 `evals.md`。
+
 ## 重要規則
 
 1. **原生命令未被替換**：`ls`, `cat`, `find`, `grep` 仍可正常使用

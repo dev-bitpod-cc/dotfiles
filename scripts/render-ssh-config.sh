@@ -16,7 +16,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DOTFILES_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CONFIG="$DOTFILES_DIR/ssh/config"
+# SSH_CONFIG_FILE 僅供測試覆寫（tests/run.sh）；正常使用不需設定
+CONFIG="${SSH_CONFIG_FILE:-$DOTFILES_DIR/ssh/config}"
 
 BEGIN_MARKER="# BEGIN inventory hosts (由 scripts/render-ssh-config.sh 生成，勿手動編輯)"
 END_MARKER="# END inventory hosts"
