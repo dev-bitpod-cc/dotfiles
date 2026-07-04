@@ -74,6 +74,7 @@ apply_to_remote() {
     local host="$1"
     local block
     block="$(render_block)"
+    # shellcheck disable=SC2087  # 刻意 client 端展開 $BEGIN_MARKER/$END_MARKER/$block；server 端變數已用 \$ 逸出
     ssh "$host" "sudo bash -s" <<REMOTE
 set -e
 TARGET=/etc/hosts

@@ -334,7 +334,7 @@ fi
 print_header "步驟 2: 設定 fzf Shell 整合"
 
 print_info "執行 fzf 安裝腳本..."
-$(brew --prefix)/opt/fzf/install --key-bindings --completion --no-update-rc --no-bash --no-fish
+"$(brew --prefix)/opt/fzf/install" --key-bindings --completion --no-update-rc --no-bash --no-fish
 
 print_success "fzf Shell 整合完成"
 
@@ -347,17 +347,17 @@ print_header "步驟 3: 建立配置檔案"
 BACKUP_SUFFIX=$(date +%Y%m%d_%H%M%S)
 
 if [ -f ~/.zshrc ]; then
-    cp ~/.zshrc ~/.zshrc.backup.$BACKUP_SUFFIX
+    cp ~/.zshrc ~/.zshrc.backup."$BACKUP_SUFFIX"
     print_success "已備份 .zshrc → .zshrc.backup.$BACKUP_SUFFIX"
 fi
 
 if [ -f ~/.zprofile ]; then
-    cp ~/.zprofile ~/.zprofile.backup.$BACKUP_SUFFIX
+    cp ~/.zprofile ~/.zprofile.backup."$BACKUP_SUFFIX"
     print_success "已備份 .zprofile → .zprofile.backup.$BACKUP_SUFFIX"
 fi
 
 if [ -f ~/.zshenv ]; then
-    cp ~/.zshenv ~/.zshenv.backup.$BACKUP_SUFFIX
+    cp ~/.zshenv ~/.zshenv.backup."$BACKUP_SUFFIX"
     print_success "已備份 .zshenv → .zshenv.backup.$BACKUP_SUFFIX"
 fi
 
@@ -365,8 +365,6 @@ fi
 print_info "分析現有配置..."
 
 CONDA_INIT=""
-NVM_INIT=""
-PYENV_INIT=""
 
 # 從 .zshrc 或 .zprofile 提取 conda 初始化
 for config_file in ~/.zshrc ~/.zprofile; do
@@ -895,6 +893,7 @@ fi
 
 # Git 共用設定（透過 include.path 引入 dotfiles 中的 git/config）
 if [ -f "$SCRIPT_DIR/git/config" ]; then
+    # shellcheck disable=SC2088  # 刻意存字面 ~：git 對 include.path 自行展開，config 跨機器可攜
     git config --global include.path "~/.dotfiles/git/config"
     print_success "Git 共用設定已載入（include.path）"
 fi
@@ -952,7 +951,7 @@ if [ -d "$SCRIPT_DIR/claude" ]; then
     # Plugins: settings.json 已透過 symlink 同步 enabledPlugins 清單
     # 實際安裝需在互動式 terminal 中手動執行（claude plugins install 需要 trust prompt）
     if command -v claude &> /dev/null; then
-        local _plugins
+        # 注意：此處在頂層執行，不可用 local（set -e 下 local 會使腳本中斷）
         _plugins=$(jq -r '.enabledPlugins // {} | keys[]' "$SCRIPT_DIR/claude/settings.json" 2>/dev/null)
         if [ -n "$_plugins" ]; then
             print_info "Claude Code plugins 需手動安裝（互動式 terminal）："
@@ -1388,9 +1387,9 @@ if command -v gh &> /dev/null; then
 fi
 
 echo "備份檔案位置："
-[ -f ~/.zshenv.backup.$BACKUP_SUFFIX ] && echo "  ~/.zshenv.backup.$BACKUP_SUFFIX"
-[ -f ~/.zshrc.backup.$BACKUP_SUFFIX ] && echo "  ~/.zshrc.backup.$BACKUP_SUFFIX"
-[ -f ~/.zprofile.backup.$BACKUP_SUFFIX ] && echo "  ~/.zprofile.backup.$BACKUP_SUFFIX"
+[ -f ~/.zshenv.backup."$BACKUP_SUFFIX" ] && echo "  ~/.zshenv.backup.$BACKUP_SUFFIX"
+[ -f ~/.zshrc.backup."$BACKUP_SUFFIX" ] && echo "  ~/.zshrc.backup.$BACKUP_SUFFIX"
+[ -f ~/.zprofile.backup."$BACKUP_SUFFIX" ] && echo "  ~/.zprofile.backup.$BACKUP_SUFFIX"
 
 echo ""
 echo "使用者設定檔案（不會被覆寫）："

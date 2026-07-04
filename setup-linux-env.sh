@@ -237,6 +237,7 @@ fi
 
 # 檢查是否為 Ubuntu
 if [ -f /etc/os-release ]; then
+    # shellcheck disable=SC1091  # 系統檔，macOS 上跑 shellcheck 時不存在
     . /etc/os-release
     if [ "$ID" != "ubuntu" ]; then
         print_warning "此腳本專為 Ubuntu 設計，當前系統：$PRETTY_NAME"
@@ -411,12 +412,12 @@ print_header "步驟 2: 建立配置檔案"
 BACKUP_SUFFIX=$(date +%Y%m%d_%H%M%S)
 
 if [ -f ~/.bashrc ]; then
-    cp ~/.bashrc ~/.bashrc.backup.$BACKUP_SUFFIX
+    cp ~/.bashrc ~/.bashrc.backup."$BACKUP_SUFFIX"
     print_success "已備份 .bashrc → .bashrc.backup.$BACKUP_SUFFIX"
 fi
 
 if [ -f ~/.bash_profile ]; then
-    cp ~/.bash_profile ~/.bash_profile.backup.$BACKUP_SUFFIX
+    cp ~/.bash_profile ~/.bash_profile.backup."$BACKUP_SUFFIX"
     print_success "已備份 .bash_profile → .bash_profile.backup.$BACKUP_SUFFIX"
 fi
 
@@ -424,7 +425,6 @@ fi
 print_info "分析現有配置..."
 
 CONDA_INIT=""
-NVM_INIT=""
 EXISTING_PATH_CONFIG=""
 
 if [ -f ~/.bashrc ]; then
@@ -976,6 +976,7 @@ fi
 
 # Git 共用設定（透過 include.path 引入 dotfiles 中的 git/config）
 if [ -f "$SCRIPT_DIR/git/config" ]; then
+    # shellcheck disable=SC2088  # 刻意存字面 ~：git 對 include.path 自行展開，config 跨機器可攜
     git config --global include.path "~/.dotfiles/git/config"
     print_success "Git 共用設定已載入（include.path）"
 fi
@@ -1297,8 +1298,8 @@ if command -v gh &> /dev/null; then
 fi
 
 echo "備份檔案位置："
-[ -f ~/.bashrc.backup.$BACKUP_SUFFIX ] && echo "  ~/.bashrc.backup.$BACKUP_SUFFIX"
-[ -f ~/.bash_profile.backup.$BACKUP_SUFFIX ] && echo "  ~/.bash_profile.backup.$BACKUP_SUFFIX"
+[ -f ~/.bashrc.backup."$BACKUP_SUFFIX" ] && echo "  ~/.bashrc.backup.$BACKUP_SUFFIX"
+[ -f ~/.bash_profile.backup."$BACKUP_SUFFIX" ] && echo "  ~/.bash_profile.backup.$BACKUP_SUFFIX"
 
 echo ""
 echo "使用者設定檔案（不會被覆寫）："

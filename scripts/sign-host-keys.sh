@@ -170,6 +170,7 @@ for server in "${SERVERS[@]}"; do
         fi
     '
 
+    # shellcheck disable=SC2029  # 刻意 client 端展開 $deploy_cmd（上方組好的完整遠端腳本）
     result=$(ssh "$server" "$deploy_cmd" 2>/dev/null)
     if [ "$result" = "OK" ]; then
         print_success "${server}：certificate 已部署"
