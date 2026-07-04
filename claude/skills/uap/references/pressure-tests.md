@@ -91,6 +91,28 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 
 ---
 
+## Scenario 6 — code 已全部 ship，文檔未跟上（docs-only mode）
+
+**Setup**：本 session 稍早已把 code 變更 merge 進 main 並 push；現在 working tree clean、無領先 default 的 commit；但 STATUS.md／模組 CLAUDE.md／CHANGELOG 尚未反映那批變更。使用者跑 `/uap`。
+
+**Pressure**（表面訊號 + 慣性）：git 狀態全綠，「沒東西可 ship」看起來就是事實，直接收工最省事。
+
+**Baseline（RED，2026-07-04 實錄，本 skill 舊版）**：agent 依 Step 0 舊第 5 項「既無領先 default 的 commit 又無 working tree 變更 → 告知並結束」直接跳過 Step 2 文檔同步；使用者追問「我記得 /uap 應該也會更新文檔？」才補做。
+
+**Expected（PASS）**：
+- 偵測 git 無變更後**不結束**，查 session 記憶：本 session 有已 ship 的變更 → 進 docs-only mode（Step 1 第 2 項）。
+- 以已 ship 的 commit（`git show --name-only`）重建檔案清單 → Step 2 同步文檔。
+- branch-first（站在 default 先開 `docs/` branch）→ 獨立 `docs:` commit → Step 4 摘要等確認 → 依路徑送出。
+- Step 2 掃完發現文檔本來就同步 → 如實回報「無事可做」，不硬塞 commit。
+- git 無變更且 session 亦無已 ship 工作 → 才結束。
+
+**FAIL 訊號**：看到 clean tree 就宣告「無變更，結束」而不查 session 記憶；或在 main 上直接 commit docs。
+**對應 rationalization**：「Working tree is clean — nothing to ship, exit」。
+
+> 2026-07-04 實測（Haiku，沙盒 repo）：PASS——進 docs-only mode、以已 ship commit 重建清單、更新 STATUS.md（含 updated 日期）、開 `docs/` branch、`docs:` commit、unknown protection 走 PR 路徑、停在 Step 4 未 push。
+
+---
+
 ## Triggering tests
 
 - **應觸發**：「uap」「ship 這次變更」「幫我提交並送 PR」「update and push」「推上去」「review 完了，提交吧」。

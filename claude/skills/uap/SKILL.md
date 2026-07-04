@@ -45,6 +45,7 @@ These are hard constraints. Read them before touching git.
 | "Can't detect protection, so it's probably fine to push to main." | Unknown protection → treat as protected. Branch + PR, or stop and ask. |
 | "Branching now is extra work; commit here first, move later." | Branch-first is one command and prevents an awkward main commit. Do it before the commit, every time. |
 | "It's just a docs commit, the protection won't mind." | Protection does not care what the commit is. Same rules. |
+| "Working tree is clean — nothing to ship, exit." | Docs may still lag behind already-shipped code. Check session memory for shipped work (docs-only mode, Step 1 item 2) before exiting. |
 
 ### Red Flags — STOP and re-read Critical
 
@@ -82,7 +83,7 @@ These are hard constraints. Read them before touching git.
    一起 ship？或需要調整？
    ```
 4. context 被壓縮 → 以 pwd 的 repo 為底讓使用者補充；使用者指定的 repo 即使無變更也納入。
-5. 全部 repo 既無領先 default 的 commit 又無 working tree 變更 → 告知並結束。
+5. 全部 repo 既無領先 default 的 commit 又無 working tree 變更 → **勿直接結束**：先逐 repo 依 Step 1 第 2 項的 **docs-only mode** 判定（session 有已 ship 變更的 repo 仍納入，跑文檔同步）。git 無變更**且** session 記憶亦無已 ship 工作 → 才告知並結束。
 6. **單一 repo → 跳過此步，直接 Step 1。**
 
 ## Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）
@@ -92,7 +93,8 @@ These are hard constraints. Read them before touching git.
 對每個 repo：
 
 1. **default branch**：`git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null`（取 basename）；失敗則依序試 `main`、`master`。
-2. **變更集**（= 此 branch **相對 default 的變更**，即 PR 將含的內容；**不等於「未 push」**——已 push 到 feature branch upstream 的 commit 仍落在此範圍，push 狀態由 Step 5 處理且 push 為冪等）：branch 帶來的**檔案**（`git -C <repo> diff --name-only origin/<default>...HEAD`，**三點**——以 merge-base 計，只列 branch 自切出後自身帶來的變更；用兩點 `..` 會在上游前進後混入他人檔。commit 主旨另用 `git -C <repo> log --oneline origin/<default>..HEAD`，**兩點**——列「在 HEAD、不在 origin/<default>」的 commit；`log` 只有主旨、無檔名，deep-review 交接的「clean tree + 只剩 branch commit」情境下必須靠 `diff --name-only` 才列得出檔）+ working-tree **含 untracked**（`git -C <repo> status --porcelain`——`git diff --name-only HEAD` 會漏掉新增的 untracked 檔，與 Step 0 一致用 porcelain）。合併為完整**檔案**清單（Step 2 判模組、Step 4 列變更檔都靠它）。無變更 → 跳過此 repo。
+2. **變更集**（= 此 branch **相對 default 的變更**，即 PR 將含的內容；**不等於「未 push」**——已 push 到 feature branch upstream 的 commit 仍落在此範圍，push 狀態由 Step 5 處理且 push 為冪等）：branch 帶來的**檔案**（`git -C <repo> diff --name-only origin/<default>...HEAD`，**三點**——以 merge-base 計，只列 branch 自切出後自身帶來的變更；用兩點 `..` 會在上游前進後混入他人檔。commit 主旨另用 `git -C <repo> log --oneline origin/<default>..HEAD`，**兩點**——列「在 HEAD、不在 origin/<default>」的 commit；`log` 只有主旨、無檔名，deep-review 交接的「clean tree + 只剩 branch commit」情境下必須靠 `diff --name-only` 才列得出檔）+ working-tree **含 untracked**（`git -C <repo> status --porcelain`——`git diff --name-only HEAD` 會漏掉新增的 untracked 檔，與 Step 0 一致用 porcelain）。合併為完整**檔案**清單（Step 2 判模組、Step 4 列變更檔都靠它）。無變更 → 跳過此 repo，**除非符合下述 docs-only mode**。
+   **Docs-only mode**：repo git 無變更（tree clean、無領先 default 的 commit），但 session 記憶中有本 session **已 ship**（已 merge／已 push）的變更 → 不跳過。變更集改由那批 commit 重建檔案清單：逐 commit `git -C <repo> show --name-only <sha>`（已 merge 進 default 者用 default 上的對應 commit）。後續步驟照常：Step 2 據此同步文檔、Step 3 只會產生 `docs:` commit、branch-first／protection／Step 4 確認全部適用；Step 2 掃完確認文檔皆已同步 → 該 repo 無事可做，如實回報。**A clean tree does not mean "nothing to ship" — "code shipped, docs lagging" is the common case this mode exists for.**
 3. **branch protection**（classic + ruleset 都查；細節見 `references/ship-paths.md`）：
    - `gh api repos/<owner>/<repo>/branches/<default>/protection`（classic）+ `gh api repos/<owner>/<repo>/rules/branches/<default>`（ruleset）。**`<owner>/<repo>/<default>` 用偵測到的實際值代入**——`gh api` 只替換 `{owner}`/`{repo}`/`{branch}`、**不認 `{default}`**，且多 repo 時 `{owner}/{repo}` 會依 cwd 解析到錯 repo。完整可執行版見 `references/ship-paths.md`。
    - classic 回 200 **或** ruleset 非空 → **protected**。
