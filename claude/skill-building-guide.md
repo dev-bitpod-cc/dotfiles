@@ -151,7 +151,7 @@ Context window 是公共財。**預設 Claude 已經很聰明**，只加它沒�
 4. **寫最小指令**：剛好補足 gap、通過 eval
 5. **迭代**：跑 eval、對比 baseline、refine
 
-eval 結構（JSON）：`{skills, query, files, expected_behavior[]}`。目前無內建 runner，需自建。
+eval 結構（JSON）：`{skills, query, files, expected_behavior[]}`。目前無內建 runner，需自建——本 repo 的手動 runner（Agent 工具 A/B 法）與沙盒建置見 `claude/evals/README.md`。
 
 ### 三種測試
 

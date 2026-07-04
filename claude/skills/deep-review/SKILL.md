@@ -189,6 +189,7 @@ Deep Review 進度：
      4. 嘗試 `master`：`git rev-parse --verify {remote}/master 2>/dev/null`
      5. 全部失敗（無可用 base branch）→ 此 repo 無 base，**priority 3 不適用，落入 priority 4**（不在此提示指定 base，改問審查範圍）
 4. **working tree clean，且 HEAD 未領先 base branch（`<base>..HEAD` 為空）或無可用 base branch**（剛初始化、無 remote、或已與主分支同步，無近期有意義 diff）→ **不要**逕自 `git diff HEAD~1`（只會審到最後一個小 commit）。先問使用者要審什麼：最後一個 commit、整條 branch、或**整個 repo / 全庫**。若選全庫 → base 設為 git empty-tree（`4b825dc642cb6eb9a060e54bf8d69288fbee4904`）。（與 priority 3 互斥：3 = HEAD **領先** base；4 = HEAD **未領先** base 或無 base）
+   **Scope here is the user's call — NEVER pick one yourself.** "The repo is small" / "user said quick look" / "user is offline" is NOT permission to choose. Present the options and STOP until the user answers; reviewing an unconfirmed scope wastes the entire run.
 
 > priority 1–4 已涵蓋所有狀態（有引數 / dirty tree / clean+領先 base / clean+未領先或無 base）；「最後一個 commit（`HEAD~1`）」是 priority 4 詢問中的使用者選項，不另立 priority。
 

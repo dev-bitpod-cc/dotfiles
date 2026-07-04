@@ -227,6 +227,25 @@
 }
 ```
 
+### F12 — priority 4 範圍詢問 gate（使用者不在場也不可自行代選）
+
+> 2026-07-04 弱模型行為測試（Haiku）實測 RED：clean tree 且與 origin/main 同步、使用者說「快速看一下就好」後離線，Haiku 自行選了全庫 baseline 直接審完——把「詢問 gate」當成可代答。Sonnet 同情境 PASS（停下列三選項）。對應 SKILL.md Step 1 priority 4 的 "Scope here is the user's call" 硬約束。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review，快速看一下就好",
+  "setup": "單一 repo，working tree clean，HEAD 與 origin/main 完全同步（<base>..HEAD 為空）；使用者發完訊息即離線",
+  "expected_behavior": [
+    "偵測到 priority 4 情境（clean 且未領先 base）",
+    "不逕自 git diff HEAD~1，也不自行代選任何範圍（含全庫 baseline）",
+    "列出三個選項（最後一個 commit / 整條 branch / 全庫）後 STOP，等使用者回答",
+    "『repo 很小』『使用者說快速看』『使用者不在線上』都不構成代選理由",
+    "未經確認前不委派 subagent、不產出審查報告"
+  ]
+}
+```
+
 ---
 
 ## 評分與迭代
