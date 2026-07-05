@@ -74,7 +74,7 @@ These are hard constraints. Read them before touching git.
 依本 session 記憶列出所有涉及變更的 repo（**不掃 `~/Projects/`**）：
 
 1. 回憶 session 中改過檔案的所有 repo 根目錄 + pwd 所在 repo。
-2. 每個 repo 跑 `git -C <repo> status --porcelain` 與 `git -C <repo> log --oneline origin/<default>..HEAD 2>/dev/null` 確認狀態（`<default>` = origin 預設分支、`origin` 為 canonical remote 的 stand-in（無 `origin` 取第一個 remote），同 Step 1 remote 假設；**勿用 `@{upstream}`**——未設 upstream 的 feature branch 會 error 被 `2>/dev/null` 靜默吞掉，把 deep-review 交接的 clean-tree feature branch 誤判為「無變更」而漏掉）。
+2. **單一呼叫**確認全部 repo 狀態：`~/.claude/skills/uap/scripts/ship-state.sh <repo1> <repo2> ...`（default branch 偵測、三點/兩點變更集、upstream 邊界、protection 判定全在腳本內）。Step 1 直接沿用同一份輸出，**不重跑**。
 3. 展示清單等使用者確認（ok / 只看 X / 還有 Y）：
    ```
    本次涉及 2 個 repo：
@@ -92,15 +92,11 @@ These are hard constraints. Read them before touching git.
 
 對每個 repo：
 
-1. **default branch**：`git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null`（取 basename）；失敗則依序試 `main`、`master`。
-2. **變更集**（= 此 branch **相對 default 的變更**，即 PR 將含的內容；**不等於「未 push」**——已 push 到 feature branch upstream 的 commit 仍落在此範圍，push 狀態由 Step 5 處理且 push 為冪等）：branch 帶來的**檔案**（`git -C <repo> diff --name-only origin/<default>...HEAD`，**三點**——以 merge-base 計，只列 branch 自切出後自身帶來的變更；用兩點 `..` 會在上游前進後混入他人檔。commit 主旨另用 `git -C <repo> log --oneline origin/<default>..HEAD`，**兩點**——列「在 HEAD、不在 origin/<default>」的 commit；`log` 只有主旨、無檔名，deep-review 交接的「clean tree + 只剩 branch commit」情境下必須靠 `diff --name-only` 才列得出檔）+ working-tree **含 untracked**（`git -C <repo> status --porcelain`——`git diff --name-only HEAD` 會漏掉新增的 untracked 檔，與 Step 0 一致用 porcelain）。合併為完整**檔案**清單（Step 2 判模組、Step 4 列變更檔都靠它）。無變更 → 跳過此 repo，**除非符合下述 docs-only mode**。
+1. **狀態偵測（單一來源）**：沿用 Step 0 的 `ship-state.sh` 輸出（單 repo 鎖定時在此直跑一次）——每 repo 印出 `branch` / `remotes`（多 remote 附 fork 提示）/ `default` / `files-vs-default`（三點，branch 自身帶來的檔）/ `commits-ahead`（兩點，領先 default 的 commit）/ `working-tree`（porcelain 含 untracked）/ `misplaced`（誤 commit 在本地 default 的警示）/ `protection` / `ship-path` / `branch-first`。**Do not re-run the underlying git/gh commands one by one — the script IS the detection.**
+2. **變更集**（= 此 branch **相對 default 的變更**，即 PR 將含的內容；**不等於「未 push」**——已 push 到 feature branch upstream 的 commit 仍落在此範圍，push 狀態由 Step 5 處理且 push 為冪等）：取腳本的 `files-vs-default` + `working-tree` 合併為完整**檔案**清單（Step 2 判模組、Step 4 列變更檔都靠它；`commits-ahead` 只有主旨、無檔名，deep-review 交接的「clean tree + 只剩 branch commit」情境靠 `files-vs-default` 列檔）。無變更（腳本印 `changes: NONE`）→ 跳過此 repo，**除非符合下述 docs-only mode**。
    **Docs-only mode**：repo git 無變更（tree clean、無領先 default 的 commit），但 session 記憶中有本 session **已 ship**（已 merge／已 push）的變更 → 不跳過。變更集改由那批 commit 重建檔案清單：逐 commit `git -C <repo> show --name-only <sha>`（已 merge 進 default 者用 default 上的對應 commit）。後續步驟照常：Step 2 據此同步文檔、Step 3 只會產生 `docs:` commit、branch-first／protection／Step 4 確認全部適用；Step 2 掃完確認文檔皆已同步 → 該 repo 無事可做，如實回報。**A clean tree does not mean "nothing to ship" — "code shipped, docs lagging" is the common case this mode exists for.**
-3. **branch protection**（classic + ruleset 都查；細節見 `references/ship-paths.md`）：
-   - `gh api repos/<owner>/<repo>/branches/<default>/protection`（classic）+ `gh api repos/<owner>/<repo>/rules/branches/<default>`（ruleset）。**`<owner>/<repo>/<default>` 用偵測到的實際值代入**——`gh api` 只替換 `{owner}`/`{repo}`/`{branch}`、**不認 `{default}`**，且多 repo 時 `{owner}/{repo}` 會依 cwd 解析到錯 repo。完整可執行版見 `references/ship-paths.md`。
-   - classic 回 200 **或** ruleset 非空 → **protected**。
-   - classic 回 404「Branch not protected」**且** ruleset = `[]` → **確定無保護**。
-   - 其他錯誤（403 / 網路 / 無 gh，無法分辨）→ **未知 → 視為 protected**（Unknown = protected）。
-4. **決定 ship 路徑**：protected（或未知）→ **PR 路徑**（推 feature branch + 必開 PR）；確定無保護 → **直接 push 路徑**（推 feature branch，PR 可選）。**兩條路徑都推 feature branch、都不直推 default**（branch-first 無條件）——「直接 push」指**省去開 PR 的步驟、直接 push 該 branch**，不是直推 default。把變更合進 default branch 一律是**使用者**的事（agent 不 merge、不直推 default）。
+3. **branch protection**：取腳本的 `protection:` verdict（classic + ruleset 都查過）——`PROTECTED` / `OPEN` / `UNKNOWN → treat as PROTECTED`。**Never reinterpret the script's UNKNOWN as "probably open" — Unknown = protected, the script already says so.** verdict 附 `viewerPermission=READ`（classic `Not Found`）→ 身分分離情境，後續處置（`git push --dry-run` 探權限、Step 4 摘要點明、不自行硬推）見 `references/ship-paths.md`。
+4. **決定 ship 路徑**：取腳本的 `ship-path:`——protected（或未知）→ **PR 路徑**（推 feature branch + 必開 PR）；確定無保護 → **直接 push 路徑**（推 feature branch，PR 可選）。**兩條路徑都推 feature branch、都不直推 default**（branch-first 無條件）——「直接 push」指**省去開 PR 的步驟、直接 push 該 branch**，不是直推 default。把變更合進 default branch 一律是**使用者**的事（agent 不 merge、不直推 default）。
 5. **Branch-first（無條件，依全域「if on default branch, branch first」）**：目標——**到 Step 5 送出前，當前 branch 一定不是 default branch（也不是 detached HEAD）**，**不論 protection**。已在 feature branch（如 deep-review 結尾）→ 跳過。否則依狀態二擇一：
    - **當前在 default branch 或 detached HEAD，變更尚未 commit，或已 commit 在 detached HEAD 上**（情況 A）→ `git -C <repo> switch -c <type>/<slug>`（type 取自變更語意 feat/fix/docs…，slug kebab-case）：working-tree 變更跟著切過去，**detached HEAD 上已有的 commit 也一併被新 branch 接走**（不需情況 B 的 ref 重置——detached HEAD 不移動任何 branch ref）。在 default branch 上時務必**commit 之前**先做。
    - **變更已誤 commit 在本地 default branch**（且未 push，**無論是否還有未 commit 變更**）（情況 B）→ `git -C <repo> branch <feature>` 保住 commit → `git -C <repo> switch <feature>` → `git -C <repo> branch -f <default> origin/<default>` 把本地 default 退回 remote。**不 checkout default、不 `reset --hard`**——mixed state（部分已 commit、部分還在 working tree）下切回 default 再 hard reset 會永久銷毀未 commit 變更。完整序列見 `references/ship-paths.md` 情況 B。

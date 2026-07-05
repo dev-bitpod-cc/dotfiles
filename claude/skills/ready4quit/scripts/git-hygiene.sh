@@ -88,7 +88,7 @@ check_repo() {
         default_branch="$(detect_default_branch "$repo")"
         if [ -n "$default_branch" ]; then
             baseline="origin/$default_branch"
-            echo "baseline: $baseline（無 upstream，退用 default branch）"
+            echo "baseline: ${baseline}（無 upstream，退用 default branch）"
         elif [ -z "$(git -C "$repo" remote)" ]; then
             echo "baseline: NO-REMOTE（local-only repo，無從判斷 push 狀態）"
         else

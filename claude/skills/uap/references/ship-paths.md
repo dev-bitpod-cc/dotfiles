@@ -16,6 +16,8 @@ SKILL.md Step 1/5 的展開。涵蓋 repo 解析、protection 偵測、branch-fi
 
 ## Repo / default branch 解析
 
+> 本節與下節〈Branch protection 偵測〉的邏輯已封裝於 `scripts/ship-state.sh`（Step 0/1 單次呼叫，以腳本為可執行權威）；以下逐條指令供除錯、或腳本不可用時的手動 fallback。
+
 ```bash
 # owner/repo（多 repo：在該 repo 目錄下執行，勿靠 cwd 隱式解析）
 repo_slug=$( (cd <repo> && gh repo view --json nameWithOwner -q .nameWithOwner) )    # 如 elandcomtw/krepo

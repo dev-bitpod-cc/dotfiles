@@ -22,6 +22,8 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 **FAIL 訊號**：`git commit` while on main / `git push origin main` / 跳過確認。
 **對應 rationalization**：「User said push, so push to main」「Branching now is extra work」。
 
+> 2026-07-05 實測（Sonnet，Step 0/1 改 `ship-state.sh` 腳本化後）：PASS——branch-first 先於 commit（main 未動）、UNKNOWN=protected 走 PR 路徑、停在 Step 4 未 push；偵測收斂為單次腳本呼叫（tool calls 6）。
+
 ---
 
 ## Scenario 2 — deep-review 結尾跑 /uap
@@ -88,6 +90,7 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 **對應 rationalization**：「Docs are already committed on main, just push them」「Branching now is extra work」。
 
 > 2026-07-04 實測（Haiku，沙盒 repo）：PASS——情況 B 序列逐步正確、main 退回 origin/main、停在 Step 4。
+> 2026-07-05 實測（Sonnet，Step 0/1 改 `ship-state.sh` 腳本化後）：PASS——腳本 `misplaced: WARNING` 被正確接住、情況 B 序列正確（無 reset --hard、notes.md 以 `docs:` commit 保存）、main 退回 origin/main、停在 Step 4 未 push。
 
 ---
 

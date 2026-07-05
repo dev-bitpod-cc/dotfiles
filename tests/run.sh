@@ -10,6 +10,7 @@
 #   4. render-ssh-config.sh 區塊替換、--check、marker 防呆
 #   5. add-new-host.sh --dry-run 煙霧測試（不動任何檔案）
 #   6. git-hygiene.sh（ready4quit skill script）verdict 判定
+#   7. ship-state.sh（uap skill script）偵測與 protection 判定（gh stub）
 #
 set -uo pipefail
 
@@ -189,6 +190,85 @@ assert_rc "非 git repo → exit 1" 1 $?
 if echo "$out" | grep -q "verdict: UNKNOWN"; then ok "非 repo → UNKNOWN"; else bad "非 repo 未判 UNKNOWN"; fi
 
 "$GH_SCRIPT" >/dev/null 2>&1
+assert_rc "無引數 → exit 2" 2 $?
+
+echo "▶ 9. ship-state.sh 偵測與 protection 判定"
+SS_SCRIPT="$ROOT/claude/skills/uap/scripts/ship-state.sh"
+
+# gh stub 三態：PROTECTED / OPEN(404 Branch not protected) / Not Found(身分分離)
+make_gh_stub() {  # <path> <protection行為: protected|open|notfound>
+    local mode="$2"
+    cat > "$1" <<STUB
+#!/usr/bin/env bash
+case "\$*" in
+    *nameWithOwner*) echo "acme/widget" ;;
+    *viewerPermission*) echo "READ" ;;
+    *"/protection"*)
+        case "$mode" in
+            protected) echo '{"required_status_checks":{}}'; exit 0 ;;
+            open)      echo "gh: Branch not protected (HTTP 404)"; exit 1 ;;
+            notfound)  echo "gh: Not Found (HTTP 404)"; exit 1 ;;
+        esac ;;
+    *"rules/branches"*) echo '[]' ;;
+esac
+STUB
+    chmod +x "$1"
+}
+make_gh_stub "$TMP/gh-protected" protected
+make_gh_stub "$TMP/gh-open" open
+make_gh_stub "$TMP/gh-notfound" notfound
+
+# fixture：bare origin + clone，feature branch 上 1 commit、tree clean
+git init --bare -q "$TMP/ss-origin.git"
+git init -q -b main "$TMP/ss-work"
+(cd "$TMP/ss-work" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/ss-origin.git" && git push -qu origin main \
+    && git switch -qc feat/x && echo v2 > f.txt && "${GITC[@]}" commit -qam "feat: x")
+
+out="$(SHIP_STATE_GH="$TMP/gh-protected" "$SS_SCRIPT" "$TMP/ss-work")"
+assert_rc "feature branch 偵測 → exit 0" 0 $?
+if echo "$out" | grep -q "protection: PROTECTED"; then ok "stub protected → PROTECTED"; else bad "stub protected 未判 PROTECTED"; fi
+if echo "$out" | grep -q "ship-path: PR"; then ok "PROTECTED → PR 路徑"; else bad "PROTECTED 未走 PR 路徑"; fi
+if echo "$out" | grep -q "files-vs-default: 1 檔"; then ok "三點 diff 列出 branch 帶來的檔"; else bad "三點 diff 未列檔"; fi
+if echo "$out" | grep -q "branch-first: 已在 feature branch"; then ok "feature branch → 免 branch-first"; else bad "feature branch 誤判 branch-first"; fi
+
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ss-work")"
+if echo "$out" | grep -q "protection: OPEN" && echo "$out" | grep -q "ship-path: DIRECT-PUSH"; then
+    ok "stub open → OPEN + DIRECT-PUSH（仍推 feature branch）"
+else bad "stub open 判定錯誤"; fi
+
+out="$(SHIP_STATE_GH="$TMP/gh-notfound" "$SS_SCRIPT" "$TMP/ss-work")"
+if echo "$out" | grep -q "protection: UNKNOWN" && echo "$out" | grep -q "treat as PROTECTED" \
+    && echo "$out" | grep -q "viewerPermission=READ" && echo "$out" | grep -q "ship-path: PR"; then
+    ok "stub notfound → UNKNOWN=protected + 身分分離提示"
+else bad "stub notfound 判定錯誤"; fi
+
+# 站在 main + 未 commit 變更 → branch-first REQUIRED
+(cd "$TMP/ss-work" && git switch -q main && echo dirty > new.txt)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ss-work")"
+if echo "$out" | grep -q "branch-first: REQUIRED"; then ok "main + 髒 tree → branch-first REQUIRED"; else bad "未要求 branch-first"; fi
+
+# 誤 commit 在本地 main → misplaced WARNING（情況 B）
+(cd "$TMP/ss-work" && "${GITC[@]}" add new.txt && "${GITC[@]}" commit -qm "oops on main")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ss-work")"
+if echo "$out" | grep -q "misplaced: WARNING"; then ok "誤 commit 在 main → misplaced WARNING"; else bad "misplaced 未偵測"; fi
+
+# 全乾淨 → changes NONE + docs-only 提醒（不查 protection）
+git clone -q "$TMP/ss-origin.git" "$TMP/ss-clean"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ss-clean")"
+assert_rc "乾淨 repo → exit 0" 0 $?
+if echo "$out" | grep -q "changes: NONE" && echo "$out" | grep -q "docs-only"; then
+    ok "乾淨 repo → changes NONE + docs-only 提醒"
+else bad "乾淨 repo 輸出缺 docs-only 提醒"; fi
+
+# local-only（無 remote）→ STOP
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/gh-local")"
+if echo "$out" | grep -q "remotes: NONE"; then ok "無 remote → STOP 告知"; else bad "無 remote 未 STOP"; fi
+
+"$SS_SCRIPT" "$TMP/not-a-repo" >/dev/null 2>&1
+assert_rc "非 git repo → exit 1" 1 $?
+"$SS_SCRIPT" >/dev/null 2>&1
 assert_rc "無引數 → exit 2" 2 $?
 
 echo ""
