@@ -11,6 +11,7 @@
 #   5. add-new-host.sh --dry-run 煙霧測試（不動任何檔案）
 #   6. git-hygiene.sh（ready4quit skill script）verdict 判定
 #   7. ship-state.sh（uap skill script）偵測與 protection 判定（gh stub）
+#   8. review-state.sh（deep-review skill script）scope-priority / round 判定
 #
 set -uo pipefail
 
@@ -269,6 +270,54 @@ if echo "$out" | grep -q "remotes: NONE"; then ok "無 remote → STOP 告知"; 
 "$SS_SCRIPT" "$TMP/not-a-repo" >/dev/null 2>&1
 assert_rc "非 git repo → exit 1" 1 $?
 "$SS_SCRIPT" >/dev/null 2>&1
+assert_rc "無引數 → exit 2" 2 $?
+
+echo "▶ 10. review-state.sh scope-priority / round 判定"
+RS_SCRIPT="$ROOT/claude/skills/deep-review/scripts/review-state.sh"
+
+# fixture：bare origin + clone，main 已 push
+git init --bare -q "$TMP/rs-origin.git"
+git init -q -b main "$TMP/rs-work"
+(cd "$TMP/rs-work" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/rs-origin.git" && git push -qu origin main)
+
+# dirty tree（modified + untracked）→ priority 2
+(cd "$TMP/rs-work" && echo v2 > f.txt && echo new > new.txt)
+out="$("$RS_SCRIPT" "$TMP/rs-work")"
+assert_rc "dirty tree 偵測 → exit 0" 0 $?
+if echo "$out" | grep -q "scope-priority: 2"; then ok "dirty tree → priority 2"; else bad "dirty tree 未判 priority 2"; fi
+if echo "$out" | grep -qA2 "untracked" && echo "$out" | grep -q "new.txt"; then ok "untracked 另列（diff HEAD 不含）"; else bad "untracked 未另列"; fi
+
+# feature branch 領先、tree clean → priority 3 + merge-base
+(cd "$TMP/rs-work" && git checkout -q -- f.txt && rm new.txt \
+    && git switch -qc feat/y && echo v3 > f.txt && "${GITC[@]}" commit -qam "feat: y")
+mb_expect="$(git -C "$TMP/rs-work" rev-parse origin/main)"
+out="$("$RS_SCRIPT" "$TMP/rs-work")"
+if echo "$out" | grep -q "scope-priority: 3"; then ok "clean+領先 → priority 3"; else bad "未判 priority 3"; fi
+if echo "$out" | grep -q "base: origin/main"; then ok "base 偵測 origin/main"; else bad "base 偵測錯誤"; fi
+if echo "$out" | grep -q "hash-merge-base: $mb_expect"; then ok "merge-base = 分叉點（squash base 候選）"; else bad "merge-base 錯誤"; fi
+if echo "$out" | grep -q "round: 1"; then ok "無 fix commit → Round 1"; else bad "round 誤判"; fi
+
+# 加 fix commit → Round 2
+(cd "$TMP/rs-work" && echo v4 > f.txt && "${GITC[@]}" commit -qam "fix: R1 review fixes")
+out="$("$RS_SCRIPT" "$TMP/rs-work")"
+if echo "$out" | grep -q "round: 2"; then ok "1 個 fix commit → Round 2"; else bad "fix commit 輪次誤判"; fi
+
+# clean 且與 base 同步 → priority 4 MUST ASK
+git clone -q "$TMP/rs-origin.git" "$TMP/rs-clean"
+out="$("$RS_SCRIPT" "$TMP/rs-clean")"
+if echo "$out" | grep -q "scope-priority: 4" && echo "$out" | grep -q "MUST ASK USER"; then
+    ok "clean 同步 → priority 4 + MUST ASK USER"
+else bad "priority 4 gate 輸出缺失"; fi
+
+# local-only repo（無 remote，有本地 main）→ base 退用本地 branch
+out="$("$RS_SCRIPT" "$TMP/gh-local")"
+if echo "$out" | grep -q "base: main"; then ok "無 remote → base 退用本地 main"; else bad "本地 base fallback 錯誤"; fi
+
+"$RS_SCRIPT" "$TMP/not-a-repo" >/dev/null 2>&1
+assert_rc "非 git repo → exit 1" 1 $?
+"$RS_SCRIPT" >/dev/null 2>&1
 assert_rc "無引數 → exit 2" 2 $?
 
 echo ""

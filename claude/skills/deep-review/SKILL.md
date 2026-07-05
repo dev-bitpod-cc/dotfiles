@@ -35,7 +35,7 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, Agent
 | diff — working-tree | 進入時 HEAD |
 | baseline（base = empty-tree，非 commit 不能當 reset 目標） | 進入時 HEAD（pre-fix HEAD） |
 
-此 hash 是 Step 5 squash 的 `git reset --soft` 目標，且與 autocodex commit range、第三方審查資訊**同一錨點**，故 squash 範圍恆等於審查範圍。**Always reset to this recorded fixed hash, NEVER a moving ref**（如 `origin/<default>`——review 期間 default 前進會把 squash reset 到錯誤目標）。
+此 hash 是 Step 5 squash 的 `git reset --soft` 目標，且與 autocodex commit range、第三方審查資訊**同一錨點**，故 squash 範圍恆等於審查範圍。（`review-state.sh` 的 `hash-HEAD` / `hash-merge-base` 即前兩列的候選值，照抄即可。）**Always reset to this recorded fixed hash, NEVER a moving ref**（如 `origin/<default>`——review 期間 default 前進會把 squash reset 到錯誤目標）。
 
 ```
 R1 review → 未通過 → 主 agent 修復 → commit「fix: R1 review fixes」
@@ -149,7 +149,7 @@ Deep Review 進度：
 - [ ] Step 5：彙整輸出
         autofix 迴圈每輪重記一行：R{N} 審查 → 修復 → 驗證 → commit（上限 R5）
 - [ ] Step 6：Codex 第三方循環（僅 autocodex；每輪重記：C{N} 審查 → 驗證 → 修復 → commit，上限 C3）
-- [ ] 通過後：squash 成乾淨 commit（commit 即停，等使用者指示是否 push）
+- [ ] 通過後：squash 成乾淨 commit（語意 message + runtime Co-Authored-By trailer；commit 即停，等使用者指示是否 push）
 ```
 
 ### 0. 識別審查範圍（多 Repo 偵測）
@@ -158,7 +158,7 @@ Deep Review 進度：
 
 1. 回憶本 session 中修改過檔案的所有 repo 根目錄
 2. 加上 pwd 所在的 repo（即使未改檔案）
-3. 對每個 repo 執行 `git status --porcelain`（偵測 working-tree 變更，**含 untracked**——`git diff --stat HEAD` 會漏掉純新建未追蹤檔、誤判無變更）和 `git log --oneline origin/<default>..HEAD 2>/dev/null` 確認變更狀態（用 `origin/<default>` 而非 `@{upstream}`——未設 upstream 的 feature branch 會 error 被 `2>/dev/null` 吞掉、誤判無變更；`<default>` 偵測同 Step 1，`origin` 為 canonical remote 的 stand-in，無 `origin` 則取第一個 remote）
+3. **單一呼叫**確認全部 repo 狀態：`~/.claude/skills/deep-review/scripts/review-state.sh <repo1> <repo2> ...`（porcelain 含 untracked、base 偵測、領先 commit、輪次、squash hash 候選值全在腳本內；Step 1/2 直接沿用同一份輸出，**不重跑**）
 4. 向使用者展示清單並等待確認：
 
 ```
@@ -180,20 +180,15 @@ Deep Review 進度：
 對每個 repo 獨立判斷，依優先順序：
 
 1. **有引數**（扣除 autofix 後）→ 依引數類型決定模式（見下方）
-2. **有 working tree 變更**（staged 或 unstaged）→ `git diff HEAD`（偵測「是否有變更」用 `git status --porcelain` 才看得到 untracked；純新建 untracked 檔不被 `git diff HEAD` 顯示——**review 須唯讀，勿用會寫 index 的 `git add -N`**：untracked 新檔全文即 diff，直接 `Read` 該檔，或 `git diff --no-index /dev/null <檔>`（唯讀）取得 added 視圖）
-3. **HEAD 偏離 base branch 且 working tree clean** → `git diff <base>...HEAD`（review 整個 branch）
-   - base branch 偵測（目標是 repo 的預設主分支，不是當前 branch 的 upstream）：
-     1. 列出所有 remote（`git remote`）；若無 remote → 嘗試本地 `main` / `master`（`git rev-parse --verify main 2>/dev/null`），都不存在則提示使用者指定；若有多個 remote → 非 autofix 模式提示使用者指定要用哪個 remote 作為基準，autofix 模式（需零互動）預設取 `origin`（不存在則取第一個 remote），並在報告註明所用基準
-     2. 解析該 remote 的 HEAD：`git symbolic-ref refs/remotes/{remote}/HEAD 2>/dev/null`，取 basename；若指令失敗或對應 ref 不存在，進入下一步
-     3. 嘗試 `main`：`git rev-parse --verify {remote}/main 2>/dev/null`
-     4. 嘗試 `master`：`git rev-parse --verify {remote}/master 2>/dev/null`
-     5. 全部失敗（無可用 base branch）→ 此 repo 無 base，**priority 3 不適用，落入 priority 4**（不在此提示指定 base，改問審查範圍）
-4. **working tree clean，且 HEAD 未領先 base branch（`<base>..HEAD` 為空）或無可用 base branch**（剛初始化、無 remote、或已與主分支同步，無近期有意義 diff）→ **不要**逕自 `git diff HEAD~1`（只會審到最後一個小 commit）。先問使用者要審什麼：最後一個 commit、整條 branch、或**整個 repo / 全庫**。若選全庫 → base 設為 git empty-tree（`4b825dc642cb6eb9a060e54bf8d69288fbee4904`）。（與 priority 3 互斥：3 = HEAD **領先** base；4 = HEAD **未領先** base 或無 base）
+2. **有 working tree 變更**（腳本 `scope-priority: 2`）→ 審查目標 = `git diff HEAD` + 腳本 `untracked` 清單逐檔（**review 須唯讀，勿用會寫 index 的 `git add -N`**：untracked 新檔全文即 diff，由 subagent 直接 `Read` 該檔，或 `git diff --no-index /dev/null <檔>`（唯讀）取得 added 視圖）
+3. **HEAD 偏離 base branch 且 working tree clean**（腳本 `scope-priority: 3`）→ 審查目標 = `git diff <base>...HEAD`（review 整個 branch）
+   - base 取腳本 `base:` 輸出（偵測順序 remote HEAD → main → master、無 remote 退本地 branch 已封裝；目標是 repo 的預設主分支，不是當前 branch 的 upstream）。腳本印 `remotes: N 個` 且非 autofix 模式 → 提示使用者指定基準 remote（autofix 需零互動，用腳本預設並在報告註明）；`base: NONE` → **priority 3 不適用，落入 priority 4**（不在此提示指定 base，改問審查範圍）
+4. **working tree clean，且 HEAD 未領先 base branch（`<base>..HEAD` 為空）或無可用 base branch**（腳本 `scope-priority: 4 — MUST ASK USER`；剛初始化、無 remote、或已與主分支同步，無近期有意義 diff）→ **不要**逕自 `git diff HEAD~1`（只會審到最後一個小 commit）。先問使用者要審什麼：最後一個 commit、整條 branch、或**整個 repo / 全庫**。若選全庫 → base 設為 git empty-tree（`4b825dc642cb6eb9a060e54bf8d69288fbee4904`）。（與 priority 3 互斥：3 = HEAD **領先** base；4 = HEAD **未領先** base 或無 base）
    **Scope here is the user's call — NEVER pick one yourself.** "The repo is small" / "user said quick look" / "user is offline" is NOT permission to choose. Present the options and STOP until the user answers; reviewing an unconfirmed scope wastes the entire run.
 
 > priority 1–4 已涵蓋所有狀態（有引數 / dirty tree / clean+領先 base / clean+未領先或無 base）；「最後一個 commit（`HEAD~1`）」是 priority 4 詢問中的使用者選項，不另立 priority。
 
-先用 `git diff --stat` 看概覽，再讀完整 diff。
+主 agent 只看 **stat 概覽**做 orchestration（priority 2/3 用腳本的 `stat` 輸出；priority 1 引數模式另跑一次 `git diff --stat <範圍>`）。**Do not pull the full diff into the main context — the Step 4 subagent collects it itself.** 主 agent 需要細節時（如 autofix 修復階段）再讀 findings 指到的檔案。
 
 **引數判斷**：符合 `HEAD~N`、`X..Y`、或 7+ 字元 hex → commit 範圍模式；其餘視為檔案/目錄路徑。
 
@@ -214,7 +209,7 @@ B4. 其餘（working-tree diff、<base>...HEAD branch diff、commit range、HEAD
 
 ### 2. 偵測迭代輪次
 
-對每個 repo 執行 `git log --oneline <base>..HEAD` 檢查 branch commit 歷史（base branch 偵測方式同 Step 1）。
+取腳本 `round:` 輸出（依 `<base>..HEAD` 內 fix/refactor commit 數推斷；`ahead:` 清單即 branch commit 歷史）。
 
 - 無 fix/refactor commit → **Round 1**
 - 有初始 commit + 後續 fix/refactor commit → **Round 2+**（依 fix commit 數推斷）
@@ -238,12 +233,14 @@ B4. 其餘（working-tree diff、<base>...HEAD branch diff、commit range、HEAD
 
 #### 傳給 subagent 的資訊
 
-**傳**（事實與規則）：
-- 每個 repo 的完整 diff + 變更檔案的完整內容
-- 每個 repo 的 CLAUDE.md、專案設定檔
+**傳**（事實與規則——傳「取得方式」，不搬內容）：
+- 每個 repo 的路徑 + **審查範圍的取得指令**（如 `git diff <base>...HEAD`、`git diff HEAD` + untracked 檔清單、或檔案/range 引數），由 subagent **以唯讀指令自行收集** diff 與變更檔完整內容
+- 每個 repo 的 CLAUDE.md、專案設定檔**路徑**（subagent 自行 Read）
 - 每個 repo 的路徑和名稱（識別用）
 - 輪次資訊
 - 下方的審查指引
+
+**Hand the subagent the *range*, not the diff text.** Re-sending the full diff through the main context costs double tokens for zero information gain — the subagent runs the exact same `git diff` and sees the identical content. Main agent stays at stat-level.
 
 **不傳**（作者脈絡）：
 - 主 agent 對「為什麼這樣改」的解釋
@@ -251,7 +248,7 @@ B4. 其餘（working-tree diff、<base>...HEAD branch diff、commit range、HEAD
 - 上一輪 review 報告
 - Session 中的對話脈絡
 
-Subagent 拿到多個 repo 的 diff 後，如同 reviewer 同時被 assign 多個關聯 PR——自己讀 diff、自己判斷關聯性、自己檢查一致性。
+Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多個關聯 PR——自己讀 diff、自己判斷關聯性、自己檢查一致性。
 
 #### 規模策略
 
@@ -307,7 +304,7 @@ Subagent 拿到多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 2. 若通過 → 輸出通過報告（含第三方審查資訊）→ 若有 autocodex → 進入 Step 6；否則結束
 3. 若未通過且已達 R5 → 輸出 autofix 終止報告，結束（不進入 codex 階段）
 4. 若未通過且未達上限 → 主 agent 依修復計畫執行修復 → 驗證（見「修復後驗證」）→ 測試通過才 commit → 回到 Step 4 發起下一輪審查；若驗證無法通過（反覆修仍紅或環境擋住）→ 依「修復後驗證」停止，輸出終止/blocked 報告（沿用 Autofix 終止模板，於收斂失敗分析註明是測試卡關），不進下一輪
-   - **context 處理**：Step 3 的專案 context（CLAUDE.md、設定檔）沿用，不重新收集；但 Step 1 的 diff **每輪必須重新收集**——修復 commit 後 diff 已變更，沿用舊 diff 會讓 subagent 審到過時內容。重跑 `git diff <base>...HEAD` 取得涵蓋最新修復的完整 diff 再委派
+   - **context 處理**：Step 3 的專案 context（CLAUDE.md、設定檔）沿用，不重新收集；diff 由**每輪全新的 subagent 自行收集**（傳同一條 range 指令即可——修復 commit 後 HEAD 前進，subagent 跑 `git diff <base>...HEAD` 拿到的自然是涵蓋最新修復的完整 diff），主 agent 不搬運 diff 內容、也不讓 subagent 沿用任何舊輪產物
    - **baseline 模式的收斂（autofix 與 autocodex 機制不同）**：autofix 的 range **不縮**（fixer 需看完整狀態確認沒改壞），改縮 **blocking 判準**——baseline 模式 Round 2+ 給 subagent 的指令補一句：「基線已於 Round 1 全量審過，本輪聚焦『修復是否正確 + 是否引入新問題』；基線 backlog（completeness 深井）若非本輪修復觸及 → non-blocking，列報告但不阻擋通過。」此 range 機制 diff 模式不套用、照常全審；但 diff 內若含 prose artifact，其措辭/完整度 nits 仍套 Completeness 深井判準（見上節，不分模式）。
    - **成本與邊界**：autofix baseline 因 range 不縮，subagent 每輪吃 `<empty-tree>..HEAD`（整庫）diff——大型 repo 會撞 Step 4 的 context 上限。靠 Step 4「規模策略 >40」依模組分拆 subagent 緩解；若仍過大，建議全庫稽核改走 autocodex（codex 階段 C2+ 才有縮 range）。autocodex 縮 range / autofix 縮判準 的差異源於：autocodex 是無狀態第三方、autofix 的 fixer 需看完整狀態。
 

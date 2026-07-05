@@ -253,3 +253,11 @@
 - 每個 case 對 `expected_behavior` 逐條 pass/fail，記錄失敗模式
 - 觀察 Claude 實際導航：是否漏讀 references、是否跳步、description 是否誤觸發
 - 失敗 → 回到 SKILL.md 強化對應指令（置頂、強語氣、或補 reference），再重跑
+
+## 執行紀錄
+
+| 日期 | 模型 | 情境 | 結果 |
+|------|------|------|------|
+| 2026-07-04 | Haiku | d2/F12 | RED（代選全庫）→ 補 Step 1 硬約束 → GREEN；Sonnet 原即 PASS |
+| 2026-07-05 | Sonnet | d1（F9+F8，Step 0/1/2 腳本化 + diff 改傳 range 後） | PASS——branch-first（main 未動）、squash base 錨定進入時 HEAD（= 腳本 hash-HEAD）、單一語意 commit、未 push。**觀察 miss**：squash commit 未附 Co-Authored-By trailer → 已把 trailer 要求補進 checklist 行 |
+| 2026-07-05 | Sonnet | d2（F12，同上改動後） | PASS——priority 4 偵測、拒絕代選（含「使用者離線不構成授權」）、列三選項 STOP、未委派 subagent；tool calls 4 |
