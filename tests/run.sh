@@ -4,11 +4,12 @@
 #
 # 用法：./tests/run.sh
 # 涵蓋：
-#   1. shellcheck / bash -n 全腳本 gate
+#   1. shellcheck / bash -n 全腳本 gate（含 claude/skills/*/scripts/）
 #   2. scripts/lib/inventory.sh 解析與 append 行為
 #   3. render-etc-hosts.sh 區塊生成、IP 數值排序、--apply 冪等
 #   4. render-ssh-config.sh 區塊替換、--check、marker 防呆
 #   5. add-new-host.sh --dry-run 煙霧測試（不動任何檔案）
+#   6. git-hygiene.sh（ready4quit skill script）verdict 判定
 #
 set -uo pipefail
 
@@ -39,6 +40,7 @@ assert_rc() {
 echo "▶ 1. shellcheck gate"
 if shellcheck -x -P "$ROOT/scripts" \
     "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
+    "$ROOT"/claude/skills/*/scripts/*.sh \
     "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh" \
     "$ROOT/tests/run.sh"; then
     ok "shellcheck 全部通過"
@@ -49,6 +51,7 @@ fi
 echo "▶ 2. bash -n 語法 gate"
 syntax_fail=0
 for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
+         "$ROOT"/claude/skills/*/scripts/*.sh \
          "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh"; do
     bash -n "$f" || { syntax_fail=1; echo "     syntax fail: $f"; }
 done
@@ -147,6 +150,46 @@ assert_eq "dry-run 不動 inventory.conf / ssh/config" "$before_status" "$after_
 
 "$ROOT/scripts/add-new-host.sh" --dry-run eagle03 1.2.3.4 >/dev/null 2>&1
 assert_rc "dry-run 重複 alias 被拒 → exit 1" 1 $?
+
+echo "▶ 8. git-hygiene.sh verdict 判定"
+GH_SCRIPT="$ROOT/claude/skills/ready4quit/scripts/git-hygiene.sh"
+GITC=(git -c user.name=test -c user.email=test@test -c commit.gpgsign=false)
+
+# fixture：bare origin + clone（有 upstream 的正常 repo）
+git init --bare -q "$TMP/gh-origin.git"
+git init -q -b main "$TMP/gh-work"
+(cd "$TMP/gh-work" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/gh-origin.git" && git push -qu origin main)
+
+out="$("$GH_SCRIPT" "$TMP/gh-work")"
+assert_rc "clean repo → exit 0" 0 $?
+if echo "$out" | grep -q "verdict: CLEAN"; then ok "clean repo → CLEAN"; else bad "clean repo 未判 CLEAN"; fi
+
+echo dirty > "$TMP/gh-work/untracked.txt"
+out="$("$GH_SCRIPT" "$TMP/gh-work")"
+assert_rc "untracked 殘留 → exit 1" 1 $?
+if echo "$out" | grep -q "verdict: RESIDUE"; then ok "untracked → RESIDUE"; else bad "untracked 未判 RESIDUE"; fi
+rm "$TMP/gh-work/untracked.txt"
+
+(cd "$TMP/gh-work" && echo v2 > f.txt && "${GITC[@]}" commit -qam "unpushed change")
+out="$("$GH_SCRIPT" "$TMP/gh-work")"
+assert_rc "unpushed commit → exit 1" 1 $?
+if echo "$out" | grep -q "unpushed: 1 commits"; then ok "unpushed commit 被偵測"; else bad "unpushed commit 未偵測"; fi
+
+# local-only repo（無 remote）→ push 狀態無從判斷 → UNKNOWN，不可當乾淨
+git init -q -b main "$TMP/gh-local"
+(cd "$TMP/gh-local" && echo x > a.txt && "${GITC[@]}" add a.txt && "${GITC[@]}" commit -qm init)
+out="$("$GH_SCRIPT" "$TMP/gh-local")"
+assert_rc "local-only repo → exit 1" 1 $?
+if echo "$out" | grep -q "verdict: UNKNOWN"; then ok "local-only → UNKNOWN（不判 CLEAN）"; else bad "local-only 未判 UNKNOWN"; fi
+
+out="$("$GH_SCRIPT" "$TMP/not-a-repo")"
+assert_rc "非 git repo → exit 1" 1 $?
+if echo "$out" | grep -q "verdict: UNKNOWN"; then ok "非 repo → UNKNOWN"; else bad "非 repo 未判 UNKNOWN"; fi
+
+"$GH_SCRIPT" >/dev/null 2>&1
+assert_rc "無引數 → exit 2" 2 $?
 
 echo ""
 echo "════════════════════════════"

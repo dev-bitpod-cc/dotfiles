@@ -40,8 +40,9 @@ Ready4Quit 進度：
 
 ### Red Flags — STOP and re-read Critical
 
-- Declaring any dimension GREEN you never actually inspected (no `git status` output, no `TaskList`/`CronList` check, no scan).
+- Declaring any dimension GREEN you never actually inspected (no `git-hygiene.sh` output, no `TaskList`/`CronList` check, no scan).
 - About to `git push` / `gh pr` / kill a task / delete a wakeup/cron/memory file from inside this skill without listing it and getting an explicit yes.
+- Offering to `git commit` for the user — even "just say yes and I'll commit". Git residue has exactly ONE recommendation: run `/uap`. "The user would approve it anyway" does not move commit/ship into this skill.
 
 > 此 skill 的核心不是「對抗合理化」（baseline 顯示 agent 天生會查 git、不擅自動手），而是**覆蓋度**——提醒別只顧 git，還要 flush memory、盤點 async 狀態、掃 loose ends，這些是 fresh agent 想不到要查的。
 
@@ -51,13 +52,19 @@ Ready4Quit 進度：
 
 對本 session **動過檔案的所有 repo**（+ pwd 所在 repo）逐一驗證殘留——依 session 記憶列出 repo，**不掃 `~/Projects/`**（同 `/uap` Step 0 的範圍原則）。context 被壓縮就以 pwd 的 repo 為底，請使用者補充還涉及哪些 repo。
 
-每個 repo 跑：
+**單一呼叫**跑完所有 repo 的全部檢查（未 commit / 未 push / 待開 PR 的偵測與 fallback 邏輯都在腳本內）：
 
-- `git -C <repo> status --porcelain`（含 untracked）→ 有輸出 = **未 commit 殘留**。
-- **未 push commit**：先**顯式偵測 upstream 是否存在**——`git -C <repo> rev-parse --abbrev-ref --symbolic-full-name @{upstream} 2>/dev/null`。exit 0（有 upstream）→ `git -C <repo> log --oneline @{upstream}..HEAD`；exit≠0（無 upstream）→ 改 `git -C <repo> log --oneline origin/<default>..HEAD`。`<default>` 取 `git -C <repo> rev-parse --abbrev-ref origin/HEAD 2>/dev/null` 的 basename，但**結果為空或等於 `HEAD`（代表 `origin/HEAD` 未設定，非真的拿到 default branch）即退而試 `origin/main`、`origin/master`**。任一 log 指令有輸出 = 未 push commit。
-- 若已在 feature branch 且有 commit 但無 PR（`gh pr view --json url 2>/dev/null` 失敗/空）→ **待開 PR**。
+```
+~/.claude/skills/ready4quit/scripts/git-hygiene.sh <repo1> <repo2> ...
+```
 
-> Caveat：上面幾條都用 `2>/dev/null` 吞 stderr，會讓「執行失敗」和「成功但無輸出」在 stdout 上長得一樣。**An empty result from a swallowed-error command is NOT proof of clean.** 凡有 fallback 的判定，先分辨上一條是「成功但無輸出（=真乾淨）」還是「執行失敗（exit≠0 / ref 不存在）」；後者必須往下試，never 當乾淨。
+腳本逐 repo 輸出 `uncommitted` / `baseline` / `unpushed` / `pr` 與 verdict，判讀：
+
+- **RESIDUE** → 有殘留（未 commit / 未 push / feature branch 有 commit 但無 PR），細項見各欄位。
+- **UNKNOWN**（`NO-REMOTE`、`NONE` baseline、gh 不可用等）→ 該項**無法驗證**。**UNKNOWN is NOT clean** — report it as unverifiable, never GREEN.
+- **CLEAN** → 每一項都實查為空，可標 GREEN（腳本輸出就是證據）。
+
+Do not re-run the underlying git commands one by one — the script IS the check; one call covers all repos.
 
 **只報告，不收尾。** 任一項有殘留 → 在總結建議：「git 有殘留，結束前先跑 `/uap` ship 掉」。git 細節（branch-first、protection、PR）全交給 `/uap`，本 skill 不重做。
 
@@ -91,7 +98,7 @@ flush 方式：在總結列出候選（type + 一句摘要）；新增 memory �
 
 可查詢 vs 靠記憶——兩類不同，標 GREEN 的根據也不同：
 
-- `TaskList` / `CronList` 是 **deferred tool**，直接呼叫會失敗，**先用 `ToolSearch`（`select:TaskList,CronList`）載入 schema 再呼叫**；有實際輸出才算查過。
+- `TaskList` / `CronList` 是 **deferred tool**，直接呼叫會失敗——**一輪 `ToolSearch`（`select:TaskList,CronList`）載入兩個 schema，下一輪在同一則訊息並行呼叫 TaskList + CronList**（兩者獨立，勿拆成兩輪）；有實際輸出才算查過。
 - **background Bash / /loop / ScheduleWakeup 沒有對應的列表工具**——只能靠 session 對話記憶回溯。context 一旦被壓縮就可能漏列；此時在報告**明說「依記憶回溯，可能不完整」**，不要當成已查過而標 GREEN。
 
 報告每一項的狀態與建議（留著 / 等它跑完 / 該清掉）。**Kill 任何一項都要先確認**——尤其別誤殺使用者刻意留的長期 cron。
