@@ -14,6 +14,8 @@
 #   q1  ready4quit Q1         repo 有未 commit 殘留
 #   c1  check-crawl-quality C1  120 筆 JSON、3 來源、其一 80% boilerplate
 #   n1  nc-notify N1          空白專案目錄
+#   h1  handoff H1            WIP repo + handoffs 目錄（write-side 交接）
+#   h2  handoff H2            交接檔錨點已 DRIFTED（記錄 HEAD 後 repo 又前進）
 #
 set -euo pipefail
 
@@ -138,7 +140,106 @@ EOF
 
 make_n1() { mkdir -p "$ROOT/n1-$INSTANCE/backfill-project"; }
 
-make_u1; make_u2; make_d1; make_d2; make_q1; make_c1; make_n1
+make_h1() {
+    local dir="$ROOT/h1-$INSTANCE"
+    make_base_repo "$dir"
+    mkdir -p "$dir/handoffs"   # 沙盒版 ~/.claude/handoffs
+    (
+        cd "$dir/work"
+        # WIP：validate_order 做到一半（未 commit）
+        cat >> app.py <<'EOF'
+
+
+def validate_order(order):
+    if order["qty"] <= 0:
+        raise ValueError("qty must be positive")
+    # TODO: price 上限檢查、item id 格式驗證
+EOF
+    )
+}
+
+make_h2() {
+    local dir="$ROOT/h2-$INSTANCE"
+    mkdir -p "$dir" "$dir/handoffs"
+    git init --bare -q -b main "$dir/origin.git"
+    git clone -q "$dir/origin.git" "$dir/work" 2>/dev/null
+    (
+        cd "$dir/work"
+        git config user.name "sandbox"
+        git config user.email "sandbox@test.local"
+        # commit 1：交接檔寫下當時的狀態
+        cat > utils.py <<'EOF'
+import requests
+
+
+def fetch(url):
+    return requests.get(url, timeout=10)
+EOF
+        cat > main.py <<'EOF'
+from utils import fetch
+
+print(fetch("https://example.com").status_code)
+EOF
+        git add -A && git commit -qm "feat: basic fetch helper"
+        local sha1
+        sha1="$(git rev-parse --short HEAD)"
+        cat > "$dir/handoffs/order-fetch-hardening.md" <<EOF
+---
+slug: order-fetch-hardening
+created: $(date +%Y-%m-%d)
+anchor: $dir/work main $sha1 dirty=0
+---
+
+# Handoff: order fetch 強化
+
+## 目標
+讓 utils.py 的 fetch() 在不穩定網路下可靠。
+
+## 已完成
+- fetch() 基本版（requests，utils.py）
+
+## 關鍵決策
+- HTTP client 用 requests（理由：團隊最熟悉、既有程式碼一致）
+
+## 死路
+-（無）
+
+## 下一步
+1. utils.py 的 fetch() 加 retry（3 次、exponential backoff）
+2. timeout 目前 hardcode 10 秒 → 改成 fetch() 參數（預設 10）
+
+## 涉及檔案
+- utils.py
+- main.py
+EOF
+        # commit 2：交接檔寫完後 repo 又前進——改名 + 換 httpx + retry 已完成
+        git mv utils.py http_client.py
+        cat > http_client.py <<'EOF'
+import time
+
+import httpx
+
+
+def fetch(url):
+    for attempt in range(3):
+        try:
+            return httpx.get(url, timeout=10)
+        except httpx.TransportError:
+            if attempt == 2:
+                raise
+            time.sleep(2**attempt)
+EOF
+        cat > main.py <<'EOF'
+from http_client import fetch
+
+print(fetch("https://example.com").status_code)
+EOF
+        git add -A && git commit -qm "refactor: rename to http_client, switch to httpx, add retry"
+        git push -q origin main
+    )
+}
+
+make_u1; make_u2; make_d1; make_d2; make_q1; make_c1; make_n1; make_h1; make_h2
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
 ls "$ROOT"

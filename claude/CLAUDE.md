@@ -92,6 +92,7 @@ When the user pastes third-party review findings, read the source code and verif
 - 寫 **cron / 背景腳本（爬蟲/回補）/ pipeline** 的開始·完成·失敗 → `nc-notify`（必發通知；NC 不可用須靜默不影響主流程）
 - 使用者要求**「寄信 / mail 給我」** → `send-mail`（收件人預設 `jjshen@eland.com.tw`，勿用 `# userEmail` 推斷）
 - 遇 **bug / 測試失敗 / 非預期行為** → `root-cause-first`（先 root cause 再修）
+- 使用者要 **/clear 但後續工作延續**（「交接」「接續上次的工作」）→ `handoff`（resume 必先 verify 錨點；消費即歸檔）
 
 ---
 

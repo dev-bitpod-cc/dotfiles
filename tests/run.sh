@@ -12,6 +12,7 @@
 #   6. git-hygiene.sh（ready4quit skill script）verdict 判定
 #   7. ship-state.sh（uap skill script）偵測與 protection 判定（gh stub）
 #   8. review-state.sh（deep-review skill script）scope-priority / round 判定
+#   9. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
 #
 set -uo pipefail
 
@@ -319,6 +320,95 @@ if echo "$out" | grep -q "base: main"; then ok "無 remote → base 退用本地
 assert_rc "非 git repo → exit 1" 1 $?
 "$RS_SCRIPT" >/dev/null 2>&1
 assert_rc "無引數 → exit 2" 2 $?
+
+echo "▶ 11. handoff-anchor.sh 錨點驗證與生命週期判定"
+HA_SCRIPT="$ROOT/claude/skills/handoff/scripts/handoff-anchor.sh"
+
+# fixture：單 repo，1 commit
+git init -q -b main "$TMP/ha-work"
+(cd "$TMP/ha-work" && echo v1 > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init)
+
+# anchors：格式與 dirty 計數
+echo dirty > "$TMP/ha-work/untracked.txt"
+out="$("$HA_SCRIPT" anchors "$TMP/ha-work")"
+assert_rc "anchors 正常 repo → exit 0" 0 $?
+if echo "$out" | grep -q "^created: " && echo "$out" | grep -q "^anchor: $TMP/ha-work main .* dirty=1$"; then
+    ok "anchors 輸出 created + anchor（dirty=1）"
+else bad "anchors 輸出格式錯誤"; fi
+rm "$TMP/ha-work/untracked.txt"
+
+"$HA_SCRIPT" anchors "$TMP/not-a-repo" >/dev/null 2>&1
+assert_rc "anchors 非 git repo → exit 1" 1 $?
+
+# verify：FRESH
+mkdir -p "$TMP/ha-handoffs"
+{ echo "---"; "$HA_SCRIPT" anchors "$TMP/ha-work"; echo "---"; echo "# Handoff: test"; } > "$TMP/ha-handoffs/t.md"
+out="$("$HA_SCRIPT" verify "$TMP/ha-handoffs/t.md")"
+assert_rc "verify 未動的 repo → exit 0" 0 $?
+if echo "$out" | grep -q "verdict: FRESH"; then ok "未動的 repo → FRESH"; else bad "未判 FRESH"; fi
+
+# verify：DRIFTED（記錄後 repo 前進，列出中間 commit）
+(cd "$TMP/ha-work" && echo v2 > f.txt && "${GITC[@]}" commit -qam "advance after handoff")
+out="$("$HA_SCRIPT" verify "$TMP/ha-handoffs/t.md")"
+assert_rc "verify 前進後的 repo → exit 1" 1 $?
+if echo "$out" | grep -q "status: DRIFTED" && echo "$out" | grep -q "advance after handoff"; then
+    ok "repo 前進 → DRIFTED + 列中間 commit"
+else bad "DRIFTED 判定或 commit 清單缺失"; fi
+if echo "$out" | grep -q "verdict: STALE-RISK"; then ok "DRIFTED → verdict STALE-RISK"; else bad "verdict 未標 STALE-RISK"; fi
+
+# verify：DIVERGED（記錄的 HEAD 被 rebase 掉、不在現行歷史）
+{ echo "---"; "$HA_SCRIPT" anchors "$TMP/ha-work"; echo "---"; } > "$TMP/ha-handoffs/t.md"
+(cd "$TMP/ha-work" && echo v3 > f.txt && "${GITC[@]}" commit -qa --amend -m "rewritten")
+out="$("$HA_SCRIPT" verify "$TMP/ha-handoffs/t.md")"
+assert_rc "verify 歷史改寫 → exit 1" 1 $?
+if echo "$out" | grep -q "status: DIVERGED"; then ok "歷史改寫 → DIVERGED"; else bad "未判 DIVERGED"; fi
+
+# verify：MISSING（repo 路徑不存在）
+printf -- '---\ncreated: %s\nanchor: %s/gone main abc1234 dirty=0\n---\n' "$(date +%Y-%m-%d)" "$TMP" > "$TMP/ha-handoffs/t.md"
+out="$("$HA_SCRIPT" verify "$TMP/ha-handoffs/t.md")"
+assert_rc "verify repo 消失 → exit 1" 1 $?
+if echo "$out" | grep -q "status: MISSING"; then ok "repo 消失 → MISSING"; else bad "未判 MISSING"; fi
+
+# verify：EXPIRED（created 超過 EXPIRE_DAYS）
+{ echo "---"; echo "created: 2026-01-01"; "$HA_SCRIPT" anchors "$TMP/ha-work" | grep '^anchor: '; echo "---"; } > "$TMP/ha-handoffs/t.md"
+out="$("$HA_SCRIPT" verify "$TMP/ha-handoffs/t.md")"
+assert_rc "verify 過期交接檔 → exit 1" 1 $?
+if echo "$out" | grep -q "EXPIRED"; then ok "created 超過 7 天 → EXPIRED"; else bad "未標 EXPIRED"; fi
+
+# verify：無錨點 → UNVERIFIABLE
+printf -- '---\ncreated: %s\n---\nno anchors here\n' "$(date +%Y-%m-%d)" > "$TMP/ha-handoffs/t.md"
+out="$("$HA_SCRIPT" verify "$TMP/ha-handoffs/t.md")"
+assert_rc "verify 無錨點 → exit 1" 1 $?
+if echo "$out" | grep -q "verdict: UNVERIFIABLE"; then ok "無錨點 → UNVERIFIABLE"; else bad "未判 UNVERIFIABLE"; fi
+
+"$HA_SCRIPT" verify "$TMP/ha-handoffs/no-such.md" >/dev/null 2>&1
+assert_rc "verify 檔案不存在 → exit 1" 1 $?
+
+# list：EXPIRED 標記 + archive 自動清理
+rm "$TMP/ha-handoffs/t.md"
+printf -- '---\ncreated: %s\n---\n' "$(date +%Y-%m-%d)" > "$TMP/ha-handoffs/fresh.md"
+printf -- '---\ncreated: 2026-01-01\n---\n' > "$TMP/ha-handoffs/old.md"
+mkdir -p "$TMP/ha-handoffs/archive"
+printf 'consumed\n' > "$TMP/ha-handoffs/archive/20260101-dead.md"
+touch -t 202601011200 "$TMP/ha-handoffs/archive/20260101-dead.md"
+printf 'consumed\n' > "$TMP/ha-handoffs/archive/recent.md"
+out="$("$HA_SCRIPT" list "$TMP/ha-handoffs")"
+assert_rc "list → exit 0" 0 $?
+if echo "$out" | grep -q "active: fresh.md — 0d — OK"; then ok "list 新檔標 OK"; else bad "list 新檔標記錯誤"; fi
+if echo "$out" | grep "active: old.md" | grep -q "EXPIRED"; then ok "list 過期檔標 EXPIRED"; else bad "list 未標 EXPIRED"; fi
+if [ ! -f "$TMP/ha-handoffs/archive/20260101-dead.md" ] && [ -f "$TMP/ha-handoffs/archive/recent.md" ]; then
+    ok "list 清超過保留期的 archive、留新的"
+else bad "archive 清理行為錯誤"; fi
+if echo "$out" | grep -q "archive: 已清 1 份"; then ok "list 回報清理數量"; else bad "list 未回報清理"; fi
+
+out="$("$HA_SCRIPT" list "$TMP/no-such-dir")"
+assert_rc "list 目錄不存在 → exit 0（回報 NONE）" 0 $?
+if echo "$out" | grep -q "handoffs: NONE"; then ok "list 無目錄 → NONE"; else bad "list 無目錄輸出錯誤"; fi
+
+"$HA_SCRIPT" >/dev/null 2>&1
+assert_rc "無引數 → exit 2" 2 $?
+"$HA_SCRIPT" bogus >/dev/null 2>&1
+assert_rc "未知子指令 → exit 2" 2 $?
 
 echo ""
 echo "════════════════════════════"

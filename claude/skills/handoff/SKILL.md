@@ -1,0 +1,147 @@
+---
+name: handoff
+description: "Session 交接 — 在 /clear 前把進行中工作的暫時狀態寫成帶 git 錨點的交接檔（handoff），讓後續 session 驗證後無損接續；resume 時先驗錨點再行動、消費即歸檔、過期自動清，杜絕失效交接內容殘留。Use when the user wants to /clear but continue related work later, write a handoff before clearing context, or resume work from a handoff file — Chinese triggers 「交接」「寫交接檔」「handoff」「接續上次的工作」「讀交接檔」「clear 前交接」. NOT for durable facts（進 memory，見 ready4quit）、NOT for shipping git changes（見 /uap）."
+user-invocable: true
+argument-hint: "[resume] [slug]"
+---
+
+# Handoff — /clear 前的工作交接
+
+心智模型：process 重生前把 task state 序列化到磁碟，新 process 反序列化前先驗 checksum。交接檔是**宣稱（claims）不是事實**——repo 現況才是事實；錨點（寫檔當下的 git HEAD）就是 checksum，讓讀取端能機器判定「這份交接還新鮮嗎」。用完即歸檔，失效內容不留在檯面上。
+
+- 存放：`~/.claude/handoffs/<slug>.md`（machine-local；**不放 repo 內**——不污染 git status，跨 repo 工作也只需一份檔多條錨點）
+- 已消費：`~/.claude/handoffs/archive/YYYYMMDD-<原檔名>`
+- 機制腳本：`~/.claude/skills/handoff/scripts/handoff-anchor.sh`（`anchors` / `verify` / `list`；EXPIRE_DAYS、ARCHIVE_KEEP_DAYS 常數以腳本為單一來源）
+
+## 引數
+
+- **`/handoff [slug]`** — write mode：寫交接檔。無 slug 就依工作線自取（kebab-case，如 `dotfiles-handoff-skill`）。
+- **`/handoff resume [slug]`** — resume mode：接續交接。無 slug → `list` 只有一份就直接用，多份列給使用者選。
+
+## Critical — Guardrails
+
+**Violating the letter of the rules below is violating their spirit.**
+
+- **A handoff is a set of CLAIMS, not truth. The repo is truth.** On resume you MUST run `handoff-anchor.sh verify` BEFORE acting on any claim. No verify output in this session → no action based on the handoff.
+- **On any verdict other than FRESH**, re-check every claim you rely on against the current repo; where they conflict, the repo wins. NEVER "restore" the repo to match the handoff.
+- **Consume-once.** After loading a handoff, move it to `archive/` (dated). NEVER leave a consumed handoff in the active directory — not even rewritten with a done-marker; "done" files accumulate and rot into stale noise. The archive IS the audit trail.
+- **Durable facts go to memory/, not the handoff.** User preferences, project constraints, anything that must outlive this task → write a memory file and leave only a `[[memory-name]]` pointer in the handoff. A handoff dies on consumption.
+- **No state snapshots the repo already carries.** Do not paste full diffs or file contents into the handoff — point at commits and paths. Snapshots go stale silently; the anchor makes staleness detectable, a pasted diff does not.
+- **Write side: every file path mentioned MUST exist** (check it) or be explicitly marked 規劃中/待新建.
+
+### Red Flags — STOP and re-read Critical
+
+- Executing a handoff's next-steps without a `verify` run in this session.
+- "I'll update the handoff in place with status: done for traceability" → archive it; traceability lives in `archive/`, not the active directory.
+- Re-doing a next-step item on a DRIFTED handoff without checking the drift commits — it may already be done.
+- Putting a durable rule in the handoff "so it won't get lost after /clear". That is exactly how it gets lost — route it to memory.
+
+## Write mode（/clear 前交接）
+
+### W1：範圍
+
+依 session 記憶列出本次工作涉及的 repo（同跨 repo 工作流原則，**不掃 `~/Projects/`**；context 被壓縮就以 pwd 的 repo 為底請使用者補充）。多 repo = 同一份交接檔、多條錨點。
+
+### W2：蓋錨點
+
+```
+~/.claude/skills/handoff/scripts/handoff-anchor.sh anchors <repo1> <repo2> ...
+```
+
+輸出的 `created:` + `anchor:` 行原樣放進 frontmatter。錨點含 `dirty=N`：N>0 時在報告提醒「未 commit 內容只存在 working tree，/clear 不影響它、但它不受錨點保護」——建議先 commit（ship 走 `/uap`），本 skill 不代為 commit。
+
+### W3：寫檔
+
+寫到 `~/.claude/handoffs/<slug>.md`；**同 slug 已存在 → 整檔覆寫**（更新錨點與內容），不 append、不留多版本。模板：
+
+```markdown
+---
+slug: <slug>
+created: <anchors 輸出>
+anchor: <anchors 輸出，逐 repo 一行>
+---
+
+# Handoff: <一句話標題>
+
+## 目標
+<這條工作線要達成什麼；怎樣算完成>
+
+## 已完成
+<條列；能對應 commit 的附 short sha>
+
+## 關鍵決策（附理由）
+<選了什麼、為什麼——沒有理由的決策會被新 session 翻案>
+
+## 死路（試過但放棄——防重工）
+<試過什麼、為何放棄；真的沒有才寫「無」>
+
+## 下一步（逐條可執行）
+1. <具體到新 session 能直接動手>
+
+## 涉及檔案
+<相對路徑；不存在的標「待新建」>
+
+## 坑
+<已知陷阱、環境限制；無則省略本節>
+```
+
+內容規則（Critical 已定硬約束，這裡是品質要點）：死路一節是交接檔最值錢的部分，新 session 最容易在這裡重蹈覆轍；「下一步」寫到可直接執行，不寫「繼續完成」這種空話。
+
+### W4：收尾報告
+
+報告：檔案路徑、錨點摘要（含 dirty 提醒）、durable 事實路由結果（寫了哪些 memory / 無）。順跑 `handoff-anchor.sh list` 做 housekeeping——有 EXPIRED 的舊交接檔就列出，建議處置（resume 重驗或確認無用後刪；**刪除先經使用者同意**）。最後提醒：新 session 開場說「接續交接 <slug>」或 `/handoff resume <slug>`。
+
+## Resume mode（新 session 接續）
+
+### R1：定位
+
+```
+~/.claude/skills/handoff/scripts/handoff-anchor.sh list
+```
+
+指定了 slug 就用它；未指定且僅一份 active → 直接用；多份 → 列給使用者選；零份 → 明說沒有交接檔，請使用者指路（不要憑空猜工作內容）。
+
+### R2：驗證
+
+```
+~/.claude/skills/handoff/scripts/handoff-anchor.sh verify <handoff.md>
+```
+
+單一呼叫涵蓋年齡（EXPIRED）與全部錨點（FRESH / DRIFTED / DIVERGED / MISSING），**勿逐條重跑底層 git 指令**。無錨點的檔（如手寫的）會判 UNVERIFIABLE——當線索不當事實。
+
+### R3：對帳（reconcile）
+
+| verdict | 處置 |
+|---------|------|
+| FRESH | 內容可信，直接依「下一步」接續 |
+| DRIFTED | 讀 verify 列出的中間 commits（必要時 `git show`）：逐條檢查「下一步」是否已被做掉、「決策」是否已被推翻，以 repo 現況修訂計畫，**向使用者報告落差**再動工 |
+| DIVERGED / MISSING / EXPIRED / UNVERIFIABLE | 內容一律降級為線索；對 repo 重建現況，落差大就先報告等指示 |
+
+### R4：消費歸檔，然後開工
+
+計畫確立後、動工前，歸檔（消費）交接檔：
+
+```
+mkdir -p ~/.claude/handoffs/archive && mv <handoff.md> ~/.claude/handoffs/archive/$(date +%Y%m%d)-<原檔名>
+```
+
+回報「交接檔已消費歸檔」，然後才開始執行工作。若中途發現還需要它，archive/ 內在保留期內都找得回（超過 ARCHIVE_KEEP_DAYS 由 `list` 自動清）。
+
+## 生命週期總覽
+
+```
+write（蓋錨點）→ ACTIVE（~/.claude/handoffs/*.md）
+                    │ 超過 EXPIRE_DAYS 未消費 → list/verify 標 EXPIRED（重驗或確認後刪）
+                    ▼ resume 消費（verify → reconcile）
+                 ARCHIVE（archive/YYYYMMDD-*.md）
+                    ▼ 超過 ARCHIVE_KEEP_DAYS
+                 由 list 自動刪除
+```
+
+失效內容的三道防線：錨點讓過時**可偵測**（DRIFTED/DIVERGED）、消費即歸檔讓已用內容**不佔檯面**、TTL 讓被遺忘的檔**有期限**。
+
+## 設計備忘
+
+- 分工：durable 事實 → memory（`/ready4quit` Step 2 也會抓漏）；git ship → `/uap`；review → `/deep-review`。本 skill 只管「暫時性任務狀態跨 /clear 存活」。
+- 典型流程：`/deep-review` → `/uap`（ship）→ `/handoff`（要延續的工作線）→ `/ready4quit` → `/clear` 或 `/quit`。
+- 交接檔品質仰賴主 session 的對話記憶——write mode 越晚跑、context 被壓縮得越多，死路與決策理由越難完整。快壓縮前就該交接。

@@ -38,8 +38,10 @@
 | q1 | ready4quit | 催促下不 rubber-stamp（Q1） |
 | c1 | check-crawl-quality | per-source 抓被全域稀釋的 boilerplate（C1） |
 | n1 | nc-notify | cron 腳本 NC 整合 checklist（N1） |
+| h1 | handoff | write-side 交接：錨點、死路、memory 路由（H1） |
+| h2 | handoff | resume-side：DRIFTED 交接檔對帳 + 消費歸檔（H2） |
 
-root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒。
+root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒；handoff H3 只需空 handoffs 目錄。
 
 ## 歷史基線
 
