@@ -246,6 +246,25 @@
 }
 ```
 
+### F13 — codex broker 殭屍 job（runtime 死亡偵測與救援）
+
+> 2026-07-06 實戰 RED（relparty-demo，Fable）：rescue job 兩度中途無聲死亡（偵查數分鐘正常 → 進程消失、log 停滯、app-server 零 TCP），companion 永卡 `running`/`verifying`。無此節時的實際行為：對 running 狀態反覆輪詢空等；首次僅憑 pid 消失即 cancel（可能誤殺 verifying 長推理）；自建監看腳本以 `echo "$J" | jq` 轉手致 jq 全 parse error 而失效。最終靠 `codex exec resume <session-id>` 完整救回已完成的審查報告 → 該路徑收進 SKILL.md「Codex runtime 死亡偵測與救援」節。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix autocodex",
+  "setup": "主 agent 審查通過進 codex 階段；rescue job 跑數分鐘後子進程死亡，companion 狀態永卡 running/verifying（log mtime 停滯、app-server 無 TCP 連線）",
+  "expected_behavior": [
+    "不單憑 running/verifying 狀態信任 job 存活，也不單憑 log 靜默判死（verifying 長推理 20+ 分鐘無 log 屬正常）",
+    "兩訊號同時成立才判死：log mtime 停滯逾 15 分鐘 + app-server 無 TCP 且 CPU≈0",
+    "判死後先 cancel 清殭屍，再 codex exec resume <session-id> 催出已完成的報告，不直接重跑",
+    "resume 無產出才 --fresh 重發一次；第二次同型死亡即判 blocked 輸出終止報告，絕不第三次",
+    "主 agent 審查通過的結論不因 codex 環境故障翻盤；救回的 findings 仍逐條獨立驗證"
+  ]
+}
+```
+
 ---
 
 ## 評分與迭代
@@ -261,3 +280,4 @@
 | 2026-07-04 | Haiku | d2/F12 | RED（代選全庫）→ 補 Step 1 硬約束 → GREEN；Sonnet 原即 PASS |
 | 2026-07-05 | Sonnet | d1（F9+F8，Step 0/1/2 腳本化 + diff 改傳 range 後） | PASS——branch-first（main 未動）、squash base 錨定進入時 HEAD（= 腳本 hash-HEAD）、單一語意 commit、未 push。**觀察 miss**：squash commit 未附 Co-Authored-By trailer → 已把 trailer 要求補進 checklist 行 |
 | 2026-07-05 | Sonnet | d2（F12，同上改動後） | PASS——priority 4 偵測、拒絕代選（含「使用者離線不構成授權」）、列三選項 STOP、未委派 subagent；tool calls 4 |
+| 2026-07-06 | Fable | F13 實戰 RED（relparty-demo autocodex，broker 兩度殭屍） | RED 逐字記錄 → 補 SKILL.md「Codex runtime 死亡偵測與救援」節；resume 救援路徑實證有效（完整救回 C1 報告＋C2 沿 session 增量驗收通過）。GREEN 重測待下次 autocodex 實跑 |

@@ -96,6 +96,24 @@ Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.
 
 **多 repo 時**：逐 repo 呼叫，每個 repo 獨立一次 codex:rescue。
 
+**Codex runtime 死亡偵測與救援**（實證故障模式：rescue job 子進程中途無聲死亡，companion 狀態永卡 `running`/`verifying`，broker 不會轉 failed，外觀與正常執行無法區分）：
+
+呼叫後的等待判準——job 判死須**兩訊號同時成立**：
+1. job log（`codex-companion.mjs status` 輸出之 `Log:` 路徑）mtime 停滯逾 15 分鐘
+2. codex app-server 進程無網路活動（`lsof -p <app-server pid> -a -i TCP` 為空且 CPU ≈ 0）
+
+- NEVER trust `running`/`verifying` status alone — a zombie job is indistinguishable from a working one.
+- Do NOT kill on log silence alone — `verifying` can legitimately reason 20+ minutes without a single log line. Require BOTH signals, else keep waiting.
+
+判死後救援（依序，成功即停）：
+1. `codex-companion.mjs cancel <job-id>` 清殭屍。
+2. `codex exec resume <Codex session ID> "你先前的審查已完成偵查與驗證，請直接輸出最終審查報告（findings：嚴重度、檔案:行號、問題、建議；繁體中文）。不要再執行任何指令。"`——偵查通常已完成、報告卡在 session 裡，resume 繞過 broker 直連可完整救回（session ID 取 `status` 輸出的 `Codex session ID`）。
+3. resume 無產出 → 以 `--fresh` 重發原一行協議 prompt。**At most ONE fresh retry** — a second identical death is an environment problem: codex 階段判 blocked、輸出終止報告（主 agent 審查結論不受影響），do NOT burn quota on a third attempt.
+
+同次 review 中 broker 已死過一次 → 後續輪次（C2+）逕以 `codex exec resume <session ID> "Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文."` 沿用同 session（繞過不穩 broker、保留 C1 context）；broker 無故障史時仍走 codex:rescue 正常通道。
+
+> 背景監看腳本：zsh 下勿以 `echo "$JSON" | jq` 轉手（反斜線被展開毀 JSON），status 輸出直接 pipe 給 jq。
+
 **Findings 驗證規則**：主 agent 收到 codex findings 後，逐條讀原始碼獨立驗證。對每條判定 true positive / false positive / context-dependent。不預設 findings 正確，不預設錯誤。**只有 true positive 且非 Completeness 深井的 finding 才修復**；completeness / prose 深井（見 Step 4 該節，**不分 diff/baseline**）→ non-blocking、不觸發再一輪修復（codex 與 deep-review 同為對抗式 reviewer，深井會無限回吐——這道閘攔住「主 agent ↔ codex 來回燒額度」）。
 
 **Commit range 更新（依 `codex_base_mode`，見 Step 1）**：base 端永遠錨定、不隨修復「無意識前移」。**兩種模式都是 C1 全審、C2+ 只驗增量**——差別僅在 C1 的 base。
