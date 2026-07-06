@@ -106,6 +106,13 @@ git, gh, wget, htop, tree, tmux, bun, node, python3, uv, jq, yq
 | just | 任務執行器 | make |
 | watchexec | 檔案變更監控執行 | - |
 
+### AI CLI
+
+| 工具 | 安裝方式 | 更新方式 |
+|------|----------|----------|
+| claude (Claude Code) | 官方安裝腳本 → `~/.local/bin` | `claude update`（`brewup` 已涵蓋） |
+| codex (OpenAI Codex) | `brew install --cask codex`（macOS/Linux 皆支援） | `brew upgrade`（`brewup` 已涵蓋） |
+
 ### 便捷別名
 
 ```bash
@@ -141,7 +148,7 @@ sysup   # Linux: apt update && upgrade && autoremove
 
 ## Claude Code 整合
 
-執行腳本後，Claude Code 會自動讀取 `CLAUDE.md` 了解環境中可用的工具。
+setup 腳本會安裝 Claude Code（官方安裝腳本）與 Codex（Homebrew cask）。執行腳本後，Claude Code 會自動讀取 `CLAUDE.md` 了解環境中可用的工具。
 
 ## Codex 整合
 
@@ -155,6 +162,6 @@ sysup   # Linux: apt update && upgrade && autoremove
 ## 版本資訊
 
 - **版本**：v4.0
-- **更新日期**：2026-03-20
+- **更新日期**：2026-07-07
 - **支援系統**：macOS (zsh), Ubuntu 24.04+ (bash)
 - **套件管理**：Homebrew（兩平台統一）
