@@ -398,6 +398,27 @@ brew install \
 
 print_success "工具安裝完成"
 
+# AI CLI 工具（與 macOS 對齊）
+print_info "安裝 AI CLI 工具..."
+
+# Codex：官方只上架 cask（無 formula），binary 類 cask macOS/Linux 皆支援，更新由 brew upgrade 管理
+brew install --cask codex 2>&1 | grep -v "already installed" || true
+
+# Claude Code：官方安裝腳本 → ~/.local/bin，安裝後由 claude update 自我更新（brewup 已涵蓋）
+if command -v claude &> /dev/null; then
+    print_info "Claude Code 已安裝，跳過（更新走 claude update / brewup）"
+else
+    if curl -fsSL https://claude.ai/install.sh | bash; then
+        # 本腳本執行環境的 PATH 尚無 ~/.local/bin，補上讓後續步驟找得到 claude
+        export PATH="$HOME/.local/bin:$PATH"
+        print_success "Claude Code 安裝完成"
+    else
+        print_warning "Claude Code 安裝失敗，稍後可手動執行：curl -fsSL https://claude.ai/install.sh | bash"
+    fi
+fi
+
+print_success "AI CLI 工具安裝完成"
+
 # 設定 fzf shell 整合
 print_info "設定 fzf Shell 整合..."
 "$(brew --prefix)"/opt/fzf/install --key-bindings --completion --no-update-rc --no-zsh --no-fish 2>/dev/null || true
@@ -1240,6 +1261,10 @@ check_tool shellcheck && echo "  ✅ shellcheck" || echo "  ❌ shellcheck"
 check_tool direnv && echo "  ✅ direnv" || echo "  ❌ direnv"
 check_tool just && echo "  ✅ just" || echo "  ❌ just"
 check_tool watchexec && echo "  ✅ watchexec" || echo "  ❌ watchexec"
+
+# AI CLI 工具
+check_tool claude && echo "  ✅ claude (Claude Code)" || echo "  ❌ claude"
+check_tool codex && echo "  ✅ codex" || echo "  ❌ codex"
 
 echo ""
 print_success "工具安裝完成: $SUCCESS/$TOTAL"
