@@ -10,6 +10,7 @@
     ],
     "defaultMode": "auto"
   },
+  "model": "opus[1m]",
   "enabledPlugins": {
     "swift-lsp@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
@@ -29,6 +30,5 @@
   "remoteControlAtStartup": true,
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
-  "useAutoModeDuringPlan": true,
-  "model": "fable"
+  "useAutoModeDuringPlan": true
 }
