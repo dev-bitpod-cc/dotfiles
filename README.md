@@ -34,8 +34,18 @@ curl -fsSL dot.bitpod.cc | sh
 
 自動完成：apt 前置依賴 → clone repo → Homebrew 安裝 → 執行環境設定。
 
-> **Cloudflare 設定**：`dot.bitpod.cc` 302 redirect 至
-> `https://raw.githubusercontent.com/dev-bitpod-cc/dotfiles/main/bootstrap.sh`
+### 忘記安裝指令時
+
+```bash
+curl help.bitpod.cc
+```
+
+會印出正解 `curl -fsSL dot.bitpod.cc | sh`（純提醒、不執行任何動作）。
+
+> **Cloudflare 設定**：
+> - `dot.bitpod.cc` 302 redirect 至
+>   `https://raw.githubusercontent.com/dev-bitpod-cc/dotfiles/main/bootstrap.sh`（安裝器）
+> - `help.bitpod.cc` 由 Cloudflare Worker 回傳純文字提醒（腳本見 `docs/cloudflare-help-worker.js`）
 
 ### macOS（已有 repo）
 
