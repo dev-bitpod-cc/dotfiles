@@ -10,7 +10,7 @@ argument-hint: "[resume] [slug]"
 心智模型：process 重生前把 task state 序列化到磁碟，新 process 反序列化前先驗 checksum。交接檔是**宣稱（claims）不是事實**——repo 現況才是事實；錨點（寫檔當下的 git HEAD）就是 checksum，讓讀取端能機器判定「這份交接還新鮮嗎」。用完即歸檔，失效內容不留在檯面上。
 
 - 存放：`~/.claude/handoffs/<slug>.md`（machine-local；**不放 repo 內**——不污染 git status，跨 repo 工作也只需一份檔多條錨點）
-- 已消費：`~/.claude/handoffs/archive/YYYYMMDD-<原檔名>`
+- 已消費：`~/.claude/handoffs/archive/YYYYMMDD-HHMMSS-<原檔名>`（秒級前綴——同日同 slug 二次消費不可互相覆蓋，archive 是 audit trail）
 - 機制腳本：`~/.claude/skills/handoff/scripts/handoff-anchor.sh`（`anchors` / `verify` / `list`；EXPIRE_DAYS、ARCHIVE_KEEP_DAYS 常數以腳本為單一來源）
 
 ## 引數
@@ -57,8 +57,7 @@ argument-hint: "[resume] [slug]"
 ```markdown
 ---
 slug: <slug>
-created: <anchors 輸出>
-anchor: <anchors 輸出，逐 repo 一行>
+<W2 anchors 輸出原樣貼入：created 一行 + 逐 repo 的 anchor 行，行首即 created:/anchor:，不另加前綴>
 ---
 
 # Handoff: <一句話標題>
@@ -122,7 +121,7 @@ anchor: <anchors 輸出，逐 repo 一行>
 計畫確立後、動工前，歸檔（消費）交接檔：
 
 ```
-mkdir -p ~/.claude/handoffs/archive && mv <handoff.md> ~/.claude/handoffs/archive/$(date +%Y%m%d)-<原檔名>
+mkdir -p ~/.claude/handoffs/archive && mv <handoff.md> ~/.claude/handoffs/archive/$(date +%Y%m%d-%H%M%S)-<原檔名>
 ```
 
 回報「交接檔已消費歸檔」，然後才開始執行工作。若中途發現還需要它，archive/ 內在保留期內都找得回（超過 ARCHIVE_KEEP_DAYS 由 `list` 自動清）。
@@ -133,7 +132,7 @@ mkdir -p ~/.claude/handoffs/archive && mv <handoff.md> ~/.claude/handoffs/archiv
 write（蓋錨點）→ ACTIVE（~/.claude/handoffs/*.md）
                     │ 超過 EXPIRE_DAYS 未消費 → list/verify 標 EXPIRED（重驗或確認後刪）
                     ▼ resume 消費（verify → reconcile）
-                 ARCHIVE（archive/YYYYMMDD-*.md）
+                 ARCHIVE（archive/YYYYMMDD-HHMMSS-*.md）
                     ▼ 超過 ARCHIVE_KEEP_DAYS
                  由 list 自動刪除
 ```

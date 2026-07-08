@@ -340,6 +340,15 @@ rm "$TMP/ha-work/untracked.txt"
 "$HA_SCRIPT" anchors "$TMP/not-a-repo" >/dev/null 2>&1
 assert_rc "anchors 非 git repo → exit 1" 1 $?
 
+# anchors：路徑含空白 → 寫入端擋下（anchor 行以空白分欄，這種錨點 verify 必誤判）
+git init -q -b main "$TMP/ha spaced"
+(cd "$TMP/ha spaced" && echo v1 > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init)
+out="$("$HA_SCRIPT" anchors "$TMP/ha spaced" 2>&1)"
+assert_rc "anchors 含空白路徑 → exit 1" 1 $?
+if ! echo "$out" | grep -q "^anchor: " && echo "$out" | grep -q "含空白"; then
+    ok "含空白路徑 → 報錯且不輸出 anchor 行"
+else bad "含空白路徑未被寫入端擋下"; fi
+
 # verify：FRESH
 mkdir -p "$TMP/ha-handoffs"
 { echo "---"; "$HA_SCRIPT" anchors "$TMP/ha-work"; echo "---"; echo "# Handoff: test"; } > "$TMP/ha-handoffs/t.md"
@@ -383,6 +392,22 @@ if echo "$out" | grep -q "verdict: UNVERIFIABLE"; then ok "無錨點 → UNVERIF
 
 "$HA_SCRIPT" verify "$TMP/ha-handoffs/no-such.md" >/dev/null 2>&1
 assert_rc "verify 檔案不存在 → exit 1" 1 $?
+
+# verify：錨點行欄位不足（手寫殘缺）→ BAD-ANCHOR 優雅判定，不裸崩潰
+printf -- '---\ncreated: %s\nanchor: %s/ha-work\n---\n' "$(date +%Y-%m-%d)" "$TMP" > "$TMP/ha-handoffs/t.md"
+out="$("$HA_SCRIPT" verify "$TMP/ha-handoffs/t.md" 2>&1)"
+assert_rc "verify 欄位不足錨點 → exit 1" 1 $?
+if echo "$out" | grep -q "status: BAD-ANCHOR" && ! echo "$out" | grep -q "unbound variable"; then
+    ok "欄位不足 → BAD-ANCHOR（無 bash 錯誤）"
+else bad "欄位不足錨點未優雅判定"; fi
+
+# verify：錨點路徑含 glob 字元 → 不做 pathname expansion（欄位原樣進判定）
+printf -- '---\ncreated: %s\nanchor: * main abc1234 dirty=0\n---\n' "$(date +%Y-%m-%d)" > "$TMP/ha-handoffs/t.md"
+out="$("$HA_SCRIPT" verify "$TMP/ha-handoffs/t.md")"
+assert_rc "verify glob 字元錨點 → exit 1" 1 $?
+if echo "$out" | grep -q "recorded: branch=main head=abc1234" && echo "$out" | grep -q "status: MISSING"; then
+    ok "glob 字元不展開 → 判 MISSING"
+else bad "glob 字元錨點被 pathname expansion 展開"; fi
 
 # list：EXPIRED 標記 + archive 自動清理
 rm "$TMP/ha-handoffs/t.md"

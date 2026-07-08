@@ -8,15 +8,16 @@
 #   handoff-anchor.sh list    [dir]            # 列出 active 交接檔（年齡/EXPIRED）+ 自動清過期 archive
 #
 # verify 逐錨點輸出判定：
-#   FRESH    — 記錄的 HEAD == 現在的 HEAD（內容可信）
-#   DRIFTED  — 記錄的 HEAD 是現在 HEAD 的祖先（repo 已前進 N commits；列出中間 commit 供比對）
-#   DIVERGED — 記錄的 HEAD 不在現行歷史上（rebase/換 branch/歷史改寫）；內容一律存疑
-#   MISSING  — repo 路徑不存在或不是 git repo
+#   FRESH      — 記錄的 HEAD == 現在的 HEAD（內容可信）
+#   DRIFTED    — 記錄的 HEAD 是現在 HEAD 的祖先（repo 已前進 N commits；列出中間 commit 供比對）
+#   DIVERGED   — 記錄的 HEAD 不在現行歷史上（rebase/換 branch/歷史改寫）；內容一律存疑
+#   MISSING    — repo 路徑不存在或不是 git repo
+#   BAD-ANCHOR — 錨點行欄位不足（如手寫殘缺），無法驗證
 #   另檢查 created 年齡，超過 EXPIRE_DAYS 標 EXPIRED。
 #
-# exit code：0 = 全部 FRESH 且未過期；1 = 任一 DRIFTED/DIVERGED/MISSING/EXPIRED；2 = 用法錯誤
+# exit code：0 = 全部 FRESH 且未過期；1 = 任一 DRIFTED/DIVERGED/MISSING/BAD-ANCHOR/EXPIRED；2 = 用法錯誤
 #
-# 限制：repo 路徑不可含空白（anchor 行以空白分欄）。
+# 限制：repo 路徑不可含空白（anchor 行以空白分欄）——anchors 遇含空白路徑直接報錯拒絕。
 # list 的 dir 預設 $HANDOFF_DIR，未設則 ~/.claude/handoffs。
 
 set -uo pipefail
@@ -47,6 +48,11 @@ cmd_anchors() {
     local failed=0
     echo "created: $(date +%Y-%m-%d)"
     for repo in "$@"; do
+        case "$repo" in *[[:space:]]*)
+            echo "error: repo 路徑含空白，錨點格式不支援（anchor 行以空白分欄）：$repo" >&2
+            failed=1
+            continue ;;
+        esac
         if ! git -C "$repo" rev-parse --show-toplevel >/dev/null 2>&1; then
             echo "error: 不是 git repo（或路徑不存在）：$repo" >&2
             failed=1
@@ -54,7 +60,8 @@ cmd_anchors() {
         fi
         local branch sha dirty
         branch="$(git -C "$repo" symbolic-ref --short -q HEAD)" || branch="DETACHED"
-        sha="$(git -C "$repo" rev-parse --short HEAD)"
+        # full sha：short sha 日後可能因物件增長變 ambiguous，導致 verify 誤判 DIVERGED
+        sha="$(git -C "$repo" rev-parse HEAD)"
         dirty="$(git -C "$repo" status --porcelain | wc -l | tr -d ' ')"
         echo "anchor: $repo $branch $sha dirty=$dirty"
     done
@@ -135,9 +142,17 @@ cmd_verify() {
         exit 1
     fi
 
+    local repo branch sha dirty _extra
     while IFS= read -r line; do
-        # shellcheck disable=SC2086  # 錨點欄位刻意以空白分欄
-        verify_anchor ${line#anchor: } || overall=1
+        # read 分欄不做 glob expansion（路徑含 * [ ? 也不會被展開成 cwd 檔名）
+        IFS=' ' read -r repo branch sha dirty _extra <<< "${line#anchor: }"
+        if [ -z "$sha" ]; then
+            echo "--- ${repo:-?} ---"
+            echo "status: BAD-ANCHOR（錨點行欄位不足，無法驗證：${line}）"
+            overall=1
+            continue
+        fi
+        verify_anchor "$repo" "$branch" "$sha" "$dirty" || overall=1
     done <<< "$anchors"
 
     if [ "$overall" -eq 0 ]; then
