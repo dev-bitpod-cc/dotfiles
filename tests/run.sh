@@ -13,6 +13,7 @@
 #   7. ship-state.sh（uap skill script）偵測與 protection 判定（gh stub）
 #   8. review-state.sh（deep-review skill script）scope-priority / round 判定
 #   9. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
+#  10. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
 #
 set -uo pipefail
 
@@ -434,6 +435,101 @@ if echo "$out" | grep -q "handoffs: NONE"; then ok "list 無目錄 → NONE"; el
 assert_rc "無引數 → exit 2" 2 $?
 "$HA_SCRIPT" bogus >/dev/null 2>&1
 assert_rc "未知子指令 → exit 2" 2 $?
+
+echo "▶ 12. codex-runtime-hygiene.sh 孤兒偵測 / 誤殺防護 / exit 契約"
+CH_SCRIPT="$ROOT/claude/skills/deep-review/scripts/codex-runtime-hygiene.sh"
+CH_STATE="$TMP/ch-state"
+# 假「現行 codex」：讓 CURRENT_CODEX 判定不依賴這台機器有沒有裝 codex。
+# 注意：假 binary 用 sleep 迴圈（不可單發長 sleep——孫進程會繼承 stdout pipe 卡住整個測試管線，
+# 且 pkill 殺不到裸 `sleep N` 的 argv）；spawn 一律 >/dev/null 斷開 pipe 繼承。
+mkdir -p "$TMP/ch-current-bin" "$TMP/ch-orphan-bin"
+printf '#!/bin/sh\nwhile :; do sleep 5; done\n' > "$TMP/ch-current-bin/codex"
+printf '#!/bin/sh\nwhile :; do sleep 5; done\n' > "$TMP/ch-orphan-bin/codex"
+chmod +x "$TMP/ch-current-bin/codex" "$TMP/ch-orphan-bin/codex"
+CH_ENV=(env "PATH=$TMP/ch-current-bin:$PATH" \
+    "CODEX_HYGIENE_STATE_DIR=$CH_STATE" \
+    "CODEX_HYGIENE_BROKER_PATTERN=ch-fake-broker-serve")
+ch_pids_cleanup() { pkill -f ch-fake-broker-serve 2>/dev/null; pkill -f "$TMP/ch-orphan-bin/codex" 2>/dev/null; return 0; }
+# source-only 掛鉤載入函式後呼叫 broker_actively_working（子 shell 隔離 env 與 set -uo，變更不外洩——刻意）。
+# source 前必須 set -- 清位置參數：sourced script 的 $1 會繼承本函式參數，污染其 MODE 判定
+# shellcheck disable=SC1090,SC2030,SC2031
+ch_actively_working() {
+    (export CODEX_HYGIENE_SOURCED=1 CODEX_HYGIENE_STATE_DIR="$CH_STATE"
+     ch_bpid="$1"; set --
+     . "$CH_SCRIPT"; broker_actively_working "$ch_bpid")
+}
+
+# --- broker_actively_working 函式級測試（source-only 掛鉤）---
+# S1 迴歸：plugin 的 jobs 陣列「新的在前」（unshift + updatedAt 降冪 prune）。
+# jobs[0]=running＋新鮮 log、jobs[尾]=completed → 必須判現役（rc=0）；讀錯端（.jobs[-1]）會誤殺。
+mkdir -p "$CH_STATE/.myrepo-aaa111"   # dot 開頭目錄：glob 會漏、find 不會
+touch "$TMP/ch-job.log"
+printf '{"pid":4242,"sessionDir":"none"}\n' > "$CH_STATE/.myrepo-aaa111/broker.json"
+printf '{"jobs":[{"status":"running","logFile":"%s"},{"status":"completed","logFile":"%s"}]}\n' \
+    "$TMP/ch-job.log" "$TMP/ch-job.log" > "$CH_STATE/.myrepo-aaa111/state.json"
+rc=0
+ch_actively_working 4242 || rc=$?
+assert_rc "S1：jobs[0]=running＋新鮮 log → 現役不殺（rc=0）" 0 "$rc"
+
+# 全 completed（無 active job）→ 非現役可清（rc=1）
+printf '{"jobs":[{"status":"completed","logFile":"%s"}]}\n' "$TMP/ch-job.log" \
+    > "$CH_STATE/.myrepo-aaa111/state.json"
+rc=0
+ch_actively_working 4242 || rc=$?
+assert_rc "全 completed → 非現役（rc=1）" 1 "$rc"
+
+# active job 但 log 停滯（>15 分）→ 非現役（rc=1）
+touch -t 202601011200 "$TMP/ch-job.log"
+printf '{"jobs":[{"status":"running","logFile":"%s"}]}\n' "$TMP/ch-job.log" \
+    > "$CH_STATE/.myrepo-aaa111/state.json"
+rc=0
+ch_actively_working 4242 || rc=$?
+assert_rc "active 但 log 停滯 → 可清（rc=1）" 1 "$rc"
+rm -f "$CH_STATE/.myrepo-aaa111"/broker.json "$CH_STATE/.myrepo-aaa111"/state.json
+
+# --- 端到端：split-brain 現役 SKIP（check exit 3）→ 轉可清（exit 1）→ clean 收割（exit 0）---
+# 假 broker：argv 帶測試 pattern，子進程跑「非現行 codex」絕對路徑 binary（= split-brain）
+bash -c ": ch-fake-broker-serve; \"$TMP/ch-orphan-bin/codex\" & wait" >/dev/null 2>&1 &
+CH_BPID=$!
+sleep 0.3   # 等子進程 spawn
+touch "$TMP/ch-job.log"
+printf '{"pid":%s,"sessionDir":"%s"}\n' "$CH_BPID" "$TMP/ch-sock-cxc-none" > "$CH_STATE/.myrepo-aaa111/broker.json"
+printf '{"jobs":[{"status":"running","logFile":"%s"}]}\n' "$TMP/ch-job.log" > "$CH_STATE/.myrepo-aaa111/state.json"
+"${CH_ENV[@]}" "$CH_SCRIPT" check >/dev/null 2>&1
+assert_rc "e2e：split-brain＋現役 job → check exit 3（SKIP 不殺）" 3 $?
+kill -0 "$CH_BPID" 2>/dev/null
+assert_rc "e2e：check 後假 broker 仍存活" 0 $?
+
+# job 轉 completed → 可清孤兒（check exit 1）→ clean 收割並複驗乾淨（exit 0）
+printf '{"jobs":[{"status":"completed","logFile":"%s"}]}\n' "$TMP/ch-job.log" > "$CH_STATE/.myrepo-aaa111/state.json"
+"${CH_ENV[@]}" "$CH_SCRIPT" check >/dev/null 2>&1
+assert_rc "e2e：job 已完 → check exit 1（可清孤兒）" 1 $?
+"${CH_ENV[@]}" "$CH_SCRIPT" clean >/dev/null 2>&1
+assert_rc "e2e：clean 收割孤兒＋複驗 → exit 0" 0 $?
+sleep 0.3
+if ! kill -0 "$CH_BPID" 2>/dev/null && ! pgrep -f "$TMP/ch-orphan-bin/codex" >/dev/null 2>&1; then
+    ok "e2e：孤兒 broker 與其 app-server 子進程皆被收"
+else bad "e2e：孤兒進程未收乾淨"; ch_pids_cleanup; fi
+if [ ! -e "$CH_STATE/.myrepo-aaa111/broker.json" ]; then ok "e2e：孤兒 broker.json 已移除"; else bad "e2e：broker.json 未移除"; fi
+
+# --- stale broker.json（pid 已死）＋ rm -rf 前綴防護 ---
+mkdir -p "$CH_STATE/normal-bbb222" "$TMP/ch-sock/cxc-good" "$TMP/ch-sock/important-data"
+printf '{"pid":99999999,"sessionDir":"%s"}\n' "$TMP/ch-sock/cxc-good" > "$CH_STATE/.myrepo-aaa111/broker.json"
+printf '{"pid":null,"sessionDir":"%s"}\n' "$TMP/ch-sock/important-data" > "$CH_STATE/normal-bbb222/broker.json"
+"${CH_ENV[@]}" "$CH_SCRIPT" check >/dev/null 2>&1
+assert_rc "stale json（含 dot 目錄）→ check exit 1" 1 $?
+"${CH_ENV[@]}" "$CH_SCRIPT" clean >/dev/null 2>&1
+assert_rc "stale json clean → exit 0" 0 $?
+if [ ! -e "$CH_STATE/.myrepo-aaa111/broker.json" ] && [ ! -e "$CH_STATE/normal-bbb222/broker.json" ]; then
+    ok "stale broker.json 兩目錄（含 dot）皆清除"
+else bad "stale broker.json 未清乾淨（dot 目錄漏掃？）"; fi
+if [ ! -d "$TMP/ch-sock/cxc-good" ]; then ok "cxc- sessionDir 已移除"; else bad "cxc- sessionDir 未移除"; fi
+if [ -d "$TMP/ch-sock/important-data" ]; then ok "非 cxc- sessionDir 保留（rm -rf 前綴防護）"; else bad "非 cxc- 路徑被誤刪"; fi
+"${CH_ENV[@]}" "$CH_SCRIPT" check >/dev/null 2>&1
+assert_rc "清理後 → check exit 0（乾淨）" 0 $?
+"${CH_ENV[@]}" "$CH_SCRIPT" bogus >/dev/null 2>&1
+assert_rc "未知模式 → exit 2" 2 $?
+ch_pids_cleanup
 
 echo ""
 echo "════════════════════════════"

@@ -85,6 +85,16 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 **上限**：3 輪 codex 審查、2 輪修復（**diff / baseline 模式皆維持此上限，不放寬**——放寬只會鼓勵深井追逐）。到此階段 code 已通過主 agent 完整審查，剩餘問題應快速收斂。兩模式 C2+ 皆只驗增量修復、completeness 深井（baseline backlog / prose artifact）不阻擋通過，因此 2 輪修復足以收斂。若第 3 輪仍有 true positive blocking findings（指向修復本身、非 completeness 深井）→ 停止，輸出 codex 終止報告交使用者。
 
+**Preflight：清孤兒 codex runtime（進入 codex 階段、第一次呼叫 codex:rescue 前跑一次）**——codex 若近期有過遷移/重裝/`brew upgrade`，殘留的舊 runtime（孤兒 broker + app-server）會與現行的搶同一份 `~/.codex/*.sqlite` 狀態互踩，害 review 長 turn 中途無聲猝死（status 永卡 `verifying`＝下方「死亡偵測」要善後的 zombie）。先跑清理，發現孤兒會自動 SIGTERM 舊 broker + 清 stale broker.json/socket，乾淨則 no-op：
+
+```bash
+~/.dotfiles/claude/skills/deep-review/scripts/codex-runtime-hygiene.sh clean
+```
+
+進 codex 階段一律先跑（乾淨即秒級 no-op）——split-brain 可在無安裝異動時發生（F14 的 7/9 事故當下即無重裝），「runtime 看起來穩」不構成跳過依據。`clean` exit 0 = 可清項全清（僅剩被跳過的現役 broker 也算 0）；exit 1 = 複驗仍有可清項，此時再呼叫 codex 有猝死風險，先手動處理。**誤殺防護**：split-brain broker 只有在「無進行中 job」時才被收；若它仍有進行中的 job（status ∈ {queued, running}——UI 顯示的 starting/verifying 是 phase 非 status）且 log 15 分內有更新（可能是別的 session upgrade 前起跑的現役 review），腳本跳過只警告、不殺；無 jq 無法判定活性時同樣保守跳過。stale broker.json（pid 已死）只刪檔不殺進程。
+
+> codex 由 **brew cask** 管理（非 bun）。**NEVER `bun install -g @openai/codex` to "fix" codex** — it recreates the bun/brew split-brain that is the root cause of the mid-turn death. Reinstall via `brew reinstall --cask codex`.
+
 **Codex 呼叫協議**（單一權威——全域 CLAUDE.md 的「由 codex 進行第三方審查」觸發詞段指向此節，改標題須同步）：
 
 呼叫 `codex:rescue`，**prompt 只含一行**：

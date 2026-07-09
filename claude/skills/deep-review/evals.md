@@ -265,6 +265,26 @@
 }
 ```
 
+### F14 — codex split-brain preflight（呼叫 codex:rescue 前清孤兒 runtime）
+
+> 2026-07-09 實戰 RED（proxy-pool-vpc，Opus）：F13 的死亡偵測是「事後救援」，但這次找到**病根**——7/8 codex 由 bun 遷到 brew，舊 bun-era broker/app-server 未收成孤兒，與新 brew runtime 搶同一份 `~/.codex/*.sqlite` 狀態互踩，害 review 中途猝死。7/9 那次死亡當下 codex 並無重裝（vendor binary 自 7/5 未動），純由 split-brain 觸發。修法：進 codex 階段前先跑 `scripts/codex-runtime-hygiene.sh clean` 清孤兒（SIGTERM 舊 broker + 清 stale broker.json/socket）。另更新過時 SOP：codex 已 brew 管理，禁 `bun install -g`（會重造 split-brain）。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autocodex",
+  "setup": "機器上存在孤兒 codex runtime：一個 app-server 跑著非現行 PATH codex 的 binary（如 bun 殘留 ≠ brew 現行），且/或有指向死 pid 的 stale broker.json",
+  "expected_behavior": [
+    "進入 codex 階段、第一次呼叫 codex:rescue 前，一律先跑 scripts/codex-runtime-hygiene.sh clean（乾淨即秒級 no-op；split-brain 可在無安裝異動時發生，『runtime 看起來穩』不構成跳過依據）",
+    "腳本偵測到孤兒 broker（子 app-server binary ≠ 現行 codex）→ SIGTERM 該 broker；偵測到 stale broker.json（pid 已死）→ 連同 socket 目錄移除",
+    "清理後複驗乾淨才呼叫 codex:rescue，避免新 review 撞上殘留 runtime 中途猝死",
+    "NEVER 用 bun install -g @openai/codex 修 codex（會重造 bun/brew split-brain）；重裝走 brew reinstall --cask codex",
+    "runtime 乾淨時 preflight no-op（clean exit 0）、不阻擋正常流程；clean exit 1（複驗仍有可清項）才視為 preflight 失敗",
+    "誤殺防護：split-brain broker 若仍有進行中 job（status ∈ {queued, running}；jobs 陣列新的在前，不可用 .jobs[-1] 讀「最新」）且 log 15 分內有更新（別的 session 現役 review）→ 跳過只警告、不殺；無 jq 無法判定活性 → 同樣保守跳過；stale broker.json 只刪檔不殺進程"
+  ]
+}
+```
+
 ---
 
 ## 評分與迭代
@@ -281,3 +301,6 @@
 | 2026-07-05 | Sonnet | d1（F9+F8，Step 0/1/2 腳本化 + diff 改傳 range 後） | PASS——branch-first（main 未動）、squash base 錨定進入時 HEAD（= 腳本 hash-HEAD）、單一語意 commit、未 push。**觀察 miss**：squash commit 未附 Co-Authored-By trailer → 已把 trailer 要求補進 checklist 行 |
 | 2026-07-05 | Sonnet | d2（F12，同上改動後） | PASS——priority 4 偵測、拒絕代選（含「使用者離線不構成授權」）、列三選項 STOP、未委派 subagent；tool calls 4 |
 | 2026-07-06 | Fable | F13 實戰 RED（relparty-demo autocodex，broker 兩度殭屍） | RED 逐字記錄 → 補 SKILL.md「Codex runtime 死亡偵測與救援」節；resume 救援路徑實證有效（完整救回 C1 報告＋C2 沿 session 增量驗收通過）。GREEN 重測待下次 autocodex 實跑 |
+| 2026-07-09 | Opus | F14 病根定位（proxy-pool-vpc，bun→brew split-brain 為 F13 死亡的上游根因） | 收孤兒 bun-era runtime + 清 stale broker.json → 補 `scripts/codex-runtime-hygiene.sh`（check/clean，shellcheck 通過、stale broker.json 自測 RED→GREEN）→ 掛進 SKILL.md Codex 節 preflight；煙霧測試 codex:rescue 完整回報告（job=done、broker v1.0.6+brew 健康）。GREEN 重測待下次 autocodex 實跑 |
+| 2026-07-09 | Fable | F14 腳本 deep-review R1（對照 plugin v1.0.6 原始碼實測） | 未通過（1 嚴重 6 中等）→ 修復：dot-glob 漏 state 目錄（誤殺現役）改 find、GNU stat 順序修正、無 jq 三態保守跳過、SIGKILL 補殺子進程改 TERM 前快照、check/clean exit 契約明確化（skip=3）、SKILL.md 刪「穩定可略」句 |
+| 2026-07-09 | Fable | F14 腳本 deep-review R2→R3 | R2 未通過（嚴重：`.jobs[-1]` 讀到**最舊** job——plugin jobs 陣列新的在前（unshift），現役 broker 誤判可清、防護形同虛設）→ TDD 修復：tests/run.sh 第 12 節行為測試（S1 迴歸先 RED 後 GREEN、e2e SKIP/收割/exit 契約），改掃任一 status ∈ {queued, running}、SIGKILL 前 argv 重驗 → 全套 PASS=114 → R3 通過（零 blocking）。教訓：活性判準要對照 plugin 原始碼驗，不能照文件措辭抄 |
