@@ -665,6 +665,9 @@ dotsync() { ~/.dotfiles/scripts/dotfiles-sync.sh "$@"; }
 # 列出各主機的 tmux session
 tmuxls() { ~/.dotfiles/scripts/tmux-ls.sh "$@"; }
 
+# 批次系統更新（mac: brewup；linux: brewup+sysup）；無引數＝本機+遠端（本機若在清單自動扣除）
+allup() { ~/.dotfiles/scripts/all-up.sh "$@"; }
+
 # 系統更新
 alias brewup='(cd ~/.dotfiles && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1); brew trust --formula oven-sh/bun/bun 2>/dev/null; brew update && brew upgrade --yes && brew cleanup; { command -v claude &>/dev/null && claude update 2>/dev/null; claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && cp ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null; } 2>/dev/null'
 
