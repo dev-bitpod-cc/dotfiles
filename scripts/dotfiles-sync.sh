@@ -59,6 +59,9 @@ if [ -f "$DOTFILES_DIR/ssh/known_hosts" ]; then
     cp "$DOTFILES_DIR/ssh/known_hosts" ~/.ssh/known_hosts
 fi
 
+# 確保互動 rc 有 source shell/functions.sh（幂等；讓便利函數免重跑 setup 即散佈）
+[ -f "$DOTFILES_DIR/scripts/ensure-rc-source.sh" ] && bash "$DOTFILES_DIR/scripts/ensure-rc-source.sh" 2>/dev/null || true
+
 echo -e "${GREEN}  ✅ 本機完成${NC}"
 
 # 遠端同步（並行）
@@ -83,6 +86,8 @@ SSHEOF
             if [ -f ssh/known_hosts ]; then
                 cp ssh/known_hosts ~/.ssh/known_hosts
             fi
+            # 確保互動 rc 有 source shell/functions.sh（幂等）
+            [ -f scripts/ensure-rc-source.sh ] && bash scripts/ensure-rc-source.sh 2>/dev/null || true
             echo "OK"
         else
             echo "NO_DOTFILES"

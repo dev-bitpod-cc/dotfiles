@@ -618,14 +618,9 @@ alias glog='git log --oneline --graph --decorate'
 alias clauded='claude --dangerously-skip-permissions'
 alias claudea='claude --enable-auto-mode'
 
-# Dotfiles 同步
-dotsync() { ~/.dotfiles/scripts/dotfiles-sync.sh "$@"; }
-
-# 列出各主機的 tmux session
-tmuxls() { ~/.dotfiles/scripts/tmux-ls.sh "$@"; }
-
-# 批次系統更新（mac: brewup；linux: brewup+sysup）；無引數＝本機+遠端（本機若在清單自動扣除）
-allup() { ~/.dotfiles/scripts/all-up.sh "$@"; }
+# 跨主機共用便利函數（dotsync / tmuxls / allup 等）
+# 版控於 shell/functions.sh，由 dotsync 散佈；新增函數只需改該檔，毋須重跑 setup
+[ -f ~/.dotfiles/shell/functions.sh ] && source ~/.dotfiles/shell/functions.sh
 
 # 系統更新（兩個 alias：brewup 管 Homebrew + dotfiles，sysup 管 apt）
 alias brewup='(cd ~/.dotfiles && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1); brew trust --formula oven-sh/bun/bun 2>/dev/null; brew update && brew upgrade --yes && brew cleanup; { command -v claude &>/dev/null && claude update 2>/dev/null; claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && cp ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null; } 2>/dev/null'

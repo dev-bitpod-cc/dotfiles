@@ -14,6 +14,7 @@
 #   8. review-state.sh（deep-review skill script）scope-priority / round 判定
 #   9. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
 #  10. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
+#  11. ensure-rc-source.sh 幂等補 source shell/functions.sh 行
 #
 set -uo pipefail
 
@@ -45,6 +46,7 @@ echo "▶ 1. shellcheck gate"
 if shellcheck -x -P "$ROOT/scripts" \
     "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
     "$ROOT"/claude/skills/*/scripts/*.sh \
+    "$ROOT/shell/functions.sh" \
     "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh" \
     "$ROOT/tests/run.sh"; then
     ok "shellcheck 全部通過"
@@ -56,6 +58,7 @@ echo "▶ 2. bash -n 語法 gate"
 syntax_fail=0
 for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
          "$ROOT"/claude/skills/*/scripts/*.sh \
+         "$ROOT/shell/functions.sh" \
          "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh"; do
     bash -n "$f" || { syntax_fail=1; echo "     syntax fail: $f"; }
 done
@@ -530,6 +533,36 @@ assert_rc "清理後 → check exit 0（乾淨）" 0 $?
 "${CH_ENV[@]}" "$CH_SCRIPT" bogus >/dev/null 2>&1
 assert_rc "未知模式 → exit 2" 2 $?
 ch_pids_cleanup
+
+echo "▶ 11. ensure-rc-source.sh 幂等補 source 行"
+ERS="$ROOT/scripts/ensure-rc-source.sh"
+MARKER='shell/functions.sh'
+
+# rc 無 marker → 補上一行
+ers_rc="$TMP/rc-plain"
+printf '# 既有內容\nexport FOO=bar\n' > "$ers_rc"
+RC_FILE="$ers_rc" bash "$ERS"
+assert_rc "無 marker → exit 0" 0 $?
+if grep -qF "$MARKER" "$ers_rc"; then ok "已補上 source 行"; else bad "未補上 source 行"; fi
+if grep -qxF 'export FOO=bar' "$ers_rc"; then ok "原有內容保留"; else bad "原有內容遺失"; fi
+
+# 再跑一次 → 幂等不重複（數 source 行本身，避開含 marker 的註解行）
+RC_FILE="$ers_rc" bash "$ERS"
+ers_count=$(grep -cF 'source ~/.dotfiles/shell/functions.sh' "$ers_rc")
+assert_eq "重跑不重複（source 行出現 1 次）" "1" "$ers_count"
+
+# 已含 marker 的 rc → 原封不動
+ers_pre="$TMP/rc-pre"
+printf 'source ~/.dotfiles/shell/functions.sh\n' > "$ers_pre"
+cp "$ers_pre" "$ers_pre.orig"
+RC_FILE="$ers_pre" bash "$ERS"
+if diff -q "$ers_pre" "$ers_pre.orig" >/dev/null; then ok "已含 marker → 內容不變"; else bad "已含 marker 仍被改動"; fi
+
+# rc 不存在 → 不建立、exit 0
+ers_none="$TMP/rc-nonexistent"
+RC_FILE="$ers_none" bash "$ERS"
+assert_rc "rc 不存在 → exit 0" 0 $?
+if [ ! -e "$ers_none" ]; then ok "rc 不存在 → 不建立檔案"; else bad "rc 不存在卻建立了檔案"; fi
 
 echo ""
 echo "════════════════════════════"
