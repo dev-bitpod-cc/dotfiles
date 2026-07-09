@@ -125,7 +125,7 @@ scripts/dotfiles-sync.sh     # 同步 dotfiles 到所有主機
 
 ## 測試
 
-- `./tests/run.sh` — 腳本驗證一鍵跑完：shellcheck + bash -n 全腳本 gate（含 `claude/skills/*/scripts/`）、inventory/render 純邏輯行為測試、skill 腳本行為測試（git-hygiene / ship-state / review-state，protection 判定用 gh stub）、`add-new-host.sh --dry-run` 煙霧測試。改動 `scripts/`、setup 腳本或 skill 腳本後必跑。
+- `./tests/run.sh` — 腳本驗證一鍵跑完：shellcheck + bash -n 全腳本 gate（含 `claude/skills/*/scripts/`）、inventory/render 純邏輯行為測試、skill 腳本行為測試（git-hygiene / ship-state / review-state / handoff-anchor，protection 判定用 gh stub）、`add-new-host.sh --dry-run` 煙霧測試。改動 `scripts/`、setup 腳本或 skill 腳本後必跑。
 - Skill 行為測試（弱模型 evals）：`claude/evals/README.md`（沙盒建置 + 手動 runner），各 skill 情境在其目錄的 `evals.md`。
 
 ## 重要規則
