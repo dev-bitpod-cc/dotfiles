@@ -60,6 +60,10 @@ glog=git log --oneline --graph --decorate
 > Caveat：在權威機器上要先 `commit` 再跑 `brewup`，否則未提交的刻意改動會被丟棄。
 - `dotsync` - 同步 dotfiles 到所有遠端主機（並行 SSH pull + 重新套用 config）
 - `dotsync eagle03 db01` - 只同步指定主機
+- `tmuxls` - 列出各主機的 tmux session（`tmuxls eagle03 db01` 只看指定主機）
+- `allup` - 批次系統更新：各主機依 OS 跑 `brewup`（Linux 另加 `sysup`）。無引數＝本機＋全部遠端（本機若在 inventory 清單則自動以 IP 比對扣除，避免重複）；`allup eagle03 db01` 只跑指定主機（不含本機）；`ALLUP_DRYRUN=1 allup` 只預覽計畫不執行
+
+> **便利函數散佈模型**：`dotsync` / `tmuxls` / `allup` 等跨主機便利函數版控於 `shell/functions.sh`（唯一來源），互動 rc（`~/.zshrc` / `~/.bashrc`）只 `source` 它。`dotsync` 於 pull 後由 `scripts/ensure-rc-source.sh` 幂等補上該 `source` 行。故新增便利函數只需改 `shell/functions.sh` + `commit` + `dotsync`，各主機下次開 shell 即生效，**毋須逐台重跑 setup**。
 
 ### 自訂函數
 
@@ -125,7 +129,7 @@ scripts/dotfiles-sync.sh     # 同步 dotfiles 到所有主機
 
 ## 測試
 
-- `./tests/run.sh` — 腳本驗證一鍵跑完：shellcheck + bash -n 全腳本 gate（含 `claude/skills/*/scripts/`）、inventory/render 純邏輯行為測試、skill 腳本行為測試（git-hygiene / ship-state / review-state / handoff-anchor，protection 判定用 gh stub）、`add-new-host.sh --dry-run` 煙霧測試。改動 `scripts/`、setup 腳本或 skill 腳本後必跑。
+- `./tests/run.sh` — 腳本驗證一鍵跑完：shellcheck + bash -n 全腳本 gate（含 `claude/skills/*/scripts/`、`shell/functions.sh`）、inventory/render 純邏輯行為測試、skill 腳本行為測試（git-hygiene / ship-state / review-state / handoff-anchor，protection 判定用 gh stub）、`ensure-rc-source.sh` 幂等補 source 行測試、`add-new-host.sh --dry-run` 煙霧測試。改動 `scripts/`、setup 腳本或 skill 腳本後必跑。
 - Skill 行為測試（弱模型 evals）：`claude/evals/README.md`（沙盒建置 + 手動 runner），各 skill 情境在其目錄的 `evals.md`。
 
 ## 重要規則
