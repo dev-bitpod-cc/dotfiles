@@ -4,17 +4,20 @@
 #
 # 用法：./tests/run.sh
 # 涵蓋：
-#   1. shellcheck / bash -n 全腳本 gate（含 claude/skills/*/scripts/）
-#   2. scripts/lib/inventory.sh 解析與 append 行為
-#   3. render-etc-hosts.sh 區塊生成、IP 數值排序、--apply 冪等
-#   4. render-ssh-config.sh 區塊替換、--check、marker 防呆
-#   5. add-new-host.sh --dry-run 煙霧測試（不動任何檔案）
-#   6. git-hygiene.sh（ready4quit skill script）verdict 判定
-#   7. ship-state.sh（uap skill script）偵測與 protection 判定（gh stub）
-#   8. review-state.sh（deep-review skill script）scope-priority / round 判定
-#   9. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
-#  10. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
-#  11. ensure-rc-source.sh 幂等補 source shell/functions.sh 行
+#   1. shellcheck / bash -n 全腳本 gate（含 claude/skills/*/scripts/、codex/skills/*/scripts/）
+#   2. bash -n 語法 gate
+#   3. scripts/lib/inventory.sh 解析
+#   4. inventory_append 行為
+#   5. render-etc-hosts.sh 區塊生成、IP 數值排序、--apply 冪等
+#   6. render-ssh-config.sh 區塊替換、--check、marker 防呆
+#   7. add-new-host.sh --dry-run 煙霧測試（不動任何檔案）
+#   8. git-hygiene.sh（ready4quit skill script）verdict 判定
+#   9. ship-state.sh（uap skill script）偵測與 protection 判定（gh stub）
+#  10. review-state.sh（deep-review skill script）scope-priority / round 判定
+#  11. review-context.sh（repo-review skill script）range 解析 / guidance / autofix gate
+#  12. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
+#  13. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
+#  14. ensure-rc-source.sh 幂等補 source shell/functions.sh 行
 #
 set -uo pipefail
 
@@ -46,6 +49,7 @@ echo "▶ 1. shellcheck gate"
 if shellcheck -x -P "$ROOT/scripts" \
     "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
     "$ROOT"/claude/skills/*/scripts/*.sh \
+    "$ROOT"/codex/skills/*/scripts/*.sh \
     "$ROOT/shell/functions.sh" \
     "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh" \
     "$ROOT/tests/run.sh"; then
@@ -58,6 +62,7 @@ echo "▶ 2. bash -n 語法 gate"
 syntax_fail=0
 for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
          "$ROOT"/claude/skills/*/scripts/*.sh \
+         "$ROOT"/codex/skills/*/scripts/*.sh \
          "$ROOT/shell/functions.sh" \
          "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh"; do
     bash -n "$f" || { syntax_fail=1; echo "     syntax fail: $f"; }
@@ -325,7 +330,73 @@ assert_rc "非 git repo → exit 1" 1 $?
 "$RS_SCRIPT" >/dev/null 2>&1
 assert_rc "無引數 → exit 2" 2 $?
 
-echo "▶ 11. handoff-anchor.sh 錨點驗證與生命週期判定"
+echo "▶ 11. repo-review review-context.sh range / guidance / autofix gate"
+RRC_SCRIPT="$ROOT/codex/skills/repo-review/scripts/review-context.sh"
+RRC_EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+git init -q -b main "$TMP/rrc-work"
+(cd "$TMP/rrc-work" \
+    && mkdir -p src \
+    && printf 'root guidance\n' > CLAUDE.md \
+    && printf 'subtree guidance\n' > src/AGENTS.md \
+    && printf 'v1\n' > src/app.txt \
+    && "${GITC[@]}" add CLAUDE.md src/AGENTS.md src/app.txt \
+    && "${GITC[@]}" commit -qm init)
+rrc_base="$(git -C "$TMP/rrc-work" rev-parse HEAD)"
+(cd "$TMP/rrc-work" \
+    && printf 'v2\n' > src/app.txt \
+    && "${GITC[@]}" commit -qam "feat: update app")
+rrc_head="$(git -C "$TMP/rrc-work" rev-parse HEAD)"
+
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "HEAD~1..HEAD")"
+assert_rc "review-context 基本 range → exit 0" 0 $?
+if echo "$out" | grep -q "^resolved-base: $rrc_base$" \
+    && echo "$out" | grep -q "^resolved-head: $rrc_head$" \
+    && echo "$out" | grep -q "^review-range: $rrc_base..$rrc_head$"; then
+    ok "range endpoint 解析成固定 object id"
+else bad "range endpoint 解析輸出錯誤"; fi
+if echo "$out" | grep -q "  CLAUDE.md" && echo "$out" | grep -q "  src/AGENTS.md"; then
+    ok "guidance 偵測 root + subtree"
+else bad "guidance 偵測缺 root 或 subtree"; fi
+if echo "$out" | grep -q "src/app.txt" && echo "$out" | grep -q "^autofix-safe: n/a$"; then
+    ok "changed files 與非 autofix 狀態輸出"
+else bad "changed files 或 autofix n/a 輸出錯誤"; fi
+
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$rrc_base..HEAD" --autofix)"
+assert_rc "clean current HEAD autofix gate → exit 0" 0 $?
+if echo "$out" | grep -q "^autofix-safe: yes$" && echo "$out" | grep -q "^autofix-reason: clean-current-head$"; then
+    ok "clean current HEAD → autofix-safe yes"
+else bad "clean current HEAD 未判 autofix-safe yes"; fi
+
+printf 'dirty\n' > "$TMP/rrc-work/untracked.txt"
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$rrc_base..HEAD" --autofix)"
+if echo "$out" | grep -q "^autofix-safe: no$" && echo "$out" | grep -q "^autofix-reason: dirty-worktree$"; then
+    ok "dirty worktree → autofix-safe no"
+else bad "dirty worktree gate 失效"; fi
+rm "$TMP/rrc-work/untracked.txt"
+
+rrc_old_head="$rrc_head"
+(cd "$TMP/rrc-work" \
+    && printf 'v3\n' > src/app.txt \
+    && "${GITC[@]}" commit -qam "feat: advance head")
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$rrc_base..$rrc_old_head" --autofix)"
+if echo "$out" | grep -q "^autofix-safe: no$" && echo "$out" | grep -q "^autofix-reason: requested-head-not-current$"; then
+    ok "requested head 非 current HEAD → autofix-safe no"
+else bad "requested-head-not-current gate 失效"; fi
+
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$RRC_EMPTY_TREE..HEAD")"
+if echo "$out" | grep -q "^resolved-base-type: tree$" && echo "$out" | grep -q "^baseline-range: yes$"; then
+    ok "empty-tree baseline range 支援"
+else bad "empty-tree baseline range 輸出錯誤"; fi
+
+"$RRC_SCRIPT" "$TMP/not-a-repo" "$rrc_base..$rrc_head" >/dev/null 2>&1
+assert_rc "review-context 非 git repo → exit 1" 1 $?
+"$RRC_SCRIPT" "$TMP/rrc-work" "HEAD...HEAD" >/dev/null 2>&1
+assert_rc "three-dot range 被拒 → exit 1" 1 $?
+"$RRC_SCRIPT" >/dev/null 2>&1
+assert_rc "review-context 無引數 → exit 2" 2 $?
+
+echo "▶ 12. handoff-anchor.sh 錨點驗證與生命週期判定"
 HA_SCRIPT="$ROOT/claude/skills/handoff/scripts/handoff-anchor.sh"
 
 # fixture：單 repo，1 commit
@@ -439,7 +510,7 @@ assert_rc "無引數 → exit 2" 2 $?
 "$HA_SCRIPT" bogus >/dev/null 2>&1
 assert_rc "未知子指令 → exit 2" 2 $?
 
-echo "▶ 12. codex-runtime-hygiene.sh 孤兒偵測 / 誤殺防護 / exit 契約"
+echo "▶ 13. codex-runtime-hygiene.sh 孤兒偵測 / 誤殺防護 / exit 契約"
 CH_SCRIPT="$ROOT/claude/skills/deep-review/scripts/codex-runtime-hygiene.sh"
 CH_STATE="$TMP/ch-state"
 # 假「現行 codex」：讓 CURRENT_CODEX 判定不依賴這台機器有沒有裝 codex。
@@ -534,7 +605,7 @@ assert_rc "清理後 → check exit 0（乾淨）" 0 $?
 assert_rc "未知模式 → exit 2" 2 $?
 ch_pids_cleanup
 
-echo "▶ 11. ensure-rc-source.sh 幂等補 source 行"
+echo "▶ 14. ensure-rc-source.sh 幂等補 source 行"
 ERS="$ROOT/scripts/ensure-rc-source.sh"
 MARKER='shell/functions.sh'
 
