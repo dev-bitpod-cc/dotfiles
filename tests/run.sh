@@ -15,9 +15,10 @@
 #   9. ship-state.sh（uap skill script）偵測與 protection 判定（gh stub）
 #  10. review-state.sh（deep-review skill script）scope-priority / round 判定
 #  11. review-context.sh（repo-review skill script）range 解析 / guidance / autofix gate
-#  12. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
-#  13. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
-#  14. ensure-rc-source.sh 幂等補 source shell/functions.sh 行
+#  12. repo-review skill packaging（evals 不進 runtime context）
+#  13. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
+#  14. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
+#  15. ensure-rc-source.sh 幂等補 source shell/functions.sh 行
 #
 set -uo pipefail
 
@@ -396,7 +397,18 @@ assert_rc "three-dot range 被拒 → exit 1" 1 $?
 "$RRC_SCRIPT" >/dev/null 2>&1
 assert_rc "review-context 無引數 → exit 2" 2 $?
 
-echo "▶ 12. handoff-anchor.sh 錨點驗證與生命週期判定"
+echo "▶ 12. repo-review skill packaging"
+if [ -f "$ROOT/codex/skills/repo-review/evals.md" ]; then
+    ok "repo-review evals.md 存在（開發 oracle）"
+else bad "repo-review evals.md 不存在"; fi
+if ! grep -qi 'evals\.md' "$ROOT/codex/skills/repo-review/SKILL.md"; then
+    ok "SKILL.md 不連結 evals.md（避免 runtime 載入）"
+else bad "SKILL.md 不應連結 evals.md"; fi
+if grep -q "Run your repo-review skill on /path/repo for abc123..def456" "$ROOT/codex/skills/repo-review/evals.md"; then
+    ok "evals 覆蓋 Claude Code autocodex 一行協議"
+else bad "evals 缺 Claude Code autocodex 相容性 case"; fi
+
+echo "▶ 13. handoff-anchor.sh 錨點驗證與生命週期判定"
 HA_SCRIPT="$ROOT/claude/skills/handoff/scripts/handoff-anchor.sh"
 
 # fixture：單 repo，1 commit
@@ -510,7 +522,7 @@ assert_rc "無引數 → exit 2" 2 $?
 "$HA_SCRIPT" bogus >/dev/null 2>&1
 assert_rc "未知子指令 → exit 2" 2 $?
 
-echo "▶ 13. codex-runtime-hygiene.sh 孤兒偵測 / 誤殺防護 / exit 契約"
+echo "▶ 14. codex-runtime-hygiene.sh 孤兒偵測 / 誤殺防護 / exit 契約"
 CH_SCRIPT="$ROOT/claude/skills/deep-review/scripts/codex-runtime-hygiene.sh"
 CH_STATE="$TMP/ch-state"
 # 假「現行 codex」：讓 CURRENT_CODEX 判定不依賴這台機器有沒有裝 codex。
@@ -605,7 +617,7 @@ assert_rc "清理後 → check exit 0（乾淨）" 0 $?
 assert_rc "未知模式 → exit 2" 2 $?
 ch_pids_cleanup
 
-echo "▶ 14. ensure-rc-source.sh 幂等補 source 行"
+echo "▶ 15. ensure-rc-source.sh 幂等補 source 行"
 ERS="$ROOT/scripts/ensure-rc-source.sh"
 MARKER='shell/functions.sh'
 

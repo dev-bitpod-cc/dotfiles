@@ -53,6 +53,8 @@ Do not defend patch intent. Do not reuse earlier review conclusions unless the u
 Focus on bugs, behavioral regressions, missing tests, deployment breakage, security gaps, and mismatches between code paths.
 Ignore style unless it causes a real maintenance or correctness problem.
 Treat correctness, security, regressions, required test gaps, deploy breakage, and broken cross-file or cross-repo contracts as blocking. Treat purely stylistic suggestions as non-blocking.
+When changed files include executable commands in shell, Git, GitHub CLI, SQL, or other CLI snippets, verify their real execution semantics rather than accepting plausible prose: check empty/missing args, two-dot vs three-dot Git ranges, missing upstreams, untracked-file handling, multi-repo `gh` cwd behavior, placeholder expansion, escaping, and destructive commands in mixed state.
+For prose artifacts such as `SKILL.md`, references, runbooks, README files, and docs, use "would a reader or agent do the wrong thing?" as the blocking line. Factually wrong instructions, contradictions, broken cross-references, stale operational facts, and embedded commands that would misbehave are blocking. Wording clarity, extra edge cases, more examples, and general completeness nits are non-blocking deep wells; mention them only as optional follow-up when useful, and never let them drive an autofix loop.
 
 ## Autofix Loop
 
@@ -76,6 +78,7 @@ For each repo:
 - State the exact review range when reporting findings.
 - Run `scripts/review-context.sh` for committed-range reviews, then gather diff stat, changed file list, and applicable guidance from its output for subagent prompts.
 - Use fresh-context subagents with bounded scopes for the first review pass when available.
+- Hand subagents the script-resolved range and guidance paths, not the full diff text. Let each subagent run read-only Git commands to collect the diff in its own context.
 - After subagents return, read only the files needed to verify plausible findings.
 - Check whether tests exist for the changed behavior.
 - Verify user-facing paths, deploy paths, and configuration wiring when infra or frontend code changes.
