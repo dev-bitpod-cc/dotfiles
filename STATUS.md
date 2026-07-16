@@ -1,0 +1,59 @@
+<!--
+STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、隨專案移交)
+維護時機:開工寫 spec(/project spec 或對話);ship 時由 /project log 同步;移交前跑 /project transfer。
+規範全文:~/.dotfiles/claude/skills/project/references/dossier.md
+-->
+
+# STATUS.md
+
+個人 dotfiles——5 台主機(macmini/macs/eagle03/eagle06/db01)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-16)
+
+---
+
+## 進行中
+
+### 1. 多主機工作流改造——收尾與生效驗證 ⏳
+
+- **Context**:handoff/memory 為 machine-local 但開發橫跨 5 台;pull 側無人偵測(eagle03 krepo 曾落後 3 個月);repo-resident 檔案無慣例與生命週期;移交流程 ad-hoc。
+- **Goal**:/project skill(spec/log/transfer)+ SessionStart pull 偵測 hook + dossier 慣例在五台全部生效。
+- **Acceptance Criteria**:五台 `git pull` 後,新 session 的 hook 在落後 clone 上出提醒;`/project` 三模式可用;舊 `/uap` 不再存在。
+- **Constraints**:uap 防護內容原文搬遷不重寫;settings.json 的 model 維持共享基線 `opus[1m]`。
+- **進度**:改造完成(c673844,deep-review R4 通過、tests 150/150);本機已生效。
+- **下一步**:
+  1. push 後在其餘四台 `git -C ~/.dotfiles pull`
+  2. 本機開新 session 驗證 hook 實際輸出(在落後 clone 目錄)
+  3. 延後項見「技術債」
+
+---
+
+## 關鍵決策(附理由)
+
+- **2026-07-16 git 為唯一跨主機媒介**:不同步 `~/.claude/`(handoffs/memory)跨機——同步衝突、錨點的跨機語意複雜化、敏感內容風險;krepo STATUS.md 已證明 repo-resident + git 這條路可行。
+- **2026-07-16 `/project` 取代 `/uap` 而非並存**:雙入口=觸發混淆+double-source;`disable-model-invocation` 使鏈式呼叫不可行,只能複製防護邏輯(違反 single-source 紀律)。防護內容原文搬遷。
+- **2026-07-16 STATUS.md 為 dossier 載體,不新建 PROJECT.md**:尊重 krepo 自然湧現且活躍維護的慣例;uap(現 /project log)本就維護此檔;避免同 repo 兩個角色重疊的檔案。
+- **2026-07-16 不引入 Linear / 外部 tracker**:痛點(任務規格、結果回寫、跨 session 延續)由 repo-resident 檔案+既有 skill 生態覆蓋;缺的是慣例固化,不是新工具。
+- **2026-07-16 settings.json 以 `opus[1m]` 為共享 model 基線**:本機一次性模型偏好(如 Fable 5)不 commit、不傳播五台。
+
+## 死路(試過但放棄——防重工)
+
+- **「/project log 包裝/並存 /uap」**:`disable-model-invocation` 下無法鏈式呼叫,只能複製 pressure-tested 的 ship 防護邏輯——違反 single-source;功能上與「uap 強化」完全收斂,故直接取代。
+- **repo 內放一次性交接檔(HANDOFF.md commit→刪除循環)**:盤點實證 general-rag-cs 的已消費 STATUS.md 腐爛數月——跨機狀態一律走 STATUS.md 就地更新,已明文禁止(dossier.md anti-patterns)。
+
+## 技術債
+
+- [ ] R4 non-blocking 建議未修:新增 prose 的中文半形標點與既有全形混排;Transfer 模式 commit 紀律歸屬未明示;evals/README 路徑基準寫法;handoff evals H4 排序
+- [ ] `settings.json` permissions.allow 有多條 `git push origin main` 放行,與各 skill「never push default」紀律方向有張力——另案檢視
+- [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
+
+## 已完成(里程碑)
+
+- ✅ **2026-07-16 多主機工作流改造**(c673844):/project skill 取代 /uap、SessionStart pull 偵測 hook、dossier/transfer 模板、跨主機分流規則;deep-review autofix R1–R4(1嚴重5中等修畢)、沙盒 pressure-tests 5 情境 Sonnet 全 PASS。
+
+## 已知缺口
+
+- 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
+- biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+ credentials 明文散於三台。
+
+## 移交準備度
+
+(個人 infra,暫無移交打算——平時留空)
