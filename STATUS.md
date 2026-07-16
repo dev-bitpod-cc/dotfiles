@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——5 台主機(macmini/macs/eagle03/eagle06/db01)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-16)
+個人 dotfiles——5 台主機(macmini/macs/eagle03/eagle06/db01)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-17)
 
 ---
 
@@ -51,6 +51,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已知缺口
 
+- **Mac 上 `brewup` 會被 codex cask 掛死(Gatekeeper 首次執行核可)**:症狀是停在 `Linking Binary 'codex-aarch64-apple-darwin'` 後不動,Ctrl-C 才繼續。成因非 brew——codex cask 的第二個 artifact(Generated Completion)會實際執行 `codex completion bash/zsh/fish`,而 quarantine 過的新 binary 首次 exec 會彈出「codex-… 是網際網路下載的應用程式,確定要允許執行?」對話框,進程 0% CPU 停在 `_dyld_start` **同步等該對話框被回答**(kernel log:`ASP: Security policy would not allow process`);對話框常沒搶到焦點、被埋在其他視窗後,看起來就只是卡死。**解法:在對話框按允許**(已錯過/誤按取消 → 系統設定 → 隱私權與安全性 → 「仍要允許」),再 `brew reinstall --cask codex` 補完 completion 並清 `*.upgrading` 殘留(Ctrl-C 會讓 cask 裝一半)。**不要用 `xattr -d com.apple.quarantine` 或全域 `HOMEBREW_CASK_OPTS=--no-quarantine`**——核可即足夠(核可後 quarantine 屬性仍在、Gatekeeper 仍生效),那兩者是不必要的安全弱化。
+  - **觸發條件**:僅在 codex **實際升版**時發生(對話框綁 binary CDHash 問一次,同版核可後不再問);codex 改版頻繁(0.144.1→0.144.5 僅隔數日),故每次升版重演。**順跑一次不代表免疫,只代表那次沒升 codex**(brewup 輸出無 `Upgrading codex` 那行)。僅 Mac(macmini/macs)受影響,Linux 三台無 Gatekeeper。
+  - **`allup` 陷阱**:經 SSH 跑 brewup 時,對話框只會出現在該 Mac 的實體螢幕上,無人在機前就永遠沒人按 → 真正無限卡死(非逾時)。該 Mac 需先在本機核可過該版本。
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
 - biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+ credentials 明文散於三台。
 
