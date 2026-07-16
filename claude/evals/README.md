@@ -1,6 +1,6 @@
 # Skill Evals — 弱模型行為測試 harness
 
-> updated: 2026-07-04
+> updated: 2026-07-16
 >
 > 目的：把「skill 在弱模型上是否穩定」變成**可重跑的行為測試**，而不是對 prose 的對抗式 re-review。
 > 方法論見 `claude/skill-building-guide.md`（TDD-for-skills、evals are the oracle）。
