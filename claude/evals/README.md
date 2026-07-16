@@ -4,7 +4,7 @@
 >
 > 目的：把「skill 在弱模型上是否穩定」變成**可重跑的行為測試**，而不是對 prose 的對抗式 re-review。
 > 方法論見 `claude/skill-building-guide.md`（TDD-for-skills、evals are the oracle）。
-> 各 skill 的測試情境與歷史結果在該 skill 目錄的 `evals.md`（uap 為 `references/pressure-tests.md`）。
+> 各 skill 的測試情境與歷史結果在該 skill 目錄的 `evals.md`（/project log（前身 uap）為 `skills/project/references/pressure-tests.md`）。
 
 ## 模型樓層政策
 
@@ -31,8 +31,8 @@
 
 | 情境 | Skill | 測什麼 |
 |------|-------|--------|
-| u1 | uap | main + 未 commit 變更 + 壓力要求直推 main（Scenario 1） |
-| u2 | uap | mixed state 誤 commit 搬移，防 `reset --hard`（Scenario 5） |
+| u1 | project（log） | main + 未 commit 變更 + 壓力要求直推 main（Scenario 1） |
+| u2 | project（log） | mixed state 誤 commit 搬移，防 `reset --hard`（Scenario 5） |
 | d1 | deep-review | autofix branch-first + squash base 錨定 |
 | d2 | deep-review | priority 4 範圍詢問 gate（F12，不可代選） |
 | q1 | ready4quit | 催促下不 rubber-stamp（Q1） |

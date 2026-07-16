@@ -1,6 +1,6 @@
 ---
 name: ready4quit
-description: "End-of-session pre-quit flush — 結束 Claude Code session 前的收尾總檢查：驗證 git 殘留（未 commit/未 push/待開 PR）、flush 本 session 學到但未寫進 memory 的事實、盤點還在跑的背景/排程任務、列出未了結的 TODO，產出『可否 /quit』的總結與待辦 gate。Use before quitting or ending a session — Chinese triggers 「ready4quit」「收尾」「準備結束」「可以 quit 了嗎」「sync 一下」「結束前檢查」「退出前」. Report-first; outward or destructive flush (push, kill task, delete memory) needs explicit confirmation; recommends /uap for git residue rather than shipping itself."
+description: "End-of-session pre-quit flush — 結束 Claude Code session 前的收尾總檢查：驗證 git 殘留（未 commit/未 push/待開 PR）、flush 本 session 學到但未寫進 memory 的事實、盤點還在跑的背景/排程任務、列出未了結的 TODO，產出『可否 /quit』的總結與待辦 gate。Use before quitting or ending a session — Chinese triggers 「ready4quit」「收尾」「準備結束」「可以 quit 了嗎」「sync 一下」「結束前檢查」「退出前」. Report-first; outward or destructive flush (push, kill task, delete memory) needs explicit confirmation; recommends /project log for git residue rather than shipping itself."
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[--flush]"
@@ -33,7 +33,7 @@ Ready4Quit 進度：
 硬約束，做任何 flush 動作前先讀。
 
 - **Report-first.** 預設只驗證與報告。產出總結後才提出 flush 動作，不在使用者沒看到報告前就動手收尾。
-- **NEVER push / open PR here.** Git 殘留只**建議** `/uap`，本 skill 不 commit、不 push、不開 PR、不 merge。Ship 是 `/uap` 的事。
+- **NEVER push / open PR here.** Git 殘留只**建議** `/project log`，本 skill 不 commit、不 push、不開 PR、不 merge。Ship 是 `/project log` 的事。
 - **Outward / destructive flush needs explicit confirmation.** Kill 背景任務、刪 ScheduleWakeup/cron、刪除既有 memory 檔——一律先列出、等明確同意，沒同意 → 不做。
 - **Memory writes are additive but still surface them.** 新增 memory 檔是可逆的附加動作，可在報告後直接寫，但**必須在報告中列出寫了什麼、跳過什麼**，不靜默塞。
 - **Don't rubber-stamp.** 每個面向都要**實際跑指令/掃描**才能標 GREEN。沒查就說「應該沒問題」= 違規。
@@ -42,7 +42,7 @@ Ready4Quit 進度：
 
 - Declaring any dimension GREEN you never actually inspected (no `git-hygiene.sh` output, no `TaskList`/`CronList` check, no scan).
 - About to `git push` / `gh pr` / kill a task / delete a wakeup/cron/memory file from inside this skill without listing it and getting an explicit yes.
-- Offering to `git commit` for the user — even "just say yes and I'll commit". Git residue has exactly ONE recommendation: run `/uap`. "The user would approve it anyway" does not move commit/ship into this skill.
+- Offering to `git commit` for the user — even "just say yes and I'll commit". Git residue has exactly ONE recommendation: run `/project log`. "The user would approve it anyway" does not move commit/ship into this skill.
 
 > 此 skill 的核心不是「對抗合理化」（baseline 顯示 agent 天生會查 git、不擅自動手），而是**覆蓋度**——提醒別只顧 git，還要 flush memory、盤點 async 狀態、掃 loose ends，這些是 fresh agent 想不到要查的。
 
@@ -50,7 +50,7 @@ Ready4Quit 進度：
 
 ## Step 1：Git 衛生（驗證，不 ship）
 
-對本 session **動過檔案的所有 repo**（+ pwd 所在 repo）逐一驗證殘留——依 session 記憶列出 repo，**不掃 `~/Projects/`**（同 `/uap` Step 0 的範圍原則）。context 被壓縮就以 pwd 的 repo 為底，請使用者補充還涉及哪些 repo。
+對本 session **動過檔案的所有 repo**（+ pwd 所在 repo）逐一驗證殘留——依 session 記憶列出 repo，**不掃 `~/Projects/`**（同 `/project log` Step 0 的範圍原則）。context 被壓縮就以 pwd 的 repo 為底，請使用者補充還涉及哪些 repo。
 
 **單一呼叫**跑完所有 repo 的全部檢查（未 commit / 未 push / 待開 PR 的偵測與 fallback 邏輯都在腳本內）：
 
@@ -66,7 +66,7 @@ Ready4Quit 進度：
 
 Do not re-run the underlying git commands one by one — the script IS the check; one call covers all repos.
 
-**只報告，不收尾。** 任一項有殘留 → 在總結建議：「git 有殘留，結束前先跑 `/uap` ship 掉」。git 細節（branch-first、protection、PR）全交給 `/uap`，本 skill 不重做。
+**只報告，不收尾。** 任一項有殘留 → 在總結建議：「git 有殘留，結束前先跑 `/project log` ship 掉」。git 細節（branch-first、protection、PR）全交給 `/project log`，本 skill 不重做。
 
 ## Step 2：記憶 flush（持久化易失知識）
 
@@ -120,7 +120,7 @@ flush 方式：在總結列出候選（type + 一句摘要）；新增 memory �
 
 ```
 Ready4Quit 收尾報告：
-  Git 衛生        ⚠ repo-a 有 3 檔未 commit、repo-b 有 1 未 push commit → 建議先 /uap
+  Git 衛生        ⚠ repo-a 有 3 檔未 commit、repo-b 有 1 未 push commit → 建議先 /project log
   記憶 flush      ✓ 已寫 2 筆（feedback: …／project: …）；跳過 1 筆（CLAUDE.md 已記）
   背景/排程       ⚠ 1 個 background crawler 仍在跑（task#3）；cron <你的排程> 為刻意保留
   Loose ends      ⚠ 待你決定：API schema 用 v2 還是 v3（Step 4 問過未回）
@@ -131,7 +131,7 @@ Ready4Quit 收尾報告：
 接著：
 
 - **安全項**（已寫的 memory）→ 已執行，報告中明列。
-- **對外 / 破壞性項**（建議的 `/uap`、要 kill 的背景任務、要刪的 wakeup/cron）→ **列出選項等使用者點頭**，不自動做。
+- **對外 / 破壞性項**（建議的 `/project log`、要 kill 的背景任務、要刪的 wakeup/cron）→ **列出選項等使用者點頭**，不自動做。
 - 全面向皆 GREEN → 明確說「volatile 狀態已 flush，可安全 `/quit`」。
 
 `--flush` 引數的行為見開頭〈引數〉節（單一來源）——本步是它生效的地方：帶 `--flush` 時，Step 5 對安全可逆項的執行強度更高，對外/破壞性項仍照常先確認。
@@ -140,6 +140,6 @@ Ready4Quit 收尾報告：
 
 ## 設計備忘
 
-- 本 skill 是 **pre-quit 驗證 + flush 階段**，不是 ship、不是 review。git 殘留交 `/uap`，需要 review 交 `/deep-review`。
-- 與 `/uap` 銜接：典型流程 `/deep-review` → `/uap`（ship）→ `/ready4quit`（最後收尾確認）。`/uap` 已處理 git，本 skill 多半在 Step 1 只做驗證、其餘力氣放在 memory / 背景 / loose ends。
+- 本 skill 是 **pre-quit 驗證 + flush 階段**，不是 ship、不是 review。git 殘留交 `/project log`，需要 review 交 `/deep-review`。
+- 與 `/project log` 銜接：典型流程 `/deep-review` → `/project log`（ship）→ `/ready4quit`（最後收尾確認）。`/project log` 已處理 git，本 skill 多半在 Step 1 只做驗證、其餘力氣放在 memory / 背景 / loose ends。
 - 核心鐵則：**不在沒實際檢查的情況下宣告「可以退出」**——每個 GREEN 都要有對應的指令輸出或掃描根據。

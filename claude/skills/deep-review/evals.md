@@ -9,7 +9,7 @@
 
 ## 這份 evals 是 skill 的收斂判準（oracle）
 
-判斷這兩個 skill「對不對 / 改好了沒」**以通過這份 evals（+ uap 的 `pressure-tests.md`）為準**，**不以「再對 SKILL.md 跑一次 `/deep-review` 找不找得到東西」為準**。
+判斷這兩個 skill「對不對 / 改好了沒」**以通過這份 evals（+ project 的 `references/pressure-tests.md`）為準**，**不以「再對 SKILL.md 跑一次 `/deep-review` 找不找得到東西」為準**。
 
 原因：deep-review 的 reviewer 是對抗式、目標就是挑問題；SKILL.md 是散文 SOP，精確度上限無限（永遠能再補一個 edge case、再消一句歧義）。對 prose 重跑對抗式 review **永遠會 R1–R5**——挖到的多是措辭 / completeness 深井（baseline backlog 類），**non-blocking，不代表 skill 有 bug**。把它當收斂門 → 每輪加字 → 攻擊面更大 → 更不收斂（補丁 ratchet）。
 

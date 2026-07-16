@@ -12,17 +12,19 @@
 #   6. render-ssh-config.sh 區塊替換、--check、marker 防呆
 #   7. add-new-host.sh --dry-run 煙霧測試（不動任何檔案）
 #   8. git-hygiene.sh（ready4quit skill script）verdict 判定
-#   9. ship-state.sh（uap skill script）偵測與 protection 判定（gh stub）
+#   9. ship-state.sh（project skill script）偵測與 protection 判定（gh stub）
 #  10. review-state.sh（deep-review skill script）scope-priority / round 判定
 #  11. review-context.sh（repo-review skill script）range 解析 / guidance / autofix gate
 #  12. repo-review skill packaging（evals 不進 runtime context）
 #  13. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
 #  14. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
 #  15. ensure-rc-source.sh 幂等補 source shell/functions.sh 行
+#  16. session-pull-check.sh（SessionStart hook）落後偵測與靜默契約
 #
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT" || exit 1   # 相對路徑的 source 解析與 git 操作以 repo 根為基準（從外部目錄執行時避免 SC1091 誤報）
 FIX="$ROOT/tests/fixtures"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -49,6 +51,7 @@ assert_rc() {
 echo "▶ 1. shellcheck gate"
 if shellcheck -x -P "$ROOT/scripts" \
     "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
+    "$ROOT"/claude/scripts/*.sh \
     "$ROOT"/claude/skills/*/scripts/*.sh \
     "$ROOT"/codex/skills/*/scripts/*.sh \
     "$ROOT/shell/functions.sh" \
@@ -62,6 +65,7 @@ fi
 echo "▶ 2. bash -n 語法 gate"
 syntax_fail=0
 for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
+         "$ROOT"/claude/scripts/*.sh \
          "$ROOT"/claude/skills/*/scripts/*.sh \
          "$ROOT"/codex/skills/*/scripts/*.sh \
          "$ROOT/shell/functions.sh" \
@@ -205,7 +209,7 @@ if echo "$out" | grep -q "verdict: UNKNOWN"; then ok "非 repo → UNKNOWN"; els
 assert_rc "無引數 → exit 2" 2 $?
 
 echo "▶ 9. ship-state.sh 偵測與 protection 判定"
-SS_SCRIPT="$ROOT/claude/skills/uap/scripts/ship-state.sh"
+SS_SCRIPT="$ROOT/claude/skills/project/scripts/ship-state.sh"
 
 # gh stub 三態：PROTECTED / OPEN(404 Branch not protected) / Not Found(身分分離)
 make_gh_stub() {  # <path> <protection行為: protected|open|notfound>
@@ -646,6 +650,64 @@ ers_none="$TMP/rc-nonexistent"
 RC_FILE="$ers_none" bash "$ERS"
 assert_rc "rc 不存在 → exit 0" 0 $?
 if [ ! -e "$ers_none" ]; then ok "rc 不存在 → 不建立檔案"; else bad "rc 不存在卻建立了檔案"; fi
+
+echo "▶ 16. session-pull-check.sh（SessionStart hook）落後偵測與靜默契約"
+SPC="$ROOT/claude/scripts/session-pull-check.sh"
+
+# fixture：bare origin + clone a（推進 3 commits）+ clone b（停在第 1 個 commit）
+spc="$TMP/spc"; mkdir -p "$spc"
+git init -q --bare -b main "$spc/origin.git"
+git clone -q "$spc/origin.git" "$spc/a" 2>/dev/null
+(cd "$spc/a" && git config user.name t && git config user.email t@t.local \
+  && echo 1 > f && git add . && git commit -qm c1 && git push -q origin main)
+git clone -q "$spc/origin.git" "$spc/b" 2>/dev/null
+(cd "$spc/b" && git config user.name t && git config user.email t@t.local)
+(cd "$spc/a" && echo 2 >> f && git commit -qam c2 && echo 3 >> f && git commit -qam c3 && git push -q origin main)
+
+# (1) 落後 clone → 提醒輸出且 exit 0
+rm -f "$spc/b/.git/FETCH_HEAD"
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+assert_rc "落後 clone → exit 0" 0 $?
+if echo "$spc_out" | grep -q "落後"; then ok "落後 clone → 提醒輸出（含 behind 數）"; else bad "落後 clone 無提醒：$spc_out"; fi
+
+# (2) 非 git repo → 靜默 exit 0
+spc_out="$(cd "$TMP" && bash "$SPC")"
+assert_rc "非 repo → exit 0" 0 $?
+assert_eq "非 repo → 無輸出" "" "$spc_out"
+
+# (3) detached HEAD → 靜默 exit 0
+(cd "$spc/b" && git checkout -q --detach HEAD)
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+assert_rc "detached HEAD → exit 0" 0 $?
+assert_eq "detached HEAD → 無輸出" "" "$spc_out"
+(cd "$spc/b" && git checkout -q main)
+
+# (4) FETCH_HEAD 新鮮 → 跳過 fetch（證法：壞 remote 下仍能報落後 = 未嘗試 fetch；
+#     對照組：FETCH_HEAD 過期時同樣壞 remote → fetch 失敗靜默 exit 0、無輸出）
+(cd "$spc/b" && git remote set-url origin "$spc/nonexistent.git" && touch .git/FETCH_HEAD)
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+assert_rc "壞 remote + FETCH_HEAD 新鮮 → exit 0" 0 $?
+if echo "$spc_out" | grep -q "落後"; then ok "FETCH_HEAD 新鮮 → 跳過 fetch 仍報落後"; else bad "FETCH_HEAD 新鮮未跳過 fetch：$spc_out"; fi
+rm -f "$spc/b/.git/FETCH_HEAD"
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+assert_rc "壞 remote + 需 fetch → exit 0" 0 $?
+assert_eq "壞 remote + 需 fetch → 靜默放棄偵測" "" "$spc_out"
+(cd "$spc/b" && git remote set-url origin "$spc/origin.git")
+
+# (5) STATUS.md 過期（最後 commit 落後 repo 活動 > 30 天）→ staleness 提醒
+(cd "$spc/a" && echo "# STATUS" > STATUS.md && git add STATUS.md \
+  && GIT_COMMITTER_DATE="2026-01-01T10:00:00" git commit -qm "docs: status" --date="2026-01-01T10:00:00" \
+  && echo 4 >> f && git commit -qam c4)
+spc_out="$(cd "$spc/a" && bash "$SPC")"
+assert_rc "stale STATUS.md → exit 0" 0 $?
+if echo "$spc_out" | grep -q "過期"; then ok "stale STATUS.md → dossier 過期提醒"; else bad "stale STATUS.md 無提醒：$spc_out"; fi
+
+# (6) 同步且無 STATUS.md → 完全靜默（happy path，「絕不留噪音」契約的正面驗證）
+(cd "$spc/b" && git pull -q origin main >/dev/null 2>&1)
+rm -f "$spc/b/.git/FETCH_HEAD"
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+assert_rc "同步 clone → exit 0" 0 $?
+assert_eq "同步 clone → 完全靜默" "" "$spc_out"
 
 echo ""
 echo "════════════════════════════"

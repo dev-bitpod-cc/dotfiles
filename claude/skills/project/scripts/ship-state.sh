@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# ship-state.sh — uap Step 0/1 的 ship 狀態偵測（單次呼叫、多 repo、唯讀）
+# ship-state.sh — /project log Step 0/1 的 ship 狀態偵測（單次呼叫、多 repo、唯讀）
 #
 # 用法：
 #   ship-state.sh <repo-path>...

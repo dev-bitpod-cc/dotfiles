@@ -5,7 +5,7 @@
 ## Think Before Implementing
 
 - Ambiguous task: NEVER silently pick one reading. List the plausible interpretations and let the user choose before writing anything.
-- Non-trivial task: state the success criteria (how "done" is verified) before starting.
+- Non-trivial task: state the success criteria (how "done" is verified) before starting; if the repo has a STATUS.md (dossier), record the spec (Context/Goal/AC/Constraints) into its「進行中」section（儀式面用 `/project spec`）.
 - Uncertain? Stop and ask. Do NOT assume just to keep momentum.
 - Bug fix: ALWAYS write a reproducing test FIRST, then fix.
 
@@ -76,7 +76,14 @@ When the user pastes third-party review findings, read the source code and verif
 
 ## 跨 Repo 工作流
 
-主 agent 是唯一擁有跨 repo 全局 context 的角色。觸發跨 repo skill（`/deep-review`、`/uap`）時，依 session 記憶列出 `(repo, 檔案數)` 清單讓使用者確認（ok / 只看 X / 還有 Y），**不掃描** `~/Projects/`。確認流程細節見各 skill 的 Step 0。context 被壓縮就以 pwd 的 repo 為底讓使用者補充；使用者指定的 repo 即使無 diff 也納入（檢查一致性）。
+主 agent 是唯一擁有跨 repo 全局 context 的角色。觸發跨 repo skill（`/deep-review`、`/project log`）時，依 session 記憶列出 `(repo, 檔案數)` 清單讓使用者確認（ok / 只看 X / 還有 Y），**不掃描** `~/Projects/`。確認流程細節見各 skill 的 Step 0。context 被壓縮就以 pwd 的 repo 為底讓使用者補充；使用者指定的 repo 即使無 diff 也納入（檢查一致性）。
+
+## 跨主機工作流（多主機開發：macmini / macs / eagle03 / eagle06 / db01）
+
+- **Git is the ONLY cross-host medium.** Machine-local state（`~/.claude/handoffs/`、memory/）does NOT travel between hosts.
+- 跨主機要延續的工作狀態 → repo 的 `STATUS.md`「進行中」章節就地更新 + commit（WIP 走 feature branch）；push 由使用者確認——**未 push 其他主機不可見，須主動標示**。handoff 只服務同主機 /clear。
+- 多主機共用的專案，project-type 事實優先寫 repo 檔案（CLAUDE.md/STATUS.md）而非 ~/.claude memory（memory 留給 user/feedback 型）。
+- 開工前的 clone 落後偵測由 SessionStart hook（`session-pull-check.sh`）自動報；看到落後提醒先 pull。
 
 ## Skill 建立
 
@@ -92,7 +99,9 @@ When the user pastes third-party review findings, read the source code and verif
 - 寫 **cron / 背景腳本（爬蟲/回補）/ pipeline** 的開始·完成·失敗 → `nc-notify`（必發通知；NC 不可用須靜默不影響主流程）
 - 使用者要求**「寄信 / mail 給我」** → `send-mail`（收件人預設 `jjshen@eland.com.tw`，勿用 `# userEmail` 推斷）
 - 遇 **bug / 測試失敗 / 非預期行為** → `root-cause-first`（先 root cause 再修）
-- 使用者要 **/clear 但後續工作延續**（「交接」「接續上次的工作」）→ `handoff`（resume 必先 verify 錨點；消費即歸檔）
+- 使用者要 **/clear 但後續工作延續**（「交接」「接續上次的工作」）→ `handoff`（resume 必先 verify 錨點；消費即歸檔；**同主機限定**——跨主機延續走 repo STATUS.md）
+- 使用者要**移交專案給同事 / 換 owner**（「移交」「交接給同事」「請他接手」）→ **建議使用者執行** `/project transfer`（user-invoked only——該 skill 為 `disable-model-invocation`，勿嘗試以 Skill tool 載入；其 dossier 完整度檢查 + 移交指南、credentials 絕不進 git）
+- 使用者說**「uap」「ship」「推上去」「提交送 PR」**（收尾送出語意）→ **建議使用者執行** `/project log`（user-invoked only，同上勿以 Skill tool 載入；裸 `/project` 亦可，預設即 log 模式）
 
 ---
 

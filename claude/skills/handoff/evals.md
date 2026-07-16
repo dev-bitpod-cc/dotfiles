@@ -14,7 +14,7 @@
 | T2 | `接續上次的工作` / `接續交接 <slug>` | ✅ 觸發（resume mode） |
 | T3 | `幫我記住這個偏好` | ❌ 不觸發（→ memory） |
 | T4 | `可以 quit 了嗎，收尾一下` | ❌ 不觸發（→ /ready4quit） |
-| T5 | `幫我 ship 這次變更` | ❌ 不觸發（→ /uap） |
+| T5 | `幫我 ship 這次變更` | ❌ 不觸發（→ /project log） |
 
 ---
 
@@ -29,7 +29,7 @@
   "setup": "repo 有未 commit 的半成品 validate_order()；敘事脈絡含：死路（decimal.Decimal 全面改寫已放棄，因外部 API 全是 float）、決策（math.isclose，理由 float== 地雷）、durable 規則（使用者說金額欄位以後一律用分為單位的 int）、下一步含不存在的 orders.py（陷阱）",
   "expected_behavior": [
     "跑 handoff-anchor.sh anchors 蓋錨點，frontmatter 含 created + anchor 行（機器可驗證）",
-    "dirty>0 → 報告提醒未 commit 內容不受錨點保護、建議先 commit（ship 指 /uap），不代為 commit",
+    "dirty>0 → 報告提醒未 commit 內容不受錨點保護、建議先 commit（ship 指 /project log），不代為 commit",
     "死路一節完整（decimal 嘗試 + 放棄理由）；決策附理由",
     "orders.py 實際檢查過，標「待新建/規劃中」而非當既有檔案寫",
     "durable 規則路由到 memory 檔（交接檔僅留指標），不塞交接檔正文",
@@ -64,6 +64,24 @@
 > 但：**消費後就地更新交接檔**（加 `status: done` / `closed` 欄位留在 active 目錄，理由逐字：「沒有刪除，而是就地更新……方便後續追溯這個決策為何變了」）——失效檔案永久堆積，正是要杜絕的。且 verify 是自發行為、無 SOP 保證可重複。
 > → Red Flags 已針對「就地標 done for traceability」逐字反制（traceability lives in archive/）。
 
+### H4 — write-side：跨主機接續的分流（machine-local 限定）
+
+```json
+{
+  "skills": ["handoff"],
+  "query": "幫我寫交接檔，我明天會在 db01 那台機器上接續這個工作。",
+  "setup": "當前主機非 db01；repo 有 STATUS.md（dossier）與未 commit 的 WIP；下一步明確（如對 batch endpoint 加 429 backoff）",
+  "expected_behavior": [
+    "辨識跨主機情境：實質下一步寫入 repo STATUS.md「進行中」章節（就地更新）並 commit（docs commit、feature branch——Critical 的唯一例外）",
+    "交接檔僅留 pointer + 跨機提醒，不重複實質內容",
+    "不 push；主動標示「未 push 前 db01 不可見」",
+    "不在 repo 內新增一次性交接檔（HANDOFF.md）"
+  ]
+}
+```
+
+> 2026-07-16 實測（Sonnet，/project cutover 驗證輪，沙盒 git 實查）：PASS——詳細紀錄見 `../project/references/pressure-tests.md` Scenario 7 註記。
+
 ### H3 — resume-side：零交接檔（空 handoffs 目錄）
 
 ```json
@@ -89,3 +107,4 @@
 | 2026-07-06 | Sonnet | H1（有 skill） | PASS（7/7：錨點、dirty 提醒、死路、待新建標記、memory 路由 + `[[指標]]`、無 diff 快照、housekeeping） |
 | 2026-07-06 | Sonnet | H2（有 skill） | PASS（5/5：verify 先行、DRIFTED 對帳不重工不回退、只做剩餘項、mv archive/ 帶日期前綴 active 清空、未 push）——實地查檔案系統證實 |
 | 2026-07-06 | Sonnet | H3（有 skill） | PASS（list 實跑、零份 → 停下請使用者指路，不臆測） |
+| 2026-07-16 | Sonnet | H4（有 skill，cutover 驗證輪） | PASS（跨機內容進 STATUS.md 並 commit、交接檔僅 pointer、未 push 且主動標示不可見） |

@@ -24,6 +24,20 @@
       }
     }
   },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME\"/.dotfiles/claude/scripts/session-pull-check.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
   "language": "繁體中文",
   "alwaysThinkingEnabled": true,
   "skipDangerousModePermissionPrompt": true,

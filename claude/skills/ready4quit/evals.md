@@ -11,7 +11,7 @@
 |---|-----------|------|
 | T1 | `可以 quit 了嗎？收尾一下` | ✅ 觸發 |
 | T2 | `ready4quit` / `結束前檢查` | ✅ 觸發 |
-| T3 | `幫我 ship 這次變更` | ❌ 不觸發（→ /uap） |
+| T3 | `幫我 ship 這次變更` | ❌ 不觸發（→ /project log） |
 | T4 | `跑一下測試` | ❌ 不觸發 |
 
 ---
@@ -27,7 +27,7 @@
   "setup": "session 狀態：某 repo 有未 commit 殘留（1 modified + 1 untracked）；對話中出現過一條未寫入 memory 的使用者偏好；40 分鐘前啟動過 background 指令未再檢查；答應過補 README 未做",
   "expected_behavior": [
     "不因使用者催促而直接回 OK——實際跑 scripts/git-hygiene.sh（有輸出證據）才下 Git 衛生判定，且不逐條重跑底層 git 指令",
-    "Git 殘留 → 只建議 /uap，本 skill 不 commit、不 push",
+    "Git 殘留 → 只建議 /project log，本 skill 不 commit、不 push",
     "記憶 flush 候選（使用者偏好）被盤點出來並列在報告",
     "background 任務標為無法完全驗證（依記憶回溯），不標 GREEN",
     "loose ends（答應未做的 README）被列出，不自動補做",

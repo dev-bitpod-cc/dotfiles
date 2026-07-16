@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: "Session 交接 — 在 /clear 前把進行中工作的暫時狀態寫成帶 git 錨點的交接檔（handoff），讓後續 session 驗證後無損接續；resume 時先驗錨點再行動、消費即歸檔、過期自動清，杜絕失效交接內容殘留。Use when the user wants to /clear but continue related work later, write a handoff before clearing context, or resume work from a handoff file — Chinese triggers 「交接」「寫交接檔」「handoff」「接續上次的工作」「讀交接檔」「clear 前交接」. NOT for durable facts（進 memory，見 ready4quit）、NOT for shipping git changes（見 /uap）."
+description: "Session 交接 — 在 /clear 前把進行中工作的暫時狀態寫成帶 git 錨點的交接檔（handoff），讓後續 session 驗證後無損接續；resume 時先驗錨點再行動、消費即歸檔、過期自動清，杜絕失效交接內容殘留。Use when the user wants to /clear but continue related work later, write a handoff before clearing context, or resume work from a handoff file — Chinese triggers 「交接」「寫交接檔」「handoff」「接續上次的工作」「讀交接檔」「clear 前交接」. NOT for durable facts（進 memory，見 ready4quit）、NOT for shipping git changes（見 /project log）、NOT for cross-host continuation（machine-local；跨主機狀態進 repo STATUS.md）."
 user-invocable: true
 argument-hint: "[resume] [slug]"
 ---
@@ -28,6 +28,7 @@ argument-hint: "[resume] [slug]"
 - **Durable facts go to memory/, not the handoff.** User preferences, project constraints, anything that must outlive this task → write a memory file and leave only a `[[memory-name]]` pointer in the handoff. A handoff dies on consumption.
 - **No state snapshots the repo already carries.** Do not paste full diffs or file contents into the handoff — point at commits and paths. Snapshots go stale silently; the anchor makes staleness detectable, a pasted diff does not.
 - **Write side: every file path mentioned MUST exist** (check it) or be explicitly marked 規劃中/待新建.
+- **A handoff is machine-local and does NOT travel between hosts.** If the next step is expected to continue on ANOTHER host, the continuation content goes into the repo (STATUS.md「進行中」的下一步, updated in place) and gets committed — this docs commit is the ONE commit this skill may make itself (feature branch, never push; see W2 for the code-commit prohibition). The handoff keeps only a pointer. Git is the only cross-host medium — and an unpushed commit is invisible to other hosts: say so to the user explicitly.
 
 ### Red Flags — STOP and re-read Critical
 
@@ -35,6 +36,8 @@ argument-hint: "[resume] [slug]"
 - "I'll update the handoff in place with status: done for traceability" → archive it; traceability lives in `archive/`, not the active directory.
 - Re-doing a next-step item on a DRIFTED handoff without checking the drift commits — it may already be done.
 - Putting a durable rule in the handoff "so it won't get lost after /clear". That is exactly how it gets lost — route it to memory.
+- Routing cross-host continuation into a machine-local handoff — the other host will never see it. Route it to the repo (STATUS.md).
+- Committing a throwaway HANDOFF.md into the repo. The add→delete churn and the rotting consumed-handoff (the general-rag-cs failure mode) are exactly what this forbids — repo-side state lives in STATUS.md, updated in place.
 
 ## Write mode（/clear 前交接）
 
@@ -48,7 +51,7 @@ argument-hint: "[resume] [slug]"
 ~/.claude/skills/handoff/scripts/handoff-anchor.sh anchors <repo1> <repo2> ...
 ```
 
-輸出的 `created:` + `anchor:` 行原樣放進 frontmatter。錨點含 `dirty=N`：N>0 時在報告提醒「未 commit 內容只存在 working tree，/clear 不影響它、但它不受錨點保護」——建議先 commit（ship 走 `/uap`），本 skill 不代為 commit。
+輸出的 `created:` + `anchor:` 行原樣放進 frontmatter。錨點含 `dirty=N`：N>0 時在報告提醒「未 commit 內容只存在 working tree，/clear 不影響它、但它不受錨點保護」——建議先 commit（ship 走 `/project log`），本 skill 不代為 commit **code**（唯一例外：Critical 的跨主機 STATUS.md 分流 docs commit，見該節；仍不 push）。
 
 ### W3：寫檔
 
@@ -141,6 +144,6 @@ write（蓋錨點）→ ACTIVE（~/.claude/handoffs/*.md）
 
 ## 設計備忘
 
-- 分工：durable 事實 → memory（`/ready4quit` Step 2 也會抓漏）；git ship → `/uap`；review → `/deep-review`。本 skill 只管「暫時性任務狀態跨 /clear 存活」。
-- 典型流程：`/deep-review` → `/uap`（ship）→ `/handoff`（要延續的工作線）→ `/ready4quit` → `/clear` 或 `/quit`。
+- 分工：durable 事實 → memory（`/ready4quit` Step 2 也會抓漏）；git ship → `/project log`；review → `/deep-review`；**跨主機**延續 → repo STATUS.md（git 為唯一跨機媒介）。本 skill 只管「暫時性任務狀態在**同一台主機**上跨 /clear 存活」。
+- 典型流程：`/deep-review` → `/project log`（ship）→ `/handoff`（同主機要延續的工作線）→ `/ready4quit` → `/clear` 或 `/quit`。
 - 交接檔品質仰賴主 session 的對話記憶——write mode 越晚跑、context 被壓縮得越多，死路與決策理由越難完整。快壓縮前就該交接。

@@ -7,8 +7,8 @@
 #   預設輸出到 mktemp 目錄；實例名預設 "run"（測多模型時各建一份避免互相污染）
 #
 # 情境對照（各 skill evals.md 引用）：
-#   u1  uap Scenario 1        main 上有未 commit 變更
-#   u2  uap Scenario 5        誤 commit 在本地 main + working tree 髒檔（mixed state）
+#   u1  project log Scenario 1  main 上有未 commit 變更
+#   u2  project log Scenario 5  誤 commit 在本地 main + working tree 髒檔（mixed state）
 #   d1  deep-review autofix   main 上 working tree 有真 bug（float == 比較金額）
 #   d2  deep-review F12       clean tree、與 origin/main 同步（範圍詢問 gate）
 #   q1  ready4quit Q1         repo 有未 commit 殘留
