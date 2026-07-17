@@ -14,7 +14,7 @@
 #   8. git-hygiene.sh（ready4quit skill script）verdict 判定
 #   9. ship-state.sh（project skill script）偵測與 protection 判定（gh stub）
 #  10. review-state.sh（deep-review skill script）scope-priority / round 判定
-#  11. review-context.sh（repo-review skill script）range 解析 / guidance / autofix gate
+#  11. review-context.sh（repo-review skill script）range 解析 / guidance / autofix gate（含分岔 base / detached HEAD / 閘序）
 #  12. repo-review skill packaging（evals 不進 runtime context）
 #  13. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
 #  14. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
@@ -390,9 +390,67 @@ if echo "$out" | grep -q "^autofix-safe: no$" && echo "$out" | grep -q "^autofix
 else bad "requested-head-not-current gate 失效"; fi
 
 out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$RRC_EMPTY_TREE..HEAD")"
-if echo "$out" | grep -q "^resolved-base-type: tree$" && echo "$out" | grep -q "^baseline-range: yes$"; then
-    ok "empty-tree baseline range 支援"
+if echo "$out" | grep -q "^resolved-base-type: tree$" && echo "$out" | grep -q "^baseline-range: yes$" \
+    && echo "$out" | grep -q "^base-is-ancestor: yes$"; then
+    ok "empty-tree baseline range 支援（base-is-ancestor yes）"
 else bad "empty-tree baseline range 輸出錯誤"; fi
+
+# 新訊號基準：branch / detached-head / base-is-ancestor / merge-base / guidance-source
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "HEAD~1..HEAD")"
+if echo "$out" | grep -q "^branch: main$" && echo "$out" | grep -q "^detached-head: no$" \
+    && echo "$out" | grep -q "^base-is-ancestor: yes$" && echo "$out" | grep -q "^merge-base: n/a$"; then
+    ok "祖先 base + attached HEAD → 新訊號基準輸出"
+else bad "新訊號基準輸出錯誤"; fi
+if echo "$out" | grep -q "^guidance-source: worktree$"; then
+    ok "guidance-source 標示 worktree"
+else bad "guidance-source 標示缺失"; fi
+
+# 分岔 base（非祖先）→ base-is-ancestor no + merge-base 分叉點 + autofix 擋
+(cd "$TMP/rrc-work" && git switch -qc rrc-feat "$rrc_base" \
+    && printf 'branch\n' > src/feat.txt \
+    && "${GITC[@]}" add src/feat.txt && "${GITC[@]}" commit -qm "feat: diverge")
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "main..HEAD" --autofix)"
+if echo "$out" | grep -q "^base-is-ancestor: no$" && echo "$out" | grep -q "^merge-base: $rrc_base$"; then
+    ok "分岔 base → base-is-ancestor no + merge-base 分叉點"
+else bad "分岔 base 偵測錯誤"; fi
+if echo "$out" | grep -q "^autofix-safe: no$" && echo "$out" | grep -q "^autofix-reason: base-not-ancestor$"; then
+    ok "分岔 base → autofix 擋（base-not-ancestor）"
+else bad "base-not-ancestor gate 失效"; fi
+
+# merge-base 重錨定後 → autofix 通過
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$rrc_base..HEAD" --autofix)"
+if echo "$out" | grep -q "^autofix-safe: yes$" && echo "$out" | grep -q "^base-is-ancestor: yes$"; then
+    ok "merge-base 重錨定 → autofix 通過"
+else bad "重錨定後 autofix 仍被擋"; fi
+
+# detached HEAD → autofix 擋、純 review 不擋
+(cd "$TMP/rrc-work" && git checkout -q --detach HEAD)
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$rrc_base..HEAD" --autofix)"
+if echo "$out" | grep -q "^branch: (detached)$" && echo "$out" | grep -q "^detached-head: yes$" \
+    && echo "$out" | grep -q "^autofix-safe: no$" && echo "$out" | grep -q "^autofix-reason: detached-head$"; then
+    ok "detached HEAD → autofix 擋（detached-head）"
+else bad "detached-head gate 失效"; fi
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$rrc_base..HEAD")"
+if echo "$out" | grep -q "^detached-head: yes$" && echo "$out" | grep -q "^autofix-safe: n/a$"; then
+    ok "detached HEAD 純 review → 不擋"
+else bad "detached 純 review 被誤擋"; fi
+
+# 閘序：dirty-worktree 優先於 detached-head
+printf 'dirty\n' > "$TMP/rrc-work/untracked.txt"
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$rrc_base..HEAD" --autofix)"
+if echo "$out" | grep -q "^autofix-reason: dirty-worktree$"; then
+    ok "閘序：dirty-worktree 優先於 detached-head"
+else bad "閘序錯誤（dirty 未優先於 detached）"; fi
+rm "$TMP/rrc-work/untracked.txt"
+
+# 無共同祖先 → merge-base (none)
+(cd "$TMP/rrc-work" && git checkout -q --orphan rrc-orphan && git rm -rq --cached . \
+    && rm -rf src CLAUDE.md && printf 'x\n' > z.txt \
+    && "${GITC[@]}" add z.txt && "${GITC[@]}" commit -qm "orphan root")
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "main..HEAD")"
+if echo "$out" | grep -q "^base-is-ancestor: no$" && echo "$out" | grep -q "^merge-base: (none)$"; then
+    ok "無共同祖先 → merge-base (none)"
+else bad "unrelated histories 偵測錯誤"; fi
 
 "$RRC_SCRIPT" "$TMP/not-a-repo" "$rrc_base..$rrc_head" >/dev/null 2>&1
 assert_rc "review-context 非 git repo → exit 1" 1 $?
