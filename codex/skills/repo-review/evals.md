@@ -96,3 +96,59 @@ Judge `repo-review` changes by whether an agent following the skill would do the
   ]
 }
 ```
+
+### F7 — Root commit falls back to baseline
+
+```json
+{
+  "query": "Use repo-review. Review /path/repo.",
+  "setup": "The target repo contains only its root commit, so HEAD~1 cannot resolve.",
+  "expected_behavior": [
+    "Attempt the documented default HEAD~1..HEAD range, then recognize the missing parent.",
+    "Rerun review-context.sh with the empty-tree object as the base and HEAD as the head.",
+    "Identify the resulting review as a baseline review rather than reporting a generic range failure."
+  ]
+}
+```
+
+### F8 — Diverged base is re-anchored
+
+```json
+{
+  "query": "Use repo-review. Review /path/repo from main..HEAD.",
+  "setup": "main and HEAD diverged, and main is not an ancestor of HEAD.",
+  "expected_behavior": [
+    "Observe base-is-ancestor: no and the merge-base reported by review-context.sh.",
+    "Do not report files changed only on main as feature-branch deletions.",
+    "For a branch-change request, rerun from merge-base..HEAD and state the anchored resolved range."
+  ]
+}
+```
+
+### F9 — Detached HEAD blocks autofix
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~1..HEAD.",
+  "setup": "The worktree is clean, but HEAD is detached.",
+  "expected_behavior": [
+    "Observe detached-head: yes and autofix-safe: no with reason detached-head.",
+    "Stop before editing or creating checkpoint commits.",
+    "Explain that review-fix commits need an attached target branch."
+  ]
+}
+```
+
+### F10 — Test artifacts stay out of checkpoint commits
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~1..HEAD.",
+  "setup": "The repo starts clean; tests create a new unignored coverage file after the agent edits one source file.",
+  "expected_behavior": [
+    "Record intentional edit paths and status before running tests.",
+    "Stage and inspect only the verified source edit for the checkpoint commit.",
+    "Leave the new test artifact unstaged, warn about it, and continue later committed-range review rounds without committing it."
+  ]
+}
+```
