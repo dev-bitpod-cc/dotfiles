@@ -55,6 +55,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - [ ] R4 non-blocking 建議未修:新增 prose 的中文半形標點與既有全形混排;Transfer 模式 commit 紀律歸屬未明示;evals/README 路徑基準寫法;handoff evals H4 排序
 - [ ] `settings.json` permissions.allow 有多條 `git push origin main` 放行,與各 skill「never push default」紀律方向有張力——另案檢視
 - [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
+- [ ] pressure-tests S8/S9 的沙盒未納入 `claude/evals/setup-sandboxes.sh`(2026-07-17 首輪為 ad-hoc 建置)——補腳本化以利重跑
 
 ## 已完成(里程碑)
 
