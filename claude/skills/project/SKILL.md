@@ -1,6 +1,6 @@
 ---
 name: project
-description: "Project dossier & ship — 三模式：spec（開工：把 Context/Goal/AC/Constraints 寫入 STATUS.md dossier）、log（收尾：同步 dossier 與受影響文檔、依 Conventional Commits 提交，再依 repo 的 branch-protection 流程 push 或開 PR；為舊 /uap 的超集與繼任者）、transfer（移交：檢查 dossier 完整度、產出移交指南）。Use when starting a non-trivial work item (spec), finalizing or submitting reviewed changes (log), or handing a project to a new owner (transfer) — triggers 「uap」「ship」「提交」「送 PR」「update and push」「推上去」「開工寫 spec」「移交專案」「交接給同事」. Branches first whenever committing on the default branch (or a detached HEAD); never pushes to the default branch directly and never merges PRs."
+description: "Project dossier & ship — 三模式：spec（開工：把 Context/Goal/AC/Constraints 寫入 STATUS.md dossier）、log（收尾：同步 dossier 與受影響文檔、依 Conventional Commits 提交，再依 repo 的 branch-protection 流程 push 或開 PR；為舊 /uap 的超集與繼任者）、transfer（移交：檢查 dossier 完整度、產出移交指南）。Use when starting a non-trivial work item (spec), finalizing or submitting reviewed changes (log), or handing a project to a new owner (transfer) — triggers 「uap」「ship」「提交」「送 PR」「update and push」「推上去」「開工寫 spec」「移交專案」「交接給同事」. Branches first whenever committing on the default branch (or a detached HEAD); never pushes to the default branch directly and never merges without an explicit user instruction."
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[spec|log|transfer] [repo|.] [module...]"
@@ -53,6 +53,16 @@ Project Log 進度：
 - [ ] Step 5：依路徑送出（PR 或直接 push）；輸出 PR URL / push 結果
 ```
 
+**輕量判準（fast path）**——以下**全部**成立時，儀式面從簡：免貼上方 checklist；Step 2 快速核對（確認 dossier 無需新增即可一句帶過）；Step 4 摘要縮為 3 行精簡版：
+
+- 單一 repo；
+- 變更集 ≤3 檔、或純 docs/chore 文檔性變更；
+- 本次無關鍵決策／死路／技術債要記入 dossier。
+
+**Light path relaxes ceremony only, NEVER Critical.** Branch-first, never-push-default, the Step 4 confirmation gate, and Unknown=protected all apply unchanged — "it's just a small change" is never a reason to skip a guardrail.
+
+**詢問收斂（單一 gate）**：除 Step 4 硬 gate 與 agent 無法自行安全決定的情境（身分分離、fork、push 失敗、spec 撞名）外，其餘待決事項（squash 建議、STATUS.md 建立/過期、是否開 PR）一律彙整進 Step 4 摘要的「附註」**一次問**，不逐項中斷流程。
+
 ### Critical — Guardrails
 
 These are hard constraints. Read them before touching git.
@@ -78,7 +88,7 @@ These are hard constraints. Read them before touching git.
 #### Red Flags — STOP and re-read Critical
 
 - About to run `git push origin <default-branch>` or `git push` while on the default branch.
-- About to run `gh pr merge` / any merge.
+- About to run `gh pr merge` / any merge **without an explicit user merge instruction** (with one, follow `references/ship-paths.md`「Merge 最後一哩」).
 - About to `git commit` while `HEAD == default branch` **or detached HEAD** without having branched.
 - About to push without having shown the Step 4 summary and received confirmation.
 
@@ -127,17 +137,17 @@ These are hard constraints. Read them before touching git.
    - **當前在 default branch 或 detached HEAD，變更尚未 commit，或已 commit 在 detached HEAD 上**（情況 A）→ `git -C <repo> switch -c <type>/<slug>`（type 取自變更語意 feat/fix/docs…，slug kebab-case）：working-tree 變更跟著切過去，**detached HEAD 上已有的 commit 也一併被新 branch 接走**（不需情況 B 的 ref 重置——detached HEAD 不移動任何 branch ref）。在 default branch 上時務必**commit 之前**先做。
    - **變更已誤 commit 在本地 default branch**（且未 push，**無論是否還有未 commit 變更**）（情況 B）→ `git -C <repo> branch <feature>` 保住 commit → `git -C <repo> switch <feature>` → `git -C <repo> branch -f <default> origin/<default>` 把本地 default 退回 remote。**不 checkout default、不 `reset --hard`**——mixed state（部分已 commit、部分還在 working tree）下切回 default 再 hard reset 會永久銷毀未 commit 變更。完整序列見 `references/ship-paths.md` 情況 B。
    > 做完此步，**Step 5 一律推 feature branch，絕不直推 default branch**——即使確定無保護（branch-first 無條件，「無保護→直接 push」推的也是 feature branch，不是 default）。
-6. **Squash 提醒**：branch 上若有連續 `fix:`/`refactor:`（review 迭代痕跡）→ 提醒使用者考慮先 squash 再繼續（deep-review 正常已 squash，通常無需；已 push 的 commit squash 後 push 需 `--force-with-lease`）。
+6. **Squash 提醒**：branch 上若有連續 `fix:`/`refactor:`（review 迭代痕跡）→ 列入 Step 4 摘要附註提醒可先 squash，**不在此單獨停下**（deep-review 正常已 squash，通常無需；已 push 的 commit squash 後 push 需 `--force-with-lease`）。
 
 ### Step 2：同步 dossier（STATUS.md）與受影響文檔
 
 由**完整變更集**（已 commit + 未 commit）識別涉及模組，更新文檔（防禦原則：**先讀、只改相關段落、無需更新就跳過，不硬塞**）：
 
 - **STATUS.md（dossier；章節語意見 `references/dossier.md`）**：
-  - 本次工作的**關鍵決策（附理由）／死路／新增技術債** → 寫入對應章節。此刻 session 記憶還在，是記錄的唯一時機；只記 git 推不出來的（為什麼、放棄了什麼、還欠什麼），進度細節留給 commit。
+  - 本次工作的**關鍵決策（附理由）／死路／新增技術債** → 寫入對應章節。若工作過程已依全域規則**事件當下就地記錄**，本步為**核對補漏**而非重建；未記錄的部分此刻 session 記憶還在，是最後時機。只記 git 推不出來的（為什麼、放棄了什麼、還欠什麼），進度細節留給 commit。
   - 里程碑達成 → 「進行中」項收斂或移入「已完成」；「下一步」隨進度改寫（跨主機接續的交接點就在這裡）。
-  - 偵測過期：STATUS.md 最後 commit 落後 repo 活動 > 30 天 → 向使用者提醒 dossier 過期、本次重點補齊。
-  - 不存在且 repo 非 trivial（有持續開發跡象）→ **建議**從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，經同意才建、不硬塞。
+  - 偵測過期：STATUS.md 最後 commit 落後 repo 活動 > 30 天 → 列入 Step 4 摘要附註提醒 dossier 過期、本次重點補齊。
+  - 不存在且 repo 非 trivial（有持續開發跡象）→ 列入 Step 4 摘要附註**建議**從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，經同意才建、不硬塞（不提前單獨詢問）。
 - 涉及模組的 `**/CLAUDE.md`（只動受影響的）。
 - 相關 `docs/plans/*.md`（存在時）。
 - 所有更動文檔頂部的 `updated` 日期改為今天（YYYY-MM-DD；STATUS.md 的對應欄位名為「更新日期」）。
@@ -165,8 +175,11 @@ Ship 摘要：
     branch commit（相對 default，= PR 內容）: 2 feat + 1 docs（push 為冪等，已 push 則 no-op）
     變更檔: src/..., scripts/..., STATUS.md
     PR: feat/... → main（將開，不 merge）
+    附註: branch 有 3 個 fix: commit，要先 squash 嗎？／此 repo 無 STATUS.md，要一併建立嗎？
 確認送出？
 ```
+
+「附註」列詢問收斂來的待決事項（squash／STATUS.md 建立／過期／是否開 PR），無則省略。輕量路徑摘要縮為 3 行（路徑＋branch＋變更檔），確認語意不變。
 
 **無確認 → STOP。** 這是硬 gate（見 Critical）。
 
@@ -174,7 +187,7 @@ Ship 摘要：
 
 確認後逐 repo 執行（完整指令序列見 `references/ship-paths.md`）：
 
-- **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`，多 repo 須 `-R <owner/repo>` 綁定）：有則指向、無則 `gh pr create`（同樣 `-R` 綁定；title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。完整綁定指令見 `references/ship-paths.md`。輸出 PR URL。**不 push default branch、不 merge。**
+- **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`，多 repo 須 `-R <owner/repo>` 綁定）：有則指向、無則 `gh pr create`（同樣 `-R` 綁定；title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。完整綁定指令見 `references/ship-paths.md`。輸出 PR URL，並附一句提示：「說『merge』即可由我接手最後一哩（squash-merge + 清 branch + 同步本地 default）」——序列見 `references/ship-paths.md`「Merge 最後一哩」。**不 push default branch；未獲明說 merge 前不 merge。**
 - **直接 push 路徑**（確定無保護）：push **當前 branch**（branch-first 無條件，故此處一定是 feature branch、非 default）：`git -C <repo> push -u origin <feature-branch>`（**顯式 remote + branch**，不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref；`origin` 為 stand-in）。在 feature branch 時可**附帶提示**是否開 PR（不強制；尊重「無保護→直接 push」）。
 - 多 repo：逐 repo 送出，最後彙總（各 repo 的 PR URL / push 結果）。
 - push 失敗處理（`rejected` / 無 upstream / gh 未登入）→ 見 `references/ship-paths.md`「push 失敗處理」（單一來源）。

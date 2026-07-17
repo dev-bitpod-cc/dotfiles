@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——5 台主機(macmini/macs/eagle03/eagle06/db01)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-16)
+個人 dotfiles——5 台主機(macmini/macs/eagle03/eagle06/db01)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-17)
 
 ---
 
@@ -24,6 +24,15 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   2. 本機開新 session 驗證 hook 實際輸出(在落後 clone 目錄)
   3. 延後項見「技術債」
 
+### 2. /project 上線一天的摩擦修復——輕量路徑、詢問收斂、merge 最後一哩、即時 dossier 記錄 ⏳
+
+- **Context**:/project 首日實際使用回饋:(a)流程太重(小改動也走完整儀式)、中斷點太多;(b)「決策/死路隨 context 焚毀」沒有被解決的手感——根因是 skill 只在頭尾喚起,價值卻累積在工作過程中;(c)無 protection repo 保留 branch+PR 練肌肉記憶,但 PR 開完後 merge 最後一哩沒人接,很卡。
+- **Goal**:四項修復落地——log 模式輕量判準(fast path)、詢問收斂單一 gate、使用者明說 merge 後 agent 接手最後一哩、dossier 記錄時點搬到事件當下(全域 CLAUDE.md 規則)。
+- **Acceptance Criteria**:tests/run.sh 全綠;pressure-tests 新增 Scenario 8(merge 最後一哩)、9(輕量不放寬 Critical)且 Sonnet PASS;回歸 Scenario 1 PASS;dogfood——本變更以 /project log ship,PR 開完說「merge」實測最後一哩。
+- **Constraints**:Critical guardrails 一字不放寬;disable-model-invocation/ship-state.sh/spec/transfer 模式不動;不做分級直推、不自動開 protection(使用者已選 merge 最後一哩方向)。
+- **進度**:實作完成;tests/run.sh 150/150 綠;沙盒 pressure-tests S8/S9/回歸 S1 Sonnet 全 PASS(git 實查)。
+- **下一步**:dogfood——本變更以 /project log ship,PR 開完說「merge」實測最後一哩;之後在 1–2 個活躍專案 repo 用 /project spec 建 dossier 驗手感。
+
 ---
 
 ## 關鍵決策(附理由)
@@ -33,6 +42,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **2026-07-16 STATUS.md 為 dossier 載體,不新建 PROJECT.md**:尊重 krepo 自然湧現且活躍維護的慣例;uap(現 /project log)本就維護此檔;避免同 repo 兩個角色重疊的檔案。
 - **2026-07-16 不引入 Linear / 外部 tracker**:痛點(任務規格、結果回寫、跨 session 延續)由 repo-resident 檔案+既有 skill 生態覆蓋;缺的是慣例固化,不是新工具。
 - **2026-07-16 settings.json 以 `opus[1m]` 為共享 model 基線**:本機一次性模型偏好(如 Fable 5)不 commit、不傳播五台。
+- **2026-07-17 無 protection repo 的兩難以「merge 最後一哩」解,不走分級直推**:保留 branch+PR 正規流程練肌肉記憶;卡點在 PR 開完後沒人接,不在流程本身——使用者明說 merge 即由 agent 接手(squash+清 branch+同步 default),不打破 never-push-default 鐵律(分級政策會)、也不強推 protection(儀式成本)。
+- **2026-07-17 dossier 記錄時點搬到事件當下**:/project「沒手感」根因是 skill 只在頭尾(spec/log)喚起,而決策/死路發生在過程中,等收尾 context 可能已壓縮——全域 CLAUDE.md 加即時記錄規則,log Step 2 從「回憶重建」降級為「核對補漏」。輕量判準與詢問收斂同理:儀式可減,Critical 不減。
 
 ## 死路(試過但放棄——防重工)
 
@@ -44,6 +55,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - [ ] R4 non-blocking 建議未修:新增 prose 的中文半形標點與既有全形混排;Transfer 模式 commit 紀律歸屬未明示;evals/README 路徑基準寫法;handoff evals H4 排序
 - [ ] `settings.json` permissions.allow 有多條 `git push origin main` 放行,與各 skill「never push default」紀律方向有張力——另案檢視
 - [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
+- [ ] pressure-tests S8/S9 的沙盒未納入 `claude/evals/setup-sandboxes.sh`(2026-07-17 首輪為 ad-hoc 建置)——補腳本化以利重跑
 
 ## 已完成(里程碑)
 
@@ -51,6 +63,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已知缺口
 
+- **Mac 上 `brewup` 會被 codex cask 掛死(Gatekeeper 首次執行核可)**:症狀是停在 `Linking Binary 'codex-aarch64-apple-darwin'` 後不動,Ctrl-C 才繼續。成因非 brew——codex cask 的第二個 artifact(Generated Completion)會實際執行 `codex completion bash/zsh/fish`,而 quarantine 過的新 binary 首次 exec 會彈出「codex-… 是網際網路下載的應用程式,確定要允許執行?」對話框,進程 0% CPU 停在 `_dyld_start` **同步等該對話框被回答**(kernel log:`ASP: Security policy would not allow process`);對話框常沒搶到焦點、被埋在其他視窗後,看起來就只是卡死。**解法:在對話框按允許**(已錯過/誤按取消 → 系統設定 → 隱私權與安全性 → 「仍要允許」),再 `brew reinstall --cask codex` 補完 completion 並清 `*.upgrading` 殘留(Ctrl-C 會讓 cask 裝一半)。**不要用 `xattr -d com.apple.quarantine` 或全域 `HOMEBREW_CASK_OPTS=--no-quarantine`**——核可即足夠(核可後 quarantine 屬性仍在、Gatekeeper 仍生效),那兩者是不必要的安全弱化。
+  - **觸發條件**:僅在 codex **實際升版**時發生(對話框綁 binary CDHash 問一次,同版核可後不再問);codex 改版頻繁(0.144.1→0.144.5 僅隔數日),故每次升版重演。**順跑一次不代表免疫,只代表那次沒升 codex**(brewup 輸出無 `Upgrading codex` 那行)。僅 Mac(macmini/macs)受影響,Linux 三台無 Gatekeeper。
+  - **`allup` 陷阱**:經 SSH 跑 brewup 時,對話框只會出現在該 Mac 的實體螢幕上,無人在機前就永遠沒人按 → 真正無限卡死(非逾時)。該 Mac 需先在本機核可過該版本。
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
 - biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+ credentials 明文散於三台。
 

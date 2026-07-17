@@ -6,12 +6,14 @@
 
 - Ambiguous task: NEVER silently pick one reading. List the plausible interpretations and let the user choose before writing anything.
 - Non-trivial task: state the success criteria (how "done" is verified) before starting; if the repo has a STATUS.md (dossier), record the spec (Context/Goal/AC/Constraints) into its「進行中」section（儀式面用 `/project spec`）.
+- 工作過程中做出**關鍵取捨／放棄一條路（死路）／踩到非顯而易見的坑**時，若 repo 有 STATUS.md → **當下**就地寫入對應章節（working tree 即可、不 commit，收尾由 `/project log` 一起送出）。Do NOT defer dossier notes to ship time — context may be compacted before then.
 - Uncertain? Stop and ask. Do NOT assume just to keep momentum.
 - Bug fix: ALWAYS write a reproducing test FIRST, then fix.
 
 ## PR / Git
 
 - **NEVER merge on your own** — only when the user explicitly says merge / bypass merge. "push" or "open a PR" alone does NOT include merge.
+- 使用者明說 merge 後的標準收尾：merge PR（預設 squash）→ 清 remote/本地 branch → 同步本地 default（序列見 `~/.dotfiles/claude/skills/project/references/ship-paths.md`「Merge 最後一哩」）。
 - **NEVER push on your own** — after finishing an issue implementation or review fixes, commit and STOP; wait for the user's next instruction.
 - Conventional Commits: `<type>: <short desc>`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
 

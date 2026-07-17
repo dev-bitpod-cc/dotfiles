@@ -45,6 +45,8 @@ STATUS.md that is not a dossier will be mis-consumed by tooling and humans alike
 | ship 收尾 | 本次的決策/死路/債/里程碑同步;進行中項收斂 | `/project log`(Step 2) |
 | 移交前 | 完整度檢查 + 產出移交指南 | `/project transfer` |
 
+記錄時點:**事件當下 > 收尾補記**——決策/死路/坑在發生當下就地寫入(working tree 即可、不需 commit,收尾由 `/project log` 一起送出)。Do NOT defer dossier notes to ship time: context may be compacted before then — a decision not written down when made is a decision lost. ship 收尾的 Step 2 因此是「核對補漏」而非重建。
+
 ## 4. 跨主機接續(git 為唯一媒介)
 
 Machine-local state (handoff, memory) does NOT travel between hosts. The repo does.
