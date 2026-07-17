@@ -12,26 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-### 1. 多主機工作流改造——收尾與生效驗證 ⏳
-
-- **Context**:handoff/memory 為 machine-local 但開發橫跨 5 台;pull 側無人偵測(eagle03 krepo 曾落後 3 個月);repo-resident 檔案無慣例與生命週期;移交流程 ad-hoc。
-- **Goal**:/project skill(spec/log/transfer)+ SessionStart pull 偵測 hook + dossier 慣例在五台全部生效。
-- **Acceptance Criteria**:五台 `git pull` 後,新 session 的 hook 在落後 clone 上出提醒;`/project` 三模式可用;舊 `/uap` 不再存在。
-- **Constraints**:uap 防護內容原文搬遷不重寫;settings.json 的 model 維持共享基線 `opus[1m]`。
-- **進度**:改造完成(c673844,deep-review R4 通過、tests 150/150);本機已生效。
-- **下一步**:
-  1. push 後在其餘四台 `git -C ~/.dotfiles pull`
-  2. 本機開新 session 驗證 hook 實際輸出(在落後 clone 目錄)
-  3. 延後項見「技術債」
-
-### 2. /project 上線一天的摩擦修復——輕量路徑、詢問收斂、merge 最後一哩、即時 dossier 記錄 ⏳
-
-- **Context**:/project 首日實際使用回饋:(a)流程太重(小改動也走完整儀式)、中斷點太多;(b)「決策/死路隨 context 焚毀」沒有被解決的手感——根因是 skill 只在頭尾喚起,價值卻累積在工作過程中;(c)無 protection repo 保留 branch+PR 練肌肉記憶,但 PR 開完後 merge 最後一哩沒人接,很卡。
-- **Goal**:四項修復落地——log 模式輕量判準(fast path)、詢問收斂單一 gate、使用者明說 merge 後 agent 接手最後一哩、dossier 記錄時點搬到事件當下(全域 CLAUDE.md 規則)。
-- **Acceptance Criteria**:tests/run.sh 全綠;pressure-tests 新增 Scenario 8(merge 最後一哩)、9(輕量不放寬 Critical)且 Sonnet PASS;回歸 Scenario 1 PASS;dogfood——本變更以 /project log ship,PR 開完說「merge」實測最後一哩。
-- **Constraints**:Critical guardrails 一字不放寬;disable-model-invocation/ship-state.sh/spec/transfer 模式不動;不做分級直推、不自動開 protection(使用者已選 merge 最後一哩方向)。
-- **進度**:實作完成;tests/run.sh 150/150 綠;沙盒 pressure-tests S8/S9/回歸 S1 Sonnet 全 PASS(git 實查)。
-- **下一步**:dogfood——本變更以 /project log ship,PR 開完說「merge」實測最後一哩;之後在 1–2 個活躍專案 repo 用 /project spec 建 dossier 驗手感。
+(無——殘項見「技術債」)
 
 ---
 
@@ -56,9 +37,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - [ ] `settings.json` permissions.allow 有多條 `git push origin main` 放行,與各 skill「never push default」紀律方向有張力——另案檢視
 - [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
 - [ ] pressure-tests S8/S9 的沙盒未納入 `claude/evals/setup-sandboxes.sh`(2026-07-17 首輪為 ad-hoc 建置)——補腳本化以利重跑
+- [ ] SessionStart hook 的落後提醒實際輸出未在真實落後 clone 驗過(tests 有覆蓋、實戰未見)——下次任一主機 clone 落後時順手確認
+- [ ] /project 手感驗證:在 1–2 個活躍專案 repo 用 /project spec 建 dossier,跑完整 spec→實作(即時記錄)→log→merge 一輪;即時 dossier 記錄的判斷準確度以此輪觀察為據(該規則尚無 pressure-test)
 
 ## 已完成(里程碑)
 
+- ✅ **2026-07-17 /project 摩擦修復 + 全機隊生效**(PR #1/#2):輕量路徑、詢問收斂、merge 最後一哩(PR #1/#2 即首戰實測,含 gh 雙帳號身分切換補救)、即時 dossier 記錄(全域 CLAUDE.md 規則);pressure-tests 新增 S8/S9 + 回歸 S1 Sonnet 全 PASS(git 實查)、tests 150/150;dotsync 14 台同步,多主機工作流(含 /project 三模式、pull 偵測 hook)全機隊生效。
 - ✅ **2026-07-16 多主機工作流改造**(c673844):/project skill 取代 /uap、SessionStart pull 偵測 hook、dossier/transfer 模板、跨主機分流規則;deep-review autofix R1–R4(1嚴重5中等修畢)、沙盒 pressure-tests 5 情境 Sonnet 全 PASS。
 
 ## 已知缺口
