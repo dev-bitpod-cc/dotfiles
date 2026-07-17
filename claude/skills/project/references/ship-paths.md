@@ -11,6 +11,7 @@ SKILL.md Step 1/5 的展開。涵蓋 repo 解析、protection 偵測、branch-fi
 - [Branch-first 與誤 commit 搬移](#branch-first-與誤-commit-搬移)
 - [PR 路徑](#pr-路徑)
 - [直接 push 路徑](#直接-push-路徑)
+- [Merge 最後一哩（使用者明說 merge 後）](#merge-最後一哩使用者明說-merge-後)
 - [PR title / body 模板](#pr-title--body-模板)
 - [push 失敗處理](#push-失敗處理)
 
@@ -107,7 +108,7 @@ gh pr create -R "$repo_slug" --base <default> --head <feature-branch> \
   --body "<見下方模板>"
 ```
 
-- **絕不** `gh pr merge`。**絕不** push default branch。
+- **絕不** push default branch。`gh pr merge` 僅限使用者**明說 merge** 後執行（序列見下方「Merge 最後一哩」），開 PR 當下絕不順手 merge。
 - 多個 feature commit → title 取主要語意；body 列各 commit 與變更摘要。
 - **fork repo**（如 `origin` 是 fork、`upstream` 是 canonical）：`gh pr create` 的 `--head` 需 `<owner>:<branch>` 格式、base/head 為不同 repo——**本 skill 不自動處理**（見檔首通則與 SKILL Step 1 fork 邊界）。遇此**停下**由使用者指定 base/head，勿讓 `gh` 觸發互動式 fork/push 流程。
 - **`gh` 不可用 / 未登入時的 PR 路徑**：`git push -u origin <feature-branch>`（推 feature branch 安全、不碰 default）後，因無法 `gh pr create` → **停下**，輸出 branch 名與手動開 PR 的 compare URL。**此時 `repo_slug` 不能靠 `gh repo view`（gh 已不可用），改從 remote URL 解析**（同時吃 SSH 與 HTTPS）：
@@ -124,6 +125,26 @@ gh pr create -R "$repo_slug" --base <default> --head <feature-branch> \
 git -C <repo> push -u origin <branch>   # 顯式 remote+branch+設 upstream（已有 upstream 時 -u 無害）
 ```
 仍需 Step 4 使用者確認。push 後無 PR 動作。
+
+## Merge 最後一哩（使用者明說 merge 後）
+
+**Trigger: the user EXPLICITLY says "merge"** — in any turn after the PR exists. "push" or "open a PR" alone is NOT a merge instruction（沿用全域 CLAUDE.md 語意）。明說即是授權：不要因 skill 通篇的「絕不 merge」而拒絕或反覆再確認，把使用者卡在最後一哩。
+
+標準收尾序列：
+
+```bash
+gh pr merge <PR-number|URL> -R "$repo_slug" --squash --delete-branch
+# --delete-branch 刪 remote branch；在該 repo 工作目錄內執行時，gh 會順帶切回 default 並刪本地 branch
+git -C <repo> switch <default>          # 若 gh 未代切（如以 -R 在 repo 外執行）
+git -C <repo> pull origin <default>     # 同步本地 default——squash 產生新 commit，本地必落後
+git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash 後 -d 會誤判「未 merge」拒刪，
+                                        # 故先確認 PR 已 MERGED（gh pr view --json state）再 -D
+```
+
+- **預設 `--squash`**（與 deep-review squash 紀律、Conventional Commits 單語意 commit 一致）。branch 上有多個**獨立語意** commit 值得保留 → merge 前一句話點出、由使用者選 `--merge`，不擅自代選。
+- **失敗即停**：required checks 未過、merge conflict、gh 帳號無 write 權限 → 停下回報實際錯誤。**Never `--admin`, never bypass checks, never fall back to pushing default directly.**
+- 多 repo（多個 PR 同輪開出）：先確認使用者的 merge 指令涵蓋哪些 PR，勿一句 merge 就全 merge。
+- merge 完成後回報：merged commit / 本地 default 已同步 / branch 已清。
 
 ## PR title / body 模板
 
