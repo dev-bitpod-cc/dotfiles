@@ -147,6 +147,7 @@ These are hard constraints. Read them before touching git.
   - 本次工作的**關鍵決策（附理由）／死路／新增技術債** → 寫入對應章節。若工作過程已依全域規則**事件當下就地記錄**，本步為**核對補漏**而非重建；未記錄的部分此刻 session 記憶還在，是最後時機。只記 git 推不出來的（為什麼、放棄了什麼、還欠什麼），進度細節留給 commit。
   - 里程碑達成 → 「進行中」項收斂或移入「已完成」；「下一步」隨進度改寫（跨主機接續的交接點就在這裡）。
   - 偵測過期：STATUS.md 最後 commit 落後 repo 活動 > 30 天 → 列入 Step 4 摘要附註提醒 dossier 過期、本次重點補齊。
+  - 衛生檢查（總量治理，規則見 `references/dossier.md`）：「進行中」有 ✅ 完成項 → 當場移入里程碑；全檔 > 300 行或存在規範外章節（如 Session Log）→ 當次收斂（蒸餾＋歸檔 docs/archive/），並列入 Step 4 附註告知。
   - 不存在且 repo 非 trivial（有持續開發跡象）→ 列入 Step 4 摘要附註**建議**從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，經同意才建、不硬塞（不提前單獨詢問）。
 - 涉及模組的 `**/CLAUDE.md`（只動受影響的）。
 - 相關 `docs/plans/*.md`（存在時）。

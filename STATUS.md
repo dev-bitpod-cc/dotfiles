@@ -24,6 +24,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **2026-07-16 不引入 Linear / 外部 tracker**:痛點(任務規格、結果回寫、跨 session 延續)由 repo-resident 檔案+既有 skill 生態覆蓋;缺的是慣例固化,不是新工具。
 - **2026-07-16 settings.json 以 `opus[1m]` 為共享 model 基線**:本機一次性模型偏好(如 Fable 5)不 commit、不傳播五台。
 - **2026-07-17 無 protection repo 的兩難以「merge 最後一哩」解,不走分級直推**:保留 branch+PR 正規流程練肌肉記憶;卡點在 PR 開完後沒人接,不在流程本身——使用者明說 merge 即由 agent 接手(squash+清 branch+同步 default),不打破 never-push-default 鐵律(分級政策會)、也不強推 protection(儀式成本)。
+- **2026-07-17 dossier 增設總量治理(compaction)規則**:krepo 實證爛帳模式——Session Log append-only 佔 360/598 行、「進行中」殘留 ✅ 項(皆 /project skill 上線前的舊產物,結構先於規範半年);原規範只防「新增垃圾」、不防「總量單調膨脹」→ dossier.md 加修剪規則(完成即移出、里程碑留一季+常青、翻案決策刪、**死路不刪**、>300 行當次收斂)+ log Step 2 衛生檢查。krepo 已依此收斂 599→201 行(elandcomtw/krepo PR #16)。
 - **2026-07-17 dossier 記錄時點搬到事件當下**:/project「沒手感」根因是 skill 只在頭尾(spec/log)喚起,而決策/死路發生在過程中,等收尾 context 可能已壓縮——全域 CLAUDE.md 加即時記錄規則,log Step 2 從「回憶重建」降級為「核對補漏」。輕量判準與詢問收斂同理:儀式可減,Critical 不減。
 
 ## 死路(試過但放棄——防重工)
