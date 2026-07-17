@@ -60,7 +60,20 @@ Machine-local state (handoff, memory) does NOT travel between hosts. The repo do
 STATUS.md 是**就地演化**的常駐檔:進行中項完成後移入里程碑、下一步隨進度改寫。
 它的 git history 就是 audit trail。
 
+**總量治理(compaction)**——各節單調成長,靠修剪維持訊號密度;`/project log` Step 2 順手檢查:
+
+- 「進行中」項完成即移入里程碑(一行化);⏸️ 項保留但須註明暫停原因與重啟條件。
+- 里程碑保留最近一季+常青重大項;更早的合併壓縮或刪除(git history 就是 audit trail)。
+- 被推翻的決策直接刪或改寫為現行決策;**死路不刪**(防重工的本體,只在確認不再適用時移除)。
+- 全檔 > 300 行是硬訊號,當次 ship 就收斂,不留待「下次再整理」。
+- 存量 STATUS.md 若有規範外章節(如 Session Log):精華蒸餾進決策/死路/里程碑,
+  全文歸檔 `docs/archive/`(先例:krepo 2026-07-17 收斂,599→~210 行)。
+
 **Anti-patterns(hard rules):**
+
+- **NEVER leave a ✅-done item under 進行中** — done means moved to 里程碑, one line.
+- **NEVER add an append-only log section (Session Log etc.) to a dossier** — that is what
+  git history is for; observed failure: krepo's Session Log grew to 60% of the file.
 
 - **NEVER commit a throwaway handoff file into the repo**(HANDOFF.md → commit → delete → commit
   churn)。Cross-host state goes into STATUS.md in place. The observed failure mode: a consumed
