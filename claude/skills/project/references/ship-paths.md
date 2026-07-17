@@ -71,7 +71,8 @@ protection classic 回 **`Not Found`**（非 `Branch not protected`）常代表 
    # 成功印 "[new branch] ... -> ..." / "Would set upstream" → SSH 身分有 write
    # 403 / "permission denied" → 無 write
    ```
-3. 把「protection 無法判定 + dry-run 的 push 權限結果」一併放進 Step 4 ship 摘要，讓使用者定奪：開 PR、換身分、或（若使用者選擇直推）**由使用者自行 push**。**agent 端預設 PR、不自行 push default branch**（Unknown=protected，見下方 ⚠）。**仍不在確認前實際 push。**
+3. **檢查 gh 是否已登入其他有權帳號**：`gh auth status` 會列出**所有**已登入帳號（active 只有一個）——若另一已登入帳號對該 repo 有 write（如個人 repo 的 owner 本尊、active 卻是工作帳號），`gh auth switch -u <有權帳號>` 後執行 gh 操作（`pr create`／merge 最後一哩），**用完切回原 active 帳號**（實證：active 帳號 READ 時 `gh pr create` 吃 `must be a collaborator`，switch 到已登入的 owner 帳號即通）。
+4. 把「protection 無法判定 + dry-run 的 push 權限結果」一併放進 Step 4 ship 摘要，讓使用者定奪：開 PR、換身分、或（若使用者選擇直推）**由使用者自行 push**。**agent 端預設 PR、不自行 push default branch**（Unknown=protected，見下方 ⚠）。**仍不在確認前實際 push。**
 
 > ⚠ **不可**把「硬推會被 remote 擋（無害）」當作直推 default branch 的理由：protection 對 gh 不可見（gh 帳號 READ）但分支實際無保護的 repo（SSH 身分有 write）下，硬推會**成功**，正中 `Unknown = protected` 要防的破口（見 `pressure-tests.md` Scenario 4）。所以「protection 未知 + 使用者要直推」→ **agent 不自行 push default branch**：停下、向使用者點明身分分離與 protection 不可判定，由**使用者自行**執行 push，或明確改走 PR 路徑。
 
