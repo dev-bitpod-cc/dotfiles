@@ -39,6 +39,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - [ ] pressure-tests S8/S9 的沙盒未納入 `claude/evals/setup-sandboxes.sh`(2026-07-17 首輪為 ad-hoc 建置)——補腳本化以利重跑
 - [ ] SessionStart hook 的落後提醒實際輸出未在真實落後 clone 驗過(tests 有覆蓋、實戰未見)——下次任一主機 clone 落後時順手確認
 - [ ] /project 手感驗證:在 1–2 個活躍專案 repo 用 /project spec 建 dossier,跑完整 spec→實作(即時記錄)→log→merge 一輪;即時 dossier 記錄的判斷準確度以此輪觀察為據(該規則尚無 pressure-test)
+- [ ] repo-review `review-context.sh` 新增訊號(detached-head / base-is-ancestor / merge-base 與對應 autofix 閘)未納入 tests/run.sh 行為測試——2026-07-17 邊界強化輪以 ad-hoc 沙盒驗證(root commit / 分岔 base / detached / 無共同祖先 / 閘序全過),回歸覆蓋待補
 
 ## 已完成(里程碑)
 

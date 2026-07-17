@@ -87,6 +87,29 @@ HEAD_TYPE="${head_resolved%% *}"
 HEAD_HASH="${head_resolved#* }"
 CURRENT_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)" \
   || die "cannot resolve current HEAD"
+CURRENT_BRANCH="$(git -C "$REPO_ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null)" || CURRENT_BRANCH=""
+
+if [ -n "$CURRENT_BRANCH" ]; then
+  DETACHED_HEAD="no"
+else
+  DETACHED_HEAD="yes"
+fi
+
+MERGE_BASE="n/a"
+if [ "$BASE_TYPE" = "commit" ]; then
+  if git -C "$REPO_ROOT" merge-base --is-ancestor "$BASE_HASH" "$HEAD_HASH" 2>/dev/null; then
+    BASE_IS_ANCESTOR="yes"
+  else
+    merge_base_status=$?
+    [ "$merge_base_status" -eq 1 ] || die "cannot test whether base is an ancestor of head"
+    BASE_IS_ANCESTOR="no"
+    MERGE_BASE="$(git -C "$REPO_ROOT" merge-base "$BASE_HASH" "$HEAD_HASH" 2>/dev/null)" || MERGE_BASE="(none)"
+  fi
+elif [ "$BASE_HASH" = "$EMPTY_TREE" ]; then
+  BASE_IS_ANCESTOR="yes"
+else
+  BASE_IS_ANCESTOR="n/a"
+fi
 
 if [ "$HEAD_HASH" = "$CURRENT_HEAD" ]; then
   HEAD_IS_CURRENT="yes"
@@ -110,6 +133,12 @@ if [ "$AUTOFIX" -eq 1 ]; then
   elif [ "$HEAD_IS_CURRENT" != "yes" ]; then
     AUTOFIX_SAFE="no"
     AUTOFIX_REASON="requested-head-not-current"
+  elif [ "$DETACHED_HEAD" = "yes" ]; then
+    AUTOFIX_SAFE="no"
+    AUTOFIX_REASON="detached-head"
+  elif [ "$BASE_IS_ANCESTOR" = "no" ]; then
+    AUTOFIX_SAFE="no"
+    AUTOFIX_REASON="base-not-ancestor"
   else
     AUTOFIX_SAFE="yes"
     AUTOFIX_REASON="clean-current-head"
@@ -199,6 +228,14 @@ echo "resolved-head-type: $HEAD_TYPE"
 echo "resolved-head: $HEAD_HASH"
 echo "current-head: $CURRENT_HEAD"
 echo "head-is-current: $HEAD_IS_CURRENT"
+if [ -n "$CURRENT_BRANCH" ]; then
+  echo "branch: $CURRENT_BRANCH"
+else
+  echo "branch: (detached)"
+fi
+echo "detached-head: $DETACHED_HEAD"
+echo "base-is-ancestor: $BASE_IS_ANCESTOR"
+echo "merge-base: $MERGE_BASE"
 echo "worktree: $WORKTREE"
 if [ "$WORKTREE" = "dirty" ]; then
   echo "worktree-files:"
@@ -208,6 +245,7 @@ echo "autofix-safe: $AUTOFIX_SAFE"
 echo "autofix-reason: $AUTOFIX_REASON"
 echo "review-range: $BASE_HASH..$HEAD_HASH"
 
+echo "guidance-source: worktree"
 echo "guidance:"
 if [ -n "$GUIDANCE_FILES" ]; then
   printf '%s\n' "$GUIDANCE_FILES" | sed 's/^/  /'

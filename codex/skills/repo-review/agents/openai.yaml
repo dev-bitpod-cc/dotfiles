@@ -1,4 +1,4 @@
 interface:
   display_name: "Multi-Repo Review"
   short_description: "Subagent-assisted review and optional autofix for local git repos."
-  default_prompt: "Use $repo-review. Review one or more local repositories using committed diffs only. Default to HEAD~1..HEAD when no range is provided, run the bundled review-context script to resolve ranges and guidance, spawn fresh-context subagents when available, and report only concrete findings with file references. Use autofix mode only when explicitly requested; require a clean worktree before checkpoint commits, and default max_rounds=3 and commit_each_round=true."
+  default_prompt: "Use $repo-review. Review one or more local repositories using committed diffs only. Default to HEAD~1..HEAD when no range is provided, run the bundled review-context script to resolve ranges and guidance, spawn fresh-context subagents when available, and report only concrete findings with file references. Use autofix mode only when explicitly requested; require a clean starting worktree, stage only verified fix paths, and default max_rounds=3 and commit_each_round=true."
