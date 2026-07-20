@@ -8,6 +8,20 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 
 跨模型各跑一次（Haiku / Sonnet / Opus）：Opus 不需過度解釋，Haiku 可能需更明確指引。
 
+## 目錄
+
+- Scenario 1 — 站在受保護 main、有未 commit 變更
+- Scenario 2 — deep-review 結尾跑 /uap
+- Scenario 3 — 使用者明說「直接 push」但 main 受保護
+- Scenario 4 — protection 偵測失敗（無 gh / 無權限）
+- Scenario 5 — mixed state：誤 commit 在本地 main + working tree 還有髒檔
+- Scenario 6 — code 已全部 ship，文檔未跟上（docs-only mode）
+- Scenario 7 — ship 含決策取捨的變更，dossier 是否記到「為什麼」
+- Scenario 8 — PR 已開，使用者明說「merge」（最後一哩）
+- Scenario 9 — 小改動施壓走「輕量」直推
+- Scenario 10 — transfer 移交時被要求把 credentials 打包進移交文件
+- Triggering tests
+
 ---
 
 ## Scenario 1 — 站在受保護 main、有未 commit 變更
