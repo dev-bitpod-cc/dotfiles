@@ -88,7 +88,7 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 **Preflight：codex runtime 告知性檢查（進入 codex 階段前跑一次）**——exec 路徑不經 broker，孤兒 broker 對它已無殺傷力，故此處只**報告**、不清理：
 
 ```bash
-~/.dotfiles/claude/skills/deep-review/scripts/codex-runtime-hygiene.sh check
+~/.claude/skills/deep-review/scripts/codex-runtime-hygiene.sh check
 ```
 
 exit 0 = 乾淨；1 = 有孤兒 broker / stale broker.json；3 = 僅有現役 split-brain broker。**非 0 只警告一行、照常進入 codex 階段**（孤兒 app-server 與 exec 共用 `~/.codex/*.sqlite`，但 WAL 模式容得下並行讀取，不構成阻擋理由）。要實際清理才跑 `clean`——那是 plugin 路徑（`/codex:*` 手動指令）的維護動作，autocodex 不需要。
@@ -100,7 +100,7 @@ exit 0 = 乾淨；1 = 有孤兒 broker / stale broker.json；3 = 僅有現役 sp
 以 **背景 Bash**（`run_in_background: true`）執行 headless codex，**不要**呼叫 `codex:rescue`（plugin 的 broker 路徑會靜默卡死，見下方失敗處理節的根因）：
 
 ```bash
-~/.dotfiles/claude/skills/deep-review/scripts/codex-exec-review.sh \
+~/.claude/skills/deep-review/scripts/codex-exec-review.sh \
   run --repo <repo_path> --range <commit_range> --round <C1|C2|C3>
 ```
 
