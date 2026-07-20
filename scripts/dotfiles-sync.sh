@@ -62,6 +62,9 @@ fi
 # 確保互動 rc 有 source shell/functions.sh（幂等；讓便利函數免重跑 setup 即散佈）
 [ -f "$DOTFILES_DIR/scripts/ensure-rc-source.sh" ] && bash "$DOTFILES_DIR/scripts/ensure-rc-source.sh" 2>/dev/null || true
 
+# 確保 ~/.codex/skills 指向 dotfiles（幂等；讓 codex skill 免重跑 setup 即散佈）
+[ -f "$DOTFILES_DIR/scripts/ensure-codex-skills.sh" ] && bash "$DOTFILES_DIR/scripts/ensure-codex-skills.sh" 2>/dev/null || true
+
 echo -e "${GREEN}  ✅ 本機完成${NC}"
 
 # 遠端同步（並行）
@@ -70,9 +73,18 @@ echo -e "${BLUE}▶ 遠端同步 ${#HOSTS[@]} 台${NC}"
 sync_remote() {
     local host="$1"
     local result
+    # `|| true` 不可省：set -e 下 ssh 回非 0（主機不可達／DNS 失敗）會讓這個背景 subshell
+    # 當場結束，下方的 case 完全不執行 → 連線失敗的 ❌ 永遠印不出來，dotsync 對真正的
+    # 失敗一直是靜默的。失敗時 result 為空 → last_line 空 → 落到 *) 分支印 ❌，正是原意。
     result=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "$host" '
         if [ -d ~/.dotfiles ]; then
-            cd ~/.dotfiles && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1
+            cd ~/.dotfiles && git checkout -- claude/settings.json 2>/dev/null
+            # pull 失敗必須中止並回報：否則主機停在舊 revision（衝突／認證／remote 錯誤），
+            # 後面的檔案檢查只會靜默跳過，最後仍 echo OK → 使用者看到 ✅ 卻什麼都沒部署。
+            if ! git pull --autostash 2>&1; then
+                echo "PULL_FAILED"
+                exit 0
+            fi
             # 重新套用 SSH config
             if [ -f ssh/config ]; then
                 SCRIPT_DIR="$(pwd)"
@@ -88,17 +100,26 @@ SSHEOF
             fi
             # 確保互動 rc 有 source shell/functions.sh（幂等）
             [ -f scripts/ensure-rc-source.sh ] && bash scripts/ensure-rc-source.sh 2>/dev/null || true
+            # 確保 ~/.codex/skills 指向 dotfiles（幂等；免重跑 setup 即拿到最新 codex skill）
+            [ -f scripts/ensure-codex-skills.sh ] && bash scripts/ensure-codex-skills.sh 2>/dev/null || true
             echo "OK"
         else
             echo "NO_DOTFILES"
         fi
-    ' 2>/dev/null)
+    ' 2>/dev/null) || true
+
+    # 接管實體 codex skill 目錄的告知必須撈出來——遠端輸出只取 tail -1 判成敗，其餘全丟；
+    # 而「其他主機仍是舊實體目錄」正是這訊息唯一會觸發的場合，吞掉等於設計意圖落空。
+    # `|| true` 不可省：穩態下（skill 已是 symlink）grep 無配對回 1，在 set -euo pipefail 下會
+    # 讓整個 sync_remote 當場退出，連後面的 ✅/⚠️/❌ 回報一併消失 → 同步失敗變靜默成功。
+    printf '%s\n' "$result" | grep -E '^(↻|⚠️)' | sed "s|^|  ${host}: |" || true
 
     local last_line
     last_line="$(echo "$result" | tail -1)"
     case "$last_line" in
         OK)           echo -e "${GREEN}  ✅ ${host}${NC}" ;;
         NO_DOTFILES)  echo -e "${YELLOW}  ⚠️  ${host}：~/.dotfiles 不存在${NC}" ;;
+        PULL_FAILED)  echo -e "${RED}  ❌ ${host}：git pull 失敗（仍停在舊 revision，本次未部署）${NC}" ;;
         *)            echo -e "${RED}  ❌ ${host}：連線失敗${NC}" ;;
     esac
 }

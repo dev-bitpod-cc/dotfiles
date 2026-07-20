@@ -23,7 +23,7 @@ When the user pastes third-party review findings, read the source code and verif
 
 ### 觸發詞「由 codex 進行第三方審查」（變體：「交給 codex 審查」「codex 第三方」）
 
-載入 `deep-review` skill，依其「**Codex 呼叫協議**」節呼叫 `codex:rescue`（一行 prompt、禁加 focus/測試/context——以該節為唯一權威，勿憑記憶重組 prompt）。本觸發的專屬規則：
+載入 `deep-review` skill，依其「**Codex 呼叫協議**」節以背景 Bash 執行 `codex-exec-review.sh run`（一行 prompt 由腳本固定、禁加 focus/測試/context——以該節為唯一權威，勿憑記憶重組 prompt；**不要**呼叫 `codex:rescue`，那條 plugin broker 路徑會靜默卡死）。失敗處理照該 skill 的 exit 契約（0 讀報告／4 resume 一次／5 停）。本觸發的專屬規則：
 
 - repo 路徑 + commit range 取最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊，range 直接沿用其 `base..head`（base 已錨定）；即使變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。只有報告未記錄 base 時，才回退用 `HEAD~1..HEAD`。
 - 收到 findings 後的處理判準：**最近一次 `/deep-review` 帶 `autofix`** → 驗證後自動修復並 commit；否則、或無法確定當時是否帶 autofix（如新 session）→ 列出 findings 等使用者決定。

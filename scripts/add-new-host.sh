@@ -104,7 +104,7 @@ run() {
 phase_a_failure_hint() {
     local rc=$?
     if [ $rc -ne 0 ]; then
-        err "Phase A 中途失敗（exit=$rc）"
+        err "Phase A 中途失敗（exit=${rc}）"
         echo ""
         echo "    恢復建議："
         echo "      1. 檢查 scripts/inventory.conf 是否已寫入 ${ALIAS}"
@@ -198,7 +198,7 @@ phase_b_check_prereq() {
 phase_b_failure_hint() {
     local rc=$?
     if [ $rc -ne 0 ]; then
-        err "Phase B 中途失敗（exit=$rc）"
+        err "Phase B 中途失敗（exit=${rc}）"
         echo ""
         echo "    恢復建議："
         echo "      - 金鑰部署與 CA 簽署皆為 idempotent，可直接重跑："

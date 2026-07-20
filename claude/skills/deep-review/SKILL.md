@@ -75,54 +75,63 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 ```
 主 agent 審查通過 → 取第三方審查資訊（repo path + commit range）
-  → 呼叫 codex:rescue（prompt 格式見下方）
+  → 背景執行 codex-exec-review.sh run（呼叫協議見下方）
   → 收到 findings → 主 agent 逐條驗證（true positive / false positive）
   → 全部 false positive 或無 blocking findings → 結束
   → 有 true positive → 主 agent 修復 → commit「fix: codex R{N} fixes」
-  → 再呼叫 codex:rescue 審查修復部分
+  → 再跑一次 codex-exec-review.sh run 審查修復部分
   → 重複直到無 blocking findings 或達上限
 ```
 
 **上限**：3 輪 codex 審查、2 輪修復（**diff / baseline 模式皆維持此上限，不放寬**——放寬只會鼓勵深井追逐）。到此階段 code 已通過主 agent 完整審查，剩餘問題應快速收斂。兩模式 C2+ 皆只驗增量修復、completeness 深井（baseline backlog / prose artifact）不阻擋通過，因此 2 輪修復足以收斂。若第 3 輪仍有 true positive blocking findings（指向修復本身、非 completeness 深井）→ 停止，輸出 codex 終止報告交使用者。
 
-**Preflight：清孤兒 codex runtime（進入 codex 階段、第一次呼叫 codex:rescue 前跑一次）**——codex 若近期有過遷移/重裝/`brew upgrade`，殘留的舊 runtime（孤兒 broker + app-server）會與現行的搶同一份 `~/.codex/*.sqlite` 狀態互踩，害 review 長 turn 中途無聲猝死（status 永卡 `verifying`＝下方「死亡偵測」要善後的 zombie）。先跑清理，發現孤兒會自動 SIGTERM 舊 broker + 清 stale broker.json/socket，乾淨則 no-op：
+**Preflight：codex runtime 告知性檢查（進入 codex 階段前跑一次）**——exec 路徑不經 broker，孤兒 broker 對它已無殺傷力，故此處只**報告**、不清理：
 
 ```bash
-~/.dotfiles/claude/skills/deep-review/scripts/codex-runtime-hygiene.sh clean
+~/.dotfiles/claude/skills/deep-review/scripts/codex-runtime-hygiene.sh check
 ```
 
-進 codex 階段一律先跑（乾淨即秒級 no-op）——split-brain 可在無安裝異動時發生（F14 的 7/9 事故當下即無重裝），「runtime 看起來穩」不構成跳過依據。`clean` exit 0 = 可清項全清（僅剩被跳過的現役 broker 也算 0）；exit 1 = 複驗仍有可清項，此時再呼叫 codex 有猝死風險，先手動處理。**誤殺防護**：split-brain broker 只有在「無進行中 job」時才被收；若它仍有進行中的 job（status ∈ {queued, running}——UI 顯示的 starting/verifying 是 phase 非 status）且 log 15 分內有更新（可能是別的 session upgrade 前起跑的現役 review），腳本跳過只警告、不殺；無 jq 無法判定活性時同樣保守跳過。stale broker.json（pid 已死）只刪檔不殺進程。
+exit 0 = 乾淨；1 = 有孤兒 broker / stale broker.json；3 = 僅有現役 split-brain broker。**非 0 只警告一行、照常進入 codex 階段**（孤兒 app-server 與 exec 共用 `~/.codex/*.sqlite`，但 WAL 模式容得下並行讀取，不構成阻擋理由）。要實際清理才跑 `clean`——那是 plugin 路徑（`/codex:*` 手動指令）的維護動作，autocodex 不需要。
 
-> codex 由 **brew cask** 管理（非 bun）。**NEVER `bun install -g @openai/codex` to "fix" codex** — it recreates the bun/brew split-brain that is the root cause of the mid-turn death. Reinstall via `brew reinstall --cask codex`.
+> codex 由 **brew cask** 管理（非 bun）。**NEVER `bun install -g @openai/codex` to "fix" codex** — it recreates the bun/brew split-brain. Reinstall via `brew reinstall --cask codex`.
 
 **Codex 呼叫協議**（單一權威——全域 CLAUDE.md 的「由 codex 進行第三方審查」觸發詞段指向此節，改標題須同步）：
 
-呼叫 `codex:rescue`，**prompt 只含一行**：
+以 **背景 Bash**（`run_in_background: true`）執行 headless codex，**不要**呼叫 `codex:rescue`（plugin 的 broker 路徑會靜默卡死，見下方失敗處理節的根因）：
+
+```bash
+~/.dotfiles/claude/skills/deep-review/scripts/codex-exec-review.sh \
+  run --repo <repo_path> --range <commit_range> --round <C1|C2|C3>
+```
+
+腳本內部送出的 prompt **固定一行**，不可經由任何旗標改寫：
 ```
 Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.
 ```
 
 **絕對不要**：寫自訂 focus points、要求跑測試、加 context files、解釋要審什麼、傳專案慣例文件。
 
-**多 repo 時**：逐 repo 呼叫，每個 repo 獨立一次 codex:rescue。
+背景執行後**不要輪詢、不要猜測進度**——harness 會在進程結束時回叫。需要向使用者報告進度時才跑 `codex-exec-review.sh status --job-dir <dir>`（job 目錄由 `run` 的第一行 stdout `job-dir:` 給出）。
 
-**Codex runtime 死亡偵測與救援**（實證故障模式：rescue job 子進程中途無聲死亡，companion 狀態永卡 `running`/`verifying`，broker 不會轉 failed，外觀與正常執行無法區分）：
+**多 repo 時**：逐 repo 呼叫，每個 repo 獨立一次 `run`。
 
-呼叫後的等待判準——job 判死須**兩訊號同時成立**：
-1. job log（`codex-companion.mjs status` 輸出之 `Log:` 路徑）mtime 停滯逾 15 分鐘
-2. codex app-server 進程無網路活動（`lsof -p <app-server pid> -a -i TCP` 為空且 CPU ≈ 0）
+**Codex 執行與失敗處理**——完成訊號是 **exit code**，不是狀態字串。腳本已把「進程退出 + 報告檔落地」兩個 OS 層級事實收斂成 exit 契約，照表操作即可：
 
-- NEVER trust `running`/`verifying` status alone — a zombie job is indistinguishable from a working one.
-- Do NOT kill on log silence alone — `verifying` can legitimately reason 20+ minutes without a single log line. Require BOTH signals, else keep waiting.
+**`run` 的 exit 契約**（`resume` 的 4 語意不同，見表下階梯——**不要**照本表對 `resume` 的回傳再 resume 一次）：
 
-判死後救援（依序，成功即停）：
-1. `codex-companion.mjs cancel <job-id>` 清殭屍。
-2. `codex exec resume <Codex session ID> "你先前的審查已完成偵查與驗證，請直接輸出最終審查報告（findings：嚴重度、檔案:行號、問題、建議；繁體中文）。不要再執行任何指令。"`——偵查通常已完成、報告卡在 session 裡，resume 繞過 broker 直連可完整救回（session ID 取 `status` 輸出的 `Codex session ID`）。
-3. resume 無產出 → 以 `--fresh` 重發原一行協議 prompt。**At most ONE fresh retry** — a second identical death is an environment problem: codex 階段判 blocked、輸出終止報告（主 agent 審查結論不受影響），do NOT burn quota on a third attempt.
+| exit | 意義 | 動作 |
+|---|---|---|
+| 0 | 報告已產出（路徑見 stdout `report:`） | 讀報告，進入 findings 驗證 |
+| 4 | 進程結束但報告空 | `codex-exec-review.sh resume --job-dir <dir>` 救一次 |
+| 5 | 環境/引數錯誤（codex 不在 PATH、非 git repo、range 無法解析） | 停，回報使用者，**不要重試** |
+| 2 | 用法錯誤（引數寫錯） | 修正引數重下 |
 
-同次 review 中 broker 已死過一次 → 後續輪次（C2+）逕以 `codex exec resume <session ID> "Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文."` 沿用同 session（繞過不穩 broker、保留 C1 context）；broker 無故障史時仍走 codex:rescue 正常通道。
+exit 4 的救援階梯（依序，成功即停）：
 
-> 背景監看腳本：zsh 下勿以 `echo "$JSON" | jq` 轉手（反斜線被展開毀 JSON），status 輸出直接 pipe 給 jq。
+1. `resume --job-dir <dir>`——偵查通常已完成、報告卡在 session 裡，以記錄的 session id 續跑即可完整救回。
+2. resume 回 4（仍空，或該 job 根本不可續）→ 重跑一次 `run`（同引數，等同全新 session）。**resume 的 4 絕不觸發第二次 resume**。**At most ONE fresh retry** — a second identical failure is an environment problem: codex 階段判 blocked、輸出 blocked 報告（主 agent 審查結論不受影響），do NOT burn quota on a third attempt.
+
+> **為何不再需要死亡偵測啟發式**：舊 plugin 路徑（`codex:rescue`）把執行者與等待者拆成兩組進程——broker→app-server 以 detached 生成、照跑不誤，而等待端只 await 一個「僅由 broker 轉發的 `turn/completed` 才 resolve」的 promise，無 timeout、無輪詢、也不與連線死亡 race。通知一斷即**永久靜默等待**，才需要「log 停滯 15 分 + 進程無網路活動」這種雙訊號事後撈救。exec 路徑沒有這個中介，進程結束就是結束。**Do NOT reintroduce polling or time-based death detection here.**
 
 **Findings 驗證規則**：主 agent 收到 codex findings 後，逐條讀原始碼獨立驗證。對每條判定 true positive / false positive / context-dependent。不預設 findings 正確，不預設錯誤。**只有 true positive 且非 Completeness 深井的 finding 才修復**；completeness / prose 深井（見 Step 4 該節，**不分 diff/baseline**）→ non-blocking、不觸發再一輪修復（codex 與 deep-review 同為對抗式 reviewer，深井會無限回吐——這道閘攔住「主 agent ↔ codex 來回燒額度」）。
 
@@ -176,7 +185,9 @@ Deep Review 進度：
 - [ ] Step 4：委派 subagent 審查
 - [ ] Step 5：彙整輸出
         autofix 迴圈每輪重記一行：R{N} 審查 → 修復 → 驗證 → commit（上限 R5）
-- [ ] Step 6：Codex 第三方循環（僅 autocodex；每輪重記：C{N} 審查 → 驗證 → 修復 → commit，上限 C3）
+- [ ] Step 6：Codex 第三方循環（僅 autocodex）
+        進階段前先跑一次 codex runtime preflight check（非 0 只警告不阻擋）
+        每輪重記一行：C{N} 審查 → 驗證 → 修復 → commit（上限 C3）
 - [ ] 通過後：squash 成乾淨 commit（語意 message + runtime Co-Authored-By trailer；commit 即停，等使用者指示是否 push）
 ```
 
@@ -370,7 +381,7 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 #### 流程
 
 1. 從 Step 5 通過報告的「第三方審查資訊」取出每個 repo 的路徑和 commit range
-2. 對每個 repo 呼叫 `codex:rescue`，prompt 嚴格一行：`Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.`
+2. 對每個 repo 以背景 Bash 跑 `codex-exec-review.sh run --repo <repo_path> --range <commit_range> --round C{N}`（呼叫協議與 exit 契約見上方「Codex 呼叫協議」「Codex 執行與失敗處理」兩節）
 3. 收到 codex findings 後，主 agent 逐條讀原始碼獨立驗證：
    - **true positive**：確實有問題，需修復
    - **false positive**：codex 誤判，不處理
@@ -386,4 +397,5 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 - codex 階段主 agent 同時扮演「驗證者」和「修復者」，不再委派 subagent（因為 codex 本身就是獨立第三方）
 - 多 repo 時逐 repo 處理，每個 repo 獨立計算輪次上限
 - 最終 squash 範圍涵蓋所有 review fix commits（主 agent 審查階段 + codex 階段）
-- 輸出報告參考 `references/report-templates.md` 中的 codex 通過 / codex 終止模板
+- 輸出報告參考 `references/report-templates.md` 中的 codex 通過 / codex 終止 / codex blocked 模板
+- codex 執行失敗（救援階梯走完仍無報告）→ 走 **blocked 模板**，不是終止模板：終止＝審完但沒收斂，blocked＝根本沒審成，兩者不可混用
