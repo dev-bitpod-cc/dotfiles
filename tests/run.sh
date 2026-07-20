@@ -300,13 +300,18 @@ if echo "$out" | grep -q "branch-first: REQUIRED"; then ok "main + 髒 tree → 
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ss-work")"
 if echo "$out" | grep -q "misplaced: WARNING"; then ok "誤 commit 在 main → misplaced WARNING"; else bad "misplaced 未偵測"; fi
 
-# 全乾淨 → changes NONE + docs-only 提醒（不查 protection）
+# 全乾淨 → changes NONE + docs-only 提醒；protection/ship-path/branch-first 仍須輸出
+# （docs-only mode 隨後會產生 docs commit 走 Step 4/5，Step 1 取 verdict 不可缺）
 git clone -q "$TMP/ss-origin.git" "$TMP/ss-clean"
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ss-clean")"
 assert_rc "乾淨 repo → exit 0" 0 $?
 if echo "$out" | grep -q "changes: NONE" && echo "$out" | grep -q "docs-only"; then
     ok "乾淨 repo → changes NONE + docs-only 提醒"
 else bad "乾淨 repo 輸出缺 docs-only 提醒"; fi
+if echo "$out" | grep -q "protection: OPEN" && echo "$out" | grep -q "ship-path:" \
+    && echo "$out" | grep -q "branch-first: REQUIRED"; then
+    ok "乾淨 repo 仍印 protection/ship-path/branch-first（docs-only mode 需用）"
+else bad "乾淨 repo 缺 protection/ship-path/branch-first（docs-only mode 取不到 verdict）"; fi
 
 # local-only（無 remote）→ STOP
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/gh-local")"
