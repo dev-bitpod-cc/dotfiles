@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-20)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-21)
 
 ---
 
@@ -41,7 +41,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 ## 技術債
 
 - [ ] R4 non-blocking 建議未修:新增 prose 的中文半形標點與既有全形混排;Transfer 模式 commit 紀律歸屬未明示;evals/README 路徑基準寫法;handoff evals H4 排序
-- [ ] deep-review body 密度收斂(工作流稽核第二批):401 行、內部交叉引用 6+ 處,自家 guide 的「指令被埋沒→未被遵循」風險型態;候選手術=autocodex 呼叫協議+exit 契約+救援階梯抽 references/(硬約束句留 body)。**觸發條件**(Iron Law:無 RED 不動):出現 deep-review 指令未被遵循的實際事件,或下次因他因要動其 body 時搭車。驗收 oracle=d1/d2 eval 重跑 GREEN+行數下降,不是 prose re-review
 - [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
 - [ ] pressure-tests S8/S9 的沙盒未納入 `claude/evals/setup-sandboxes.sh`(2026-07-17 首輪為 ad-hoc 建置)——補腳本化以利重跑
 - [ ] SessionStart hook 的落後提醒實際輸出未在真實落後 clone 驗過(tests 有覆蓋、實戰未見)——下次任一主機 clone 落後時順手確認
@@ -52,6 +51,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
+- ✅ **2026-07-21 deep-review body 密度收斂(工作流稽核第二批)**:autocodex 機制層(preflight exit 語意、prompt 限制、進度查詢、exit 契約、救援階梯、死亡偵測退役根因)抽 `references/codex-protocol.md`(76 行,含 TOC),硬約束(NEVER codex:rescue、固定一行 prompt、不輪詢、at most ONE fresh retry、NEVER bun install)整塊英文留 body;body 401→374 行,「Codex 呼叫協議」節標題保留為全域 CLAUDE.md 觸發段錨點(兩端免同步)。驗收依 oracle 而非 prose re-review:d1/d2 沙盒 eval 改前 baseline 與改後各跑一輪 Sonnet 全 GREEN(d1 branch-first+squash 錨定+trailer+未 push、d2 priority 4 gate 不代選;皆以沙盒 git 狀態評分),tests/run.sh 233 全綠。
 - ✅ **2026-07-20 autocodex 卡死根治——傳輸層改 headless `codex exec`**:讀 plugin v1.0.6 原始碼定位 F13/F14 的共同上游(等待端無 watchdog,通知一斷即永久靜默等待),改以進程退出+報告落檔為完成訊號,15 分鐘雙訊號死亡偵測退役為 exit 契約;新增 `codex-exec-review.sh` 與 `ensure-codex-skills.sh`(補 codex skill 散佈路徑,修 repo-review 停在 3/21 舊版)。主 agent R1–R5 + codex C1–C3(8 條 true positive 全修、C3 零 findings)、tests 233 全綠;**exec 路徑三輪實跑驗證通過,無卡死**。
 - ✅ **2026-07-17 /project 摩擦修復 + 全機隊生效**(PR #1/#2):輕量路徑、詢問收斂、merge 最後一哩(PR #1/#2 即首戰實測,含 gh 雙帳號身分切換補救)、即時 dossier 記錄(全域 CLAUDE.md 規則);pressure-tests 新增 S8/S9 + 回歸 S1 Sonnet 全 PASS(git 實查)、tests 150/150;dotsync 14 台同步,多主機工作流(含 /project 三模式、pull 偵測 hook)全機隊生效。
 - ✅ **2026-07-16 多主機工作流改造**(c673844):/project skill 取代 /uap、SessionStart pull 偵測 hook、dossier/transfer 模板、跨主機分流規則;deep-review autofix R1–R4(1嚴重5中等修畢)、沙盒 pressure-tests 5 情境 Sonnet 全 PASS。
