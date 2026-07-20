@@ -46,7 +46,7 @@ if [ -z "$PUB_KEY" ]; then
     echo "用法: $0 <public_key_file> [principals]"
     echo ""
     echo "  public_key_file  要簽署的 SSH public key（.pub）"
-    echo "  principals       允許登入的使用者名稱（逗號分隔，預設: $DEFAULT_PRINCIPALS）"
+    echo "  principals       允許登入的使用者名稱（逗號分隔，預設: ${DEFAULT_PRINCIPALS}）"
     echo ""
     echo "範例："
     echo "  $0 ~/.ssh/id_ed25519.pub"

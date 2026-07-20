@@ -20,6 +20,8 @@
 #  14. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
 #  15. ensure-rc-source.sh 幂等補 source shell/functions.sh 行
 #  16. session-pull-check.sh（SessionStart hook）落後偵測與靜默契約
+#  17. codex-exec-review.sh（deep-review skill script）exit 契約 / job 產物 / resume（codex stub）
+#  18. ensure-codex-skills.sh 幂等連結 ~/.codex/skills → dotfiles
 #
 set -uo pipefail
 
@@ -60,6 +62,34 @@ if shellcheck -x -P "$ROOT/scripts" \
     ok "shellcheck 全部通過"
 else
     bad "shellcheck 有 findings"
+fi
+
+echo "▶ 1b. 全形標點吞變數名 gate"
+# bash 在部分 locale 下會把緊接在 $var 後的多位元組字元併進變數名：
+#   echo "（exit=$rc）"  →  set -u 下噴 `rc）: unbound variable`
+# 本 repo 大量使用繁中訊息，這個雷已在 2026-07-20 一天內踩中三次（run/resume 訊息、
+# ensure-codex-skills 接管告知、range 驗證），且只在錯誤路徑觸發、正常測試照樣全綠。
+# 一律要求寫成 ${var}。DO NOT relax this gate — 它守的是「只有出事時才會爆」的那條路徑。
+# 寫法必須可攜：`grep -P` 只有 GNU grep 有，macOS 的 BSD grep 會直接報錯——若再把 stderr
+# 導掉並 `|| true`，gate 會把「執行失敗」誤判成「乾淨」（本 gate 初版即如此假綠）。
+# 改用 C locale + `[^[:print:][:space:]]`：C locale 下多位元組字元的每個 byte 都非 print，
+# 且排除 space/tab（`$var<TAB>` 在 bash 中會正常斷詞，不是問題）。
+fullwidth_hits="$(LC_ALL=C grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^[:print:][:space:]]' \
+    "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
+    "$ROOT"/claude/scripts/*.sh \
+    "$ROOT"/claude/skills/*/scripts/*.sh \
+    "$ROOT"/codex/skills/*/scripts/*.sh \
+    "$ROOT/shell/functions.sh")"
+fullwidth_rc=$?
+# grep 的 exit：0=有命中、1=無命中、>1=執行錯誤（後者必須大聲失敗，不可當成乾淨）
+fullwidth_hits="$(printf '%s\n' "$fullwidth_hits" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)"
+if [ "$fullwidth_rc" -gt 1 ]; then
+    bad "全形標點 gate 無法執行（grep rc=$fullwidth_rc）——不可視為通過"
+elif [ -z "$fullwidth_hits" ]; then
+    ok "無 \$var 緊接全形/多位元組字元的寫法"
+else
+    bad "有 \$var 緊接多位元組字元（set -u 下會 unbound variable，須改 \${var}）"
+    printf '%s\n' "$fullwidth_hits" | sed 's/^/     /'
 fi
 
 echo "▶ 2. bash -n 語法 gate"
@@ -766,6 +796,315 @@ rm -f "$spc/b/.git/FETCH_HEAD"
 spc_out="$(cd "$spc/b" && bash "$SPC")"
 assert_rc "同步 clone → exit 0" 0 $?
 assert_eq "同步 clone → 完全靜默" "" "$spc_out"
+
+echo "▶ 17. codex-exec-review.sh（deep-review skill script）exit 契約與 job 產物"
+CER="$ROOT/claude/skills/deep-review/scripts/codex-exec-review.sh"
+cer_base="$TMP/cer"
+mkdir -p "$cer_base/bin" "$cer_base/jobs"
+
+# 測試用 repo（兩個 commit，供 range 解析）
+cer_repo="$cer_base/repo"
+mkdir -p "$cer_repo"
+(cd "$cer_repo" && git init -q && git config user.email t@t && git config user.name t \
+    && echo one > a.txt && git add -A && git commit -qm first \
+    && echo two >> a.txt && git commit -qam second) >/dev/null 2>&1
+cer_range="$(cd "$cer_repo" && git rev-parse HEAD~1)..HEAD"
+
+# codex stub：可切換「寫報告」/「不寫報告」，並吐出帶 session id 的 events。
+# **模擬 clap 的 argv 拒絕行為**：`codex exec` 與 `codex exec resume` 是不同 subcommand、
+# 旗標集合不同（resume 無 --color / -s / -C）。stub 若照單全收，旗標層級的契約違反在測試裡
+# 等於不存在——2026-07-20 R1 審查即因此讓 resume 三處介面不符一路綠燈進 commit。
+# NEVER loosen this stub to accept unknown flags.
+cer_make_stub() {   # cer_make_stub <write_report:yes|no> [id_field]
+    cat > "$cer_base/bin/codex" <<EOF
+#!/usr/bin/env bash
+# 落檔供斷言：實際 argv 與執行時的 cwd
+printf '%s\n' "\$@" > "\${CODEX_STUB_ARGV:-/dev/null}"
+pwd > "\${CODEX_STUB_CWD:-/dev/null}"
+
+[ "\$1" = "exec" ] || { echo "error: unexpected subcommand '\$1'" >&2; exit 2; }
+shift
+mode="exec"
+if [ "\${1:-}" = "resume" ]; then mode="resume"; shift; [ -n "\${1:-}" ] && case "\$1" in -*) ;; *) shift ;; esac; fi
+
+out=""
+while [ \$# -gt 0 ]; do
+    case "\$1" in
+        --json|--ephemeral|--skip-git-repo-check) shift ;;
+        -o|--output-last-message) out="\${2:-}"; shift 2 ;;
+        -m|--model|-c|--config|--output-schema) shift 2 ;;
+        --color|-s|--sandbox|-C|--cd)
+            # 僅 exec 合法；resume 遇到即如 clap 般拒絕
+            if [ "\$mode" = "resume" ]; then
+                echo "error: unexpected argument '\$1' found" >&2; exit 2
+            fi
+            shift 2 ;;
+        -*) echo "error: unexpected argument '\$1' found" >&2; exit 2 ;;
+        *) shift ;;   # prompt 位置引數
+    esac
+done
+
+echo '{"${2:-session_id}":"sess-fixture-1","type":"session_meta"}'
+[ "$1" = "yes" ] && [ -n "\$out" ] && printf 'CODEX 報告\n' > "\$out"
+exit 0
+EOF
+    chmod +x "$cer_base/bin/codex"
+}
+cer_run() { PATH="$cer_base/bin:$PATH" CODEX_EXEC_REVIEW_DIR="$cer_base/jobs" bash "$CER" "$@"; }
+
+# (1) 報告產出 → exit 0 + job 產物齊全 + session id 取出
+# 斷言一律打**真實 argv**（stub 落檔），不打 $job/cmd——後者是重建字串，
+# 真實呼叫若漂移（如掉了 -s read-only）它照樣長對，等於守空。
+cer_make_stub yes
+cer_argv_run="$TMP/cer-run.argv"
+cer_out="$(CODEX_STUB_ARGV="$cer_argv_run" cer_run run --repo "$cer_repo" --range "$cer_range" --round C1 2>/dev/null)"
+assert_rc "run 產出報告 → exit 0" 0 $?
+cer_job="$(printf '%s\n' "$cer_out" | sed -n 's/^job-dir: //p' | head -1)"
+if [ -n "$cer_job" ] && [ -d "$cer_job" ]; then ok "run 第一行印出 job-dir"; else bad "run 未印出可用的 job-dir"; fi
+cer_missing=""
+for f in cmd meta events.jsonl report.md session-id exit-code; do
+    [ -f "$cer_job/$f" ] || cer_missing="$cer_missing $f"
+done
+assert_eq "job 產物齊全" "" "$cer_missing"
+assert_eq "session id 自 events 取出" "sess-fixture-1" "$(cat "$cer_job/session-id")"
+if grep -qxF "Run your repo-review skill on $cer_repo for $cer_range. 繁體中文." "$cer_argv_run"; then
+    ok "送出的 prompt 為一行協議原文（真實 argv）"
+else bad "prompt 偏離一行協議原文"; fi
+if grep -qxF -- "-s" "$cer_argv_run" && grep -qxF "read-only" "$cer_argv_run"; then
+    ok "run 以 read-only sandbox 執行（真實 argv；審查者不改碼）"
+else bad "run 未帶 -s read-only"; fi
+if grep -qxF -- "-C" "$cer_argv_run" && grep -qxF "$cer_repo" "$cer_argv_run"; then
+    ok "run 以 -C 指向受審 repo（真實 argv）"
+else bad "run 未以 -C 指向受審 repo"; fi
+if grep -qxF -- "--json" "$cer_argv_run"; then ok "run 帶 --json（events 可解析）"; else bad "run 未帶 --json"; fi
+# $job/cmd 仍須忠實反映真實呼叫（同一 argv 陣列衍生），供事後複製重跑
+if grep -qF -- "-s read-only" "$cer_job/cmd" || grep -qF -- "-s" "$cer_job/cmd"; then
+    ok "cmd 記錄與真實呼叫同源"
+else bad "cmd 記錄與真實呼叫脫節"; fi
+
+# (2) 進程結束但報告空 → exit 4（升級 resume），且 thread_id 欄位也能取到 session id
+cer_make_stub no thread_id
+cer_out="$(cer_run run --repo "$cer_repo" --range "$cer_range" --round C1 2>/dev/null)"
+assert_rc "run 報告空 → exit 4" 4 $?
+cer_job2="$(printf '%s\n' "$cer_out" | sed -n 's/^job-dir: //p' | head -1)"
+assert_eq "session id 亦支援 thread_id 欄位" "sess-fixture-1" "$(cat "$cer_job2/session-id")"
+# job 目錄唯一性（mktemp）：同秒兩次 run 若共用目錄，會把上一輪的 report.md 當本輪產出 → 假成功
+if [ "$cer_job" != "$cer_job2" ]; then ok "同秒兩次 run 的 job 目錄不碰撞"; else bad "job 目錄碰撞（會誤報上輪報告）"; fi
+
+# (3) resume：用記錄的 session id，救不回 → 4；救得回 → 0
+cer_run resume --job-dir "$cer_job2" >/dev/null 2>&1
+assert_rc "resume 仍無產出 → exit 4" 4 $?
+cer_make_stub yes
+cer_argv="$TMP/cer-resume.argv"
+cer_cwd="$TMP/cer-resume.cwd"
+cer_out="$(CODEX_STUB_ARGV="$cer_argv" CODEX_STUB_CWD="$cer_cwd" cer_run resume --job-dir "$cer_job2" 2>/dev/null)"
+assert_rc "resume 救回報告 → exit 0" 0 $?
+if printf '%s\n' "$cer_out" | grep -qF "resume session: sess-fixture-1"; then
+    ok "resume 沿用 job 記錄的 session id"
+else bad "resume 未使用記錄的 session id"; fi
+
+# resume 的 CLI 介面契約（對照真實 binary：resume 無 --color / -s / -C）
+if grep -qxF -- "--color" "$cer_argv"; then bad "resume 帶了 --color（真實 binary 會 clap 拒絕）"; else ok "resume 未帶 --color"; fi
+if grep -qxF -- "-s" "$cer_argv"; then bad "resume 帶了 -s（真實 binary 會 clap 拒絕）"; else ok "resume 未帶 -s"; fi
+if grep -qxF -- "-C" "$cer_argv"; then bad "resume 帶了 -C（真實 binary 會 clap 拒絕）"; else ok "resume 未帶 -C"; fi
+# session id 也要打真實 argv：只驗腳本自印的 "resume session:" 的話，argv 掉了 sid 仍會全綠
+# （真實 binary 缺 SESSION_ID 且無 --last 會失敗）
+if grep -qxF "sess-fixture-1" "$cer_argv"; then ok "resume 的 session id 出現在真實 argv"; else bad "resume 未把 session id 傳給 codex"; fi
+# resume 無 -s，須改以 -c sandbox_mode 達成同一約束（否則落回 config.toml 的 danger-full-access）
+if grep -qF 'sandbox_mode="read-only"' "$cer_argv" || grep -qF 'sandbox_mode=read-only' "$cer_argv"; then
+    ok "resume 以 -c sandbox_mode 維持 read-only"
+else bad "resume 未約束 sandbox（會落回 danger-full-access）"; fi
+# resume 不支援 -C，須自行 cd 到受審 repo，否則繼承呼叫者 cwd
+assert_eq "resume 在受審 repo 的工作目錄下執行" "$(cd "$cer_repo" && pwd -P)" "$(cd "$(cat "$cer_cwd")" && pwd -P)"
+# 失敗現場可見（B1）
+if [ -f "$cer_job2/cmd-resume" ]; then ok "resume 記錄實際指令（cmd-resume）"; else bad "resume 未記錄 cmd-resume"; fi
+cer_status_r="$(cer_run status --job-dir "$cer_job2" 2>/dev/null)"
+if printf '%s\n' "$cer_status_r" | grep -q '^codex-exit-resume='; then
+    ok "status 印出 resume 的 exit code"
+else bad "status 未涵蓋 resume（失敗原因看不到）"; fi
+
+# (4) 環境/引數錯誤 → exit 5
+cer_make_stub yes
+cer_run run --repo "$cer_base/nonexistent" --range "$cer_range" --round C1 >/dev/null 2>&1
+assert_rc "repo 不存在 → exit 5" 5 $?
+cer_run run --repo "$cer_base" --range "$cer_range" --round C1 >/dev/null 2>&1
+assert_rc "非 git repo → exit 5" 5 $?
+cer_run run --repo "$cer_repo" --range "HEAD..nosuchref" --round C1 >/dev/null 2>&1
+assert_rc "range head 端無法解析 → exit 5" 5 $?
+cer_run run --repo "$cer_repo" --range "noDots" --round C1 >/dev/null 2>&1
+assert_rc "range 缺 .. → exit 5" 5 $?
+CODEX_EXEC_REVIEW_DIR="$cer_base/jobs" PATH=/usr/bin:/bin bash "$CER" run --repo "$cer_repo" --range "$cer_range" --round C1 >/dev/null 2>&1
+assert_rc "codex 不在 PATH → exit 5" 5 $?
+
+# (5) baseline 模式：base 端非 rev（∅）只警告不阻擋——不可退化成 exit 5
+cer_make_stub yes
+cer_err="$TMP/cer-baseline.err"
+cer_run run --repo "$cer_repo" --range "∅..HEAD" --round C1 >/dev/null 2>"$cer_err"
+assert_rc "baseline ∅ base → 不判環境錯誤" 0 $?
+if grep -qF "baseline 模式" "$cer_err"; then ok "baseline base 端有告知"; else bad "baseline base 端未告知"; fi
+
+# (6) 用法錯誤 → exit 2
+cer_run run --repo "$cer_repo" --range "$cer_range" >/dev/null 2>&1
+assert_rc "缺 --round → exit 2" 2 $?
+cer_run bogus >/dev/null 2>&1
+assert_rc "未知子指令 → exit 2" 2 $?
+# --round 直接進 mktemp 樣板：含路徑分隔字元須在此攔下，否則錯誤訊息會誤指「無法建立 job 目錄」
+cer_run run --repo "$cer_repo" --range "$cer_range" --round "C1/x" >/dev/null 2>&1
+assert_rc "--round 含 / → exit 2" 2 $?
+# range 多組 .. 會讓中段被靜默吞掉；三點 range（branch diff）則必須照常可用
+cer_run run --repo "$cer_repo" --range "a..b..c" --round C1 >/dev/null 2>&1
+assert_rc "range 多組 .. → exit 5" 5 $?
+# 三點 range 必須**拒絕**：下游 codex/skills/repo-review/scripts/review-context.sh 明確
+# die「three-dot ranges are ambiguous here」。wrapper 若放行，codex 只會把該錯誤寫進
+# report.md，而報告非空 → 回 0 → 假成功。（stub 不會真的跑 review-context.sh，故這條
+# 契約只能靠斷言釘死，不能靠測試自然發現。）
+cer_run run --repo "$cer_repo" --range "HEAD...HEAD" --round C1 >/dev/null 2>&1
+assert_rc "三點 range → exit 5（與下游 repo-review 契約一致）" 5 $?
+# base 端只放行明確的 baseline 表示法：拼錯的 base 若只警告就放行，會產出「成功但其實
+# 什麼都沒審」的報告（codex 把無法 diff 的錯誤寫進 report.md，腳本照樣回 0）
+cer_run run --repo "$cer_repo" --range "maim..HEAD" --round C1 >/dev/null 2>&1
+assert_rc "拼錯的 base → exit 5（不得只警告放行）" 5 $?
+cer_argv_bl="$TMP/cer-baseline.argv"
+CODEX_STUB_ARGV="$cer_argv_bl" cer_run run --repo "$cer_repo" --range "∅..HEAD" --round C1 >/dev/null 2>&1
+assert_rc "baseline ∅ base → 照常放行" 0 $?
+# ∅ 是報告模板的顯示寫法，下游 review-context.sh 不認得 → 必須正規化成 empty-tree hash 再送出
+if grep -q '4b825dc642cb6eb9a060e54bf8d69288fbee4904\.\.HEAD' "$cer_argv_bl"; then
+    ok "∅ 已正規化為 empty-tree hash 才送給 codex"
+else bad "∅ 原樣送出——下游會回 cannot resolve range base"; fi
+cer_run run --repo "$cer_repo" --range "4b825dc642cb6eb9a060e54bf8d69288fbee4904..HEAD" --round C1 >/dev/null 2>&1
+assert_rc "baseline empty-tree hash → 照常放行" 0 $?
+cer_run >/dev/null 2>&1
+assert_rc "無引數 → exit 2" 2 $?
+
+# (7) status 可讀出關鍵欄位
+cer_status="$(cer_run status --job-dir "$cer_job" 2>/dev/null)"
+assert_rc "status → exit 0" 0 $?
+if printf '%s\n' "$cer_status" | grep -q '^codex-exit='; then ok "status 印出 codex-exit"; else bad "status 缺 codex-exit"; fi
+if printf '%s\n' "$cer_status" | grep -q '^report=.*bytes'; then ok "status 印出報告大小"; else bad "status 缺報告資訊"; fi
+
+# (8) 錯誤分支：status / resume 的前置檢查
+cer_run status --job-dir "$cer_base/no-such-job" >/dev/null 2>&1
+assert_rc "status 對不存在的 job dir → exit 5" 5 $?
+cer_run status >/dev/null 2>&1
+assert_rc "status 缺 --job-dir → exit 2" 2 $?
+# 「此 job 不可續」須回 4（往下一階跑 fresh run），不可回 5——5 的契約是「停、不重試」，
+# 會讓呼叫端跳過階梯第 2 步並輸出誤導性的環境診斷（codex 明明就在 PATH）
+cer_bare="$cer_base/jobs/bare"; mkdir -p "$cer_bare"
+cer_run resume --job-dir "$cer_bare" >/dev/null 2>&1
+assert_rc "resume 無 session-id → exit 4（非 5）" 4 $?
+printf 'sess-x\n' > "$cer_bare/session-id"
+cer_run resume --job-dir "$cer_bare" >/dev/null 2>&1
+assert_rc "resume 的 meta 無可用 repo → exit 4（非 5）" 4 $?
+# 真環境錯誤才回 5
+cer_run resume --job-dir "$cer_base/no-such-job" >/dev/null 2>&1
+assert_rc "resume 對不存在的 job dir → exit 5" 5 $?
+# cmd-resume 需可直接貼回 shell 執行（&& 不可被 %q 轉義）
+if grep -q ' && ' "$cer_job2/cmd-resume" && ! grep -q '\\&\\&' "$cer_job2/cmd-resume"; then
+    ok "cmd-resume 可直接複製重跑（&& 未被轉義）"
+else bad "cmd-resume 的 && 被轉義，貼回 shell 不能跑"; fi
+
+# (9) 路徑含空白（job root 與 repo 皆是）
+cer_sp="$cer_base/with space"
+mkdir -p "$cer_sp/repo root"
+(cd "$cer_sp/repo root" && git init -q && git config user.email t@t && git config user.name t \
+    && echo x > f.txt && git add -A && git commit -qm one) >/dev/null 2>&1
+cer_out="$(PATH="$cer_base/bin:$PATH" CODEX_EXEC_REVIEW_DIR="$cer_sp/jobs" \
+    bash "$CER" run --repo "$cer_sp/repo root" --range "HEAD..HEAD" --round C1 2>/dev/null)"
+assert_rc "路徑含空白 → exit 0" 0 $?
+cer_job_sp="$(printf '%s\n' "$cer_out" | sed -n 's/^job-dir: //p' | head -1)"
+if [ -s "$cer_job_sp/report.md" ]; then ok "路徑含空白 → 報告正確落檔"; else bad "路徑含空白 → 報告未落檔"; fi
+
+echo "▶ 18. ensure-codex-skills.sh 幂等連結 codex skill"
+ECS="$ROOT/scripts/ensure-codex-skills.sh"
+ecs="$TMP/ecs"
+mkdir -p "$ecs/src/repo-review" "$ecs/src/not-a-skill" "$ecs/dst/.system"
+echo "# skill" > "$ecs/src/repo-review/SKILL.md"
+echo "noise"   > "$ecs/src/not-a-skill/README.md"
+
+# 目的地是舊的實體目錄 → 換成 symlink（這正是 7/20 實證的 stale 情境）
+mkdir -p "$ecs/dst/repo-review" && echo "# 舊版" > "$ecs/dst/repo-review/SKILL.md"
+SRC_ROOT="$ecs/src" DST_ROOT="$ecs/dst" bash "$ECS"
+assert_rc "實體舊目錄 → exit 0" 0 $?
+if [ -L "$ecs/dst/repo-review" ]; then ok "舊實體目錄已換成 symlink"; else bad "仍是實體目錄"; fi
+assert_eq "symlink 指向 dotfiles 來源" "$ecs/src/repo-review" "$(readlink "$ecs/dst/repo-review")"
+assert_eq "透過 symlink 讀到新版內容" "# skill" "$(cat "$ecs/dst/repo-review/SKILL.md")"
+
+# 無 SKILL.md 的目錄不接管；~/.codex/skills 下的其他項目（.system）不動
+if [ ! -e "$ecs/dst/not-a-skill" ]; then ok "無 SKILL.md 的目錄不建連結"; else bad "誤建了非 skill 連結"; fi
+if [ -d "$ecs/dst/.system" ] && [ ! -L "$ecs/dst/.system" ]; then ok ".system 未被動到"; else bad ".system 被誤動"; fi
+
+# 接管實體目錄須「備份而非刪除」：此腳本每台每次 dotsync 都跑，直接 rm -rf 等於把
+# 手工修改的內容不可逆地消滅。備份區必須在 DST_ROOT 之外——codex 會把 skills/ 下每個
+# 目錄當 skill 載入，備份留在裡面會變成另一個過期 skill。
+if find "$ecs/dst-backup" -name SKILL.md 2>/dev/null | grep -q .; then
+    ok "原實體目錄已備份（非直接刪除）"
+else bad "原實體目錄被直接刪除，內容不可回收"; fi
+if grep -rq '舊版' "$ecs/dst-backup" 2>/dev/null; then
+    ok "備份保留了接管前的內容"
+else bad "備份內容不正確"; fi
+if [ -z "$(find "$ecs/dst" -maxdepth 1 -name 'repo-review-*' 2>/dev/null)" ]; then
+    ok "備份未留在 skills/ 內（不會被當成另一個 skill）"
+else bad "備份留在 skills/ 內，會被 codex 當成另一個過期 skill"; fi
+
+# ln 失敗須回報而非靜默成功（rm/mv 已把原目錄移走，此時失敗＝skill 消失）。
+# 用 ln stub 而非 chmod 500：root（容器／CI）可繞過 mode bits 讓 ln 意外成功 → 測試不可攜。
+ecs_ro="$TMP/ecs-ro"
+mkdir -p "$ecs_ro/src/s1" "$ecs_ro/dst" "$ecs_ro/bin"
+echo "# s" > "$ecs_ro/src/s1/SKILL.md"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$ecs_ro/bin/ln"
+chmod +x "$ecs_ro/bin/ln"
+ecs_out="$(PATH="$ecs_ro/bin:$PATH" SRC_ROOT="$ecs_ro/src" DST_ROOT="$ecs_ro/dst" BACKUP_ROOT="$ecs_ro/bak" bash "$ECS" 2>&1)"
+ecs_rc=$?
+assert_rc "ln 失敗 → exit 非 0（不報成功）" 1 "$ecs_rc"
+if printf '%s\n' "$ecs_out" | grep -q '⚠️'; then ok "ln 失敗印出警告（stdout，不被 2>/dev/null 吞）"; else bad "ln 失敗無警告"; fi
+
+# 重跑幂等：已是正確 symlink → 不動檔（比對 inode 確認沒有 rm+重建）
+# stat -c 先試（GNU 成功、BSD 失敗）再退 -f；順序不可顛倒——GNU 的 -f 是「檔案系統」會假成功
+ecs_inode() { stat -c %i "$1" 2>/dev/null || stat -f %i "$1" 2>/dev/null; }
+ecs_before="$(ecs_inode "$ecs/dst/repo-review")"
+SRC_ROOT="$ecs/src" DST_ROOT="$ecs/dst" bash "$ECS"
+ecs_after="$(ecs_inode "$ecs/dst/repo-review")"
+assert_eq "重跑幂等（symlink 未重建）" "$ecs_before" "$ecs_after"
+
+# 來源不存在 → 靜默 exit 0，不建立目的地
+SRC_ROOT="$ecs/nonexistent" DST_ROOT="$ecs/dst2" bash "$ECS"
+assert_rc "來源不存在 → exit 0" 0 $?
+if [ ! -e "$ecs/dst2" ]; then ok "來源不存在 → 不建立目的地"; else bad "來源不存在卻建了目的地"; fi
+
+# dotfiles-sync.sh 遠端回報段：撈 ↻ 告知的 pipeline 在 set -euo pipefail 下不可吃掉成敗回報。
+# （實證：grep 無配對回 1 + pipefail + set -e → sync_remote 提早退出，所有主機的 ✅/⚠️/❌ 全消失，
+#   同步失敗變靜默成功。故此處測的是「無 ↻ 時仍要印出結果」這個行為。）
+# fixture 自原始碼抽出整個 sync_remote（**含 ssh 賦值行**——ssh 失敗同樣會在 set -e 下
+# 吞掉整段回報，若只從 ↻ 那行往下抽會繞開這個最常見的失敗路徑，給出不存在的覆蓋保證），
+# 只把 ssh 指令替換成可控的假指令。
+ecs_report="$TMP/ecs-report.sh"
+{
+    echo 'set -euo pipefail'
+    # shellcheck disable=SC2016,SC2028  # 刻意寫成字面：這些要寫進 fixture 腳本、由它自己展開
+    printf '%s\n' 'fake_ssh() { printf "%s\n" "$FAKE_RESULT"; return "${FAKE_RC:-0}"; }'
+    # shellcheck disable=SC2016  # 刻意字面：sed 的 pattern 要比對原始碼裡的 ${GREEN} 等字樣本身
+    sed -n '/^sync_remote() {/,/^}/p' "$ROOT/scripts/dotfiles-sync.sh" \
+        | sed 's/ssh -o BatchMode=yes -o ConnectTimeout=5 "\$host"/fake_ssh/; s/${GREEN}//g; s/${YELLOW}//g; s/${RED}//g; s/${NC}//g; s/echo -e/echo/g'
+    # shellcheck disable=SC2016  # 同上，$1 由 fixture 自己展開
+    echo 'sync_remote "$1"'
+} > "$ecs_report"
+# 哨兵：抽取失效時直接指出「原始碼抽取失效」，而非誤導成「回報消失」
+if [ -s "$ecs_report" ] && grep -q 'esac' "$ecs_report" && grep -q 'fake_ssh' "$ecs_report"; then
+    ok "fixture 自 dotfiles-sync.sh 抽取成功（含 ssh 賦值行）"
+else bad "fixture 抽取失效——下列斷言不具意義，請檢查 sync_remote 的結構是否變動"; fi
+
+ecs_out="$(FAKE_RESULT="OK" bash "$ecs_report" hostA 2>&1)"
+assert_rc "無 ↻ 告知時 → 回報段仍正常結束" 0 $?
+if printf '%s\n' "$ecs_out" | grep -q '✅ hostA'; then ok "無 ↻ 時仍印出主機結果（不被 pipefail 吃掉）"; else bad "回報被 pipeline 吃掉——同步失敗會變靜默成功"; fi
+ecs_out="$(FAKE_RESULT="$(printf '↻ 接管 x\nOK\n')" bash "$ecs_report" hostB 2>&1)"
+if printf '%s\n' "$ecs_out" | grep -q 'hostB: ↻ 接管 x'; then ok "有 ↻ 時撈出並冠上主機名"; else bad "↻ 告知未被撈出"; fi
+if printf '%s\n' "$ecs_out" | grep -q '✅ hostB'; then ok "有 ↻ 時成敗回報不受影響"; else bad "有 ↻ 時成敗回報消失"; fi
+# ssh 失敗（主機不可達）→ 必須印 ❌，不可整段靜默
+ecs_out="$(FAKE_RESULT="" FAKE_RC=255 bash "$ecs_report" hostC 2>&1)"
+assert_rc "ssh 失敗 → sync_remote 仍正常結束" 0 $?
+if printf '%s\n' "$ecs_out" | grep -q '❌ hostC'; then ok "ssh 失敗 → 印出連線失敗（不靜默）"; else bad "ssh 失敗被 set -e 吞掉——同步失敗變靜默成功"; fi
+ecs_out="$(FAKE_RESULT="NO_DOTFILES" bash "$ecs_report" hostD 2>&1)"
+if printf '%s\n' "$ecs_out" | grep -q 'hostD'; then ok "NO_DOTFILES → 印出警告"; else bad "NO_DOTFILES 回報消失"; fi
 
 echo ""
 echo "════════════════════════════"

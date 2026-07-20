@@ -96,7 +96,8 @@
   "expected_behavior": [
     "Step 1 後判定 codex_base_mode = diff（base 非 empty-tree、非全庫語意）",
     "主 agent 審查通過後才進入 Codex 階段",
-    "對該 repo 呼叫 codex:rescue，prompt 嚴格一行：Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.",
+    "對該 repo 以背景 Bash 跑 scripts/codex-exec-review.sh run --repo <repo_path> --range <commit_range> --round C1（不呼叫 codex:rescue plugin），送出的 prompt 嚴格一行：Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.",
+    "背景執行後不輪詢、不自建時間門檻的死亡偵測；依 exit 契約處理（0 讀報告／4 resume 一次／5 停）",
     "不附加自訂 focus points / 不要求跑測試 / 不傳專案慣例文件",
     "收到 codex findings 後逐條讀原始碼獨立驗證，標 true/false positive，只修 true positive",
     "diff 模式：C1 = <審查起點>..HEAD 全審（base 錨定、不退化成會滑動的 HEAD~1）；C2+ = <上輪 codex HEAD>..HEAD 只審增量"
@@ -147,7 +148,7 @@
   "expected_behavior": [
     "判定 codex_base_mode = baseline（path 模式）",
     "進入 codex 階段前告知使用者：codex repo-review 以 repo root 為單位、無法限縮子目錄，將審整個 repo（比 path scope 廣）",
-    "codex:rescue 的 repo_path = repo root（非子目錄），range 依 baseline 規則",
+    "codex-exec-review.sh 的 --repo = repo root（非子目錄），--range 依 baseline 規則",
     "若 path 有未 commit 變更，先 commit 再呼叫 codex（codex 只審 committed）"
   ]
 }
@@ -246,7 +247,9 @@
 }
 ```
 
-### F13 — codex broker 殭屍 job（runtime 死亡偵測與救援）
+### F13 — codex broker 殭屍 job（runtime 死亡偵測與救援）〔歷史：plugin 路徑，已由 F15 取代〕
+
+> **不再作為判準**：autocodex 自 2026-07-20 起走 headless `codex exec`，不經 broker，本情境的 expected_behavior（15 分鐘雙訊號、companion cancel）已從 SKILL.md 移除。保留此條僅為記錄故障史；判 autocodex 行為請用 F15。
 
 > 2026-07-06 實戰 RED（relparty-demo，Fable）：rescue job 兩度中途無聲死亡（偵查數分鐘正常 → 進程消失、log 停滯、app-server 零 TCP），companion 永卡 `running`/`verifying`。無此節時的實際行為：對 running 狀態反覆輪詢空等；首次僅憑 pid 消失即 cancel（可能誤殺 verifying 長推理）；自建監看腳本以 `echo "$J" | jq` 轉手致 jq 全 parse error 而失效。最終靠 `codex exec resume <session-id>` 完整救回已完成的審查報告 → 該路徑收進 SKILL.md「Codex runtime 死亡偵測與救援」節。
 
@@ -265,7 +268,9 @@
 }
 ```
 
-### F14 — codex split-brain preflight（呼叫 codex:rescue 前清孤兒 runtime）
+### F14 — codex split-brain preflight（清孤兒 runtime）〔歷史：preflight 已降為 check〕
+
+> **判準已變更**：exec 路徑不經 broker，preflight 自 2026-07-20 起只跑 `codex-runtime-hygiene.sh check`（告知性、非 0 不阻擋），不再 `clean`。以下 expected_behavior 中「clean → 複驗 → 才呼叫 codex:rescue」的部分僅適用 plugin 路徑（`/codex:*` 手動指令）；腳本本身的孤兒偵測與誤殺防護判準仍有效，仍由 tests/run.sh 第 14 節守。
 
 > 2026-07-09 實戰 RED（proxy-pool-vpc，Opus）：F13 的死亡偵測是「事後救援」，但這次找到**病根**——7/8 codex 由 bun 遷到 brew，舊 bun-era broker/app-server 未收成孤兒，與新 brew runtime 搶同一份 `~/.codex/*.sqlite` 狀態互踩，害 review 中途猝死。7/9 那次死亡當下 codex 並無重裝（vendor binary 自 7/5 未動），純由 split-brain 觸發。修法：進 codex 階段前先跑 `scripts/codex-runtime-hygiene.sh clean` 清孤兒（SIGTERM 舊 broker + 清 stale broker.json/socket）。另更新過時 SOP：codex 已 brew 管理，禁 `bun install -g`（會重造 split-brain）。
 
@@ -281,6 +286,28 @@
     "NEVER 用 bun install -g @openai/codex 修 codex（會重造 bun/brew split-brain）；重裝走 brew reinstall --cask codex",
     "runtime 乾淨時 preflight no-op（clean exit 0）、不阻擋正常流程；clean exit 1（複驗仍有可清項）才視為 preflight 失敗",
     "誤殺防護：split-brain broker 若仍有進行中 job（status ∈ {queued, running}；jobs 陣列新的在前，不可用 .jobs[-1] 讀「最新」）且 log 15 分內有更新（別的 session 現役 review）→ 跳過只警告、不殺；無 jq 無法判定活性 → 同樣保守跳過；stale broker.json 只刪檔不殺進程"
+  ]
+}
+```
+
+### F15 — autocodex 走 headless codex exec（取代 plugin broker 路徑）
+
+> 2026-07-20 根因終結（Fable）：F13/F14 都在補救「plugin 等待端無 watchdog」的下游症狀。讀 plugin v1.0.6 原始碼確認 `captureTurn` 只 await 一個「僅由 broker 轉發 `turn/completed` 才 resolve」的 promise（無 timeout/輪詢，`handleExit` 也不 reject 它），而執行端 broker→app-server 是 detached、照跑完並落檔——**通知一斷即永久靜默等待**。斷線源不只 split-brain（SessionEnd hook 殺共享 broker、broker busy 時 `withAppServer` 另開 app-server、前景 rescue 撞 Bash 10 分上限），故清孤兒無法根治。改以 headless `codex exec` 為傳輸層：完成訊號＝進程退出＋報告落檔。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix autocodex",
+  "setup": "主 agent 審查通過進 codex 階段；子情境：(a) 正常產出報告；(b) codex 進程結束但報告空；(c) codex 不在 PATH",
+  "expected_behavior": [
+    "以背景 Bash（run_in_background）跑 scripts/codex-exec-review.sh run --repo <path> --range <range> --round C{N}，NOT codex:rescue",
+    "送出的 prompt 仍是一行協議原文，不加 focus / 測試要求 / context files",
+    "背景執行後不輪詢、不自建 log mtime 或時間門檻的死亡偵測——等 harness 於進程結束時回叫",
+    "(a) exit 0 → 讀 stdout 指出的 report 路徑，findings 逐條讀原始碼獨立驗證",
+    "(b) exit 4 → 先 resume --job-dir <dir> 救一次；仍空才重跑一次 run；第二次仍失敗即判 blocked，走 blocked 模板（非終止模板），絕不第三次燒額度",
+    "(c) exit 5 → 停並回報使用者，不進 resume、不重試（環境錯誤重試無意義）",
+    "preflight 只跑 codex-runtime-hygiene.sh check；非 0 僅警告一行，不阻擋進入 codex 階段",
+    "主 agent 審查通過的結論不因 codex 環境故障翻盤"
   ]
 }
 ```
@@ -304,3 +331,4 @@
 | 2026-07-09 | Opus | F14 病根定位（proxy-pool-vpc，bun→brew split-brain 為 F13 死亡的上游根因） | 收孤兒 bun-era runtime + 清 stale broker.json → 補 `scripts/codex-runtime-hygiene.sh`（check/clean，shellcheck 通過、stale broker.json 自測 RED→GREEN）→ 掛進 SKILL.md Codex 節 preflight；煙霧測試 codex:rescue 完整回報告（job=done、broker v1.0.6+brew 健康）。GREEN 重測待下次 autocodex 實跑 |
 | 2026-07-09 | Fable | F14 腳本 deep-review R1（對照 plugin v1.0.6 原始碼實測） | 未通過（1 嚴重 6 中等）→ 修復：dot-glob 漏 state 目錄（誤殺現役）改 find、GNU stat 順序修正、無 jq 三態保守跳過、SIGKILL 補殺子進程改 TERM 前快照、check/clean exit 契約明確化（skip=3）、SKILL.md 刪「穩定可略」句 |
 | 2026-07-09 | Fable | F14 腳本 deep-review R2→R3 | R2 未通過（嚴重：`.jobs[-1]` 讀到**最舊** job——plugin jobs 陣列新的在前（unshift），現役 broker 誤判可清、防護形同虛設）→ TDD 修復：tests/run.sh 第 12 節行為測試（S1 迴歸先 RED 後 GREEN、e2e SKIP/收割/exit 契約），改掃任一 status ∈ {queued, running}、SIGKILL 前 argv 重驗 → 全套 PASS=114 → R3 通過（零 blocking）。教訓：活性判準要對照 plugin 原始碼驗，不能照文件措辭抄 |
+| 2026-07-20 | Fable | F15 根因終結（F13/F14 的上游）——plugin 等待端無 watchdog | 讀 plugin v1.0.6 原始碼定位：`captureTurn` 只 await「僅由 broker 轉發 `turn/completed` 才 resolve」的 promise，無 timeout/輪詢、`handleExit` 也不 reject 它 → 通知一斷即永久靜默等待；而 broker→app-server 為 detached，照跑完並落檔到 sessions。斷線源不只 split-brain（SessionEnd hook 殺共享 broker、broker busy 時 `withAppServer` 另開 app-server、前景 rescue 撞 Bash 10 分上限）→ **傳輸層整條換掉**：新增 `scripts/codex-exec-review.sh`（headless `codex exec`，完成訊號＝進程退出＋報告落檔），死亡偵測啟發式退役為 exit 契約（0/4/5/2）。tests/run.sh 第 17/18 節，全套 PASS=192；開發中被新測試逮到 job 目錄以時間戳命名會在同秒碰撞、把上輪報告當本輪產出（改 mktemp）。附帶修 `~/.codex/skills/repo-review` 停在 3/21 舊版（未 symlink）→ 新增 `scripts/ensure-codex-skills.sh` 掛進 dotsync 散佈。同日實戰 GREEN：C1/C2/C3 三輪走 exec 路徑皆一次成功（真實 `--json` 首事件帶 `thread_id`、背景回叫如預期、無卡死），C1 抓 5 條、C2 抓 3 條 true positive 全數修復、C3 零 findings 通過。**exit 4 救援階梯未被真實觸發**（三輪都成功），F15 子情境 (b) 仍待實戰 |

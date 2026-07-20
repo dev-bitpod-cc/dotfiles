@@ -5,7 +5,7 @@
 #   若正在跑的 app-server 用的 binary ≠ 現行 PATH 上的 codex（典型：codex 從 bun 遷到 brew，舊
 #   bun-era broker/app-server 未收成孤兒），兩套 runtime 會搶同一份 ~/.codex/*.sqlite 狀態互踩
 #   → review 長 turn 中途無聲猝死、companion status 永卡 verifying（zombie）。死掉的 broker 也會
-#   留下指向死 pid 的 stale broker.json。此腳本在 autocodex 呼叫 codex:rescue 前做 preflight。
+#   留下指向死 pid 的 stale broker.json。
 #
 # 用法（exit 契約）：
 #   codex-runtime-hygiene.sh check   # 只報告。0=乾淨；1=有可清項（孤兒 broker / stale json）；
@@ -13,7 +13,9 @@
 #   codex-runtime-hygiene.sh clean   # SIGTERM 孤兒 broker + 移除 stale broker.json/socket 目錄，再複驗。
 #                                    #   0=可清項全清（僅剩現役 skip 亦為 0）；1=複驗仍有可清項；2=用法錯誤
 #
-# 何時跑：autocodex 進 codex 階段、第一次呼叫 codex:rescue 前一律跑（乾淨即秒級 no-op）。
+# 何時跑（2026-07-20 起）：autocodex 已改走 headless `codex exec`（見 codex-exec-review.sh），
+#   不經 broker，故 autocodex 進 codex 階段前只跑 `check`——告知性，非 0 僅警告不阻擋。
+#   `clean` 會殺進程，服務的是仍走 broker 的 plugin 路徑（`/codex:*` 手動指令）的維護需求。
 set -uo pipefail
 
 MODE="${1:-check}"

@@ -8,6 +8,7 @@
 - 報告模板 — Autofix 終止（R5 未通過）
 - 報告模板 — Codex 第三方審查通過（含 Completeness 深井、False Positive 記錄）
 - 報告模板 — Codex 第三方審查終止（C3 仍有 true positive）
+- 報告模板 — Codex 第三方審查 blocked（救援階梯走完仍無報告）
 
 ## 報告模板 — 未通過（單 repo）
 
@@ -258,4 +259,42 @@
 
 ### Branch 狀態
 目前 branch 上有主 agent 審查 fix commits + codex fix commits。修復剩餘問題後，一併 squash 成乾淨 commit。
+```
+
+## 報告模板 — Codex 第三方審查 blocked（救援階梯走完仍無報告）
+
+**與終止模板的分野**：終止＝codex 審完了但沒收斂（有 findings、修不完）；blocked＝codex **根本沒審成**（拿不到報告）。兩者不可混用——blocked 沒有 findings 可列，硬套終止模板的「剩餘 True Positive／收斂失敗分析」會捏造不存在的結論。
+
+**主 agent 審查結論不受影響**：Step 1–5 的通過結論照常成立，本報告只說明第三方審查未能取得。
+
+```markdown
+## Codex 第三方審查 — blocked（未能取得審查結果）
+
+**審查範圍**:
+{每個 repo 的路徑和 commit range}
+
+### 發生了什麼
+
+| 嘗試 | 動作 | 結果 |
+|------|------|------|
+| 1 | `run --round C{N}` | exit {4/5}｜{報告空／環境錯誤說明} |
+| 2 | `resume --job-dir {dir}` | {無產出／未執行（環境錯誤不重試）} |
+| 3 | `run`（fresh 重試一次） | {無產出／未執行} |
+
+**job 目錄**：`{job dir}`（events.jsonl / stderr.log / stderr-resume.log 保留現場供事後診斷）
+{exit 5 的環境錯誤發生在 job 目錄建立之前，此欄填「未建立」；診斷資訊取腳本印在 stderr 的那行}
+
+### 判定
+第三方審查 blocked，**非**審查未通過。已依協議在一次 resume + 一次 fresh 重試後停止，不再消耗額度。
+
+### 主 agent 審查結論（不受影響）
+{一句話：Step 1–5 的結論與 fix commits 狀態}
+
+### 建議下一步
+- 環境錯誤（exit 5）→ 先修環境（codex 是否在 PATH／repo 與 range 是否正確），再重跑 `/deep-review autocodex`
+- 連續兩次無產出 → 視為環境問題，手動跑一次 `codex-exec-review.sh run` 觀察 stderr.log 再決定
+- 不想等 codex → 直接以主 agent 審查結論收尾，squash 現有 fix commits
+
+### Branch 狀態
+目前 branch 上有主 agent 審查 fix commits（若有）。可逕行 squash，或待第三方審查補做後一併處理。
 ```

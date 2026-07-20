@@ -27,6 +27,10 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **2026-07-17 dossier 增設總量治理(compaction)規則**:krepo 實證爛帳模式——Session Log append-only 佔 360/598 行、「進行中」殘留 ✅ 項(皆 /project skill 上線前的舊產物,結構先於規範半年);原規範只防「新增垃圾」、不防「總量單調膨脹」→ dossier.md 加修剪規則(完成即移出、里程碑留一季+常青、翻案決策刪、**死路不刪**、>300 行當次收斂)+ log Step 2 衛生檢查。krepo 已依此收斂 599→201 行(elandcomtw/krepo PR #16)。
 - **2026-07-17 dossier 記錄時點搬到事件當下**:/project「沒手感」根因是 skill 只在頭尾(spec/log)喚起,而決策/死路發生在過程中,等收尾 context 可能已壓縮——全域 CLAUDE.md 加即時記錄規則,log Step 2 從「回憶重建」降級為「核對補漏」。輕量判準與詢問收斂同理:儀式可減,Critical 不減。
 
+- **2026-07-20 autocodex 傳輸層改 headless `codex exec`,不再走 codex plugin 的 codex:rescue**:F13(殭屍 job)/F14(split-brain)都是同一根因的下游症狀——plugin 等待端 `captureTurn` 只 await「僅由 broker 轉發 `turn/completed` 才 resolve」的 promise,無 timeout/輪詢、`handleExit` 也不 reject 它,而執行端 broker→app-server 為 detached 照跑完並落檔;**通知一斷即永久靜默等待**,codex 其實早有報告。斷線源不只 split-brain(SessionEnd hook 殺共享 broker、broker busy 時 `withAppServer` 另開 app-server、前景 rescue 撞 Bash 10 分上限),清孤兒無法根治。改以 `codex exec` 後完成訊號是「進程退出+報告落檔」兩個 OS 層級事實,15 分鐘雙訊號死亡偵測退役為 exit 契約(0/4/5/2)。**引數與儀式不變**(一行協議、C1–C3、深井閘、squash 耦合全保留)。plugin 暫留(保 `/codex:transfer` 與退路)。
+- **2026-07-20 wrapper 的 range 驗證必須對照下游 repo-review 契約,不能只對照 git**:同一 bug class 在 codex 審查中出現三次(拼錯的 base、`∅` 顯示寫法、三點 range)——git 看來可容忍、下游 `review-context.sh` 明確拒絕,而放行的後果都一樣:codex 把錯誤寫進 report.md,報告非空 → wrapper 回 0 → 產出「成功但其實什麼都沒審」的報告。三點那條尤其值得記:它是主 agent R4 審查建議加的,還配了斷言把錯誤契約釘死,靠 codex 的下游視角才揪出。**跨腳本契約只能靠斷言釘死,stub 測不出來。**
+- **2026-07-20 codex skill 散佈補 `ensure-codex-skills.sh`,比照 `ensure-rc-source.sh`**:`~/.codex/skills/repo-review` 停在 3/21 實體目錄、dotfiles 已到 7/17(15KB),autocodex 的一行協議實際跑到舊 skill。setup 的 `__codex_link_skills` 只在跑 setup 時作用,而 dotsync 不套用——缺的是散佈路徑,不是連結邏輯。
+
 ## 死路(試過但放棄——防重工)
 
 - **「/project log 包裝/並存 /uap」**:`disable-model-invocation` 下無法鏈式呼叫,只能複製 pressure-tested 的 ship 防護邏輯——違反 single-source;功能上與「uap 強化」完全收斂,故直接取代。
@@ -39,6 +43,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
 - [ ] pressure-tests S8/S9 的沙盒未納入 `claude/evals/setup-sandboxes.sh`(2026-07-17 首輪為 ad-hoc 建置)——補腳本化以利重跑
 - [ ] SessionStart hook 的落後提醒實際輸出未在真實落後 clone 驗過(tests 有覆蓋、實戰未見)——下次任一主機 clone 落後時順手確認
+- [ ] autocodex exec 路徑的 **resume 分支**尚未實戰驗證:2026-07-20 同日 C1/C2/C3 三輪實跑皆一次成功(exit 0、282s/~200s/~90s,`--json` 首事件確實帶 `thread_id`、背景回叫如預期),故 exit 4 的救援階梯從未被真實觸發——只有 stub 覆蓋。下次遇到真實空報告時確認 resume 能救回,F15 子情境 (b) 才算 GREEN
+- [ ] codex plugin 去留待定:實質只當 codex:rescue 傳輸管道(22 筆歷史 job 全為 task-*,零 review;stopReviewGate 十個 workspace 全 false),exec 接管後僅剩 `/codex:transfer` 獨有——exec 路徑跑穩數輪後重新評估是否 uninstall
+- [ ] 其他主機的 `~/.codex/skills` 仍是舊實體目錄,須 `dotsync` 後才收斂(本次僅修本機 macs)
 - [ ] /project 手感驗證(後半段):2026-07-17 已在 krepo 實測 log→merge 一輪(PR #16 dossier 收斂 + 總量治理衛生檢查首戰,多 repo 偵測/Step 4 gate/merge 最後一哩皆如預期);**剩 spec→實作(即時記錄)半段待驗**——即時 dossier 記錄的判斷準確度以該輪觀察為據(該規則尚無 pressure-test)
 
 ## 已完成(里程碑)
