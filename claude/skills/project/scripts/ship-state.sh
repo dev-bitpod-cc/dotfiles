@@ -182,9 +182,10 @@ check_repo() {
     fi
 
     # -- 無變更 → docs-only gate（判定需要 session 記憶，交回 model）--
+    # 不在此早退：docs-only mode 隨後會產生 docs commit 走 Step 4/5，
+    # protection / ship-path / branch-first 的 verdict 仍須輸出（Step 1 不重跑偵測）
     if [ -z "$files" ] && [ "$n_commits" -eq 0 ] && [ "$n_dirty" -eq 0 ]; then
         echo "changes: NONE — do NOT exit yet: check session memory for already-shipped work (docs-only mode, Step 1 item 2)"
-        return 0
     fi
 
     # -- protection → ship path --
