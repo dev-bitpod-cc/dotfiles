@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——5 台主機(macmini/macs/eagle03/eagle06/db01)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-17)
+個人 dotfiles——5 台主機(macmini/macs/eagle03/eagle06/db01)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-20)
 
 ---
 
@@ -50,6 +50,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
+- ✅ **2026-07-20 autocodex 卡死根治——傳輸層改 headless `codex exec`**:讀 plugin v1.0.6 原始碼定位 F13/F14 的共同上游(等待端無 watchdog,通知一斷即永久靜默等待),改以進程退出+報告落檔為完成訊號,15 分鐘雙訊號死亡偵測退役為 exit 契約;新增 `codex-exec-review.sh` 與 `ensure-codex-skills.sh`(補 codex skill 散佈路徑,修 repo-review 停在 3/21 舊版)。主 agent R1–R5 + codex C1–C3(8 條 true positive 全修、C3 零 findings)、tests 233 全綠;**exec 路徑三輪實跑驗證通過,無卡死**。
 - ✅ **2026-07-17 /project 摩擦修復 + 全機隊生效**(PR #1/#2):輕量路徑、詢問收斂、merge 最後一哩(PR #1/#2 即首戰實測,含 gh 雙帳號身分切換補救)、即時 dossier 記錄(全域 CLAUDE.md 規則);pressure-tests 新增 S8/S9 + 回歸 S1 Sonnet 全 PASS(git 實查)、tests 150/150;dotsync 14 台同步,多主機工作流(含 /project 三模式、pull 偵測 hook)全機隊生效。
 - ✅ **2026-07-16 多主機工作流改造**(c673844):/project skill 取代 /uap、SessionStart pull 偵測 hook、dossier/transfer 模板、跨主機分流規則;deep-review autofix R1–R4(1嚴重5中等修畢)、沙盒 pressure-tests 5 情境 Sonnet 全 PASS。
 
