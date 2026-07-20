@@ -13,7 +13,7 @@
 ## PR / Git
 
 - **NEVER merge on your own** — only when the user explicitly says merge / bypass merge. "push" or "open a PR" alone does NOT include merge.
-- 使用者明說 merge 後的標準收尾：merge PR（預設 squash）→ 清 remote/本地 branch → 同步本地 default（序列見 `~/.dotfiles/claude/skills/project/references/ship-paths.md`「Merge 最後一哩」）。
+- 使用者明說 merge 後的標準收尾：merge PR（預設 squash）→ 清 remote/本地 branch → 同步本地 default（序列見 `~/.claude/skills/project/references/ship-paths.md`「Merge 最後一哩」）。
 - **NEVER push on your own** — after finishing an issue implementation or review fixes, commit and STOP; wait for the user's next instruction.
 - Conventional Commits: `<type>: <short desc>`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
 
@@ -23,7 +23,7 @@ When the user pastes third-party review findings, read the source code and verif
 
 ### 觸發詞「由 codex 進行第三方審查」（變體：「交給 codex 審查」「codex 第三方」）
 
-載入 `deep-review` skill，依其「**Codex 呼叫協議**」節以背景 Bash 執行 `codex-exec-review.sh run`（一行 prompt 由腳本固定、禁加 focus/測試/context——以該節為唯一權威，勿憑記憶重組 prompt；**不要**呼叫 `codex:rescue`，那條 plugin broker 路徑會靜默卡死）。失敗處理照該 skill 的 exit 契約（0 讀報告／4 resume 一次／5 停）。本觸發的專屬規則：
+載入 `deep-review` skill，執行方式一律依其「**Codex 呼叫協議**」節（唯一權威——呼叫指令、prompt 限制、exit 契約失敗處理都以該節為準，勿憑記憶重組、本檔不重述）；**不要**呼叫 `codex:rescue`（plugin broker 路徑會靜默卡死，理由見該節）。本觸發的專屬規則：
 
 - repo 路徑 + commit range 取最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊，range 直接沿用其 `base..head`（base 已錨定）；即使變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。只有報告未記錄 base 時，才回退用 `HEAD~1..HEAD`。
 - 收到 findings 後的處理判準：**最近一次 `/deep-review` 帶 `autofix`** → 驗證後自動修復並 commit；否則、或無法確定當時是否帶 autofix（如新 session）→ 列出 findings 等使用者決定。
@@ -101,7 +101,7 @@ When the user pastes third-party review findings, read the source code and verif
 特定情境下，相關 SOP 已抽成 skill 按需載入。遇以下情境**主動載入對應 skill**（避免 silent miss）：
 
 - 寫 **cron / 背景腳本（爬蟲/回補）/ pipeline** 的開始·完成·失敗 → `nc-notify`（必發通知；NC 不可用須靜默不影響主流程）
-- 使用者要求**「寄信 / mail 給我」** → `send-mail`（收件人預設 `jjshen@eland.com.tw`，勿用 `# userEmail` 推斷）
+- 使用者要求**「寄信 / mail 給我」** → `send-mail`（收件人依 skill 內〈收件人解析〉優先序，勿用 `# userEmail` 推斷）
 - 遇 **bug / 測試失敗 / 非預期行為** → `root-cause-first`（先 root cause 再修）
 - 使用者要 **/clear 但後續工作延續**（「交接」「接續上次的工作」）→ `handoff`（resume 必先 verify 錨點；消費即歸檔；**同主機限定**——跨主機延續走 repo STATUS.md）
 - 使用者要**移交專案給同事 / 換 owner**（「移交」「交接給同事」「請他接手」）→ **建議使用者執行** `/project transfer`（user-invoked only——該 skill 為 `disable-model-invocation`，勿嘗試以 Skill tool 載入；其 dossier 完整度檢查 + 移交指南、credentials 絕不進 git）

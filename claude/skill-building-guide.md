@@ -83,6 +83,7 @@ description: Extract text and tables from PDF files, fill forms, merge documents
 - **引用只能一層深**：所有 reference 檔直接從 SKILL.md 連出。巢狀引用（A→B→C）會讓 Claude 只 `head -100` 預覽、讀到不完整資訊
 - **> 100 行的 reference 檔開頭放 table of contents**，讓 Claude 預覽時看得到全貌
 - 檔名要描述性（`form_validation_rules.md` 不是 `doc2.md`）；用 forward slash，不用 Windows 反斜線
+- **路徑慣例（本 repo）**：skill 文件內凡是 runtime 要讀/執行的自家資源（`scripts/`、`references/`）一律寫 `~/.claude/skills/<name>/...`——該 symlink 由 setup 腳本建立、指向 repo 實際位置，與 clone 路徑解耦；只有描述「skill 原始碼在 repo 何處」（開發/編輯情境）才寫 `~/.dotfiles/claude/skills/`。同檔混用兩種寫法視為待修的不一致
 
 ## 三大 Use Case 類型
 
@@ -259,7 +260,7 @@ eval 結構（JSON）：`{skills, query, files, expected_behavior[]}`。目前�
 
 **核心品質**：description 具體含觸發詞且第三人稱 ／ body < 500 行 ／ 細節在獨立檔 ／ 無 time-sensitive 資訊 ／ 術語一致 ／ 範例具體 ／ 引用一層深 ／ workflow 步驟清楚
 **程式與腳本**：腳本自己解決不 punt ／ 顯式錯誤處理 ／ 無 voodoo constants ／ 列依賴 ／ forward slash ／ critical 操作有驗證 ／ 含 feedback loop
-**測試**：≥ 3 個 eval ／ Haiku+Sonnet+Opus 都測 ／ 真實情境測過 ／ 納入團隊回饋
+**測試**：≥ 3 個 eval ／ Haiku+Sonnet+Opus 都測 ／ 真實情境測過 ／ 納入團隊回饋 ／ **改動紀律型 skill 的 Critical・rationalization table・red flags 區塊後，重跑受影響的 eval 情境**（Iron Law 的顯性化：防護區塊的修改沒有 GREEN 重跑紀錄就不算完成）
 
 ## 撰寫語言政策（定向英文）★ 維護本檔與所有 skill 時一律遵循
 

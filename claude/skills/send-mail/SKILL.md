@@ -1,6 +1,6 @@
 ---
 name: send-mail
-description: "透過內部 SMTP relay 寄信給 eland 內部收件人（報表、查詢結果、長任務輸出）。Use when the user explicitly asks to email something — Chinese triggers：「寄信」「mail 給我」「寄給我」「寄到我信箱」「email 給」「把結果寄」. NOT for normal chat replies. 收件人解析優先序：明文 email → 代名詞/未指定皆預設 `jjshen@eland.com.tw` → 不確定才問；勿用 `# userEmail` 推斷。詳見下。"
+description: "透過內部 SMTP relay 寄信給 eland 內部收件人（報表、查詢結果、長任務輸出）。Use when the user explicitly asks to email something — Chinese triggers：「寄信」「mail 給我」「寄給我」「寄到我信箱」「email 給」「把結果寄」. NOT for normal chat replies. 收件人解析優先序：明文 email → 代名詞/未指定皆用預設工作信箱 → 不確定才問；勿用 `# userEmail` 推斷。詳見下。"
 user-invocable: true
 allowed-tools: Bash, Read, Write, Edit
 ---
@@ -47,7 +47,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-recipients = ["<resolved>@eland.com.tw"]      # 依收件人解析 fallback：明文 email→代名詞/未指定→jjshen；不確定先問
+recipients = ["<resolved>@eland.com.tw"]      # 依〈收件人解析〉優先序決定；不確定先問
 msg = MIMEMultipart("alternative")
 msg["From"] = "<task>@eland.com.tw"          # 依當前 repo/task 命名
 msg["To"] = ", ".join(recipients)             # header 的逗號字串僅供顯示
@@ -61,7 +61,7 @@ with smtplib.SMTP("172.17.1.143", 25, timeout=10) as s:
 
 ## 寄送前 checklist
 
-- [ ] 收件人已依 fallback 優先序解析（明文 email > 代名詞/未指定→`jjshen@eland.com.tw` > 不確定才問；勿用 `# userEmail` 推斷）
+- [ ] 收件人已依〈收件人解析〉優先序解析（勿用 `# userEmail` 推斷）
 - [ ] 寄件人為 `<repo-or-task>@eland.com.tw`
 - [ ] plain text + HTML 雙版本
 - [ ] 內容無 secrets / API keys
