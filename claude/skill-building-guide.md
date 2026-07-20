@@ -1,19 +1,20 @@
 # Claude Skill 建立指南（摘要）
 
-> **來源**（兩份，後者較新且為準）：
-> 1. Anthropic "The Complete Guide to Building Skills for Claude"（PDF，2026/03 公開）
+> **來源**（三份；通用撰寫規則以 2 為準，Claude Code 執行面以 3 為準）：
+> 1. Anthropic "The Complete Guide to Building Skills for Claude"（PDF，2026-01-29 發布，至 2026-07 查核無新版）
 >    - 原始 PDF：`~/Projects/Documents/The-Complete-Guide-to-Building-Skill-for-Claude.pdf`（工作機路徑；本機不存在時略過，逕以下方線上文件為準）
-> 2. **官方 "Skill authoring best practices" 線上文件**（持續更新，規則以此為準）
+> 2. **官方 "Skill authoring best practices" 線上文件**（持續更新，通用規則以此為準）
 >    - <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>
 >    - <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview>
->    - 本摘要擷取日期：**2026-06-02**
+> 3. **Claude Code skills 文件**（本 repo 的 skill 實際跑在 Claude Code，執行面機制以此為準）
+>    - <https://code.claude.com/docs/en/skills>（摘要見下方「Claude Code 特有機制」節）
 >
-> 兩份衝突時以線上 best-practices 頁面為準（下方已標注差異）。修改 skill 前若距擷取日期已久，建議重抓線上頁面確認有無新變更。
+> 本摘要擷取日期：**2026-07-21**。衝突時：通用撰寫規則以 2 為準、Claude Code 執行行為以 3 為準。修改 skill 前若距擷取日期已久，建議重抓線上頁面確認有無新變更。
 
 ## Skill 是什麼
 
 一個資料夾，包含指令集，教 Claude 處理特定任務或工作流程。
-核心機制：啟動時只預載各 skill 的 `name` + `description`（每個約 60 tokens）；任務相關時才讀 SKILL.md body；body 內引用的檔案再按需讀取（progressive disclosure）。
+核心機制：啟動時只預載各 skill 的 `name` + `description`（官方估每個約 100 tokens）；任務相關時才讀 SKILL.md body；body 內引用的檔案再按需讀取（progressive disclosure）。
 
 ## 資料夾結構
 
@@ -36,14 +37,7 @@ your-skill-name/           # kebab-case，不可有空格/底線/大寫
 
 ### 選用欄位
 
-```yaml
-license: MIT
-compatibility: Claude.ai, Claude Code   # 1-500 字元
-allowed-tools: "Bash(python:*) WebFetch" # 限制工具存取
-metadata:
-  author: Name
-  version: 1.0.0
-```
+官方 overview 頁現只列 `name` + `description` 兩個必要欄位（舊選用欄位 `license`/`compatibility`/`metadata` 已從頁面移除，2026-07 查核）。Claude Code 端另有一組擴充 frontmatter 欄位（`disable-model-invocation`、`allowed-tools`、`context: fork` 等），見「Claude Code 特有機制」節。
 
 ### 命名慣例（線上頁面新增建議）
 
@@ -75,7 +69,7 @@ description: Extract text and tables from PDF files, fill forms, merge documents
 
 ### Body 大小（★ 已從舊 PDF 的「5000 字」改為行數）
 
-- **SKILL.md body 保持在 500 行以內**（線上頁面明確標準，取代舊「5,000 字」）
+- **SKILL.md body 保持在 500 行以內**（線上頁面明確標準，取代舊「5,000 字」；overview 頁另標 body 約 <5k tokens，兩標準同義並用）
 - 逼近上限就拆到 references/
 
 ### 引用結構規則（線上頁面新增）
@@ -84,6 +78,40 @@ description: Extract text and tables from PDF files, fill forms, merge documents
 - **> 100 行的 reference 檔開頭放 table of contents**，讓 Claude 預覽時看得到全貌
 - 檔名要描述性（`form_validation_rules.md` 不是 `doc2.md`）；用 forward slash，不用 Windows 反斜線
 - **路徑慣例（本 repo）**：skill 文件內凡是 runtime 要讀/執行的自家資源（`scripts/`、`references/`）一律寫 `~/.claude/skills/<name>/...`——該 symlink 由 setup 腳本建立、指向 repo 實際位置，與 clone 路徑解耦；只有描述「skill 原始碼在 repo 何處」（開發/編輯情境）才寫 `~/.dotfiles/claude/skills/`。同檔混用兩種寫法視為待修的不一致
+
+## Claude Code 特有機制（code.claude.com skills 文件；2026-07 新增）
+
+> 本 repo 的 skill 全部跑在 Claude Code。以下為 Agent Skills 開放標準之外、Claude Code 擴充的執行面機制，與上方通用規則一併適用。custom commands 已併入 skills（`.claude/commands/deploy.md` 與 `.claude/skills/deploy/SKILL.md` 等價，後者可帶支援檔案）。
+
+### Frontmatter 擴充欄位
+
+| 欄位 | 作用 |
+|------|------|
+| `when_to_use` | 觸發補充語境（trigger phrases）；附加在 description 後，共用 listing 截斷額度 |
+| `argument-hint` / `arguments` | 自動補全提示／具名位置參數（供 `$name` 替換） |
+| `disable-model-invocation: true` | 僅使用者可 `/name` 觸發；description 不進 context（本 repo 的 `/project` 即用此） |
+| `user-invocable: false` | 僅 Claude 可觸發，`/` 選單隱藏（背景知識型 skill） |
+| `allowed-tools` | 觸發該 skill 的**那一 turn** 免詢問授權的工具；下一則使用者訊息即失效 |
+| `disallowed-tools` | skill 生效期間從工具池移除（如背景 loop 禁 `AskUserQuestion`） |
+| `context: fork` + `agent` | skill 跑在 forked subagent context，`agent` 指定 subagent 類型 |
+| `model` / `hooks` | 指定執行模型／綁定 skill 生命週期的 hooks |
+
+- **截斷警告**：description + when_to_use 在 skill listing 合併截斷於 **1,536 字元**——關鍵 use case 放最前面。（platform 端另有 description ≤1,024 字元的上傳驗證上限，兩者是不同機制。）
+
+### Content lifecycle（影響「body 要多精簡」的判斷）
+
+- Skill 載入後**整個 session 留在 context**——每行都是持續 token 成本；指令要寫成 standing instructions 而非一次性步驟，之後不會重讀檔案。（例外：`allowed-tools` 授權單 turn 即清。）
+- 重複 invoke 且渲染內容相同 → 不重複注入（v2.1.202+）。
+- Auto-compaction：每個已載入 skill 保留前 **5,000 tokens**、全部共享 **25,000 tokens** 預算（從最近觸發者開始填，塞不下的整個丟棄）——超長 skill 壓縮後尾段會消失，關鍵規則置頂又多一個理由。
+
+### 字串替換與動態 context
+
+- Body 內可用：`$ARGUMENTS`、`$0`/`$1`（位置參數）、`$name`（frontmatter `arguments` 宣告）、`${CLAUDE_PROJECT_DIR}`（v2.1.196+，專案根路徑）。字面 `$` 用 `\$` 跳脫。
+- **Dynamic context injection**：body 中 `` !`cmd` `` 一行會在 Claude 讀到內容**之前**先執行、以輸出取代該行（如 `` !`git diff HEAD` `` 讓指令抵達時已附當下 diff）。
+
+### skill-creator eval runner
+
+官方 `skill-creator` plugin 已提供自動化 eval loop：test cases 存 skill 目錄的 `evals/evals.json`、每 case 開 fresh subagent 隔離執行、自動 grading、with/without-skill benchmark、兩版本盲測 A/B、description 觸發率調校。詳見 <https://agentskills.io/skill-creation/evaluating-skills>。
 
 ## 三大 Use Case 類型
 
@@ -152,7 +180,7 @@ Context window 是公共財。**預設 Claude 已經很聰明**，只加它沒�
 4. **寫最小指令**：剛好補足 gap、通過 eval
 5. **迭代**：跑 eval、對比 baseline、refine
 
-eval 結構（JSON）：`{skills, query, files, expected_behavior[]}`。目前無內建 runner，需自建——本 repo 的手動 runner（Agent 工具 A/B 法）與沙盒建置見 `claude/evals/README.md`。
+eval 結構（JSON）：`{skills, query, files, expected_behavior[]}`。platform 端無內建 runner；**Claude Code 端 `skill-creator` plugin 已提供自動化 eval loop**（見「Claude Code 特有機制」節）。本 repo 既有手動 runner（Agent 工具 A/B 法）與沙盒建置見 `claude/evals/README.md`。
 
 ### 三種測試
 
