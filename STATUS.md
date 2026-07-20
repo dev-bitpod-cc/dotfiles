@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——5 台主機(macmini/macs/eagle03/eagle06/db01)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-20)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-20)
 
 ---
 
