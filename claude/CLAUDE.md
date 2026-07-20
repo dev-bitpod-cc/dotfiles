@@ -58,6 +58,8 @@ When the user pastes third-party review findings, read the source code and verif
 - `datetime.now()` → 注意 timezone，需要 UTC 用 `datetime.now(UTC)`
 - float 比較 → 金額、分數不要用 `==` 比較浮點數
 - 大量資料迴圈內呼叫 API/DB → 改用批次操作
+- **shell 訊息裡 `$var` 緊接全形標點** → bash 會把全形字元併入變數名（`"（exit=$rc）"` → `set -u` 下噴 `rc）: unbound variable`）。繁中訊息幾乎必踩，且**只在錯誤路徑觸發**、正常測試照樣全綠。一律寫 `${var}`。（dotfiles 有 `tests/run.sh` 第 1b 節 gate 擋，其他 repo 沒有）
+- **`sd` 的替換字串含 shell 變數** → `$job` 會被當成 capture group 展開為空，靜默毀損程式碼且過得了 `bash -n` 與 shellcheck。含 `$` 的替換改用 Edit 或 python 字面替換
 
 ## 測試
 
