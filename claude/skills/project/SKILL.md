@@ -27,7 +27,7 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write
 
 開工儀式：把要做的事從「願望」變成「可執行的工作合約」。
 
-1. 無 STATUS.md → 從模板 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，與使用者確認「專案一句話定位」。已存在但非 dossier（撞名的領域產物）→ 停下告知，不覆寫。
+1. 無 STATUS.md → 從模板 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，與使用者確認「專案一句話定位」。已存在但非 dossier（撞名的領域產物；判準＝`ship-state.sh <repo>` 輸出的簽章不符 `dossier-flag:` 行，命名互斥規則見 `references/dossier.md`）→ 停下告知，不覆寫。
 2. 與使用者釐清後，把工作項寫入「進行中」章節的 spec 區：
    - **Context**（為什麼做）／**Goal**（做到什麼程度算完成）／**Acceptance Criteria**（怎麼驗證）／**Constraints**（不能碰什麼）
    - 模糊處直接問、不猜——spec 寫得越清楚，後續 agent 的工作越像執行合約而非猜意圖。
@@ -96,12 +96,17 @@ These are hard constraints. Read them before touching git.
 
 #### 引數前處理（repo 鎖定）
 
-模式 token（若有）之後的第一個 token 若是 **repo 指定**，直接鎖定該 repo、**跳過下方多 repo 偵測互動**；其餘 token 當 module 過濾（Step 2 用）。判定該 token 是否為 repo：
+模式 token（若有）之後的第一個 token 若是 **repo 指定**，直接鎖定該 repo、**跳過下方多 repo 偵測互動**；其餘 token 當 module 過濾（Step 2 用）。判定該 token：
 
-- `.` → pwd 所在的 git repo 根（`git rev-parse --show-toplevel`）。
-- **解析得到 git repo 根**的路徑（`git -C <token> rev-parse --show-toplevel` 成功，且 `realpath <token>` == 該 toplevel 輸出——**兩端都正規化後比對，勿裸字串比對**：`--show-toplevel` 回傳已解 symlink 的絕對路徑，token 可能是相對路徑/含 symlink，直接比字串會 false-negative；相等即指向 repo 根、非子目錄）→ 該 repo。**僅含 `/` 不足以判定 repo**——`docs/plans`、`knowledge-commander/`、`src/foo` 這類 module/子路徑 scope 同樣含 `/`，會解析到所屬 repo 根（≠ token 本身）→ 不鎖定，續當 module。
-- 否則比對 session 記憶中的 repo 根 basename（如 `krepo`、`dotfiles`）→ 命中即該 repo。
-- 都不命中 → 該 token 也當 module，走下方多 repo 偵測。
+```
+~/.claude/skills/project/scripts/ship-state.sh resolve <token>
+```
+
+照 verdict 走（**the script IS the path/realpath/toplevel logic — do not re-derive it**）：
+
+- `resolve: REPO <root>` → 鎖定該 repo。
+- `resolve: MODULE` → 當 module 過濾，不鎖定（`docs/plans` 這類子路徑 scope 落在這裡）。
+- `resolve: UNKNOWN` → 比對 session 記憶中的 repo 根 basename（如 `krepo`、`dotfiles`）——命中即鎖定該 repo；不命中 → 該 token 也當 module，走下方多 repo 偵測。（basename 比對需要 session 記憶，故留在 model 端。）
 
 鎖定單一 repo 後 → 直接進 Step 1（不問多 repo 清單）。
 
@@ -128,14 +133,18 @@ These are hard constraints. Read them before touching git.
 
 對每個 repo：
 
-1. **狀態偵測（單一來源）**：沿用 Step 0 的 `ship-state.sh` 輸出（單 repo 鎖定時在此直跑一次）——每 repo 印出 `branch` / `remotes`（多 remote 附 fork 提示）/ `default` / `files-vs-default`（三點，branch 自身帶來的檔）/ `commits-ahead`（兩點，領先 default 的 commit）/ `working-tree`（porcelain 含 untracked）/ `misplaced`（誤 commit 在本地 default 的警示）/ `protection` / `ship-path` / `branch-first`。**Do not re-run the underlying git/gh commands one by one — the script IS the detection.**
+1. **狀態偵測（單一來源）**：沿用 Step 0 的 `ship-state.sh` 輸出（單 repo 鎖定時在此直跑一次）——每 repo 印出 `branch` / `remotes`（多 remote 附 fork 提示）/ `default` / `files-vs-default`（三點，branch 自身帶來的檔）/ `commits-ahead`（兩點，領先 default 的 commit）/ `working-tree`（porcelain 含 untracked）/ `misplaced`（誤 commit 在本地 default 的警示，附 `branch-first-cmd:` 供第 5 項照抄）/ `dossier`（STATUS.md 衛生訊號，Step 2 用）/ `protection` / `ship-path` / `branch-first`。**Do not re-run the underlying git/gh commands one by one — the script IS the detection.**
 2. **變更集**（= 此 branch **相對 default 的變更**，即 PR 將含的內容；**不等於「未 push」**——已 push 到 feature branch upstream 的 commit 仍落在此範圍，push 狀態由 Step 5 處理且 push 為冪等）：取腳本的 `files-vs-default` + `working-tree` 合併為完整**檔案**清單（Step 2 判模組、Step 4 列變更檔都靠它；`commits-ahead` 只有主旨、無檔名，deep-review 交接的「clean tree + 只剩 branch commit」情境靠 `files-vs-default` 列檔）。無變更（腳本印 `changes: NONE`）→ 跳過此 repo，**除非符合下述 docs-only mode**。
    **Docs-only mode**：repo git 無變更（tree clean、無領先 default 的 commit），但 session 記憶中有本 session **已 ship**（已 merge／已 push）的變更 → 不跳過。變更集改由那批 commit 重建檔案清單：逐 commit `git -C <repo> show --name-only <sha>`（已 merge 進 default 者用 default 上的對應 commit）。後續步驟照常：Step 2 據此同步文檔、Step 3 只會產生 `docs:` commit、branch-first／protection／Step 4 確認全部適用；Step 2 掃完確認文檔皆已同步 → 該 repo 無事可做，如實回報。**A clean tree does not mean "nothing to ship" — "code shipped, docs lagging" is the common case this mode exists for.**
 3. **branch protection**：取腳本的 `protection:` verdict（classic + ruleset 都查過）——`PROTECTED` / `OPEN` / `UNKNOWN → treat as PROTECTED`。**Never reinterpret the script's UNKNOWN as "probably open" — Unknown = protected, the script already says so.** verdict 附 `viewerPermission=READ`（classic `Not Found`）→ 身分分離情境，後續處置（`git push --dry-run` 探權限、Step 4 摘要點明、不自行硬推）見 `references/ship-paths.md`。
 4. **決定 ship 路徑**：取腳本的 `ship-path:`——protected（或未知）→ **PR 路徑**（推 feature branch + 必開 PR）；確定無保護 → **直接 push 路徑**（推 feature branch，PR 可選）。**兩條路徑都推 feature branch、都不直推 default**（branch-first 無條件）——「直接 push」指**省去開 PR 的步驟、直接 push 該 branch**，不是直推 default。把變更合進 default branch 一律是**使用者**的事（agent 不 merge、不直推 default）。
-5. **Branch-first（無條件，依全域「if on default branch, branch first」）**：目標——**到 Step 5 送出前，當前 branch 一定不是 default branch（也不是 detached HEAD）**，**不論 protection**。已在 feature branch（如 deep-review 結尾）→ 跳過。否則依狀態二擇一：
-   - **當前在 default branch 或 detached HEAD，變更尚未 commit，或已 commit 在 detached HEAD 上**（情況 A）→ `git -C <repo> switch -c <type>/<slug>`（type 取自變更語意 feat/fix/docs…，slug kebab-case）：working-tree 變更跟著切過去，**detached HEAD 上已有的 commit 也一併被新 branch 接走**（不需情況 B 的 ref 重置——detached HEAD 不移動任何 branch ref）。在 default branch 上時務必**commit 之前**先做。
-   - **變更已誤 commit 在本地 default branch**（且未 push，**無論是否還有未 commit 變更**）（情況 B）→ `git -C <repo> branch <feature>` 保住 commit → `git -C <repo> switch <feature>` → `git -C <repo> branch -f <default> origin/<default>` 把本地 default 退回 remote。**不 checkout default、不 `reset --hard`**——mixed state（部分已 commit、部分還在 working tree）下切回 default 再 hard reset 會永久銷毀未 commit 變更。完整序列見 `references/ship-paths.md` 情況 B。
+5. **Branch-first（無條件，依全域「if on default branch, branch first」）**：目標——**到 Step 5 送出前，當前 branch 一定不是 default branch（也不是 detached HEAD）**，**不論 protection**。已在 feature branch（如 deep-review 結尾）→ 跳過。否則執行：
+
+   ```
+   ~/.claude/skills/project/scripts/branch-first.sh <repo> <type>/<slug>
+   ```
+
+   （ship-state 有印 `branch-first-cmd:` 時整行照抄、填上 type/slug；type 取自變更語意 feat/fix/docs…，slug kebab-case。）情況 A（default/detached 上無誤 commit → `switch -c`，working-tree 變更與 detached commit 跟隨）與情況 B（誤 commit 在本地 default → 救援序列 + porcelain 前後快照驗證）由腳本自動判定；任何 ambiguous（分岔、branch 撞名、無 remote）→ `verdict: STOP` 交回處理，零 mutation。在 default branch 上務必 **commit 之前**先跑。**Do not hand-type the rescue sequence — the script IS the mutation path**（手動 fallback 僅供除錯，見 `references/ship-paths.md`）。
    > 做完此步，**Step 5 一律推 feature branch，絕不直推 default branch**——即使確定無保護（branch-first 無條件，「無保護→直接 push」推的也是 feature branch，不是 default）。
 6. **Squash 提醒**：branch 上若有連續 `fix:`/`refactor:`（review 迭代痕跡）→ 列入 Step 4 摘要附註提醒可先 squash，**不在此單獨停下**（deep-review 正常已 squash，通常無需；已 push 的 commit squash 後 push 需 `--force-with-lease`）。
 
@@ -146,9 +155,8 @@ These are hard constraints. Read them before touching git.
 - **STATUS.md（dossier；章節語意見 `references/dossier.md`）**：
   - 本次工作的**關鍵決策（附理由）／死路／新增技術債** → 寫入對應章節。若工作過程已依全域規則**事件當下就地記錄**，本步為**核對補漏**而非重建；未記錄的部分此刻 session 記憶還在，是最後時機。只記 git 推不出來的（為什麼、放棄了什麼、還欠什麼），進度細節留給 commit。
   - 里程碑達成 → 「進行中」項收斂或移入「已完成」；「下一步」隨進度改寫（跨主機接續的交接點就在這裡）。
-  - 偵測過期：STATUS.md 最後 commit 落後 repo 活動 > 30 天 → 列入 Step 4 摘要附註提醒 dossier 過期、本次重點補齊。
-  - 衛生檢查（總量治理，規則見 `references/dossier.md`）：「進行中」有 ✅ 完成項 → 當場移入里程碑；全檔 > 300 行或存在規範外章節（如 Session Log）→ 當次收斂（蒸餾＋歸檔 docs/archive/），並列入 Step 4 附註告知。
-  - 不存在且 repo 非 trivial（有持續開發跡象）→ 列入 Step 4 摘要附註**建議**從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，經同意才建、不硬塞（不提前單獨詢問）。
+  - 衛生檢查（總量治理）：偵測訊號取 Step 1 同一份腳本輸出的 `dossier:` / `dossier-flag:` 行——**門檻常數單一來源在 ship-state.sh**（references 若提及數字僅為說明性引用、以腳本為準）；章節語意與收斂規則見 `references/dossier.md`。逐 flag 處置：「進行中」含 ✅ → 當場移入里程碑；全檔過長或規範外章節（Session Log）→ 當次收斂（蒸餾＋歸檔 docs/archive/）並列入 Step 4 附註告知；過期 → 列入 Step 4 附註提醒、本次重點補齊；簽章不符（撞名領域產物）→ 停下告知，勿當 dossier 改。
+  - `dossier: NONE` 且 repo 非 trivial（有持續開發跡象）→ 列入 Step 4 摘要附註**建議**從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，經同意才建、不硬塞（不提前單獨詢問）。
 - 涉及模組的 `**/CLAUDE.md`（只動受影響的）。
 - 相關 `docs/plans/*.md`（存在時）。
 - 所有更動文檔頂部的 `updated` 日期改為今天（YYYY-MM-DD；STATUS.md 的對應欄位名為「更新日期」）。

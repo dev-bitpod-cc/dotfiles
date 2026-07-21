@@ -12,7 +12,8 @@
 #   6. render-ssh-config.sh 區塊替換、--check、marker 防呆
 #   7. add-new-host.sh --dry-run 煙霧測試（不動任何檔案）
 #   8. git-hygiene.sh（ready4quit skill script）verdict 判定
-#   9. ship-state.sh（project skill script）偵測與 protection 判定（gh stub）
+#   9. ship-state.sh（project skill script）偵測與 protection 判定（gh stub；含 resolve 子指令 / dossier 偵測）
+#  9b. branch-first.sh（project skill script）情況 A/B 判定與誤 commit 救援序列（真 git fixture）
 #  10. review-state.sh（deep-review skill script）scope-priority / round / branch-first / continuity 判定
 #  11. review-context.sh（repo-review skill script）range 解析 / guidance / autofix gate（含分岔 base / detached HEAD / 閘序）
 #  12. repo-review skill packaging（evals 不進 runtime context）
@@ -83,12 +84,13 @@ fullwidth_hits="$(LC_ALL=C grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^[:print:][:space:
     "$ROOT"/claude/scripts/*.sh \
     "$ROOT"/claude/skills/*/scripts/*.sh \
     "$ROOT"/codex/skills/*/scripts/*.sh \
-    "$ROOT/shell/functions.sh")"
+    "$ROOT/shell/functions.sh" \
+    "$ROOT/tests/run.sh")"
 fullwidth_rc=$?
 # grep 的 exit：0=有命中、1=無命中、>1=執行錯誤（後者必須大聲失敗，不可當成乾淨）
 fullwidth_hits="$(printf '%s\n' "$fullwidth_hits" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)"
 if [ "$fullwidth_rc" -gt 1 ]; then
-    bad "全形標點 gate 無法執行（grep rc=$fullwidth_rc）——不可視為通過"
+    bad "全形標點 gate 無法執行（grep rc=${fullwidth_rc}）——不可視為通過"
 elif [ -z "$fullwidth_hits" ]; then
     ok "無 \$var 緊接全形/多位元組字元的寫法"
 else
@@ -303,6 +305,7 @@ if echo "$out" | grep -q "branch-first: REQUIRED"; then ok "main + 髒 tree → 
 (cd "$TMP/ss-work" && "${GITC[@]}" add new.txt && "${GITC[@]}" commit -qm "oops on main")
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ss-work")"
 if echo "$out" | grep -q "misplaced: WARNING"; then ok "誤 commit 在 main → misplaced WARNING"; else bad "misplaced 未偵測"; fi
+if echo "$out" | grep -q "branch-first-cmd: .*branch-first\.sh"; then ok "misplaced → 附 branch-first.sh 呼叫指令供照抄"; else bad "misplaced 未附 branch-first-cmd"; fi
 
 # 全乾淨 → changes NONE + docs-only 提醒；protection/ship-path/branch-first 仍須輸出
 # （docs-only mode 隨後會產生 docs commit 走 Step 4/5，Step 1 取 verdict 不可缺）
@@ -325,6 +328,292 @@ if echo "$out" | grep -q "remotes: NONE"; then ok "無 remote → STOP 告知"; 
 assert_rc "非 git repo → exit 1" 1 $?
 "$SS_SCRIPT" >/dev/null 2>&1
 assert_rc "無引數 → exit 2" 2 $?
+
+# --- resolve 子指令（Step 0 repo-token 判定）---
+
+ss_top="$(git -C "$TMP/ss-work" rev-parse --show-toplevel)"
+
+out="$("$SS_SCRIPT" resolve "$TMP/ss-work")"
+assert_rc "resolve repo 根（絕對路徑）→ exit 0" 0 $?
+if echo "$out" | grep -qF "resolve: REPO $ss_top"; then ok "repo 根 → REPO + toplevel"; else bad "repo 根未判 REPO（${out}）"; fi
+
+out="$( (cd "$TMP/ss-work" && "$SS_SCRIPT" resolve .) )"
+if echo "$out" | grep -qF "resolve: REPO $ss_top"; then ok "'.' → REPO（pwd 所在 repo 根）"; else bad "'.' 未判 REPO（${out}）"; fi
+
+mkdir -p "$TMP/ss-work/sub/dir"
+out="$( (cd "$TMP/ss-work" && "$SS_SCRIPT" resolve sub/dir) )"
+if echo "$out" | grep -q "resolve: MODULE"; then ok "repo 內子路徑 → MODULE（不鎖定）"; else bad "子路徑未判 MODULE（${out}）"; fi
+
+# '.' 在 repo 子目錄下也必須指向所屬 repo 根（舊 SKILL.md 契約：`.` → pwd 所在的 git repo 根）
+out="$( (cd "$TMP/ss-work/sub/dir" && "$SS_SCRIPT" resolve .) )"
+if echo "$out" | grep -qF "resolve: REPO $ss_top"; then ok "子目錄下 '.' → REPO（舊契約語意）"; else bad "子目錄下 '.' 未判 REPO（${out}）"; fi
+
+ln -s "$TMP/ss-work" "$TMP/ss-link"
+out="$("$SS_SCRIPT" resolve "$TMP/ss-link")"
+if echo "$out" | grep -qF "resolve: REPO $ss_top"; then ok "symlink 到 repo 根 → REPO（realpath 正規化）"; else bad "symlink 未判 REPO（${out}）"; fi
+
+out="$( (cd "$TMP" && "$SS_SCRIPT" resolve ss-work) )"
+if echo "$out" | grep -qF "resolve: REPO $ss_top"; then ok "相對路徑到 repo 根 → REPO"; else bad "相對路徑未判 REPO（${out}）"; fi
+
+# CDPATH 誘餌：cd builtin 吃環境 CDPATH，相對 token 會被拐去別處 → 必須隔離
+mkdir -p "$TMP/cdpath-decoy/ss-work"
+out="$( (cd "$TMP" && CDPATH="$TMP/cdpath-decoy" "$SS_SCRIPT" resolve ss-work) )"
+if echo "$out" | grep -qF "resolve: REPO $ss_top"; then ok "CDPATH 誘餌下相對路徑仍判 REPO（cd 已隔離）"; else bad "CDPATH 干擾 resolve 判定（${out}）"; fi
+
+out="$("$SS_SCRIPT" resolve "$TMP/no-such-token")"
+assert_rc "resolve 不存在路徑 → exit 0（verdict 即成功）" 0 $?
+if echo "$out" | grep -q "resolve: UNKNOWN"; then ok "不存在路徑 → UNKNOWN（交回 session 記憶比對）"; else bad "不存在路徑未判 UNKNOWN（${out}）"; fi
+
+out="$("$SS_SCRIPT" resolve "$TMP")"
+if echo "$out" | grep -q "resolve: UNKNOWN"; then ok "repo 外目錄 → UNKNOWN"; else bad "repo 外目錄未判 UNKNOWN（${out}）"; fi
+
+"$SS_SCRIPT" resolve >/dev/null 2>&1
+assert_rc "resolve 無 token → exit 2" 2 $?
+
+# --- dossier 偵測行（Step 2 衛生檢查；門檻單一來源 = 本腳本）---
+
+# 無 STATUS.md → dossier: NONE
+git init --bare -q "$TMP/ds-origin.git"
+git init -q -b main "$TMP/ds-work"
+(cd "$TMP/ds-work" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/ds-origin.git" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier: NONE"; then ok "無 STATUS.md → dossier: NONE"; else bad "缺 dossier: NONE 行"; fi
+
+# 乾淨 dossier（<300 行、進行中無 ✅、無 Session Log、剛 commit）→ 無 flag
+# （已完成節的 ✅ 是合法用法，不得誤報——負向測試就藏在這份 fixture 裡）
+cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
+# 測試專案 STATUS
+
+## 進行中
+- 項目一：還在做
+
+## 關鍵決策（附理由）
+- 選了 X 因為 Y
+
+## 已完成（里程碑）
+- ✅ 2026-07-01 已完成項（合法 ✅，不應觸發 flag）
+DOSSIER
+(cd "$TMP/ds-work" && "${GITC[@]}" add STATUS.md && "${GITC[@]}" commit -qm "docs: dossier")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier: STATUS.md"; then ok "有 STATUS.md → dossier 行含行數"; else bad "缺 dossier: STATUS.md 行"; fi
+if echo "$out" | grep -q "dossier-flag:"; then bad "乾淨 dossier 不應有 flag（$(echo "$out" | grep 'dossier-flag:')）"; else ok "乾淨 dossier → 無 dossier-flag（已完成節 ✅ 未誤報）"; fi
+
+# 「進行中」含 ✅ → flag（working tree 內容即測，不需 commit）
+cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
+# 測試專案 STATUS
+
+## 進行中
+- ✅ 做完了卻沒移走的項目
+- 項目二：還在做
+
+## 已完成（里程碑）
+- 無
+DOSSIER
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then ok "進行中含 ✅ → flag"; else bad "進行中 ✅ 未偵測"; fi
+
+# 規範外章節（Session Log）→ flag
+cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
+# 測試專案 STATUS
+
+## 進行中
+- 項目
+
+## Session Log
+- 2026-07-01 做了一堆事
+DOSSIER
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*Session Log"; then ok "Session Log 章節 → flag"; else bad "Session Log 未偵測"; fi
+
+# 全檔 > 300 行 → flag
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; seq 1 310 | sed 's/^/- filler /'; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*> 300"; then ok "全檔 >300 行 → flag"; else bad ">300 行未偵測"; fi
+
+# 簽章不符：STATUS.md 存在但非 dossier（撞名領域產物，無「進行中」章節）→ flag
+cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
+# 爬蟲設定檢查表
+
+## 站台清單
+- site-a
+- site-b
+DOSSIER
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*簽章"; then ok "撞名非 dossier → 簽章不符 flag"; else bad "簽章不符未偵測"; fi
+
+# 簽章假陽性防護：恰含「進行中」字樣標題的領域文件仍非 dossier（簽章需雙訊號——
+# 誤放行會讓 spec/log 模式直接編輯領域文件，比誤攔截危險）
+cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
+# 部署狀態看板
+
+## 進行中的部署
+- api-server v2 rolling update
+
+## 機器清單
+- host-a
+DOSSIER
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*簽章"; then ok "僅含進行中字樣標題 → 仍判簽章不符（雙訊號）"; else bad "簽章假陽性：單訊號誤認 dossier"; fi
+
+# 簽章需標題語意錨定：兩個訊號都被「子字串」命中的領域看板（進行中的部署/已完成的部署）
+# 仍非 dossier——章節名必須是標題結尾，不是任意子字串
+cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
+# 部署狀態看板
+
+## 進行中的部署
+- api-server v2 rolling update
+
+## 已完成的部署
+- web v1
+DOSSIER
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*簽章"; then ok "雙訊號皆子字串命中 → 仍判簽章不符（端錨定）"; else bad "簽章假陽性：子字串比對誤認 dossier"; fi
+
+# fenced code block 內的範例標題不算章節
+cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
+# 工具說明文件
+
+```markdown
+## 進行中
+## 已完成(里程碑)
+```
+
+## 使用方式
+- 照上面範例寫
+DOSSIER
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*簽章"; then ok "fenced 範例標題 → 仍判簽章不符（剝圍欄）"; else bad "簽章假陽性：fenced 範例標題誤認 dossier"; fi
+
+# 巢狀圍欄（CommonMark：closer 須同字元且長度 ≥ opener）：四反引號外層包三反引號範例，
+# 內層 ``` 不得誤判關欄——否則範例標題洩出、簽章誤放行
+cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
+# 工具說明文件
+
+````markdown
+範例模板：
+```
+## 進行中
+## 已完成(里程碑)
+```
+````
+
+## 使用方式
+- 照上面範例寫
+DOSSIER
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*簽章"; then ok "巢狀圍欄範例 → 仍判簽章不符（opener 字元/長度追蹤）"; else bad "簽章假陽性：內層三反引號誤關外層四反引號圍欄"; fi
+
+# 過期：STATUS.md 最後 commit 落後 repo 活動 > 30 天 → flag
+# （固定舊日期使 lag 恆 >30 天，不依賴執行當日）
+git init -q -b main "$TMP/ds-stale"
+(cd "$TMP/ds-stale" \
+    && printf '# STATUS\n\n## 進行中\n- 舊項目\n' > STATUS.md \
+    && "${GITC[@]}" add STATUS.md \
+    && GIT_AUTHOR_DATE='2026-01-01T00:00:00' GIT_COMMITTER_DATE='2026-01-01T00:00:00' \
+       "${GITC[@]}" commit -qm "docs: old dossier" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm "feat: recent work" \
+    && git init --bare -q "$TMP/ds-stale-origin.git" \
+    && git remote add origin "$TMP/ds-stale-origin.git" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-stale")"
+if echo "$out" | grep -q "dossier-flag:.*落後 repo 活動"; then ok "STATUS.md 落後 repo 活動 >30 天 → 過期 flag"; else bad "過期未偵測"; fi
+
+echo "▶ 9b. branch-first.sh 情況 A/B 判定與救援序列"
+BF_SCRIPT="$ROOT/claude/skills/project/scripts/branch-first.sh"
+
+git init --bare -q "$TMP/bf-origin.git"
+git init -q -b main "$TMP/bf-work"
+(cd "$TMP/bf-work" \
+    && echo base > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/bf-origin.git" && git push -qu origin main)
+
+# 情況 A：在 main、working tree 有未 commit 變更、無誤 commit → switch -c，變更跟隨
+echo dirty > "$TMP/bf-work/wip.txt"
+out="$("$BF_SCRIPT" "$TMP/bf-work" feat/a)"
+assert_rc "情況 A → exit 0" 0 $?
+if echo "$out" | grep -q "case: A" && echo "$out" | grep -q "verdict: OK"; then ok "情況 A 判定 + OK"; else bad "情況 A 判定錯誤（${out}）"; fi
+assert_eq "情況 A 後 HEAD 在 feature branch" "feat/a" "$(git -C "$TMP/bf-work" symbolic-ref --short HEAD)"
+if [ -f "$TMP/bf-work/wip.txt" ]; then ok "情況 A working tree 變更跟隨"; else bad "情況 A 弄丟 working tree 變更"; fi
+assert_eq "情況 A main 未動（== origin/main）" \
+    "$(git -C "$TMP/bf-work" rev-parse origin/main)" "$(git -C "$TMP/bf-work" rev-parse main)"
+(cd "$TMP/bf-work" && rm wip.txt && git switch -q main && git branch -qD feat/a)
+
+# 情況 B：誤 commit 在本地 main（未 push）、tree clean → branch 保住 → switch → branch -f 退回
+(cd "$TMP/bf-work" && echo v2 > f.txt && "${GITC[@]}" commit -qam "oops: on main")
+out="$("$BF_SCRIPT" "$TMP/bf-work" feat/b)"
+assert_rc "情況 B → exit 0" 0 $?
+if echo "$out" | grep -q "case: B" && echo "$out" | grep -q "verdict: OK"; then ok "情況 B 判定 + OK"; else bad "情況 B 判定錯誤（${out}）"; fi
+assert_eq "情況 B 後 HEAD 在 feature branch" "feat/b" "$(git -C "$TMP/bf-work" symbolic-ref --short HEAD)"
+assert_eq "情況 B feature branch 接住 1 commit" "1" \
+    "$(git -C "$TMP/bf-work" rev-list --count origin/main..feat/b)"
+assert_eq "情況 B main 已退回 origin/main" \
+    "$(git -C "$TMP/bf-work" rev-parse origin/main)" "$(git -C "$TMP/bf-work" rev-parse main)"
+(cd "$TMP/bf-work" && git switch -q main && git branch -qD feat/b)
+
+# mixed state：誤 commit + working tree 另有未 commit 檔 → 救援後未 commit 檔完好（H6 核心斷言）
+(cd "$TMP/bf-work" && echo v3 > f.txt && "${GITC[@]}" commit -qam "oops2: on main" && echo precious > notes.txt)
+out="$("$BF_SCRIPT" "$TMP/bf-work" feat/c)"
+assert_rc "mixed state → exit 0" 0 $?
+if echo "$out" | grep -q "case: B"; then ok "mixed state 判為情況 B"; else bad "mixed state 判定錯誤"; fi
+assert_eq "mixed state 未 commit 檔完好無損" "precious" "$(cat "$TMP/bf-work/notes.txt" 2>/dev/null)"
+if echo "$out" | grep -q "verify: porcelain 前後一致"; then ok "mixed state 附 porcelain 前後快照驗證"; else bad "缺 porcelain 快照驗證行"; fi
+assert_eq "mixed state main 已退回 origin/main" \
+    "$(git -C "$TMP/bf-work" rev-parse origin/main)" "$(git -C "$TMP/bf-work" rev-parse main)"
+(cd "$TMP/bf-work" && rm notes.txt && git switch -q main && git branch -qD feat/c)
+
+# detached HEAD（其上有 commit）→ 情況 A：switch -c 一併接走 commit，不需 ref 重置
+git clone -q "$TMP/bf-origin.git" "$TMP/bf-detach"
+(cd "$TMP/bf-detach" && git checkout -q --detach && echo dh > d.txt && "${GITC[@]}" add d.txt && "${GITC[@]}" commit -qm "on detached")
+out="$("$BF_SCRIPT" "$TMP/bf-detach" feat/dh)"
+assert_rc "detached HEAD → exit 0" 0 $?
+if echo "$out" | grep -q "case: A"; then ok "detached HEAD 判為情況 A"; else bad "detached HEAD 判定錯誤（${out}）"; fi
+assert_eq "detached 後 HEAD 在 feature branch" "feat/dh" "$(git -C "$TMP/bf-detach" symbolic-ref --short HEAD)"
+assert_eq "detached commit 被 feature branch 接走" "1" \
+    "$(git -C "$TMP/bf-detach" rev-list --count origin/main..feat/dh)"
+
+# branch 撞名 → STOP、不動任何狀態
+(cd "$TMP/bf-work" && git branch feat/exists && echo dirty2 > wip2.txt)
+out="$("$BF_SCRIPT" "$TMP/bf-work" feat/exists)"
+assert_rc "branch 撞名 → exit 1" 1 $?
+if echo "$out" | grep -q "verdict: STOP"; then ok "撞名 → STOP"; else bad "撞名未 STOP"; fi
+assert_eq "撞名後仍在 main（未半途執行）" "main" "$(git -C "$TMP/bf-work" symbolic-ref --short HEAD)"
+(cd "$TMP/bf-work" && rm wip2.txt && git branch -qD feat/exists)
+
+# 已在 feature branch（非 default）→ STOP（無事可做，不疊 branch）
+(cd "$TMP/bf-work" && git switch -qc feat/other)
+out="$("$BF_SCRIPT" "$TMP/bf-work" feat/d)"
+assert_rc "非 default branch → exit 1" 1 $?
+if echo "$out" | grep -q "verdict: STOP"; then ok "已在 feature branch → STOP"; else bad "非 default 未 STOP"; fi
+if git -C "$TMP/bf-work" show-ref --verify -q refs/heads/feat/d; then bad "STOP 卻建了 branch"; else ok "STOP 未建 branch"; fi
+(cd "$TMP/bf-work" && git switch -q main && git branch -qD feat/other)
+
+# 分岔（remote default 已被他人推進、本地 main 另有誤 commit）→ ambiguous → STOP、零 mutation
+git clone -q "$TMP/bf-origin.git" "$TMP/bf-push2"
+(cd "$TMP/bf-push2" && echo other > g.txt && "${GITC[@]}" add g.txt && "${GITC[@]}" commit -qm "other work" && git push -q origin main)
+(cd "$TMP/bf-work" && echo v4 > f.txt && "${GITC[@]}" commit -qam "local oops" && git fetch -q origin)
+bf_main_before="$(git -C "$TMP/bf-work" rev-parse main)"
+out="$("$BF_SCRIPT" "$TMP/bf-work" feat/e)"
+assert_rc "分岔 → exit 1" 1 $?
+if echo "$out" | grep -q "verdict: STOP"; then ok "分岔 → STOP（交回使用者）"; else bad "分岔未 STOP（${out}）"; fi
+assert_eq "分岔 STOP 後 main ref 未動" "$bf_main_before" "$(git -C "$TMP/bf-work" rev-parse main)"
+if git -C "$TMP/bf-work" show-ref --verify -q refs/heads/feat/e; then bad "分岔 STOP 卻建了 branch"; else ok "分岔 STOP 未建 branch"; fi
+
+# 無 remote → STOP（無法核對誤 commit 是否已被 remote 涵蓋 → ambiguous；驗原因避免
+# 未來 STOP 換理由時假綠）
+out="$("$BF_SCRIPT" "$TMP/gh-local" feat/x)"
+assert_rc "無 remote → exit 1" 1 $?
+if echo "$out" | grep -q "verdict: STOP（無 remote"; then ok "無 remote → STOP（含原因）"; else bad "無 remote 未 STOP 或原因缺失"; fi
+
+# 非 git repo / 用法錯誤
+"$BF_SCRIPT" "$TMP/not-a-repo" feat/x >/dev/null 2>&1
+assert_rc "非 git repo → exit 1" 1 $?
+"$BF_SCRIPT" >/dev/null 2>&1
+assert_rc "無引數 → exit 2" 2 $?
+"$BF_SCRIPT" "$TMP/bf-work" >/dev/null 2>&1
+assert_rc "缺 branch 名 → exit 2" 2 $?
+"$BF_SCRIPT" "$TMP/bf-work" "bad..name" >/dev/null 2>&1
+assert_rc "非法 branch 名 → exit 2" 2 $?
 
 echo "▶ 10. review-state.sh scope-priority / round 判定"
 RS_SCRIPT="$ROOT/claude/skills/deep-review/scripts/review-state.sh"

@@ -78,6 +78,8 @@ protection classic 回 **`Not Found`**（非 `Branch not protected`）常代表 
 
 ## Branch-first 與誤 commit 搬移
 
+> 本節序列已封裝於 `scripts/branch-first.sh`（情況 A/B 自動判定、前置檢查全過才動、porcelain 前後快照驗證，以腳本為可執行權威——SKILL Step 1 第 5 項整行照抄呼叫）；以下逐條指令供除錯、或腳本 `verdict: STOP` 後人工處理時參照。
+
 **情況 A：變更在 working tree（人在 default branch），或在 detached HEAD（含已在其上 commit）**
 ```bash
 git -C <repo> switch -c <type>/<slug>   # working-tree 變更與 detached HEAD 上的 commit 都跟著切過去；default branch 不動
