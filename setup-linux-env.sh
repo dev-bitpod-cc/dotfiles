@@ -194,6 +194,14 @@ fi
 
 # 按優先級從低到高添加（最後添加的排在最前面）
 
+# 優先級 6: CUDA Toolkit（無 GPU 主機不存在此目錄，自動略過）
+# 走 /usr/local/cuda symlink 而非版本目錄，升版免改設定
+# lib 路徑由 /etc/ld.so.conf.d/*cuda*.conf 處理，不需 LD_LIBRARY_PATH
+if [ -d "/usr/local/cuda/bin" ]; then
+    export CUDA_HOME="/usr/local/cuda"
+    export PATH="/usr/local/cuda/bin:$PATH"
+fi
+
 # 優先級 5: Go
 [ -d "$HOME/go/bin" ] && export PATH="$HOME/go/bin:$PATH"
 
@@ -476,9 +484,10 @@ echo "  [1] \$HOME/.local/bin        # 用戶本地程式（uv 等）"
 echo "  [2] \$HOME/.bun/bin          # Bun"
 echo "  [3] \$HOME/.cargo/bin        # Cargo (Rust)"
 echo "  [4] \$HOME/go/bin            # Go"
-echo "  [5] (conda 路徑)             # 由 conda init 管理"
-echo "  [6] Homebrew 路徑            # /home/linuxbrew/.linuxbrew"
-echo "  [7] /usr/local/bin 等        # 系統路徑"
+echo "  [5] /usr/local/cuda/bin      # CUDA Toolkit（目錄存在才加）"
+echo "  [6] (conda 路徑)             # 由 conda init 管理"
+echo "  [7] Homebrew 路徑            # /home/linuxbrew/.linuxbrew"
+echo "  [8] /usr/local/bin 等        # 系統路徑"
 echo ""
 
 # 建立 .bash_profile（極簡版，只載入 .bashrc）
@@ -1289,9 +1298,10 @@ echo "  1. \$HOME/.local/bin"
 echo "  2. \$HOME/.bun/bin"
 echo "  3. \$HOME/.cargo/bin"
 echo "  4. \$HOME/go/bin"
-echo "  5. (conda 路徑)"
-echo "  6. Homebrew 路徑"
-echo "  7. 系統路徑"
+echo "  5. /usr/local/cuda/bin（目錄存在才加）"
+echo "  6. (conda 路徑)"
+echo "  7. Homebrew 路徑"
+echo "  8. 系統路徑"
 
 # ================================================
 # 完成
