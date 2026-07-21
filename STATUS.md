@@ -12,12 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-- **Skills 下沉與 clean-room 改進(三 PR:check-crawl-quality → project → handoff)**
-  - Context:deep-review 兩輪體質改善(#18 prose 下沉/#19 clean-room)後盤點其餘 7 skill,三個命中判準;計畫全文 `~/.claude/plans/magical-jingling-quail.md`。
-  - Goal:PR1 check-crawl-quality 八項檢查+扣分表下沉 `crawl-quality-scan.py` + clean-room;PR2 project 三塊下沉(resolve 子指令/branch-first.sh/dossier 偵測)+ clean-room;PR3 handoff consume 子指令。
-  - AC:各 PR tests/run.sh 全綠(新章節先 RED 後 GREEN)、eval/pressure-test 依 TDD 補 case、SKILL.md 引用腳本沿用「單一真實來源、整行照抄」慣例。
-  - Constraints:每 skill 一個 PR 依序送審(使用者拍板);branch-first.sh 為 repo 第一支 mutation 腳本(使用者拍板,前置檢查全過才動、絕不 reset --hard);分數/range 類輸出 model 不手算。
-  - 進度:PR1 已 merge(PR #21);PR2 實作完成待審(branch `feat/project-skill-sinking`)——2a resolve 子指令/2b branch-first.sh(repo 首支 mutation 腳本,前置檢查+分岔/撞名/無 remote 一律 STOP 零 mutation)/2c dossier 偵測行(門檻常數單一來源下沉腳本)全部先 RED(45 斷言)後 GREEN,tests/run.sh 9/9b 節,全套 458 綠(含 R1-R3+C1-C3 審查迴歸:子目錄 `.` 契約、CDPATH 隔離、1b gate 擴及 tests/run.sh 自身、dossier 簽章三輪硬化——雙訊號/端錨定/CommonMark 圍欄 opener 追蹤);clean-room 盲寫先行(同 PR1 時序),回流三項:porcelain 前後快照驗證(H6 機械保證)、ref 終態斷言、dossier 簽章判定(撞名偵測具體判準),8 項合法分歧拍板維持現行——比對全文見 `docs/project-spec.md` 附錄;SKILL.md Step 0/1/2 與 ship-paths/dossier/pressure-tests 對應段縮為引用腳本(S5 期望改「照抄 branch-first-cmd」,實戰 GREEN 待下次實跑)。PR2 已 merge(PR #22,deep-review R1-R3+C1-C3 全循環;首戰 dogfood:branch-first.sh 情況 A 開 PR3 分支即用)。PR3 已過 deep-review 全循環待 ship(branch `feat/handoff-consume-subcommand`,squash `6998385`):handoff-anchor.sh 加 consume 子指令,「已消費」偵測經 C1-C3 對抗收斂為工具不變量(父目錄 archive/檔名時戳前綴——路徑掃描會誤拒 /srv/archive/... 合法 active 檔;時戳前綴列 W3 保留命名空間,C3 殘項判已拍板邊界);SKILL.md R4+Critical+生命週期圖與 evals H2 同步改引用子指令;tests 第 13 節先 RED 後 GREEN 全套 478 綠。下一步:ship 送出 merge 後三部曲收官(收斂 STATUS.md 本項入里程碑)。
+(暫無進行中工作項——skills 下沉三部曲已於 2026-07-21 收官)
 
 ---
 
@@ -62,7 +57,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
-- ✅ **2026-07-21 check-crawl-quality 下沉 + clean-room(PR #21,三部曲 PR1)**:八項檢查+扣分表下沉 `crawl-quality-scan.py`(stdlib-only,分數永遠出自腳本),SKILL.md 244→102 行;clean-room 盲寫先行實證有效;R1-R5+C1-C3 全循環。
+- ✅ **2026-07-21 skills 下沉三部曲收官(PR #21/#22/#23)**:check-crawl-quality(掃描+扣分表下沉 `crawl-quality-scan.py`)→ project(resolve 子指令/branch-first.sh 首支 mutation 腳本/dossier 偵測門檻單一來源;clean-room 盲寫比對見 `docs/project-spec.md` 附錄)→ handoff(consume 子指令,consume-once 機械保證)。三 PR 皆 deep-review autofix+autocodex 全循環;dossier 簽章與 consume 已消費偵測各經三輪對抗收斂(啟發式偵測器的攻擊面逐輪遞窄,最終拍板邊界明文入 SKILL/註解);tests/run.sh 235→478 斷言全綠。
+
 - ✅ **2026-07-21 deep-review prose 下沉腳本(跨輪記憶 → deterministic state)**:squash base hash 與 last-codex-HEAD 的「跨輪記住」prose 是 context 壓縮死穴(為此重複防禦三次 NEVER a moving ref / 不要 HEAD~1)——下沉為新 `review-anchor.sh`(record/show/squash-cmd/codex-next/clear,state 落 `.git/deep-review/anchor` per-worktree,消費前 cat-file+is-ancestor 雙驗,codex-next 原子化取 range+記 HEAD、同 HEAD 冪等、C3 上限強制)+新 `verify-tests.sh`(修復後驗證,exit 0/1/3/2;**`bun test` 無測試檔 rc=1**,以 stderr `0 test files matching` 映射 SKIP,bun 改版最壞退化 FAIL 保守向)+`review-state.sh` 增量(branch-first verdict/branch-cmd、continuity 警告、empty-tree 常數)。SKILL.md 瘦身為「呼叫腳本、照抄輸出」(374→371 行),model 全程不經手 hash。tests/run.sh 294 全綠(新 19/20 節皆先 RED 後 GREEN);evals 補 F16/F17,d1+d2 Sonnet 迴歸雙 PASS(沙盒 git 實查:squash parent==錨點、anchor 已 clear、priority 4 不代選);全域 CLAUDE.md codex 觸發段補 anchor 跨 session 恢復句。
 - ✅ **2026-07-21 deep-review body 密度收斂(工作流稽核第二批)**:autocodex 機制層(preflight exit 語意、prompt 限制、進度查詢、exit 契約、救援階梯、死亡偵測退役根因)抽 `references/codex-protocol.md`(76 行,含 TOC),硬約束(NEVER codex:rescue、固定一行 prompt、不輪詢、at most ONE fresh retry、NEVER bun install)整塊英文留 body;body 401→374 行,「Codex 呼叫協議」節標題保留為全域 CLAUDE.md 觸發段錨點(兩端免同步)。驗收依 oracle 而非 prose re-review:d1/d2 沙盒 eval 改前 baseline 與改後各跑一輪 Sonnet 全 GREEN(d1 branch-first+squash 錨定+trailer+未 push、d2 priority 4 gate 不代選;皆以沙盒 git 狀態評分),tests/run.sh 233 全綠。
 - ✅ **2026-07-20 autocodex 卡死根治——傳輸層改 headless `codex exec`**:讀 plugin v1.0.6 原始碼定位 F13/F14 的共同上游(等待端無 watchdog,通知一斷即永久靜默等待),改以進程退出+報告落檔為完成訊號,15 分鐘雙訊號死亡偵測退役為 exit 契約;新增 `codex-exec-review.sh` 與 `ensure-codex-skills.sh`(補 codex skill 散佈路徑,修 repo-review 停在 3/21 舊版)。主 agent R1–R5 + codex C1–C3(8 條 true positive 全修、C3 零 findings)、tests 233 全綠;**exec 路徑三輪實跑驗證通過,無卡死**。
