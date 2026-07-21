@@ -5,8 +5,10 @@
 ## 納入版控
 
 - `config.toml`：Codex 共用預設值
+- `AGENTS.md`：Codex 個人全域 guidance；setup/dotsync 連結到 `~/.codex/AGENTS.md`
 - `rules/`：不含機器路徑的通用核准規則
 - `skills/`：團隊共用 skills
+- `skill-building-guide.md`：本 dotfiles 的 Codex skill authoring、eval、validation 與發布流程
 
 ## 不納入版控
 
@@ -33,3 +35,9 @@
 3. 將 `config.local.toml` 內容附加到最終的 `config.toml`
 
 如此可讓共享設定進版控，本機信任設定仍留在本機。
+
+## 跨機散佈
+
+- `scripts/ensure-codex-skills.sh` 幂等連結每個版控 skill 到 `~/.codex/skills/<name>`。
+- `scripts/ensure-codex-guidance.sh` 幂等連結 `codex/AGENTS.md` 到 `${CODEX_HOME:-$HOME/.codex}/AGENTS.md`；接管既有實體檔前會備份。
+- setup 腳本負責新機初始化；`dotfiles-sync.sh` 在每次 pull 後重跑兩個 helper，讓既有主機不必重跑 setup。

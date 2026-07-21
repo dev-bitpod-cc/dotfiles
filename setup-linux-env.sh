@@ -1137,6 +1137,11 @@ if [ -d "$SCRIPT_DIR/codex" ]; then
     __codex_link_skills "$SCRIPT_DIR/codex/skills" ~/.codex/skills
     [ -d "$SCRIPT_DIR/codex/skills" ] && print_success "已建立 ~/.codex/skills/<skill> symlink"
 
+    if [ -f "$SCRIPT_DIR/scripts/ensure-codex-guidance.sh" ]; then
+        DOTFILES_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/ensure-codex-guidance.sh"
+        print_success "已建立 ~/.codex/AGENTS.md symlink"
+    fi
+
     unset -f __extract_codex_local_config
     unset -f __codex_link
     unset -f __codex_link_skills

@@ -152,3 +152,73 @@ Judge `repo-review` changes by whether an agent following the skill would do the
   ]
 }
 ```
+
+### F11 — Historical-only guidance is discovered
+
+```json
+{
+  "query": "Use repo-review. Review /path/repo from old-base..old-head.",
+  "setup": "old-head is not current HEAD. It contains a subtree AGENTS.md that was later deleted, while current HEAD contains a different replacement guidance file.",
+  "expected_behavior": [
+    "Inspect the resolved historical tree instead of relying only on guidance paths discovered from the current worktree.",
+    "Read the subtree AGENTS.md that exists at old-head and apply it to files under that subtree.",
+    "Do not apply the current replacement guidance to the historical review."
+  ]
+}
+```
+
+### F12 — Reviewer sizing respects max_subagents
+
+```json
+{
+  "query": "Use repo-review. Review /path/repo from HEAD~1..HEAD. max_subagents=1",
+  "setup": "The diff is small, for which the normal sizing guidance would use two reviewers.",
+  "expected_behavior": [
+    "Restate max_subagents=1 as the effective strict upper bound.",
+    "Spawn no more than one review subagent.",
+    "Give that reviewer a combined bounded scope rather than silently ignoring one concern area."
+  ]
+}
+```
+
+### F13 — Worktree findings remain distinguishable
+
+```json
+{
+  "query": "Use repo-review. Review /path/repo from HEAD~1..HEAD. include_worktree=true",
+  "setup": "The committed range contains one changed file and the worktree contains an unrelated staged change plus an untracked file.",
+  "expected_behavior": [
+    "State that staged, unstaged, and untracked content was added to the committed review scope.",
+    "Keep committed-range findings separate from worktree-only findings.",
+    "Do not imply that a worktree-only issue exists in the immutable committed range."
+  ]
+}
+```
+
+### F14 — Clean result is required before squash
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~2..HEAD and polish the commit history.",
+  "setup": "The final allowed review pass still has one verified blocking finding.",
+  "expected_behavior": [
+    "Stop at the round limit and report the remaining blocking finding.",
+    "Do not squash review-fix checkpoint commits while the final result is not clean.",
+    "Report the current branch and checkpoint state."
+  ]
+}
+```
+
+### F15 — No-findings wording coexists with autofix history
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~1..HEAD.",
+  "setup": "R1 finds and fixes a bug; tests pass and R2 has no findings.",
+  "expected_behavior": [
+    "Use No findings. for the empty R2 findings section.",
+    "Still include the required autofix round history, fixes, tests, checkpoint hashes, and final status.",
+    "Do not interpret No findings. as requiring the entire response to contain no other text."
+  ]
+}
+```
