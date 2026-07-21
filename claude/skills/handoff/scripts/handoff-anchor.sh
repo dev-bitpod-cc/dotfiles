@@ -5,6 +5,9 @@
 # 用法：
 #   handoff-anchor.sh anchors <repo-path>...   # 產生 frontmatter 錨點行（created + 逐 repo anchor）
 #   handoff-anchor.sh verify  <handoff.md>     # 驗證交接檔錨點 vs 各 repo 現況
+#   handoff-anchor.sh consume <handoff.md>     # 消費歸檔：mv 到同層 archive/ 加秒級時戳前綴，
+#                                              # 印 archived: <路徑>；已消費（父目錄為
+#                                              # archive 或檔名已帶時戳前綴）→ 拒絕
 #   handoff-anchor.sh list    [dir]            # 列出 active 交接檔（年齡/EXPIRED）+ 自動清過期 archive
 #
 # verify 逐錨點輸出判定：
@@ -15,7 +18,12 @@
 #   BAD-ANCHOR — 錨點行欄位不足（如手寫殘缺），無法驗證
 #   另檢查 created 年齡，超過 EXPIRE_DAYS 標 EXPIRED。
 #
-# exit code：0 = 全部 FRESH 且未過期；1 = 任一 DRIFTED/DIVERGED/MISSING/BAD-ANCHOR/EXPIRED；2 = 用法錯誤
+# exit code：0 = 全部 FRESH 且未過期（consume：歸檔完成）；
+#            1 = 任一 DRIFTED/DIVERGED/MISSING/BAD-ANCHOR/EXPIRED（consume：拒絕或失敗——
+#                檔案不存在／已在 archive 內（重複消費）／目錄解析失敗／目標同秒碰撞／
+#                mv 失敗；拒絕與失敗路徑檔案一律原地不動，consume-once 由此機械保證。
+#                exit 1 ≠ 已歸檔：讀 stderr 分辨，mv 失敗時交接檔仍在 active）；
+#            2 = 用法錯誤
 #
 # 限制：repo 路徑不可含空白（anchor 行以空白分欄）——anchors 遇含空白路徑直接報錯拒絕。
 # list 的 dir 預設 $HANDOFF_DIR，未設則 ~/.claude/handoffs。
@@ -27,7 +35,7 @@ ARCHIVE_KEEP_DAYS=30 # 已消費（archive/）的交接檔保留天數，過期�
 MAX_LOG=20           # DRIFTED 時最多列出的中間 commit 數；只影響顯示
 
 usage() {
-    echo "用法：$0 anchors <repo>... | verify <handoff.md> | list [dir]" >&2
+    echo "用法：$0 anchors <repo>... | verify <handoff.md> | consume <handoff.md> | list [dir]" >&2
     exit 2
 }
 
@@ -163,6 +171,64 @@ cmd_verify() {
     exit "$overall"
 }
 
+# consume：R4 消費歸檔的機械化——驗位置（archive 內拒絕）→ mkdir -p archive →
+# mv 加 YYYYMMDD-HHMMSS 前綴（同日同 slug 二次消費不互覆）→ 印 archived: 供回報。
+# 本子指令是本腳本唯一動 active 檔的 mutation（mv 單一檔案；list 另會清過期 archive），
+# 不碰 git、不碰檔案內容。
+cmd_consume() {
+    [ $# -eq 1 ] || usage
+    local file="$1"
+    if [ ! -f "$file" ]; then
+        echo "error: 交接檔不存在：${file}" >&2
+        exit 1
+    fi
+    local dir base
+    dir="$(CDPATH='' cd -- "$(dirname -- "$file")" 2>/dev/null && pwd -P)" || dir=""
+    if [ -z "$dir" ]; then
+        echo "error: 無法解析交接檔所在目錄：${file}" >&2
+        exit 1
+    fi
+    base="$(basename -- "$file")"
+    # 「已消費」偵測用工具自身不變量，不掃整條路徑找 archive 祖先——整路徑掃描會把
+    # /srv/archive/<user>/handoffs/x.md 這類合法 active 檔誤拒（C2 審查實證），誤拒即
+    # consume 永久卡死。兩個不變量：
+    # (1) 直接父目錄名 archive（本工具的歸檔佈局）
+    # (2) 檔名帶 YYYYMMDD-HHMMSS- 前綴（本工具的歸檔命名——被手工搬到巢狀子目錄也認得出）
+    # 手工塞進 archive 巢狀子目錄且無前綴的檔案非本工具產物（從未被工具消費），不在偵測範圍
+    if [ "$(basename -- "$dir")" = "archive" ]; then
+        echo "error: 檔案已在 archive 內（已消費過）——consume-once，不可重複消費：${file}" >&2
+        exit 1
+    fi
+    case "$base" in
+        [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*)
+            echo "error: 檔名已帶歸檔時戳前綴（已消費過）——consume-once，不可重複消費：${file}" >&2
+            exit 1 ;;
+    esac
+    # 時戳先取出並驗格式——date 失敗時若直接串進路徑，會歸檔成 archive/-<name>
+    # 且回報成功，稽核時戳靜默流失
+    local ts
+    ts="$(date +%Y%m%d-%H%M%S)" || ts=""
+    case "$ts" in
+        [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+        *)  echo "error: 無法取得時戳（date 失敗）——不歸檔，交接檔原地不動" >&2
+            exit 1 ;;
+    esac
+    mkdir -p "$dir/archive"
+    local dest="$dir/archive/${ts}-${base}"
+    # -e 前置檢查而非 mv -n：BSD/GNU 的 mv -n 目標已存在時「靜默跳過且 exit 0」，
+    # 會印 archived: 但檔案沒動——比檢查與 mv 之間的 TOCTOU 窗（單機單人工具）危險
+    if [ -e "$dest" ]; then
+        echo "error: 目標已存在（同秒重複消費？）：${dest}" >&2
+        exit 1
+    fi
+    if ! mv -- "$file" "$dest"; then
+        echo "error: mv 失敗，交接檔仍在原位：${file}" >&2
+        exit 1
+    fi
+    echo "archived: $dest"
+    exit 0
+}
+
 cmd_list() {
     local dir="${1:-${HANDOFF_DIR:-$HOME/.claude/handoffs}}"
     if [ ! -d "$dir" ]; then
@@ -203,6 +269,7 @@ cmd="$1"; shift
 case "$cmd" in
     anchors) cmd_anchors "$@" ;;
     verify)  cmd_verify "$@" ;;
+    consume) cmd_consume "$@" ;;
     list)    cmd_list "$@" ;;
     *) usage ;;
 esac
