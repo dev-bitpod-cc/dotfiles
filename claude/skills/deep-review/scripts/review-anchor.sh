@@ -9,19 +9,25 @@
 #
 # 用法（exit 契約：0=成功；1=verdict STOP（無 anchor/stale/GC/超上限/非 git repo）；2=用法錯誤）：
 #   review-anchor.sh record     --repo <path> --mode <branch-diff|range|working-tree|baseline> \
-#                               [--base <ref>] [--range <X..Y>]
+#                               [--base <ref>] [--range <X..Y>] [--tests-baseline <pass|fail|skip>]
 #       記錄本次審查起點（squash 的 reset 目標）。base hash 由腳本解析：
 #         branch-diff  → merge-base <--base ref> HEAD（分叉點）
 #         range        → <X..Y> 的下界（拒三點 range——A...B 為對稱差語意，非錨點）
 #         working-tree → 當下 HEAD
 #         baseline     → 當下 HEAD（empty-tree 非 commit，絕不作 reset 目標）
 #       無條件覆蓋（新一輪 review 開始即重記；codex_* state 一併歸零）。
+#       --tests-baseline：autofix 前置跑 verify-tests.sh 的結果（pass/fail/skip），
+#         供「修復後驗證」區分「修復改壞」vs「baseline 本來就紅」（fail → 測試不做 gate）。
+#       branch-diff / working-tree 模式另印 diff-cmd:（審查範圍的 diff 指令，供照抄轉交
+#         subagent；range 模式審查指令 = range 引數本身、baseline 為全庫，兩者不印）。
 #   review-anchor.sh show       --repo <path>
 #       印出 anchor 內容（跨 session 恢復審查起點用）。
 #   review-anchor.sh squash-cmd --repo <path>
 #       印出可照抄的 `git reset --soft <固定 hash>`。消費前雙驗：hash 存在（cat-file）
 #       + 是 HEAD 祖先（merge-base --is-ancestor；review 期間 rebase/換 branch 即 STOP）。
 #       stale 判 ancestry 而非 branch 名——record 在 branch-first 切換前後都合法。
+#       squash 範圍含「審查前既有 commits」（subject 非 review 產生的固定樣式）時印
+#       warning: 行——維持「squash 範圍恆等審查範圍」語意不變，僅告知（2026-07-21 拍板）。
 #   review-anchor.sh codex-next --repo <path> [--full]
 #       取「下一輪 codex 審查」的 round 與 range，並原子性記錄本輪 HEAD（消滅「忘記
 #       更新 last-codex-HEAD 導致 C2 重審或漏審」的記憶失誤）：
@@ -61,17 +67,22 @@ aget() { sed -n "s/^$1=//p" "$ANCHOR" 2>/dev/null | head -1; }
 [ $# -ge 1 ] || die_usage "缺少子指令（record|show|squash-cmd|codex-next|clear）"
 SUB="$1"; shift
 
-REPO="" MODE_VAL="" BASE_REF="" RANGE_VAL="" FULL=0
+REPO="" MODE_VAL="" BASE_REF="" RANGE_VAL="" TB_VAL="" FULL=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo)  REPO="${2:-}";      shift 2 || die_usage "--repo 缺少值" ;;
         --mode)  MODE_VAL="${2:-}";  shift 2 || die_usage "--mode 缺少值" ;;
         --base)  BASE_REF="${2:-}";  shift 2 || die_usage "--base 缺少值" ;;
         --range) RANGE_VAL="${2:-}"; shift 2 || die_usage "--range 缺少值" ;;
+        --tests-baseline) TB_VAL="${2:-}"; shift 2 || die_usage "--tests-baseline 缺少值" ;;
         --full)  FULL=1; shift ;;
         *) die_usage "未知引數：$1" ;;
     esac
 done
+case "$TB_VAL" in
+    ""|pass|fail|skip) : ;;
+    *) die_usage "--tests-baseline 應為 pass|fail|skip：${TB_VAL}" ;;
+esac
 [ -n "$REPO" ] || die_usage "缺少 --repo"
 
 case "$SUB" in
@@ -129,9 +140,16 @@ cmd_record() {
         printf 'mode=%s\n'     "$MODE_VAL"
         printf 'branch=%s\n'   "$branch"
         printf 'recorded=%s\n' "$(date +%s)"
+        [ -n "$TB_VAL" ] && printf 'tests_baseline=%s\n' "$TB_VAL"
     } > "$ANCHOR"
     echo "anchor-recorded: ${base_hash}（mode=${MODE_VAL}${BASE_REF:+, base-ref=${BASE_REF}}）"
     echo "branch: ${branch}"
+    [ -n "$TB_VAL" ] && echo "tests-baseline: ${TB_VAL}"
+    # range 模式審查指令 = range 引數本身、baseline 為全庫審查，...HEAD 都會審錯範圍——不印
+    case "$MODE_VAL" in
+        branch-diff|working-tree)
+            echo "diff-cmd: git -C ${REPO} diff ${base_hash}...HEAD" ;;
+    esac
 }
 
 cmd_show() {
@@ -140,6 +158,9 @@ cmd_show() {
         die_stop "無 anchor（先跑 record）"
     fi
     echo "anchor: $(aget base)（mode=$(aget mode), branch 當時=$(aget branch), recorded $(fmt_epoch "$(aget recorded)")）"
+    if [ -n "$(aget tests_baseline)" ]; then
+        echo "tests-baseline: $(aget tests_baseline)"
+    fi
     if [ -n "$(aget codex_head)" ]; then
         echo "codex: C$(aget codex_round) 已審至 $(aget codex_head)（range $(aget codex_range)）"
     fi
@@ -168,17 +189,27 @@ cmd_squash_cmd() {
         echo "verdict: WARNING — 無 commit 可 squash（reset 到 HEAD 無作用，照印無害）"
     else
         git -C "$REPO" log --oneline "${base_hash}..HEAD" | sed 's/^/  /'
+        # 審查前既有 commits = subject 非 review 產生的固定樣式（R{N} fix / codex fix /
+        # wip snapshot；codex 輪標歷史上 R、C 並見，兩者都認）。squash 語意不變、僅告知
+        # ——SKILL.md 要求主 agent 在 reset 前向使用者轉述此行。
+        local n_pre
+        n_pre="$(git -C "$REPO" log --format=%s "${base_hash}..HEAD" \
+            | grep -Evc '^(fix: R[0-9]+ review fixes|fix: codex [RC][0-9]+ fixes|wip: pre-review snapshot)$')" || true
+        if [ "${n_pre:-0}" -gt 0 ]; then
+            echo "warning: 將壓掉 ${n_pre} 顆審查前既有 commit（清單見上，非本次 review 產生）"
+        fi
     fi
     echo "squash-cmd: git -C ${REPO} reset --soft ${base_hash}"
 }
 
 cmd_codex_next() {
     [ -f "$ANCHOR" ] || die_stop "無 anchor（先跑 record）"
-    local base_hash mode_v branch_v recorded_v head_full empty_tree c_head c_round round range
+    local base_hash mode_v branch_v recorded_v tb_v head_full empty_tree c_head c_round round range
     base_hash="$(aget base)"
     mode_v="$(aget mode)"
     branch_v="$(aget branch)"
     recorded_v="$(aget recorded)"
+    tb_v="$(aget tests_baseline)"
     c_head="$(aget codex_head)"
     c_round="$(aget codex_round)"
     head_full="$(git -C "$REPO" rev-parse HEAD)" || exit 1
@@ -223,6 +254,7 @@ cmd_codex_next() {
         printf 'mode=%s\n'        "$mode_v"
         printf 'branch=%s\n'      "$branch_v"
         printf 'recorded=%s\n'    "$recorded_v"
+        [ -n "$tb_v" ] && printf 'tests_baseline=%s\n' "$tb_v"
         printf 'codex_head=%s\n'  "$head_full"
         printf 'codex_round=%s\n' "$round"
         printf 'codex_range=%s\n' "$range"

@@ -1262,6 +1262,57 @@ assert_rc "branch-diff 缺 --base → exit 2" 2 $?
 "$RA_SCRIPT" record --repo "$TMP/not-a-repo" --mode working-tree >/dev/null 2>&1
 assert_rc "非 git repo → exit 1" 1 $?
 
+# --- clean-room 回流改進：tests-baseline / diff-cmd / squash 既有-commit 警告 ---
+
+# fixture：feature branch = 1 顆審查前既有 commit（feat: w feature）+ 1 顆 review fix commit
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp"
+(cd "$TMP/ra-imp" \
+    && git switch -qc feat/w \
+    && echo w1 > w.txt && "${GITC[@]}" add w.txt && "${GITC[@]}" commit -qm "feat: w feature" \
+    && echo w2 > w.txt && "${GITC[@]}" commit -qam "fix: R1 review fixes")
+ra_imp_anchor="$(git -C "$TMP/ra-imp" rev-parse --absolute-git-dir)/deep-review/anchor"
+ra_imp_mb="$(git -C "$TMP/ra-imp" merge-base origin/main HEAD)"
+
+# record --tests-baseline fail → 寫入 anchor + show 顯示
+"$RA_SCRIPT" record --repo "$TMP/ra-imp" --mode branch-diff --base origin/main --tests-baseline fail >/dev/null
+assert_rc "record --tests-baseline → exit 0" 0 $?
+if grep -qxF "tests_baseline=fail" "$ra_imp_anchor" 2>/dev/null; then ok "tests_baseline 寫入 anchor"; else bad "tests_baseline 未寫入 anchor"; fi
+out="$("$RA_SCRIPT" show --repo "$TMP/ra-imp" 2>/dev/null)"
+if echo "$out" | grep -q "tests-baseline: fail"; then ok "show 顯示 tests-baseline"; else bad "show 未顯示 tests-baseline"; fi
+
+# codex-next 改寫 anchor 時保留 tests_baseline（否則 autocodex 階段丟失 baseline 資訊）
+"$RA_SCRIPT" codex-next --repo "$TMP/ra-imp" >/dev/null 2>&1
+if grep -qxF "tests_baseline=fail" "$ra_imp_anchor" 2>/dev/null; then ok "codex-next 保留 tests_baseline"; else bad "codex-next 丟失 tests_baseline"; fi
+
+# record（branch-diff）輸出 diff-cmd 整行（固定 hash，照抄慣例）
+out="$("$RA_SCRIPT" record --repo "$TMP/ra-imp" --mode branch-diff --base origin/main --tests-baseline pass 2>/dev/null)"
+if echo "$out" | grep -qxF "diff-cmd: git -C $TMP/ra-imp diff $ra_imp_mb...HEAD"; then ok "record 印 diff-cmd（固定 hash）"; else bad "diff-cmd 缺失或錯誤"; fi
+
+# range 模式不印 diff-cmd（審查指令 = range 引數本身，...HEAD 會審錯範圍）
+out="$("$RA_SCRIPT" record --repo "$TMP/ra-imp" --mode range --range "$ra_imp_mb..HEAD" 2>/dev/null)"
+if echo "$out" | grep -q "^diff-cmd:"; then bad "range 模式誤印 diff-cmd"; else ok "range 模式不印 diff-cmd"; fi
+
+# tests-baseline 值域驗證
+"$RA_SCRIPT" record --repo "$TMP/ra-imp" --mode working-tree --tests-baseline bogus >/dev/null 2>&1
+assert_rc "tests-baseline 非法值 → exit 2" 2 $?
+
+# 無 flag 覆蓋 → tests_baseline 不殘留（record 無條件覆蓋語意）
+"$RA_SCRIPT" record --repo "$TMP/ra-imp" --mode branch-diff --base origin/main >/dev/null
+if grep -q "^tests_baseline=" "$ra_imp_anchor"; then bad "無 flag 時 tests_baseline 殘留"; else ok "無 flag 覆蓋 → tests_baseline 不殘留"; fi
+
+# squash-cmd 警告：feat: w feature 為審查前既有（1 顆）；fix: R1 review fixes 屬 review 產生
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp")"
+if echo "$out" | grep -q "warning: 將壓掉 1 顆審查前既有 commit"; then ok "squash-cmd 警告既有 commits（數量正確）"; else bad "squash 既有-commit 警告缺失"; fi
+
+# 全為 review 產生的 commits（wip snapshot + fix）→ 無警告
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp2"
+"$RA_SCRIPT" record --repo "$TMP/ra-imp2" --mode working-tree >/dev/null
+(cd "$TMP/ra-imp2" && git switch -qc feat/v \
+    && echo v1 > v.txt && "${GITC[@]}" add v.txt && "${GITC[@]}" commit -qm "wip: pre-review snapshot" \
+    && echo v2 > v.txt && "${GITC[@]}" commit -qam "fix: R1 review fixes")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp2")"
+if echo "$out" | grep -q "warning: 將壓掉"; then bad "純 review commits 誤發警告"; else ok "純 review commits 無警告"; fi
+
 echo "▶ 20. verify-tests.sh（deep-review skill script）框架偵測與 exit 契約（uv/bun stub）"
 VT_SCRIPT="$ROOT/claude/skills/deep-review/scripts/verify-tests.sh"
 
