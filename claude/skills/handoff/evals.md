@@ -54,7 +54,7 @@
     "動工前先跑 handoff-anchor.sh verify（有輸出證據），不逐條重跑底層 git",
     "判 DRIFTED 後讀中間 commits 對帳：辨識 retry 已被做掉（不重做）、requests 決策已被推翻（不回退 httpx）",
     "只執行仍有效的項目（timeout 參數化），並向使用者報告落差",
-    "完成對帳後把交接檔 mv 到 archive/（帶日期前綴）——不留在 active 目錄、不就地標 done",
+    "完成對帳後以 handoff-anchor.sh consume 歸檔交接檔（時戳前綴落 archive/）——不手打 mkdir/mv 序列、不留在 active 目錄、不就地標 done",
     "不 push（CLAUDE.md 既有規則）"
   ]
 }

@@ -17,7 +17,7 @@
 #  10. review-state.sh（deep-review skill script）scope-priority / round / branch-first / continuity 判定
 #  11. review-context.sh（repo-review skill script）range 解析 / guidance / autofix gate（含分岔 base / detached HEAD / 閘序）
 #  12. repo-review skill packaging（evals 不進 runtime context）
-#  13. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
+#  13. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定（含 consume 消費歸檔）
 #  14. codex-runtime-hygiene.sh（deep-review skill script）孤兒偵測 / 誤殺防護 / exit 契約
 #  15. ensure-rc-source.sh 幂等補 source shell/functions.sh 行
 #  16. session-pull-check.sh（SessionStart hook）落後偵測與靜默契約
@@ -941,6 +941,75 @@ if echo "$out" | grep -q "archive: 已清 1 份"; then ok "list 回報清理數�
 out="$("$HA_SCRIPT" list "$TMP/no-such-dir")"
 assert_rc "list 目錄不存在 → exit 0（回報 NONE）" 0 $?
 if echo "$out" | grep -q "handoffs: NONE"; then ok "list 無目錄 → NONE"; else bad "list 無目錄輸出錯誤"; fi
+
+# --- consume 子指令（R4 消費歸檔：驗位置 → mkdir archive → mv 加秒級時戳前綴 → 印 archived:）---
+
+printf -- '---\ncreated: %s\n---\n# Handoff: c\n' "$(date +%Y-%m-%d)" > "$TMP/ha-handoffs/consume-me.md"
+out="$("$HA_SCRIPT" consume "$TMP/ha-handoffs/consume-me.md")"
+assert_rc "consume 正常 → exit 0" 0 $?
+archived_path="$(echo "$out" | sed -n 's/^archived: //p')"
+if [ -n "$archived_path" ] && [ -f "$archived_path" ]; then ok "consume 印 archived: 行且檔案已落 archive"; else bad "consume 未印 archived: 或檔案不存在（${out}）"; fi
+if [ ! -f "$TMP/ha-handoffs/consume-me.md" ]; then ok "consume 後 active 原檔已移走"; else bad "consume 後原檔仍留在 active"; fi
+case "$(basename "${archived_path:-x}")" in
+    [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-consume-me.md)
+        ok "archive 檔名帶 YYYYMMDD-HHMMSS 前綴（同日同 slug 二次消費不互覆）" ;;
+    *)  bad "archive 檔名前綴格式錯誤（${archived_path}）" ;;
+esac
+
+# 重複消費（檔案已在 archive 內）→ 拒絕，不動檔案
+out="$("$HA_SCRIPT" consume "$archived_path" 2>&1)"
+assert_rc "consume archive 內檔案 → exit 1" 1 $?
+if echo "$out" | grep -q "已在 archive"; then ok "重複消費 → 拒絕（已在 archive）"; else bad "重複消費未被拒（${out}）"; fi
+if [ -f "$archived_path" ]; then ok "拒絕後 archive 檔原地不動"; else bad "拒絕路徑動到了 archive 檔"; fi
+
+"$HA_SCRIPT" consume "$TMP/ha-handoffs/no-such.md" >/dev/null 2>&1
+assert_rc "consume 不存在檔案 → exit 1" 1 $?
+"$HA_SCRIPT" consume >/dev/null 2>&1
+assert_rc "consume 無引數 → exit 2" 2 $?
+
+# 同秒碰撞防覆蓋（-e 前置檢查的迴歸守衛）：date stub 固定時戳，連續消費兩份同名檔
+# → 第二次 exit 1、archive 檔內容不變、第二份仍留在 active
+mkdir -p "$TMP/datestub"
+# shellcheck disable=SC2016  # stub 內容刻意不展開（$1/$@ 屬 stub 自身）
+printf '#!/bin/sh\n[ "$1" = "+%%Y%%m%%d-%%H%%M%%S" ] && { echo 20990101-000000; exit 0; }\nexec /bin/date "$@"\n' > "$TMP/datestub/date"
+chmod +x "$TMP/datestub/date"
+printf 'first\n' > "$TMP/ha-handoffs/same.md"
+PATH="$TMP/datestub:$PATH" "$HA_SCRIPT" consume "$TMP/ha-handoffs/same.md" >/dev/null
+assert_rc "date stub 第一次 consume → exit 0" 0 $?
+printf 'second\n' > "$TMP/ha-handoffs/same.md"
+PATH="$TMP/datestub:$PATH" "$HA_SCRIPT" consume "$TMP/ha-handoffs/same.md" >/dev/null 2>&1
+assert_rc "同秒同名第二次 consume → exit 1（拒絕覆蓋）" 1 $?
+assert_eq "碰撞拒絕後 archive 檔內容不變" "first" "$(cat "$TMP/ha-handoffs/archive/20990101-000000-same.md")"
+if [ -f "$TMP/ha-handoffs/same.md" ]; then ok "碰撞拒絕後第二份仍在 active"; else bad "碰撞拒絕卻弄丟 active 檔"; fi
+rm "$TMP/ha-handoffs/same.md"
+
+# 已消費偵測用「工具不變量」（直接父目錄 archive／檔名時戳前綴），不掃整條路徑——
+# 祖先目錄剛好叫 archive 的合法 active 檔不得誤拒（如 /srv/archive/<user>/handoffs/x.md）
+mkdir -p "$TMP/archive/alice/handoffs"
+printf 'legit\n' > "$TMP/archive/alice/handoffs/task.md"
+out="$("$HA_SCRIPT" consume "$TMP/archive/alice/handoffs/task.md")"
+assert_rc "祖先名 archive 的合法 active 檔 → 照常消費 exit 0" 0 $?
+arch2="$(echo "$out" | sed -n 's/^archived: //p')"
+if [ -n "$arch2" ] && [ -f "$arch2" ]; then ok "祖先名 archive 不誤拒（檔已正常歸檔）"; else bad "祖先名 archive 被誤拒或未歸檔（${out}）"; fi
+
+# 檔名已帶時戳前綴（曾被工具歸檔，即使被手工搬進巢狀子目錄）→ 拒絕，原地不動
+mkdir -p "$TMP/ha-handoffs/archive/sub"
+printf 'old\n' > "$TMP/ha-handoffs/archive/sub/20990101-000000-nested.md"
+out="$("$HA_SCRIPT" consume "$TMP/ha-handoffs/archive/sub/20990101-000000-nested.md" 2>&1)"
+assert_rc "時戳前綴檔（巢狀位置）→ exit 1" 1 $?
+if echo "$out" | grep -q "已消費"; then ok "時戳前綴 → 拒絕（不變量認得曾歸檔）"; else bad "時戳前綴未被拒（${out}）"; fi
+if [ -f "$TMP/ha-handoffs/archive/sub/20990101-000000-nested.md" ]; then ok "前綴拒絕後檔案原地不動"; else bad "前綴拒絕卻動了檔案"; fi
+rm -rf "$TMP/ha-handoffs/archive/sub"
+
+# date 失敗 → 拒絕歸檔（不產生 archive/-<name> 這種無時戳檔名）
+mkdir -p "$TMP/datefail"
+printf '#!/bin/sh\nexit 1\n' > "$TMP/datefail/date"
+chmod +x "$TMP/datefail/date"
+printf 'keep\n' > "$TMP/ha-handoffs/df.md"
+PATH="$TMP/datefail:$PATH" "$HA_SCRIPT" consume "$TMP/ha-handoffs/df.md" >/dev/null 2>&1
+assert_rc "date 失敗 → exit 1（拒絕歸檔）" 1 $?
+if [ -f "$TMP/ha-handoffs/df.md" ]; then ok "date 失敗後交接檔仍在 active"; else bad "date 失敗卻動了交接檔"; fi
+rm "$TMP/ha-handoffs/df.md"
 
 "$HA_SCRIPT" >/dev/null 2>&1
 assert_rc "無引數 → exit 2" 2 $?

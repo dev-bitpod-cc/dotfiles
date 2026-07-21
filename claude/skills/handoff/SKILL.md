@@ -11,7 +11,7 @@ argument-hint: "[resume] [slug]"
 
 - 存放：`~/.claude/handoffs/<slug>.md`（machine-local；**不放 repo 內**——不污染 git status，跨 repo 工作也只需一份檔多條錨點）
 - 已消費：`~/.claude/handoffs/archive/YYYYMMDD-HHMMSS-<原檔名>`（秒級前綴——同日同 slug 二次消費不可互相覆蓋，archive 是 audit trail）
-- 機制腳本：`~/.claude/skills/handoff/scripts/handoff-anchor.sh`（`anchors` / `verify` / `list`；EXPIRE_DAYS、ARCHIVE_KEEP_DAYS 常數以腳本為單一來源）
+- 機制腳本：`~/.claude/skills/handoff/scripts/handoff-anchor.sh`（`anchors` / `verify` / `consume` / `list`；EXPIRE_DAYS、ARCHIVE_KEEP_DAYS 常數以腳本為單一來源）
 
 ## 引數
 
@@ -24,7 +24,7 @@ argument-hint: "[resume] [slug]"
 
 - **A handoff is a set of CLAIMS, not truth. The repo is truth.** On resume you MUST run `handoff-anchor.sh verify` BEFORE acting on any claim. No verify output in this session → no action based on the handoff.
 - **On any verdict other than FRESH**, re-check every claim you rely on against the current repo; where they conflict, the repo wins. NEVER "restore" the repo to match the handoff.
-- **Consume-once.** After loading a handoff, move it to `archive/` (dated). NEVER leave a consumed handoff in the active directory — not even rewritten with a done-marker; "done" files accumulate and rot into stale noise. The archive IS the audit trail.
+- **Consume-once.** After loading a handoff, archive it via the `consume` subcommand (it refuses double-consumption mechanically). NEVER leave a consumed handoff in the active directory — not even rewritten with a done-marker; "done" files accumulate and rot into stale noise. The archive IS the audit trail.
 - **Durable facts go to memory/, not the handoff.** User preferences, project constraints, anything that must outlive this task → write a memory file and leave only a `[[memory-name]]` pointer in the handoff. A handoff dies on consumption.
 - **No state snapshots the repo already carries.** Do not paste full diffs or file contents into the handoff — point at commits and paths. Snapshots go stale silently; the anchor makes staleness detectable, a pasted diff does not.
 - **Write side: every file path mentioned MUST exist** (check it) or be explicitly marked 規劃中/待新建.
@@ -55,7 +55,7 @@ argument-hint: "[resume] [slug]"
 
 ### W3：寫檔
 
-寫到 `~/.claude/handoffs/<slug>.md`；**同 slug 已存在 → 整檔覆寫**（更新錨點與內容），不 append、不留多版本。模板：
+寫到 `~/.claude/handoffs/<slug>.md`；**同 slug 已存在 → 整檔覆寫**（更新錨點與內容），不 append、不留多版本。slug 勿以 `YYYYMMDD-HHMMSS-` 時戳格式開頭——那是 `consume` 判定「已歸檔」的保留命名空間，撞名會被拒收。模板：
 
 ```markdown
 ---
@@ -124,17 +124,17 @@ slug: <slug>
 計畫確立後、動工前，歸檔（消費）交接檔：
 
 ```
-mkdir -p ~/.claude/handoffs/archive && mv <handoff.md> ~/.claude/handoffs/archive/$(date +%Y%m%d-%H%M%S)-<原檔名>
+~/.claude/skills/handoff/scripts/handoff-anchor.sh consume <handoff.md>
 ```
 
-回報「交接檔已消費歸檔」，然後才開始執行工作。若中途發現還需要它，archive/ 內在保留期內都找得回（超過 ARCHIVE_KEEP_DAYS 由 `list` 自動清）。
+位置驗證、archive 建立、時戳前綴、重複消費拒絕都在子指令內——**do not hand-type the mkdir/mv sequence**。照 `archived:` 行回報「交接檔已消費歸檔」，然後才開始執行工作。若中途發現還需要它，archive/ 內在保留期內都找得回（超過 ARCHIVE_KEEP_DAYS 由 `list` 自動清）。
 
 ## 生命週期總覽
 
 ```
 write（蓋錨點）→ ACTIVE（~/.claude/handoffs/*.md）
                     │ 超過 EXPIRE_DAYS 未消費 → list/verify 標 EXPIRED（重驗或確認後刪）
-                    ▼ resume 消費（verify → reconcile）
+                    ▼ resume 消費（verify → reconcile → consume）
                  ARCHIVE（archive/YYYYMMDD-HHMMSS-*.md）
                     ▼ 超過 ARCHIVE_KEEP_DAYS
                  由 list 自動刪除
