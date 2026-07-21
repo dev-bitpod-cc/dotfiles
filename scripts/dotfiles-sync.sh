@@ -59,13 +59,22 @@ if [ -f "$DOTFILES_DIR/ssh/known_hosts" ]; then
     cp "$DOTFILES_DIR/ssh/known_hosts" ~/.ssh/known_hosts
 fi
 
+# helper 部署失敗不中止同步，但必須反映進本機終判——不可誤報完成（codex C2）
+local_helper_warn=0
 # 確保互動 rc 有 source shell/functions.sh（幂等；讓便利函數免重跑 setup 即散佈）
-[ -f "$DOTFILES_DIR/scripts/ensure-rc-source.sh" ] && bash "$DOTFILES_DIR/scripts/ensure-rc-source.sh" 2>/dev/null || true
+[ -f "$DOTFILES_DIR/scripts/ensure-rc-source.sh" ] && { bash "$DOTFILES_DIR/scripts/ensure-rc-source.sh" 2>/dev/null || local_helper_warn=1; } || true
 
 # 確保 ~/.codex/skills 指向 dotfiles（幂等；讓 codex skill 免重跑 setup 即散佈）
-[ -f "$DOTFILES_DIR/scripts/ensure-codex-skills.sh" ] && bash "$DOTFILES_DIR/scripts/ensure-codex-skills.sh" 2>/dev/null || true
+[ -f "$DOTFILES_DIR/scripts/ensure-codex-skills.sh" ] && { bash "$DOTFILES_DIR/scripts/ensure-codex-skills.sh" 2>/dev/null || local_helper_warn=1; } || true
 
-echo -e "${GREEN}  ✅ 本機完成${NC}"
+# 確保全域 Codex guidance 指向 dotfiles（幂等；既有主機免重跑 setup）
+[ -f "$DOTFILES_DIR/scripts/ensure-codex-guidance.sh" ] && { bash "$DOTFILES_DIR/scripts/ensure-codex-guidance.sh" 2>/dev/null || local_helper_warn=1; } || true
+
+if [ "$local_helper_warn" -eq 0 ]; then
+    echo -e "${GREEN}  ✅ 本機完成${NC}"
+else
+    echo -e "${YELLOW}  ⚠️  本機完成，但 helper 部署有警告（見上方 ⚠️ 行）${NC}"
+fi
 
 # 遠端同步（並行）
 echo -e "${BLUE}▶ 遠端同步 ${#HOSTS[@]} 台${NC}"
@@ -98,11 +107,15 @@ SSHEOF
             if [ -f ssh/known_hosts ]; then
                 cp ssh/known_hosts ~/.ssh/known_hosts
             fi
+            # helper 部署失敗不中止同步，但必須反映進終判——不可誤報 OK（codex C2）
+            helper_warn=0
             # 確保互動 rc 有 source shell/functions.sh（幂等）
-            [ -f scripts/ensure-rc-source.sh ] && bash scripts/ensure-rc-source.sh 2>/dev/null || true
+            [ -f scripts/ensure-rc-source.sh ] && { bash scripts/ensure-rc-source.sh 2>/dev/null || helper_warn=1; } || true
             # 確保 ~/.codex/skills 指向 dotfiles（幂等；免重跑 setup 即拿到最新 codex skill）
-            [ -f scripts/ensure-codex-skills.sh ] && bash scripts/ensure-codex-skills.sh 2>/dev/null || true
-            echo "OK"
+            [ -f scripts/ensure-codex-skills.sh ] && { bash scripts/ensure-codex-skills.sh 2>/dev/null || helper_warn=1; } || true
+            # 確保全域 Codex guidance 指向 dotfiles（幂等）
+            [ -f scripts/ensure-codex-guidance.sh ] && { bash scripts/ensure-codex-guidance.sh 2>/dev/null || helper_warn=1; } || true
+            if [ "$helper_warn" -eq 0 ]; then echo "OK"; else echo "OK_HELPER_WARN"; fi
         else
             echo "NO_DOTFILES"
         fi
@@ -112,12 +125,13 @@ SSHEOF
     # 而「其他主機仍是舊實體目錄」正是這訊息唯一會觸發的場合，吞掉等於設計意圖落空。
     # `|| true` 不可省：穩態下（skill 已是 symlink）grep 無配對回 1，在 set -euo pipefail 下會
     # 讓整個 sync_remote 當場退出，連後面的 ✅/⚠️/❌ 回報一併消失 → 同步失敗變靜默成功。
-    printf '%s\n' "$result" | grep -E '^(↻|⚠️)' | sed "s|^|  ${host}: |" || true
+    printf '%s\n' "$result" | grep -E '^(↻|⚠️|↩)' | sed "s|^|  ${host}: |" || true
 
     local last_line
     last_line="$(echo "$result" | tail -1)"
     case "$last_line" in
         OK)           echo -e "${GREEN}  ✅ ${host}${NC}" ;;
+        OK_HELPER_WARN) echo -e "${YELLOW}  ⚠️  ${host}：pull 完成，但 helper 部署有警告（見上方 ⚠️ 行）${NC}" ;;
         NO_DOTFILES)  echo -e "${YELLOW}  ⚠️  ${host}：~/.dotfiles 不存在${NC}" ;;
         PULL_FAILED)  echo -e "${RED}  ❌ ${host}：git pull 失敗（仍停在舊 revision，本次未部署）${NC}" ;;
         *)            echo -e "${RED}  ❌ ${host}：連線失敗${NC}" ;;

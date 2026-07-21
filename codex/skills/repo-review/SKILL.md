@@ -1,98 +1,107 @@
 ---
 name: repo-review
-description: Subagent-assisted code review for one or more local git repositories from committed diffs, with optional autofix review loops. Use when the user wants a fresh, low-bias code review, asks to review multiple repos or commit ranges, requests HEAD~N..HEAD review, invokes repo-review for findings with file references, or asks repo-review to autofix findings.
+description: Review committed diffs in one or more local Git repositories with fresh-context subagents, immutable ranges, concrete findings, and an optional safety-bounded autofix loop. Use for low-bias code review, multi-repo or HEAD~N..HEAD review, findings with file references, or explicitly requested repo-review autofix.
 ---
 
-# Multi-Repo Code Review
+# Repo Review
 
-Use this workflow to keep reviews narrow, reproducible, and low-bias. Explicit `repo-review` invocation means the user wants the subagent review workflow when subagents are available.
+Review committed changes with reproducible inputs and low bias. Report findings by default. Modify files only when the user explicitly requests autofix.
 
-## Modes And Inputs
+## Resolve Inputs
 
-- `review` mode is the default. It reports findings only and does not edit files.
-- `autofix` mode is opt-in when the prompt includes `repo-review autofix`, `mode=autofix`, or an equivalent explicit request. It runs review -> fix -> test -> next-round review until clean or the round limit is reached.
-- `max_rounds` controls autofix review passes. Default to `3` and clamp explicit values to `1` through `5` while stating the effective value. `max_rounds` counts review passes, so `max_rounds=3` allows R1 review, up to two fix/test cycles, and a final R3 review.
-- `commit_each_round` controls autofix checkpoint commits. Default to `true` in `autofix` mode so each review round gets a bounded committed diff. Honor `commit_each_round=false` only when the user explicitly requests no commits or the environment cannot commit; state that this degraded mode can grow review context across rounds. Require a clean worktree before the first edit, and never include pre-existing or concurrent user changes in review-fix commits. Later untracked test outputs are the only permitted dirty state and must remain unstaged.
-- `range`, `scope`, `focus`, `max_subagents`, `include_worktree`, `commit_each_round`, and `handoff` are optional prompt-level inputs. Treat them as soft parameters and restate the effective values before acting. `scope` limits repos, modules, or paths and otherwise means all changed files. `focus` prioritizes named concerns without excluding correctness review unless the user explicitly makes it exclusive. `max_subagents` is an upper bound, reduced when the diff or available concurrency needs fewer agents. `include_worktree` defaults to `false` and becomes `true` only by explicit request; it adds staged, unstaged, and untracked changes to the stated scope.
-- `handoff=claude` means the final passing report should include a concise third-party review handoff table with repo path, review range, and change summary. If autofix leaves uncommitted edits, write the range as `<base>..HEAD + working tree`.
+Restate the effective repositories, mode, range, scope, focus, `max_subagents`, `include_worktree`, `max_rounds`, `commit_each_round`, and handoff before reviewing. Use defaults for omitted optional inputs; do not ask the caller to supply optional focus, context files, flags, or tests.
 
-## Bundled Script
+- Default to `mode=review` and `include_worktree=false`.
+- Enter autofix only for `repo-review autofix`, `mode=autofix`, or an equivalent explicit request.
+- Map `last commit` to `HEAD~1..HEAD`, `last N commits` to `HEAD~N..HEAD`, and a vague request or `review again` without a newer explicit range to `HEAD~1..HEAD`.
+- Treat `scope` as a repository, module, or path limit. Treat `focus` as a priority without excluding correctness unless the user makes it exclusive.
+- Treat `max_subagents` as a strict upper bound and reduce the reviewer count when the diff or available concurrency needs fewer.
+- In autofix, default `max_rounds` to `3`, clamp it to `1..5`, and count review passes rather than fix attempts. Default `commit_each_round` to `true`; disable commits only by explicit request or when the environment cannot commit, and state the context-growth tradeoff.
+- For `handoff=claude`, append a table containing each repo, its final review range, and a one-line summary. If uncommitted autofix edits remain, use `<base>..HEAD + working tree`.
 
-- Use the bundled `scripts/review-context.sh` for committed-range setup. Resolve it relative to this `SKILL.md`; do not expect the target repo to contain the script.
-- Run `scripts/review-context.sh <repo-path> <base..head>` after choosing the review range. In `autofix` mode, run `scripts/review-context.sh <repo-path> <base..head> --autofix` before editing.
-- Treat the script output as canonical for resolved object IDs, ancestry, branch state, `review-range`, changed files, diff stat, guidance files, baseline detection, and autofix safety. The script is read-only and must not replace model review judgment.
-- If `autofix-safe: no`, stop before editing and report the script's `autofix-reason`.
+## Establish Canonical Context
 
-## Workflow
+Resolve the bundled `scripts/review-context.sh` relative to this `SKILL.md`; do not look for it in the target repo. For every committed review, run:
 
-1. Resolve mode, inputs, and review scope.
-If the user provides a range, start with it exactly and restate it in the review. If the user asks for `the last commit`, use `HEAD~1..HEAD`. If the user asks for `the last N commits`, use `HEAD~N..HEAD`. If the user says `review again`, prefer the newest explicitly requested range; otherwise fall back to `HEAD~1..HEAD` and state that choice. If the request is vague, default to `HEAD~1..HEAD` and state the range before listing findings. If a default or last-N range fails because the repository has fewer than N parent commits, rerun from the empty-tree object `4b825dc642cb6eb9a060e54bf8d69288fbee4904..HEAD` and identify it as a baseline review; do not apply this fallback to an unrelated invalid explicit ref.
-For committed-range reviews, run `scripts/review-context.sh` after choosing the range. Use its immutable resolved base/head object IDs in subagent prompts, diffs, checkpoint commits, and handoff ranges; do not allow moving refs such as `origin/main` to drift across rounds.
-If the script reports `base-is-ancestor: no`, do not treat the two-point diff as branch-introduced changes. For a branch-change request such as `main..HEAD`, rerun the script with its reported merge base as the base, state the anchored range, and review that range. If it reports `merge-base: (none)`, stop and report that the histories are unrelated. Preserve the original two-point range only when the user explicitly requires endpoint-to-endpoint comparison, and warn that it can include reverse-side deletions. In autofix mode, `base-not-ancestor` is unsafe until the range is re-anchored.
+```text
+scripts/review-context.sh <repo-path> <base..head> [--autofix]
+```
 
-2. Review committed content only by default.
-Prefer the script's `review-range`, plus `git diff <base>..<head>`, `git show <commit>:<path>`, and `git log --oneline` as needed.
-Include staged, unstaged, or working-tree changes only when the user explicitly asks for them, and state that scope change in the review.
-In `autofix` mode, start from the resolved requested committed range. If checkpoint commits are enabled, require a clean worktree before the first fix; stop and ask the user to clean, stash, or commit unrelated changes if the tree is dirty. After each fix/test cycle, commit only the verified autofix edits, then review `<resolved-base>..HEAD` in the next round only when the resolved head was the original `HEAD`. If the resolved head is not the original `HEAD`, stop before editing unless the user explicitly approves extending the review/fix branch beyond the requested head or provides a new target branch. If commits are disabled, review the original resolved range plus the accumulated working-tree diff and state the context-growth tradeoff.
+Use `--autofix` only in autofix mode. Treat the helper as canonical for the repo root, requested refs, immutable object IDs, current HEAD and branch state, ancestry and merge base, worktree and autofix safety, review range, guidance paths, changed files, stat, baseline status, and next-round policy. Use model judgment for findings.
 
-3. Read applicable guidance before review.
-Read the guidance files listed by `scripts/review-context.sh` before review. The script discovers guidance from the current worktree. When `head-is-current: no`, instead inspect the resolved head with `git ls-tree` and read applicable historical guidance with `git show <resolved-head>:<path>` so current, deleted, or newly added guidance does not leak across revisions. If the script cannot run, fall back to root `AGENTS.md`, `CLAUDE.md`, closer subtree guidance for changed files, and referenced review docs such as `code_review.md` when an instruction file points to them.
+After resolution, use immutable object IDs in subagent prompts, diffs, checkpoint ranges, reports, and handoffs. Never allow moving refs to drift across rounds.
 
-4. Use subagents for the first review pass.
-Spawn subagents when the user explicitly invoked `repo-review`, asked for subagents, or asked for parallel agent review, and the current Codex surface exposes subagent tools. Give subagents fresh, minimal context: repo path, script-resolved exact range, applicable guidance, diff stat, assigned files or concerns, and output format. Do not pass patch intent, previous review conclusions, suspected findings, or the main thread's implementation history.
+- If a default or last-N range fails only because the repository has too few parents, rerun with `4b825dc642cb6eb9a060e54bf8d69288fbee4904..HEAD` and label it an empty-tree baseline. Do not hide an unrelated invalid explicit ref with this fallback.
+- If the base is not an ancestor of the head and the request means branch-introduced changes, rerun from the helper-reported merge base to the resolved head and state the anchored range. Stop when there is no merge base. Preserve the original two-point endpoint comparison only when explicitly requested, and warn about reverse-side deletions.
+- If the helper cannot run, fall back to root and subtree `AGENTS.md` or `CLAUDE.md`, plus directly referenced review guidance such as `code_review.md`, and state the degraded context setup.
 
-5. Assign bounded review scopes.
-For small diffs, use two subagents: one for correctness/security risks and one for tests, integrations, deploy, and configuration. For medium diffs, use three to four subagents split by concern or module. For large diffs, split by repo, subsystem, or file batch so each subagent has a tractable scope, roughly 8-12 changed files or one coherent module. For multi-repo reviews, assign at least one subagent per repo, plus a cross-repo contract pass when interfaces or deployments interact. Avoid duplicate broad prompts; overlap only around critical interfaces, security boundaries, or cross-module behavior.
+## Read Applicable Guidance
 
-6. Keep the main agent unbiased.
-The main agent coordinates ranges, guidance, and subagent scopes; it should not perform the same first-pass review over the whole diff before delegation. After subagents return, verify plausible findings against source, deduplicate, check severity, and report only concrete issues. If subagents are unavailable or not permitted by the current session, state that fallback and perform the narrow committed-diff review directly.
+Read applicable guidance before review. The helper discovers paths from the current worktree. When `head-is-current:no`, independently inspect the resolved head with `git ls-tree` and read the historical guidance with `git show <resolved-head>:<path>`. Discover guidance that exists only in the historical tree as well as historical versions of current paths; do not let current, newly added, changed, or deleted guidance leak across revisions.
 
-7. Re-derive conclusions from code.
-Do not defend patch intent. Do not reuse earlier review conclusions unless the user explicitly asks to compare with a previous review.
+## Delegate The First Pass
 
-8. Prioritize real findings.
-Focus on bugs, behavioral regressions, missing tests, deployment breakage, security gaps, and mismatches between code paths.
-Ignore style unless it causes a real maintenance or correctness problem.
-Treat correctness, security, regressions, required test gaps, deploy breakage, and broken cross-file or cross-repo contracts as blocking. Treat purely stylistic suggestions as non-blocking.
-When changed files include executable commands in shell, Git, GitHub CLI, SQL, or other CLI snippets, verify their real execution semantics rather than accepting plausible prose: check empty/missing args, two-dot vs three-dot Git ranges, missing upstreams, untracked-file handling, multi-repo `gh` cwd behavior, placeholder expansion, escaping, and destructive commands in mixed state.
-For prose artifacts such as `SKILL.md`, references, runbooks, README files, and docs, use "would a reader or agent do the wrong thing?" as the blocking line. Factually wrong instructions, contradictions, broken cross-references, stale operational facts, and embedded commands that would misbehave are blocking. Wording clarity, extra edge cases, more examples, and general completeness nits are non-blocking deep wells; mention them only as optional follow-up when useful, and never let them drive an autofix loop.
+When this skill is explicitly invoked or the user requests subagents, use fresh-context subagents when available. If unavailable, state the fallback and perform a narrow local review.
 
-## Autofix Loop
+- Small diff: use up to two reviewers, split between correctness/security and tests/integration/deploy/configuration.
+- Medium diff: use up to three or four reviewers with distinct module or concern ownership.
+- Large diff: partition by repo, coherent module, or roughly 8–12 changed files.
+- Multi-repo diff: assign at least one reviewer per repo when the concurrency cap permits, and add a cross-repo contract pass when interfaces, schemas, release order, or shared configuration interact.
 
-Use this loop only in `autofix` mode.
+Respect `max_subagents` and actual concurrency over these sizing defaults. Avoid duplicate broad scopes; overlap only at critical interfaces or security boundaries.
 
-1. Run `scripts/review-context.sh <repo-path> <range> --autofix`. If it reports `autofix-safe: no`, stop before editing; otherwise run R1 with the normal subagent-first review workflow using the script-resolved range.
-2. If there are no blocking findings, stop and report clean.
-3. If blocking findings exist and the round limit has not been reached, fix only verified concrete findings. Keep edits minimal and preserve the existing codebase style. With checkpoint commits enabled, do not make the first edit until the worktree is clean; in later rounds, tolerate only previously recorded untracked test outputs and keep them unstaged.
-4. Run the relevant tests or checks for the touched behavior. If no test command is discoverable, state that explicitly.
-5. Before testing, record the paths the agent intentionally edited and the worktree status. When tests pass, or when no relevant test command is discoverable and you have stated that, re-check `git status`, stage only those verified autofix paths, inspect the staged diff, and create a checkpoint commit using a message such as `fix: R1 review fixes`. Stop if a pre-existing or concurrently changed user path would be included. New untracked outputs attributable to the test command and absent before testing must remain unstaged: list and warn about them, but do not let them block the checkpoint or committed-range review in later rounds. Never push. If tests fail or cannot run for an environment reason that blocks validation, stop instead of committing.
-6. Start the next review round with fresh-context subagents. Re-run `scripts/review-context.sh` for the next target range. Recompute the diff and changed files from the resolved base to `HEAD` only when the original resolved head was `HEAD`; otherwise use the explicitly approved target range. Do not reuse stale R1 prompts or previous reviewer conclusions.
-7. If `commit_each_round=false`, skip checkpoint commits only by explicit request. Recompute the accumulated working-tree diff each round, keep the remaining rounds small, and report that context may grow because the tree is not checkpointed.
-8. Stop when a review round has no blocking findings, `max_rounds` is reached, tests cannot run for a blocking environment reason, or the same finding survives two fix attempts.
+Give each subagent only the repo path, immutable range, applicable guidance, diff stat, bounded files or concerns, and required output shape. Do not paste the full diff or pass patch intent, suspected findings, prior conclusions, or implementation history. Let reviewers obtain the diff with read-only Git commands.
 
-Include all review-fix checkpoint commits in the final handoff summary. If the final result is clean and the user requested a polished commit history, squash review-fix commits into a meaningful final commit; otherwise leave commits intact and report the current branch state.
+The main agent must not perform an equivalent whole-diff first pass before delegation. After subagents return, inspect only enough source to verify plausible findings, deduplicate them, resolve contradictions, and calibrate severity. Re-derive conclusions from code rather than defending patch intent.
 
-## Default Review Shape
+## Apply The Finding Standard
 
-For each repo:
-- Identify the exact review range.
-- State the exact review range when reporting findings.
-- Run `scripts/review-context.sh` for committed-range reviews, then gather diff stat, changed file list, and applicable guidance from its output for subagent prompts.
-- Use fresh-context subagents with bounded scopes for the first review pass when available.
-- Hand subagents the script-resolved range and guidance paths, not the full diff text. Let each subagent run read-only Git commands to collect the diff in its own context.
-- After subagents return, read only the files needed to verify plausible findings.
-- Check whether tests exist for the changed behavior.
-- Verify user-facing paths, deploy paths, and configuration wiring when infra or frontend code changes.
+Report only concrete issues that could cause a reader, operator, or executing agent to do the wrong thing. Treat correctness, security, regression, required-test, deploy/configuration, and broken cross-file or cross-repo contract findings as blocking. Ignore style unless it creates a material correctness or maintenance hazard.
 
-For the final output:
-- List findings first, ordered by severity.
-- Include file references and concrete reasoning.
-- Report in the language requested by the user; otherwise follow the conversation language.
-- Keep summaries brief.
-- If there are no findings, say `No findings.`
-- In `autofix` mode, include the round history, fixes made, tests run, and final review result.
-- In `autofix` mode, include the checkpoint commit hashes or state that commits were disabled.
-- When `handoff=claude` or a third-party handoff is requested, include repo path, final review range, and a one-line change summary for each repo.
+For shell, Git, `gh`, SQL, and other executable snippets, verify real semantics, including empty arguments, two-dot versus three-dot ranges, missing upstreams, untracked files, cwd or repo ambiguity, placeholder expansion, escaping, and destructive behavior in mixed state.
+
+For `SKILL.md`, README, runbook, and other operational prose, treat incorrect commands, contradictions, broken references, and stale operational facts as blocking. Treat clarity, extra examples, broader edge-case coverage, and general completeness as optional. Optional prose improvements must not drive an autofix loop.
+
+Each finding must include severity, a precise file reference, the triggering behavior, and its concrete impact. Verify the reference against the reviewed revision. Order findings by severity and keep repository boundaries explicit.
+
+When `include_worktree=true`, review staged, unstaged, and untracked content in addition to the committed range, state that expanded scope, and report worktree-only findings separately from committed-range findings.
+
+## Run Review Mode
+
+1. Resolve effective inputs and canonical context for every repo.
+2. Read applicable guidance.
+3. Delegate bounded fresh-context passes.
+4. Verify and consolidate candidate findings.
+5. Report findings first, followed by a short summary.
+
+Do not edit files or create commits in review mode.
+
+## Run Autofix Mode
+
+Before any edit, require `autofix-safe:yes`, a clean starting worktree, current requested head, attached branch, and ancestor-safe range. If the helper reports `autofix-safe:no`, stop before editing or committing and report `autofix-reason`. If the requested head was not the original current HEAD, stop unless the user explicitly approves extending beyond that head or supplies a target branch.
+
+Never stage or commit pre-existing or concurrent user changes. If ownership overlaps or becomes ambiguous, stop. Never push.
+
+For each review pass `R1` through `R<max_rounds>`:
+
+1. Rerun the helper and read current canonical context and guidance.
+2. Spawn new fresh-context reviewers; do not reuse earlier prompts or conclusions.
+3. Verify and consolidate findings. Stop clean when no blocking findings remain. Stop without another fix when this is the last allowed review pass.
+4. Fix only verified blocking findings with minimal changes.
+5. Before testing, record intentional edit paths and worktree status. Run relevant tests or checks. If none are discoverable, state that and perform reasonable static verification.
+6. If tests fail or the environment blocks validation, do not commit; stop and report the blocker.
+7. Recheck status, stage only verified intentional paths, and inspect the staged diff. Stop if a pre-existing or concurrent path would be included.
+8. Keep only new untracked outputs that were absent before and are attributable to the recorded test command unstaged; list them without letting them block later committed-range review.
+9. With `commit_each_round=true`, create a checkpoint such as `fix: R1 review fixes`. If the original resolved head was current HEAD, review `<resolved-base>..HEAD` next. Otherwise use only an explicitly approved target range.
+10. With `commit_each_round=false`, review the original immutable range plus accumulated worktree edits, recompute that mixed context every round, and state that it can grow.
+
+Also stop when validation is blocked, repository safety becomes ambiguous, or the same finding survives two fix attempts. Optional findings never justify another round.
+
+Include checkpoint hashes, round history, fixes, tests, final status, stop reason, and remaining blocking findings in the final report. Squash review-fix checkpoints only when the final result is clean and the user explicitly requests polished history; otherwise leave them intact and report branch state.
+
+## Output
+
+Write in the user's language. List findings first and keep summaries brief. If a findings section is empty, write `No findings.`. Autofix and handoff reports may add their required history or table after that line.
 
 Use this handoff shape when requested:
 
@@ -101,39 +110,7 @@ Use this handoff shape when requested:
 
 | Repo | Review Range | Summary |
 |------|--------------|---------|
-| `/path/repo` | `abc123..HEAD` | One-line change summary |
+| `/path/repo` | `abc123..def456` | One-line change summary |
 ```
 
-## Prompt Patterns
-
-Use or adapt these request shapes in a new session:
-
-```text
-Use repo-review.
-Review these repos in parallel using committed diffs only:
-- /path/repo-a: <base>..<head>
-- /path/repo-b: <base>..<head>
-Spawn subagents with bounded repo/module scopes and read applicable guidance first.
-Report only concrete findings with file references. If none, say No findings.
-```
-
-```text
-Use repo-review.
-Review /path/repo from HEAD~2..HEAD.
-Use fresh-context subagents for the first pass.
-Do not use prior review conclusions. Re-derive everything from code only.
-```
-
-```text
-Use repo-review autofix.
-Review /path/repo from HEAD~2..HEAD.
-max_rounds=3
-commit_each_round=true
-handoff=claude
-```
-
-## Notes
-
-- If the user asks for `the last two commits`, review commit-by-commit when useful, then add a consolidated section only if cross-commit interaction matters.
-- If later fixes exist beyond an earlier reviewed range, switch to the newer requested range instead of repeating stale findings.
-- When repo roots differ, keep file references absolute and keep repo boundaries explicit in the final report.
+When reviewing the last two commits, review commit-by-commit when useful and add a consolidated section only when their interaction matters. Use absolute file references when repo-relative paths would be ambiguous.
