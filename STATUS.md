@@ -12,12 +12,18 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(無——殘項見「技術債」)
+- **Skills 下沉與 clean-room 改進(三 PR:check-crawl-quality → project → handoff)**
+  - Context:deep-review 兩輪體質改善(#18 prose 下沉/#19 clean-room)後盤點其餘 7 skill,三個命中判準;計畫全文 `~/.claude/plans/magical-jingling-quail.md`。
+  - Goal:PR1 check-crawl-quality 八項檢查+扣分表下沉 `crawl-quality-scan.py` + clean-room;PR2 project 三塊下沉(resolve 子指令/branch-first.sh/dossier 偵測)+ clean-room;PR3 handoff consume 子指令。
+  - AC:各 PR tests/run.sh 全綠(新章節先 RED 後 GREEN)、eval/pressure-test 依 TDD 補 case、SKILL.md 引用腳本沿用「單一真實來源、整行照抄」慣例。
+  - Constraints:每 skill 一個 PR 依序送審(使用者拍板);branch-first.sh 為 repo 第一支 mutation 腳本(使用者拍板,前置檢查全過才動、絕不 reset --hard);分數/range 類輸出 model 不手算。
+  - 進度:PR1 審查收斂待 ship(branch `feat/check-crawl-quality-script`,主 agent R1-R5 + codex C1-C3 全循環,C3 殘項已依使用者指示修畢):clean-room 盲寫**先於**下沉實作(時序與 deep-review 先例相反,收成直接進同輪重構——盲寫版獨立收斂到「全部下沉 stdlib-only 腳本」,驗證方向;分歧拍板與回流清單見 `docs/check-crawl-quality-spec.md` 附錄);SKILL.md 244→102 行;tests/run.sh 第 21 節先 RED 後 GREEN(初版 25 斷言+R1-R4 審查迴歸)。R4 依審查建議把輸出/計分段重寫為統一 finding 管線(橫切規則——H3 路由/sample=/豁免註記/per-source 行——單點履行,check 函式與常數不動,既有斷言當安全網);H3 邊界拍板記於 spec 附錄。PR2(project)/PR3(handoff)未動工。
 
 ---
 
 ## 關鍵決策(附理由)
 
+- **2026-07-21 Codex skill authoring 採「全域短入口 + dotfiles local-delta guide」**:`~/.codex/AGENTS.md` 只強制先讀 system `$skill-creator` 與 `~/.dotfiles/codex/skill-building-guide.md`，完整流程留在版控 guide，避免 always-on context 膨脹與 vendor 官方文件後失效；`codex/AGENTS.md` 由新 `ensure-codex-guidance.sh` 比照 skill 散佈機制幂等 symlink，既有實體檔先備份，setup/dotsync 皆會套用。repo-review 是首個 pilot：eval-first、重構去重、quick validation、fresh-context forward test，行為 eval 而非 prose 零 findings 為收斂 oracle。
 - **2026-07-16 git 為唯一跨主機媒介**:不同步 `~/.claude/`(handoffs/memory)跨機——同步衝突、錨點的跨機語意複雜化、敏感內容風險;krepo STATUS.md 已證明 repo-resident + git 這條路可行。
 - **2026-07-16 `/project` 取代 `/uap` 而非並存**:雙入口=觸發混淆+double-source;`disable-model-invocation` 使鏈式呼叫不可行,只能複製防護邏輯(違反 single-source 紀律)。防護內容原文搬遷。
 - **2026-07-16 STATUS.md 為 dossier 載體,不新建 PROJECT.md**:尊重 krepo 自然湧現且活躍維護的慣例;uap(現 /project log)本就維護此檔;避免同 repo 兩個角色重疊的檔案。
@@ -50,6 +56,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - [ ] autocodex exec 路徑的 **resume 分支**尚未實戰驗證:2026-07-20 同日 C1/C2/C3 三輪實跑皆一次成功(exit 0、282s/~200s/~90s,`--json` 首事件確實帶 `thread_id`、背景回叫如預期),故 exit 4 的救援階梯從未被真實觸發——只有 stub 覆蓋。下次遇到真實空報告時確認 resume 能救回,F15 子情境 (b) 才算 GREEN
 - [ ] review-anchor 的 **stale STOP 與 codex-next 冪等**子情境(F16 b/c)已由 tests/run.sh 第 19 節釘死,但實戰(真實 autocodex 迭代中 rebase/重試)尚未驗過——下次 autocodex 實跑時順手確認
 - [ ] codex plugin 去留待定:實質只當 codex:rescue 傳輸管道(22 筆歷史 job 全為 task-*,零 review;stopReviewGate 十個 workspace 全 false),exec 接管後僅剩 `/codex:transfer` 獨有——exec 路徑跑穩數輪後重新評估是否 uninstall
+- [ ] codex C2 對 codex-guidance 工作線的兩條轉交 findings(2026-07-21,PR1 審查中代收):F5 repo-review SKILL.md 多輪 autofix 契約疑似死鎖(`commit_each_round=false` 累積 worktree 修改 × 每輪重跑 helper × helper 對 dirty tree 回 `autofix-safe:no`——傾向 true positive,需 helper 實際行為定奪);F6 codex/skill-building-guide.md 的 `$skill-creator/scripts/quick_validate.py` 是否由 codex runtime 解析路徑(照 shell 字面執行必失敗,context-dependent)
 - [ ] /project 手感驗證(後半段):2026-07-17 已在 krepo 實測 log→merge 一輪(PR #16 dossier 收斂 + 總量治理衛生檢查首戰,多 repo 偵測/Step 4 gate/merge 最後一哩皆如預期);**剩 spec→實作(即時記錄)半段待驗**——即時 dossier 記錄的判斷準確度以該輪觀察為據(該規則尚無 pressure-test);mid-work re-spec 2026-07-21 研究後判**維持不改**(krepo c1addda 實戰中「對話直接編輯」catch-all 已把缺口升級 spec 做對、零失敗案例;Iron Law:no failing scenario, no instruction)——除非觀察到 agent 照過時 spec 執行、或擅自擴大範圍未問使用者,才回頭補程序＋RED eval
 
 ## 已完成(里程碑)
