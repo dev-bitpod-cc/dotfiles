@@ -24,6 +24,8 @@
 **Naming is exclusive.** `STATUS.md` means the dossier and nothing else. Domain artifacts
 (e.g. crawler-config checklists) MUST use another name (`CRAWL-CONFIG.md`). A file named
 STATUS.md that is not a dossier will be mis-consumed by tooling and humans alike.
+偵測面:`/project` 的 `ship-state.sh` 以雙訊號「簽章」判定(「進行中」章節 + 任一 dossier
+專屬章節,缺一 → `dossier-flag: 簽章不符`),spec 模式遇之停下告知、不覆寫。
 
 ## 2. STATUS.md 章節語意
 
@@ -60,7 +62,9 @@ Machine-local state (handoff, memory) does NOT travel between hosts. The repo do
 STATUS.md 是**就地演化**的常駐檔:進行中項完成後移入里程碑、下一步隨進度改寫。
 它的 git history 就是 audit trail。
 
-**總量治理(compaction)**——各節單調成長,靠修剪維持訊號密度;`/project log` Step 2 順手檢查:
+**總量治理(compaction)**——各節單調成長,靠修剪維持訊號密度;`/project log` Step 2 順手檢查
+(偵測訊號與門檻常數的單一來源是 `scripts/ship-state.sh` 的 dossier 偵測,本檔只講語意與處置,
+下文門檻數字為當前值的說明性引用、以腳本為準):
 
 - 「進行中」項完成即移入里程碑(一行化);⏸️ 項保留但須註明暫停原因與重啟條件。
 - 里程碑保留最近一季+常青重大項;更早的合併壓縮或刪除(git history 就是 audit trail)。
