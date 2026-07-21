@@ -110,6 +110,7 @@
 
 **範圍**: {模式} — {檔案數} 個檔案，{增/刪行數}
 {多 repo 時列出各 repo}
+{autofix 時}**測試 baseline**: {pass|fail|skip}{fail 時必加：——審查前測試已紅，本次所有 fix commits 為 `UNVERIFIED-BY-TESTS(baseline-red)`、未經測試驗證；skip 時註明無測試框架}
 **整體評估**: {一句話正面總結}
 
 ### 亮點
@@ -126,6 +127,7 @@
 ### Commit 建議
 {若有多筆 review fix commit（如 fix: R1/R2/R3 review fixes）}
 主 agent 執行 squash：`git reset --soft <squash base hash>`（定義見 SKILL.md Autofix 段的表；固定 hash，勿用會移動的 ref 如 `origin/<default>`）後重新 commit，message 採原始功能變更的語意（如 `feat: 新增 X 功能`），不用 `fix: review fixes`。格式遵循專案 Conventional Commits 慣例。
+{squash-cmd 印 `warning:`（將壓掉審查前既有 commits）時，在此轉述該行讓使用者知悉}
 {若只有一筆 commit + clean working tree}
 可以直接 push。
 
@@ -154,6 +156,7 @@
 
 **範圍**: {模式} — {檔案數} 個檔案，{增/刪行數}
 {多 repo 時列出各 repo}
+{autofix 時}**測試 baseline**: {pass|fail|skip}{fail 時必加：——審查前測試已紅，全部 fix commits 為 `UNVERIFIED-BY-TESTS(baseline-red)`}
 
 ### 修復軌跡
 

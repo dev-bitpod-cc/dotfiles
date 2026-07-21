@@ -37,6 +37,10 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, Agent
 
 此錨點是 Step 5 squash 的 reset 目標，且與 autocodex commit range、第三方審查資訊**同一錨點**，故 squash 範圍恆等於審查範圍。**Always squash to the recorded anchor (via `squash-cmd` output), NEVER a moving ref, NEVER HEAD~N.**
 
+**測試 baseline（record 時一併取得）**：record 前先跑一次 `~/.claude/skills/deep-review/scripts/verify-tests.sh <repo>` 取 baseline（exit 0→`pass`、1→`fail`、3→`skip`），以 `--tests-baseline <值>` 附在 record 引數記入錨點——「修復後驗證」據此分流（見該節）。baseline 為 `fail` → 當下明確告知使用者：repo 測試在審查前已紅，本次 autofix 的 commit 將不經測試驗證。
+
+**WIP snapshot（僅 working-tree 模式）**：record **之後**、R1 審查之前，working tree 有未提交變更 → `git add -A && git commit -m "wip: pre-review snapshot"`（`add -A` 尊重 .gitignore）——使用者原始變更與後續 fix commits 分離，中途 revert 壞修復不誤傷原始工作；anchor base = pre-WIP HEAD，最終 squash 終態與未拆分時相同。此後各輪審查範圍統一用 record 印出的 `diff-cmd:` 行（整行照抄轉交 subagent）。
+
 ```
 R1 review → 未通過 → 主 agent 修復 → commit「fix: R1 review fixes」
 R2 review → 未通過 → 主 agent 修復 → commit「fix: R2 review fixes」
@@ -52,7 +56,11 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 **修復原則**：主 agent 在修復階段依照 subagent 的修復計畫執行，優先修復所有嚴重與中等問題；建議等級僅在不引入額外風險時順手處理。
 
-**修復後驗證**：commit 前執行 `~/.claude/skills/deep-review/scripts/verify-tests.sh <repo>`（框架偵測與執行已封裝，exit 契約見腳本 header）——exit 0（PASS）→ commit；exit 1（FAIL）→ 測試失敗；exit 3（SKIP，無測試框架）→ 跳過驗證、直接 commit。
+**修復後驗證**：依錨點記錄的 tests-baseline 分流（record 時取得，`show` 可跨 session 恢復）：
+
+- baseline `fail`（審查前測試已紅）→ 測試不做 gate：每輪**不跑**測試（紅 baseline 下無判別力，只產噪音），修復後直接 commit，報告各 commit 標 `UNVERIFIED-BY-TESTS(baseline-red)`。**NEVER blame pre-existing red tests on the fix. NEVER fix the test environment on your own — that is scope creep unless the user asks.**
+- baseline `skip`（無測試框架）→ 直接 commit，報告註明未經測試驗證。
+- baseline `pass`（或錨點未記錄 baseline）→ commit 前執行 `~/.claude/skills/deep-review/scripts/verify-tests.sh <repo>`（框架偵測與執行已封裝，exit 契約見腳本 header），依下列規則：
 
 - **測試通過** → commit，進入下一輪審查。
 - **測試失敗** → 表示本輪修復未完成。**留在本輪**繼續修到測試通過再 commit；**不要**帶著未 commit 的失敗修復進下一輪（那正是迭代紀律要防的累積 diff 狀態）。
@@ -153,7 +161,8 @@ Deep Review 進度：
 - [ ] Step 3：載入專案 context
 - [ ] Step 4：委派 subagent 審查
 - [ ] Step 5：彙整輸出
-        autofix 進迴圈前：branch-first（依 verdict）→ record 錨點
+        autofix 進迴圈前：branch-first（依 verdict）→ 測試 baseline → record 錨點（--tests-baseline）
+        → WIP snapshot（僅 working-tree 模式且有未提交變更）
         迴圈每輪重記一行：R{N} 審查 → 修復 → 驗證 → commit（上限 R5）
 - [ ] Step 6：Codex 第三方循環（僅 autocodex）
         進階段前先跑一次 codex runtime preflight check（非 0 只警告不阻擋）
@@ -189,7 +198,7 @@ Deep Review 進度：
 對每個 repo 獨立判斷，依優先順序：
 
 1. **有引數**（扣除 autofix 後）→ 依引數類型決定模式（見下方）
-2. **有 working tree 變更**（腳本 `scope-priority: 2`）→ 審查目標 = `git diff HEAD` + 腳本 `untracked` 清單逐檔（**review 須唯讀，勿用會寫 index 的 `git add -N`**：untracked 新檔全文即 diff，由 subagent 直接 `Read` 該檔，或 `git diff --no-index /dev/null <檔>`（唯讀）取得 added 視圖）
+2. **有 working tree 變更**（腳本 `scope-priority: 2`）→ 審查目標 = `git diff HEAD` + 腳本 `untracked` 清單逐檔（**review 須唯讀，勿用會寫 index 的 `git add -N`**：untracked 新檔全文即 diff，由 subagent 直接 `Read` 該檔，或 `git diff --no-index /dev/null <檔>`（唯讀）取得 added 視圖）。此唯讀處理適用**非 autofix** 路徑；autofix 於前置以 WIP snapshot 收妥未提交變更後，審查範圍改用 record 印出的 `diff-cmd:` 行（見「測試 baseline / WIP snapshot」段）
 3. **HEAD 偏離 base branch 且 working tree clean**（腳本 `scope-priority: 3`）→ 審查目標 = `git diff <base>...HEAD`（review 整個 branch）
    - base 取腳本 `base:` 輸出（偵測順序 remote HEAD → main → master、無 remote 退本地 branch 已封裝；目標是 repo 的預設主分支，不是當前 branch 的 upstream）。腳本印 `remotes: N 個` 且非 autofix 模式 → 提示使用者指定基準 remote（autofix 需零互動，用腳本預設並在報告註明）；`base: NONE` → **priority 3 不適用，落入 priority 4**（不在此提示指定 base，改問審查範圍）
 4. **working tree clean，且 HEAD 未領先 base branch（`<base>..HEAD` 為空）或無可用 base branch**（腳本 `scope-priority: 4 — MUST ASK USER`；剛初始化、無 remote、或已與主分支同步，無近期有意義 diff）→ **不要**逕自 `git diff HEAD~1`（只會審到最後一個小 commit）。先問使用者要審什麼：最後一個 commit、整條 branch、或**整個 repo / 全庫**。若選全庫 → base 設為 git empty-tree（腳本 priority 4 已印 `empty-tree:` 行，照抄）。（與 priority 3 互斥：3 = HEAD **領先** base；4 = HEAD **未領先** base 或無 base）
@@ -341,7 +350,7 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 - 問題**按根因分組**，不按嚴重度排列，讓 fixer 一次解決共因問題
 - 修復計畫由 subagent 根據具體問題產出
 - 修完後先 commit（如 `fix: R{N} review fixes`），再執行下一輪 `/deep-review`
-- 最終通過後，主 agent squash 所有 review fix commits：執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，照 `squash-cmd:` 輸出照抄 reset（腳本拒給——`verdict: STOP`——時停下交使用者，勿自行湊 hash），重新 commit 後跑 `clear`。message 採原始功能變更的語意（不是 `fix: review fixes`），遵循專案 Conventional Commits，並附 `Co-Authored-By` trailer（以 runtime system prompt 的 Git 區塊為權威，勿在 skill 寫死 model 名稱/版本）
+- 最終通過後，主 agent squash 所有 review fix commits：執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，照 `squash-cmd:` 輸出照抄 reset（腳本拒給——`verdict: STOP`——時停下交使用者，勿自行湊 hash；腳本印 `warning:`（將壓掉審查前既有 commits）時，reset 前須向使用者轉述該行——autofix 通過報告中列出即可，不必中斷等待），重新 commit 後跑 `clear`。message 採原始功能變更的語意（不是 `fix: review fixes`），遵循專案 Conventional Commits，並附 `Co-Authored-By` trailer（以 runtime system prompt 的 Git 區塊為權威，勿在 skill 寫死 model 名稱/版本）
 - **通過報告必須附「第三方審查資訊」**：列出每個 repo 的 commit 範圍（`base..head`，base = anchor 記錄的審查起點，跨 session 可用 `review-anchor.sh show` 恢復）和變更摘要，方便使用者轉交第三方 reviewer。R5 終止報告不需要此區塊（代碼尚未就緒）
 
 ### 6. Codex 第三方審查循環（autocodex 模式）
