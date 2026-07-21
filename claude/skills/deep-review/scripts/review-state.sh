@@ -137,6 +137,11 @@ check_repo() {
         echo "ahead: n/a（無 base）"
     fi
 
+    # -- 銜接檢查（迭代紀律：dirty tree + 已有 branch commit → 可能忘記 commit 上一輪修復）--
+    if [ "$n_dirty" -gt 0 ] && [ "$n_ahead" -gt 0 ]; then
+        echo "continuity: WARNING — working tree ${n_dirty} 檔未 commit 且 ${base}..HEAD 已有 ${n_ahead} commit：可能忘記 commit 上一輪修復，先 commit 再續（baseline 模式忽略此警告）"
+    fi
+
     # -- scope priority 建議（僅無引數情境；priority 1 引數由 model 判）--
     local priority
     if [ "$n_dirty" -gt 0 ]; then
@@ -148,6 +153,8 @@ check_repo() {
     else
         priority=4
         echo "scope-priority: 4 — MUST ASK USER（clean 且未領先 base／無 base）。Scope is the user's call — present the options (最後一個 commit / 整條 branch / 全庫) and STOP. Do NOT pick one yourself."
+        # 全庫選項的 base；值由 git 推導（empty tree 為 git 內建常數 4b825dc6...），不 hardcode
+        echo "empty-tree: $(git hash-object -t tree /dev/null)（全庫選項的 base；tree 非 commit，不可作 reset 目標）"
     fi
 
     # -- round 偵測（baseline 模式一律 Round 1，由 model 依模式覆蓋）--
@@ -169,6 +176,24 @@ check_repo() {
         else
             echo "hash-merge-base: UNKNOWN（merge-base 執行失敗）"
         fi
+    fi
+
+    # -- branch-first（autofix 第一個 commit 前的 gate；措辭對齊 project/ship-state.sh 的 verdict）--
+    local default_name=""
+    if [ -n "$base" ]; then
+        if [ -n "$remote" ]; then
+            default_name="${base#"$remote"/}"
+        else
+            default_name="$base"
+        fi
+    fi
+    if [ -z "$default_name" ]; then
+        echo "branch-first: UNKNOWN（無 default 可判）— autofix 前先與使用者確認"
+    elif [ "$branch" = "$default_name" ] || [ "$branch" = "DETACHED" ]; then
+        echo "branch-first: REQUIRED（HEAD 在 ${branch} —— autofix 第一個 commit 之前先開 feature branch，無條件）"
+        echo "branch-cmd: git -C ${repo} switch -c <type>/<slug>   # <type>/<slug> 由 model 依變更語意取（type ∈ feat/fix/refactor/docs/chore/test）"
+    else
+        echo "branch-first: 已在 feature branch（${branch}）"
     fi
 
     # -- diff 概覽（--stat only；完整 diff 由 subagent 自行收集）--

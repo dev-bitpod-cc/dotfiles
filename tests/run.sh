@@ -13,7 +13,7 @@
 #   7. add-new-host.sh --dry-run 煙霧測試（不動任何檔案）
 #   8. git-hygiene.sh（ready4quit skill script）verdict 判定
 #   9. ship-state.sh（project skill script）偵測與 protection 判定（gh stub）
-#  10. review-state.sh（deep-review skill script）scope-priority / round 判定
+#  10. review-state.sh（deep-review skill script）scope-priority / round / branch-first / continuity 判定
 #  11. review-context.sh（repo-review skill script）range 解析 / guidance / autofix gate（含分岔 base / detached HEAD / 閘序）
 #  12. repo-review skill packaging（evals 不進 runtime context）
 #  13. handoff-anchor.sh（handoff skill script）錨點驗證與生命週期判定
@@ -22,6 +22,8 @@
 #  16. session-pull-check.sh（SessionStart hook）落後偵測與靜默契約
 #  17. codex-exec-review.sh（deep-review skill script）exit 契約 / job 產物 / resume（codex stub）
 #  18. ensure-codex-skills.sh 幂等連結 ~/.codex/skills → dotfiles
+#  19. review-anchor.sh（deep-review skill script）錨點生命週期 / squash-cmd / codex-next
+#  20. verify-tests.sh（deep-review skill script）框架偵測與 exit 契約（uv/bun stub）
 #
 set -uo pipefail
 
@@ -369,6 +371,37 @@ if echo "$out" | grep -q "base: main"; then ok "無 remote → base 退用本地
 assert_rc "非 git repo → exit 1" 1 $?
 "$RS_SCRIPT" >/dev/null 2>&1
 assert_rc "無引數 → exit 2" 2 $?
+
+# --- branch-first / continuity / empty-tree（增量輸出行）---
+
+# feature branch（rs-work 現在 feat/y、clean）→ 資訊行、無 continuity
+out="$("$RS_SCRIPT" "$TMP/rs-work")"
+if echo "$out" | grep -q "branch-first: 已在 feature branch（feat/y）"; then ok "feature branch → branch-first 資訊行"; else bad "feature branch branch-first 誤判"; fi
+if echo "$out" | grep -q "continuity: WARNING"; then bad "clean tree 不應有 continuity 警告"; else ok "clean tree 無 continuity 警告"; fi
+
+# dirty + ahead>0 → continuity WARNING
+(cd "$TMP/rs-work" && echo v5 > f.txt)
+out="$("$RS_SCRIPT" "$TMP/rs-work")"
+if echo "$out" | grep -q "continuity: WARNING"; then ok "dirty+ahead → continuity WARNING"; else bad "continuity 警告缺失"; fi
+(cd "$TMP/rs-work" && git checkout -q -- f.txt)
+
+# HEAD 在 main（rs-clean、priority 4）→ REQUIRED + branch-cmd + empty-tree 常數
+out="$("$RS_SCRIPT" "$TMP/rs-clean")"
+if echo "$out" | grep -q "branch-first: REQUIRED"; then ok "HEAD 在 main → branch-first REQUIRED"; else bad "main branch-first 誤判"; fi
+if echo "$out" | grep -qF "branch-cmd: git -C $TMP/rs-clean switch -c <type>/<slug>"; then ok "branch-cmd 印出待填指令"; else bad "branch-cmd 缺失"; fi
+if echo "$out" | grep -q "empty-tree: 4b825dc642cb6eb9a060e54bf8d69288fbee4904"; then ok "priority 4 印 empty-tree 常數"; else bad "empty-tree 常數缺失"; fi
+
+# dirty 但 ahead=0 → 無 continuity（兩條件須同時成立）
+(cd "$TMP/rs-clean" && echo x > d.txt)
+out="$("$RS_SCRIPT" "$TMP/rs-clean")"
+if echo "$out" | grep -q "continuity: WARNING"; then bad "ahead=0 不應有 continuity 警告"; else ok "dirty 但 ahead=0 → 無 continuity 警告"; fi
+(cd "$TMP/rs-clean" && rm d.txt)
+
+# detached HEAD → REQUIRED
+git clone -q "$TMP/rs-origin.git" "$TMP/rs-detach"
+(cd "$TMP/rs-detach" && git checkout -q --detach)
+out="$("$RS_SCRIPT" "$TMP/rs-detach")"
+if echo "$out" | grep -q "branch-first: REQUIRED（HEAD 在 DETACHED"; then ok "detached HEAD → branch-first REQUIRED"; else bad "detached branch-first 誤判"; fi
 
 echo "▶ 11. repo-review review-context.sh range / guidance / autofix gate"
 RRC_SCRIPT="$ROOT/codex/skills/repo-review/scripts/review-context.sh"
@@ -1110,6 +1143,193 @@ assert_rc "ssh 失敗 → sync_remote 仍正常結束" 0 $?
 if printf '%s\n' "$ecs_out" | grep -q '❌ hostC'; then ok "ssh 失敗 → 印出連線失敗（不靜默）"; else bad "ssh 失敗被 set -e 吞掉——同步失敗變靜默成功"; fi
 ecs_out="$(FAKE_RESULT="NO_DOTFILES" bash "$ecs_report" hostD 2>&1)"
 if printf '%s\n' "$ecs_out" | grep -q 'hostD'; then ok "NO_DOTFILES → 印出警告"; else bad "NO_DOTFILES 回報消失"; fi
+
+echo "▶ 19. review-anchor.sh（deep-review skill script）錨點生命週期 / squash-cmd / codex-next"
+RA_SCRIPT="$ROOT/claude/skills/deep-review/scripts/review-anchor.sh"
+
+# fixture：bare origin + clone，main 已 push；feature branch 領先 2 commit
+git init --bare -q "$TMP/ra-origin.git"
+git init -q -b main "$TMP/ra-work"
+(cd "$TMP/ra-work" \
+    && echo a > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/ra-origin.git" && git push -qu origin main \
+    && git switch -qc feat/x \
+    && echo b > f.txt && "${GITC[@]}" commit -qam "feat: x" \
+    && echo c > f.txt && "${GITC[@]}" commit -qam "fix: R1 review fixes")
+
+# show 無 anchor → exit 1（STOP）
+"$RA_SCRIPT" show --repo "$TMP/ra-work" >/dev/null 2>&1
+assert_rc "show 無 anchor → exit 1（STOP）" 1 $?
+
+# record branch-diff → base = merge-base（腳本自解析，model 不心算）
+"$RA_SCRIPT" record --repo "$TMP/ra-work" --mode branch-diff --base origin/main >/dev/null
+assert_rc "record branch-diff → exit 0" 0 $?
+ra_mb="$(git -C "$TMP/ra-work" merge-base origin/main HEAD)"
+ra_anchor="$(git -C "$TMP/ra-work" rev-parse --absolute-git-dir)/deep-review/anchor"
+if [ -f "$ra_anchor" ] && grep -qxF "base=$ra_mb" "$ra_anchor"; then ok "anchor 檔落地且 base=merge-base"; else bad "anchor base 錯誤"; fi
+
+# squash-cmd happy path → 精確整行（固定 hash）+ commit 清單
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-work")"
+assert_rc "squash-cmd happy path → exit 0" 0 $?
+if echo "$out" | grep -qxF "squash-cmd: git -C $TMP/ra-work reset --soft $ra_mb"; then ok "squash-cmd 印解析完成指令（固定 hash）"; else bad "squash-cmd 指令錯誤"; fi
+if echo "$out" | grep -q "fix: R1 review fixes"; then ok "squash-range 列出 commit"; else bad "squash-range 清單缺失"; fi
+
+# record 無條件覆蓋（working-tree → base=HEAD）
+ra_head="$(git -C "$TMP/ra-work" rev-parse HEAD)"
+"$RA_SCRIPT" record --repo "$TMP/ra-work" --mode working-tree >/dev/null
+if grep -qxF "base=$ra_head" "$ra_anchor"; then ok "record 二次呼叫無條件覆蓋"; else bad "record 未覆蓋"; fi
+
+# range mode：下界解析 / 三點拒絕 / 壞 ref
+ra_first="$(git -C "$TMP/ra-work" rev-parse main)"
+"$RA_SCRIPT" record --repo "$TMP/ra-work" --mode range --range "$ra_first..HEAD" >/dev/null
+assert_rc "record range → exit 0" 0 $?
+if grep -qxF "base=$ra_first" "$ra_anchor"; then ok "range 下界解析正確"; else bad "range 下界錯誤"; fi
+"$RA_SCRIPT" record --repo "$TMP/ra-work" --mode range --range "main...HEAD" >/dev/null 2>&1
+assert_rc "三點 range → exit 2" 2 $?
+"$RA_SCRIPT" record --repo "$TMP/ra-work" --mode range --range "nope..HEAD" >/dev/null 2>&1
+assert_rc "壞 ref → exit 1" 1 $?
+
+# anchor hash 不存在（GC/rebase 模擬）→ STOP
+printf 'base=%s\nmode=branch-diff\nbranch=feat/x\nrecorded=0\n' "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" > "$ra_anchor"
+"$RA_SCRIPT" squash-cmd --repo "$TMP/ra-work" >/dev/null 2>&1
+assert_rc "anchor hash 已不存在 → exit 1（STOP）" 1 $?
+
+# anchor 非 HEAD 祖先（換到不含 anchor 的 branch）→ STOP
+"$RA_SCRIPT" record --repo "$TMP/ra-work" --mode working-tree >/dev/null
+(cd "$TMP/ra-work" && git switch -qc other main)
+"$RA_SCRIPT" squash-cmd --repo "$TMP/ra-work" >/dev/null 2>&1
+assert_rc "anchor 非 HEAD 祖先 → exit 1（STOP）" 1 $?
+(cd "$TMP/ra-work" && git switch -q feat/x && git branch -qD other)
+
+# record 在 main、之後 switch -c → squash-cmd 照常（stale 判 ancestry、非 branch 名）
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-bf"
+"$RA_SCRIPT" record --repo "$TMP/ra-bf" --mode working-tree >/dev/null
+(cd "$TMP/ra-bf" && git switch -qc feat/z && echo z > z.txt && "${GITC[@]}" add z.txt && "${GITC[@]}" commit -qm "fix: z")
+"$RA_SCRIPT" squash-cmd --repo "$TMP/ra-bf" >/dev/null
+assert_rc "record→switch -c 後 squash-cmd 照常 → exit 0" 0 $?
+
+# 空 range → WARNING、exit 0（reset 到 HEAD 無害）
+"$RA_SCRIPT" record --repo "$TMP/ra-work" --mode working-tree >/dev/null
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-work")"
+assert_rc "無 commit 可 squash → exit 0" 0 $?
+if echo "$out" | grep -q "WARNING"; then ok "空 range → WARNING"; else bad "空 range 未警告"; fi
+
+# codex-next：C1 → 冪等 → C2 增量 → --full → C4 上限
+"$RA_SCRIPT" record --repo "$TMP/ra-work" --mode branch-diff --base origin/main >/dev/null
+ra_h1="$(git -C "$TMP/ra-work" rev-parse HEAD)"
+out="$("$RA_SCRIPT" codex-next --repo "$TMP/ra-work")"
+assert_rc "codex-next C1 → exit 0" 0 $?
+if echo "$out" | grep -q "codex-round: C1" && echo "$out" | grep -qxF "codex-range: $ra_mb..$ra_h1"; then ok "C1 range = anchor-base..HEAD"; else bad "C1 range 錯誤"; fi
+if echo "$out" | grep -qF "codex-cmd: ~/.claude/skills/deep-review/scripts/codex-exec-review.sh run --repo $TMP/ra-work --range $ra_mb..$ra_h1 --round C1"; then ok "codex-cmd 整行照抄可執行"; else bad "codex-cmd 錯誤"; fi
+out="$("$RA_SCRIPT" codex-next --repo "$TMP/ra-work")"
+assert_rc "同 HEAD 再呼叫 → exit 0" 0 $?
+if echo "$out" | grep -q "codex-round: C1"; then ok "同 HEAD 冪等（round 不誤增）"; else bad "冪等失敗"; fi
+(cd "$TMP/ra-work" && echo d > f.txt && "${GITC[@]}" commit -qam "fix: codex C1 fixes")
+ra_h2="$(git -C "$TMP/ra-work" rev-parse HEAD)"
+out="$("$RA_SCRIPT" codex-next --repo "$TMP/ra-work")"
+if echo "$out" | grep -q "codex-round: C2" && echo "$out" | grep -qxF "codex-range: $ra_h1..$ra_h2"; then ok "C2 增量 range = 上輪 HEAD..HEAD"; else bad "C2 range 錯誤"; fi
+(cd "$TMP/ra-work" && echo e > f.txt && "${GITC[@]}" commit -qam "fix: codex C2 fixes")
+ra_h3="$(git -C "$TMP/ra-work" rev-parse HEAD)"
+out="$("$RA_SCRIPT" codex-next --repo "$TMP/ra-work" --full)"
+if echo "$out" | grep -q "codex-round: C3" && echo "$out" | grep -qxF "codex-range: $ra_mb..$ra_h3"; then ok "--full → C1 scope、round 照推"; else bad "--full 錯誤"; fi
+(cd "$TMP/ra-work" && echo f2 > f.txt && "${GITC[@]}" commit -qam "fix: codex C3 fixes")
+"$RA_SCRIPT" codex-next --repo "$TMP/ra-work" >/dev/null 2>&1
+assert_rc "超過 C3 上限 → exit 1（STOP）" 1 $?
+if grep -qxF "codex_round=3" "$ra_anchor"; then ok "超上限 state 不前進"; else bad "超上限 state 誤前進"; fi
+
+# baseline：record base=HEAD（非 empty-tree）、C1 range=empty-tree..HEAD
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-base"
+"$RA_SCRIPT" record --repo "$TMP/ra-base" --mode baseline >/dev/null
+ra_bh="$(git -C "$TMP/ra-base" rev-parse HEAD)"
+if grep -qxF "base=$ra_bh" "$(git -C "$TMP/ra-base" rev-parse --absolute-git-dir)/deep-review/anchor"; then ok "baseline record base=HEAD（非 empty-tree）"; else bad "baseline base 錯誤"; fi
+out="$("$RA_SCRIPT" codex-next --repo "$TMP/ra-base")"
+if echo "$out" | grep -qxF "codex-range: 4b825dc642cb6eb9a060e54bf8d69288fbee4904..$ra_bh"; then ok "baseline C1 range = empty-tree..HEAD"; else bad "baseline C1 range 錯誤"; fi
+
+# clear：刪檔 + 幂等
+"$RA_SCRIPT" clear --repo "$TMP/ra-work" >/dev/null
+assert_rc "clear → exit 0" 0 $?
+if [ -f "$ra_anchor" ]; then bad "clear 未刪檔"; else ok "clear 刪除 anchor 檔"; fi
+"$RA_SCRIPT" clear --repo "$TMP/ra-work" >/dev/null
+assert_rc "clear 幂等（檔不存在仍 0）" 0 $?
+
+# 用法錯誤 / 非 git repo
+"$RA_SCRIPT" bogus --repo "$TMP/ra-work" >/dev/null 2>&1
+assert_rc "未知子指令 → exit 2" 2 $?
+"$RA_SCRIPT" record --repo "$TMP/ra-work" >/dev/null 2>&1
+assert_rc "record 缺 --mode → exit 2" 2 $?
+"$RA_SCRIPT" record --repo "$TMP/ra-work" --mode branch-diff >/dev/null 2>&1
+assert_rc "branch-diff 缺 --base → exit 2" 2 $?
+"$RA_SCRIPT" record --repo "$TMP/not-a-repo" --mode working-tree >/dev/null 2>&1
+assert_rc "非 git repo → exit 1" 1 $?
+
+echo "▶ 20. verify-tests.sh（deep-review skill script）框架偵測與 exit 契約（uv/bun stub）"
+VT_SCRIPT="$ROOT/claude/skills/deep-review/scripts/verify-tests.sh"
+
+# stub：PATH 前置注入假 uv/bun；argv 落檔供斷言（打真實 argv，不打重建字串）
+mkdir -p "$TMP/vt-bin"
+cat > "$TMP/vt-bin/uv" <<'STUB'
+#!/usr/bin/env bash
+[ -n "${VT_UV_ARGV:-}" ] && printf '%s\n' "$@" > "$VT_UV_ARGV"
+exit "${VT_UV_RC:-0}"
+STUB
+cat > "$TMP/vt-bin/bun" <<'STUB'
+#!/usr/bin/env bash
+[ -n "${VT_BUN_ARGV:-}" ] && printf '%s\n' "$@" > "$VT_BUN_ARGV"
+if [ "${VT_BUN_MODE:-ok}" = "notests" ]; then
+    echo 'error: 0 test files matching **{.test,.spec,_test_,_spec_}.{js,ts,jsx,tsx} in --cwd=/x' >&2
+    exit 1
+fi
+exit "${VT_BUN_RC:-0}"
+STUB
+chmod +x "$TMP/vt-bin/uv" "$TMP/vt-bin/bun"
+vt_run() { PATH="$TMP/vt-bin:$PATH" "$VT_SCRIPT" "$@"; }
+
+# pytest：rc 0/1/5 → exit 0/1/3
+mkdir -p "$TMP/vt-py" && touch "$TMP/vt-py/pyproject.toml"
+VT_UV_ARGV="$TMP/vt-uv-argv" vt_run "$TMP/vt-py" >/dev/null
+assert_rc "pytest 全綠 → exit 0（PASS）" 0 $?
+assert_eq "stub 收到真實 argv：uv run pytest" "run
+pytest" "$(cat "$TMP/vt-uv-argv")"
+out="$(VT_UV_RC=1 vt_run "$TMP/vt-py")"
+assert_rc "pytest 紅 → exit 1（FAIL）" 1 $?
+if echo "$out" | grep -q "verdict: FAIL"; then ok "FAIL 印 verdict 行"; else bad "FAIL verdict 缺失"; fi
+VT_UV_RC=5 vt_run "$TMP/vt-py" >/dev/null
+assert_rc "pytest rc=5（no tests collected）→ exit 3（SKIP）" 3 $?
+
+# bun：test script 存在 → 執行；紅 / 無測試檔 / placeholder → 1 / 3 / 3
+mkdir -p "$TMP/vt-js"
+echo '{"scripts":{"test":"bun test"}}' > "$TMP/vt-js/package.json"
+VT_BUN_ARGV="$TMP/vt-bun-argv" vt_run "$TMP/vt-js" >/dev/null
+assert_rc "bun test 全綠 → exit 0" 0 $?
+assert_eq "stub 收到真實 argv：bun test" "test" "$(cat "$TMP/vt-bun-argv")"
+VT_BUN_RC=1 vt_run "$TMP/vt-js" >/dev/null
+assert_rc "bun test 紅 → exit 1" 1 $?
+VT_BUN_MODE=notests vt_run "$TMP/vt-js" >/dev/null
+assert_rc "bun 無測試檔（0 test files matching）→ exit 3" 3 $?
+mkdir -p "$TMP/vt-js-ph"
+printf '{"scripts":{"test":"echo \\"Error: no test specified\\" && exit 1"}}\n' > "$TMP/vt-js-ph/package.json"
+VT_BUN_ARGV="$TMP/vt-bun-ph-argv" vt_run "$TMP/vt-js-ph" >/dev/null
+assert_rc "npm placeholder test script → exit 3" 3 $?
+if [ -f "$TMP/vt-bun-ph-argv" ]; then bad "placeholder 不應執行 bun"; else ok "placeholder 未執行 bun（無 argv 落檔）"; fi
+
+# 並存（monorepo）：都跑；任一紅即 FAIL
+mkdir -p "$TMP/vt-both" && touch "$TMP/vt-both/pyproject.toml"
+echo '{"scripts":{"test":"bun test"}}' > "$TMP/vt-both/package.json"
+VT_UV_ARGV="$TMP/vt-both-uv" VT_BUN_ARGV="$TMP/vt-both-bun" vt_run "$TMP/vt-both" >/dev/null
+assert_rc "並存皆綠 → exit 0" 0 $?
+if [ -f "$TMP/vt-both-uv" ] && [ -f "$TMP/vt-both-bun" ]; then ok "並存 → 兩個框架都被執行"; else bad "並存未都執行"; fi
+VT_BUN_RC=1 vt_run "$TMP/vt-both" >/dev/null
+assert_rc "並存任一紅 → exit 1" 1 $?
+
+# 無框架 / 用法錯誤
+mkdir -p "$TMP/vt-none"
+out="$(vt_run "$TMP/vt-none")"
+assert_rc "無框架 → exit 3（SKIP）" 3 $?
+if echo "$out" | grep -q "verdict: SKIP"; then ok "SKIP 印 verdict 行"; else bad "SKIP verdict 缺失"; fi
+vt_run >/dev/null 2>&1
+assert_rc "缺引數 → exit 2" 2 $?
+vt_run "$TMP/vt-nope" >/dev/null 2>&1
+assert_rc "路徑不存在 → exit 2" 2 $?
 
 echo ""
 echo "════════════════════════════"
