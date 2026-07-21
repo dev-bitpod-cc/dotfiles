@@ -129,7 +129,7 @@ scripts/dotfiles-sync.sh     # 同步 dotfiles 到所有主機
 
 ## 測試
 
-- `./tests/run.sh` — 腳本驗證一鍵跑完：shellcheck + bash -n 全腳本 gate（含 `claude/skills/*/scripts/`、`shell/functions.sh`）、**全形標點吞變數名 gate**（`"（exit=$rc）"` 會被 bash 併入變數名 → `set -u` 下 unbound variable，且只在錯誤路徑觸發，一律要求寫 `${var}`）、inventory/render 純邏輯行為測試、skill 腳本行為測試（git-hygiene / ship-state / review-state / handoff-anchor / **codex-exec-review** / **crawl-quality-scan**，protection 判定用 gh stub、codex 用會模擬 clap argv 拒絕的 stub、crawl-quality-scan 用 python fixture 對準扣分表）、`ensure-rc-source.sh` / **`ensure-codex-skills.sh`** / **`ensure-codex-guidance.sh`** 幂等測試、**dotfiles-sync 遠端回報段**（ssh 失敗與無告知時都不可吞掉主機結果）、`add-new-host.sh --dry-run` 煙霧測試。改動 `scripts/`、setup 腳本或 skill 腳本後必跑。
+- `./tests/run.sh` — 腳本驗證一鍵跑完：shellcheck + bash -n 全腳本 gate（含 `claude/skills/*/scripts/`、`shell/functions.sh`）、**全形標點吞變數名 gate**（`"（exit=$rc）"` 會被 bash 併入變數名 → `set -u` 下 unbound variable，且只在錯誤路徑觸發，一律要求寫 `${var}`）、inventory/render 純邏輯行為測試、skill 腳本行為測試（git-hygiene / ship-state（含 resolve 子指令與 dossier 簽章偵測）/ **branch-first**（真 git fixture：情況 A/B、mixed state、分岔/撞名/無 remote 一律 STOP）/ review-state / handoff-anchor / **codex-exec-review** / **crawl-quality-scan**，protection 判定用 gh stub、codex 用會模擬 clap argv 拒絕的 stub、crawl-quality-scan 用 python fixture 對準扣分表）、`ensure-rc-source.sh` / **`ensure-codex-skills.sh`** / **`ensure-codex-guidance.sh`** 幂等測試、**dotfiles-sync 遠端回報段**（ssh 失敗與無告知時都不可吞掉主機結果）、`add-new-host.sh --dry-run` 煙霧測試。改動 `scripts/`、setup 腳本或 skill 腳本後必跑。
 - Skill 行為測試（弱模型 evals）：`claude/evals/README.md`（沙盒建置 + 手動 runner），各 skill 情境在其目錄的 `evals.md`。
 
 ## 重要規則
