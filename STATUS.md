@@ -12,7 +12,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(無——殘項見「技術債」)
+- **deep-review prose 下沉成腳本**(2026-07-21 開工,計畫已核准)
+  - Context:SKILL.md 多段 prose 要求模型跨輪記住 state(squash base hash、last-codex-HEAD),context 壓縮死穴;prose 為此重複防禦三次(NEVER a moving ref / 不要 HEAD~1 ×3)。
+  - Goal:四項下沉——(1) 錨點 state → 新 `review-anchor.sh`(record/show/squash-cmd/codex-next/clear,state 存 `.git/deep-review/anchor`);(2) branch-first gate → `review-state.sh` 增量;(3) verify-tests → 新 `verify-tests.sh`(exit 0/1/3/2);(4) 銜接警告+empty-tree 常數 → `review-state.sh` 增量。SKILL.md 對應段落瘦身為「呼叫腳本、照抄輸出」。
+  - AC:`./tests/run.sh` 全綠(baseline 234 PASS,第 10 節擴充+新 19/20 節);SKILL.md body <500 行;evals.md 補 F16/F17+紀錄表;evals d1+d2 迴歸 GREEN。
+  - Constraints:skill 腳本 git-唯讀(mutation 印指令由 model 照抄);不抽共用 lib(review-anchor 不自建 base 偵測,--base/--range 由 review-state 輸出轉交);exit 契約 0/1/2(+verify-tests 的 skip=3),不用 4/5;繁中訊息一律 `${var}`。
+  - 計畫全文:`~/.claude/plans/linear-crafting-bachman.md`(machine-local)。
+  - 過程紀錄:(1) **`bun test` 無測試檔 rc=1 非 0**(實測 v1.3.14,stderr 含 `error: 0 test files matching`)——verify-tests.sh 以該訊息映射 SKIP;bun 改版換訊息會退化成 FAIL(保守方向,不誤判通過),header 已註明。pytest 則有正式契約 rc=5=no tests collected。(2) anchor stale 判定用 **ancestry(`merge-base --is-ancestor`)不用 branch 名**——record 在 branch-first 切換前後都合法,branch 名比對會誤傷。(3) 實作全綠:tests/run.sh 294 PASS(第 10 節擴充+新 19/20 節);SKILL.md 374→371 行;evals d1+d2 Sonnet 迴歸**雙 PASS**(沙盒 git 實查:d1 全程走新腳本、squash parent==錨點、anchor 已 clear;d2 照抄 empty-tree 行後 STOP)。(4) 選配項「全域 CLAUDE.md codex 觸發段補 anchor 恢復句」**刻意延後**——claude/CLAUDE.md 尚有前一工作項(行為規則四處調整)未 commit,現在改會混入同檔 diff。
 
 ---
 

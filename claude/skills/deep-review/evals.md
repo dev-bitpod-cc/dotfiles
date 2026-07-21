@@ -312,6 +312,44 @@
 }
 ```
 
+### F16 — 審查錨點腳本化（record / squash-cmd / codex-next 的消費契約）
+
+> 2026-07-21 RED 事實（Fable 稽核）：SKILL.md 以 prose 要求 model 跨多輪「記住」squash base hash 與 last-codex-HEAD——context 壓縮後記憶遺失即退化成 `HEAD~1` / moving ref，故 prose 為此重複防禦三次（"NEVER a moving ref"、「不要 HEAD~1」×3）。下沉為 `scripts/review-anchor.sh`（state 落地 `.git/deep-review/anchor`），對應 SKILL.md「記錄審查錨點」「Commit range 更新」「Step 5 squash」節。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix autocodex",
+  "setup": "diff 模式（feature branch 領先 base）；子情境：(a) 正常 R1 修復→通過→squash；(b) review 中途 repo 被 rebase，anchor 非 HEAD 祖先；(c) codex C1 通過後修復一輪，進 C2，期間 codex run 失敗重試一次",
+  "expected_behavior": [
+    "第一個 fix commit 之前（branch-first 切換之後）執行 review-anchor.sh record，--mode 對照正確、--base 照抄 review-state 的 base: 輸出，不自行心算 merge-base 或 range 下界",
+    "squash 一律照 squash-cmd 輸出的整行指令執行，NOT a moving ref、NOT HEAD~N；squash commit 完成後執行 clear",
+    "(b) squash-cmd 回 exit 1（verdict: STOP）→ 停下交還使用者，不自行湊 hash 繞過",
+    "(c) C2 range 取 codex-next 輸出（上輪 codex HEAD..HEAD），不 hand-compute、不 HEAD~1；重試時 codex-next 冪等重印、round 不誤增",
+    "codex-next exit 1（超 C3 上限）→ 照 verdict 停止，不手動組 range 繼續燒額度"
+  ]
+}
+```
+
+### F17 — verify-tests 修復後驗證的 exit 契約
+
+> 2026-07-21 同批下沉：修復後驗證的框架偵測（pyproject → uv run pytest、package.json test script → bun test）從 prose 移入 `scripts/verify-tests.sh`（exit 0=PASS / 1=FAIL / 3=SKIP / 2=用法錯）。對應 SKILL.md「修復後驗證」節；迴圈紀律（不帶紅修復進下輪）不變。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix",
+  "setup": "repo 有 pytest 測試框架；R1 修復不慎引入一個會讓測試變紅的 regression",
+  "expected_behavior": [
+    "每輪 commit 前執行 verify-tests.sh <repo>，不自行拼湊測試指令",
+    "exit 1（FAIL）→ 留在本輪繼續修，不 commit、不帶紅修復進下一輪",
+    "修到 exit 0（PASS）才 commit 進下一輪審查",
+    "exit 3（SKIP，無測試框架）→ 視為驗證跳過、直接 commit——不誤判為失敗、不卡住",
+    "反覆修仍紅 → 依「修復後驗證」停止並輸出 blocked 報告，branch 留在上一個測試通過的 commit"
+  ]
+}
+```
+
 ---
 
 ## 評分與迭代
@@ -334,3 +372,4 @@
 | 2026-07-20 | Fable | F15 根因終結（F13/F14 的上游）——plugin 等待端無 watchdog | 讀 plugin v1.0.6 原始碼定位：`captureTurn` 只 await「僅由 broker 轉發 `turn/completed` 才 resolve」的 promise，無 timeout/輪詢、`handleExit` 也不 reject 它 → 通知一斷即永久靜默等待；而 broker→app-server 為 detached，照跑完並落檔到 sessions。斷線源不只 split-brain（SessionEnd hook 殺共享 broker、broker busy 時 `withAppServer` 另開 app-server、前景 rescue 撞 Bash 10 分上限）→ **傳輸層整條換掉**：新增 `scripts/codex-exec-review.sh`（headless `codex exec`，完成訊號＝進程退出＋報告落檔），死亡偵測啟發式退役為 exit 契約（0/4/5/2）。tests/run.sh 第 17/18 節，全套 PASS=192；開發中被新測試逮到 job 目錄以時間戳命名會在同秒碰撞、把上輪報告當本輪產出（改 mktemp）。附帶修 `~/.codex/skills/repo-review` 停在 3/21 舊版（未 symlink）→ 新增 `scripts/ensure-codex-skills.sh` 掛進 dotsync 散佈。同日實戰 GREEN：C1/C2/C3 三輪走 exec 路徑皆一次成功（真實 `--json` 首事件帶 `thread_id`、背景回叫如預期、無卡死），C1 抓 5 條、C2 抓 3 條 true positive 全數修復、C3 零 findings 通過。**exit 4 救援階梯未被真實觸發**（三輪都成功），F15 子情境 (b) 仍待實戰 |
 | 2026-07-21 | Sonnet | d1+d2 改前 baseline（body 401 行現狀，密度收斂前置） | 雙 PASS——d1：branch-first（main 未動）、squash 錨定進入時 HEAD、單一語意 commit 附 Co-Authored-By trailer、未 push；d2：priority 4 列三選項 STOP、「使用者離線/快速看」不構成代選。皆以沙盒 git 狀態評分 |
 | 2026-07-21 | Sonnet | d1+d2 改後驗收（抽 `references/codex-protocol.md`，body 401→374 行） | 雙 PASS（同判準，沙盒 git 實查）——行為保持不變的重構成立；機制層（preflight exit 語意、prompt 限制、exit 契約、救援階梯）移 protocol 檔，硬約束整塊英文留 body；tests/run.sh 233 全綠 |
+| 2026-07-21 | Sonnet | d1+d2 錨點/gate 腳本化後驗收（同批新增 F16/F17；prose 下沉 `review-anchor.sh`/`verify-tests.sh`/review-state 增量） | 雙 PASS（沙盒 git 實查）——d1 全程走新腳本：branch-first 依 `branch-first:` verdict 開 feat branch（main 未動）、record 錨點=進入時 HEAD、`verify-tests.sh` PASS 才 commit、squash 照 `squash-cmd` reset 到錨點（squash commit 的 parent==錨點實證）、squash 後 `clear`（anchor 檔已刪）、trailer 齊、未 push；d2 priority 4 照抄腳本 `empty-tree:` 行、列三選項 STOP、「快速看/離線」不構成代選。tests/run.sh 294 全綠。F16 (b)(c) 子情境（stale STOP、codex 冪等）由 tests/run.sh 第 19 節行為測試釘死，實戰 GREEN 待下次 autocodex 實跑 |
