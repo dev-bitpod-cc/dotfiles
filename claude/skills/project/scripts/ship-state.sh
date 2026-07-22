@@ -260,6 +260,48 @@ detect_dossier() {
     fi
 }
 
+# 殘留 branch 衛生：已**完全併入** default 的 local / remote branch。
+# 動機：merge 最後一哩只清它自己 merge 的那支——規則生效前的老 branch、或走別條路
+# 合併的 branch 會無聲累積（實證：dotfiles 累到 2 支，是偶然跑 branch --list 才發現，
+# 流程從未告知）。與 dossier 衛生同性質：只印訊號，處置留給 SKILL Step 4 由使用者定奪。
+#
+# 判定用本地 ref、不碰網路——代價是 remote-tracking 可能含**已在遠端刪除但本地未
+# prune 的殘影**，故 cleanup-cmd 前置 `fetch --prune`（先對齊再刪，殘影會自己消失）。
+# 排除當前 branch 與 default 本身；未併入 default 的 branch 是「還沒 ship 的工作」，
+# 不在此列（誤報會誘導刪掉未送出的成果）。
+detect_stale_branches() {
+    local repo="$1" remote="$2" default="$3" branch="$4" toplevel="$5"
+    local locals remotes_merged n_local n_remote cmd b
+    locals="$(git -C "$repo" branch --merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
+        | grep -vxF "$default" | grep -vxF "$branch")" || locals=""
+    # `branch -r` 會把 <remote>/HEAD 的 short form 印成**裸 remote 名**（如 "origin"）——
+    # 那不是 branch，漏排除會污染清單並讓 cleanup-cmd 拼出 `--deleteorigin`（實地跑真 repo 才發現）
+    remotes_merged="$(git -C "$repo" branch -r --merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
+        | grep -vxF "$remote/$default" | grep -vxF "$remote" | grep -v '/HEAD$')" || remotes_merged=""
+    [ -z "$locals" ] && [ -z "$remotes_merged" ] && return
+    n_local=$([ -n "$locals" ] && printf '%s\n' "$locals" | wc -l | tr -d ' ' || echo 0)
+    n_remote=$([ -n "$remotes_merged" ] && printf '%s\n' "$remotes_merged" | wc -l | tr -d ' ' || echo 0)
+    echo "stale-branches: $((n_local + n_remote))（已完全併入 ${default}，內容零損失可清；Step 4 附註建議，經同意才刪）"
+    if [ -n "$locals" ]; then
+        printf '%s\n' "$locals" | sed 's/^/  local: /'
+    fi
+    if [ -n "$remotes_merged" ]; then
+        printf '%s\n' "$remotes_merged" | sed 's/^/  remote: /'
+    fi
+    # 清掃指令：fetch --prune 先行（清掉已在遠端刪除的本地殘影，避免對不存在的 branch 下刪除）。
+    # 逐項串接而非 sed 拼字串——前一版用 sed 補空白，遇裸 remote 名就拼出 `--deleteorigin`
+    cmd="git -C '${toplevel}' fetch --prune"
+    if [ -n "$locals" ]; then
+        cmd="${cmd} && git -C '${toplevel}' branch -d"
+        while IFS= read -r b; do cmd="${cmd} ${b}"; done <<< "$locals"
+    fi
+    if [ -n "$remotes_merged" ]; then
+        cmd="${cmd} && git -C '${toplevel}' push ${remote} --delete"
+        while IFS= read -r b; do cmd="${cmd} ${b#"${remote}"/}"; done <<< "$remotes_merged"
+    fi
+    echo "cleanup-cmd: ${cmd}"
+}
+
 check_repo() {
     local repo="$1"
 
@@ -340,6 +382,9 @@ check_repo() {
 
     # -- dossier 偵測（Step 2 衛生檢查；門檻見檔頭常數，單一來源）--
     detect_dossier "$repo"
+
+    # -- 殘留 branch 衛生（已併入 default 的 local/remote branch；無殘留則靜默）--
+    detect_stale_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
 
     # -- 無變更 → docs-only gate（判定需要 session 記憶，交回 model）--
     # 不在此早退：docs-only mode 隨後會產生 docs commit 走 Step 4/5，

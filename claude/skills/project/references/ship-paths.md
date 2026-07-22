@@ -175,6 +175,7 @@ git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash �
 - **失敗即停**：required checks 未過、merge conflict、gh 帳號無 write 權限 → 停下回報實際錯誤。**Never `--admin`, never bypass checks, never fall back to pushing default directly.**
 - 多 repo（多個 PR 同輪開出）：先確認使用者的 merge 指令涵蓋哪些 PR，勿一句 merge 就全 merge。
 - merge 完成後回報：merged commit / 本地 default 已同步 / branch 已清。
+- **本序列只清它自己 merge 的那支**——更早的、或走別條路合併的 branch 不在此列，由 `ship-state.sh` 的 `stale-branches:` 訊號在下一輪 Step 1 攤開（附 `cleanup-cmd:`，經使用者同意才刪）。
 
 ## PR title / body 模板
 
