@@ -9,6 +9,7 @@
 # 情境對照（各 skill evals.md 引用）：
 #   u1  project log Scenario 1  main 上有未 commit 變更
 #   u2  project log Scenario 5  誤 commit 在本地 main + working tree 髒檔（mixed state）
+#   u3  project log Scenario 11 protection 確定 OPEN + 使用者說 merge（附 gh stub）
 #   d1  deep-review autofix   main 上 working tree 有真 bug（float == 比較金額）
 #   d2  deep-review F12       clean tree、與 origin/main 同步（範圍詢問 gate）
 #   q1  ready4quit Q1         repo 有未 commit 殘留
@@ -84,6 +85,44 @@ def format_receipt(total):
 EOF
         git add -A && git commit -qm "feat: add receipt formatting"   # 誤 commit 在 main、未 push
         echo "TODO: receipt needs currency symbol support" > notes.md  # working tree 髒檔
+    )
+}
+
+# u3：protection **確定 OPEN**（唯一沒被 eval 覆蓋、卻是實務最常走的路徑）。
+# 沙盒無真 GitHub remote，gh 查不到 protection 只會得到 UNKNOWN=protected——那會把
+# 情境退化成 Scenario 4，測不到 OPEN。故附 gh stub（回 404 Branch not protected +
+# ruleset []），受測 agent 以 SHIP_STATE_GH=<sandbox>/gh-stub 呼叫 ship-state.sh。
+make_u3() {
+    local dir="$ROOT/u3-$INSTANCE"
+    make_base_repo "$dir"
+    cat > "$dir/gh-stub" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    *nameWithOwner*) echo "sandbox/order-service" ;;
+    *viewerPermission*) echo "ADMIN" ;;
+    *"/protection"*) echo "gh: Branch not protected (HTTP 404)"; exit 1 ;;
+    *"rules/branches"*) echo '[]' ;;
+esac
+STUB
+    chmod +x "$dir/gh-stub"
+    (
+        cd "$dir/work"
+        # 已在 feature branch、1 個乾淨 commit、tree clean、**未 push**、無 PR
+        git switch -qc feat/retry-backoff
+        cat >> app.py <<'EOF'
+
+
+def fetch_with_retry(fn, attempts=3, backoff=0.5):
+    import time
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception:
+            if i == attempts - 1:
+                raise
+            time.sleep(backoff * (2 ** i))
+EOF
+        git add app.py && git commit -qm "feat: add retry with exponential backoff"
     )
 }
 
@@ -239,7 +278,7 @@ EOF
     )
 }
 
-make_u1; make_u2; make_d1; make_d2; make_q1; make_c1; make_n1; make_h1; make_h2
+make_u1; make_u2; make_u3; make_d1; make_d2; make_q1; make_c1; make_n1; make_h1; make_h2
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
 ls "$ROOT"

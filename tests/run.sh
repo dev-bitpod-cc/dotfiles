@@ -286,8 +286,11 @@ if echo "$out" | grep -q "files-vs-default: 1 檔"; then ok "三點 diff 列出 
 if echo "$out" | grep -q "branch-first: 已在 feature branch"; then ok "feature branch → 免 branch-first"; else bad "feature branch 誤判 branch-first"; fi
 
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ss-work")"
-if echo "$out" | grep -q "protection: OPEN" && echo "$out" | grep -q "ship-path: DIRECT-PUSH"; then
-    ok "stub open → OPEN + DIRECT-PUSH（仍推 feature branch）"
+# 無保護仍預設 PR（SKILL Step 1 第 4 項）——腳本 verdict 是 model 照抄的東西，
+# 印 DIRECT-PUSH 會與規則牴觸，等於誘導 agent 略過 PR（u3 eval 的 RED 即此形狀）
+if echo "$out" | grep -q "protection: OPEN" && echo "$out" | grep -q "ship-path: PR" \
+    && ! echo "$out" | grep -q "ship-path: DIRECT-PUSH"; then
+    ok "stub open → OPEN 但 ship-path 仍為 PR（直推降為 escape hatch）"
 else bad "stub open 判定錯誤"; fi
 
 out="$(SHIP_STATE_GH="$TMP/gh-notfound" "$SS_SCRIPT" "$TMP/ss-work")"

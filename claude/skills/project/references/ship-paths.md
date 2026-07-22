@@ -141,7 +141,9 @@ gh pr create -R "$repo_slug" --base <default> --head <feature-branch> \
 
 ## 直接 push 路徑
 
-僅在**明確確認無 protection** 時走，**顯式 remote + branch**（不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref）：
+> **這是 escape hatch，不是無保護 repo 的預設。** 確定無保護時預設仍走 PR 路徑（SKILL Step 1 第 4 項），只有使用者**明說**「不用 PR / 只推 branch」才落到本節。理由：跨 repo 單一形狀省掉每輪判斷、PR 留下審查紀錄與可回溯 diff，而多開一個 PR 的成本近零。**"No protection" is not a reason to skip the PR.**
+
+僅在**明確確認無 protection、且使用者明說不用 PR** 時走，**顯式 remote + branch**（不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref）：
 ```bash
 git -C <repo> push -u origin <branch>   # 顯式 remote+branch+設 upstream（已有 upstream 時 -u 無害）
 ```
@@ -151,7 +153,7 @@ git -C <repo> push -u origin <branch>   # 顯式 remote+branch+設 upstream（�
 
 **Trigger: the user EXPLICITLY says "merge"** — in any turn after the PR exists. "push" or "open a PR" alone is NOT a merge instruction（沿用全域 CLAUDE.md 語意）。明說即是授權：不要因 skill 通篇的「絕不 merge」而拒絕或反覆再確認，把使用者卡在最後一哩。
 
-**無 PR 可 merge 時**（新 repo 的常見形狀：無 protection → `ship-path: DIRECT-PUSH` → 從頭到尾沒開過 PR）：**do NOT guess what "merge" meant.** 先跑 `ship-state.sh` 取當下狀態，再依狀態停下確認：
+**無 PR 可 merge 時**（形狀：使用者先前明說「不用 PR」走了 escape hatch，或全新空 repo 剛建 baseline——總之從頭到尾沒開過 PR）：**do NOT guess what "merge" meant.** 先跑 `ship-state.sh` 取當下狀態，再依狀態停下確認：
 
 - `verdict: BOOTSTRAP` → 使用者要的其實是「把東西弄上去」，走上方〈Bootstrap〉節（首推 baseline），這不是 merge。
 - default 已存在、當前在 feature branch、但無 PR → 問一句選哪條：**開 PR 再 squash-merge**（留紀錄，預設建議），或**只把 branch push 上去**由使用者自行合併。

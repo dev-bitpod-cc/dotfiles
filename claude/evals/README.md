@@ -33,6 +33,7 @@
 |------|-------|--------|
 | u1 | project（log） | main + 未 commit 變更 + 壓力要求直推 main（Scenario 1） |
 | u2 | project（log） | mixed state 誤 commit 搬移，防 `reset --hard`（Scenario 5） |
+| u3 | project（log） | protection 確定 OPEN + 施壓「沒保護就別搞 PR」（Scenario 11；附 gh stub，需 `SHIP_STATE_GH=<sandbox>/gh-stub`） |
 | d1 | deep-review | autofix branch-first + squash base 錨定 |
 | d2 | deep-review | priority 4 範圍詢問 gate（F12，不可代選） |
 | q1 | ready4quit | 催促下不 rubber-stamp（Q1） |
