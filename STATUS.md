@@ -6,18 +6,20 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-21)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-22)
 
 ---
 
 ## 進行中
 
-(暫無進行中工作項——skills 下沉三部曲已於 2026-07-21 收官)
+(暫無進行中工作項——bootstrap 路徑已於 2026-07-22 完成)
 
 ---
 
 ## 關鍵決策(附理由)
 
+- **2026-07-22 bootstrap 豁免以「腳本判定」界定作用域,不寫成 prose 條款**:全新空 repo 的第一次 ship 需要一個 never-push-default 的例外(遠端零 branch 時無 default 可保護,且 GitHub 以**第一個被 push 的 branch** 為 default——照 branch-first 推 feature branch 會把 `feat/xxx` 變成遠端 default,事後只能人工進 settings 改)。但實證顯示這種豁免會**蔓延**:先前一次「空 repo 初始匯入」的 push 授權被延伸到後續 commit,導致 commit 直接落在 main。故豁免的成立條件定為 `ship-state.sh` 實測「遠端零 branch」——baseline 一 push 條件即永久為假,verdict 自動消失、branch-first 恢復 REQUIRED,**授權活在會自己失效的機器判定裡而非對話記憶裡**。使用者據此拍板「只修機制、不加 rationalization table 條款」(表已 7 列,加條款防不住記憶型蔓延)。
+- **2026-07-22 ship-state.sh 破例碰網路(`ls-remote`),限縮在 `default: NONE` 分支**:「遠端零 branch」與「遠端有 branch 但本地定位不到 default」(未 fetch / default 名非 main|master)的正確處置**完全相反**(前者可建 baseline、後者絕不可推),而未 fetch 的 clone 下兩者的本地 ref 長得一模一樣——靠本地狀態無法分辨,猜錯就把 feature branch 推成遠端 default。此為檔頭「不 fetch」設計原則的顯性例外(比照 branch-first.sh 的唯讀慣例例外標注),正常路徑一次網路都不碰。反例已入 tests(遠端有 `trunk` 的未 fetch clone 必須 STOP)。
 - **2026-07-21 Codex skill authoring 採「全域短入口 + dotfiles local-delta guide」**:`~/.codex/AGENTS.md` 只強制先讀 system `$skill-creator` 與 `~/.dotfiles/codex/skill-building-guide.md`，完整流程留在版控 guide，避免 always-on context 膨脹與 vendor 官方文件後失效；`codex/AGENTS.md` 由新 `ensure-codex-guidance.sh` 比照 skill 散佈機制幂等 symlink，既有實體檔先備份，setup/dotsync 皆會套用。repo-review 是首個 pilot：eval-first、重構去重、quick validation、fresh-context forward test，行為 eval 而非 prose 零 findings 為收斂 oracle。
 - **2026-07-16 git 為唯一跨主機媒介**:不同步 `~/.claude/`(handoffs/memory)跨機——同步衝突、錨點的跨機語意複雜化、敏感內容風險;krepo STATUS.md 已證明 repo-resident + git 這條路可行。
 - **2026-07-16 `/project` 取代 `/uap` 而非並存**:雙入口=觸發混淆+double-source;`disable-model-invocation` 使鏈式呼叫不可行,只能複製防護邏輯(違反 single-source 紀律)。防護內容原文搬遷。
@@ -56,6 +58,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - [ ] /project 手感驗證(後半段):2026-07-17 已在 krepo 實測 log→merge 一輪(PR #16 dossier 收斂 + 總量治理衛生檢查首戰,多 repo 偵測/Step 4 gate/merge 最後一哩皆如預期);**剩 spec→實作(即時記錄)半段待驗**——即時 dossier 記錄的判斷準確度以該輪觀察為據(該規則尚無 pressure-test);mid-work re-spec 2026-07-21 研究後判**維持不改**(krepo c1addda 實戰中「對話直接編輯」catch-all 已把缺口升級 spec 做對、零失敗案例;Iron Law:no failing scenario, no instruction)——除非觀察到 agent 照過時 spec 執行、或擅自擴大範圍未問使用者,才回頭補程序＋RED eval
 
 ## 已完成(里程碑)
+
+- ✅ **2026-07-22 /project 補上 bootstrap 路徑(全新空 repo 的第一次 ship)**:使用者回報「對新建的空 repo 直接說 merge 會歧義」,實測確認三缺口——空 remote 下兩支腳本雙雙 STOP 但**流程無出路**(agent 只能即興)、branch-first 在此會造成永久性錯誤 default、「Merge 最後一哩」的 trigger 假設 PR 已存在(新 repo 通常無 protection → DIRECT-PUSH → 從沒開過 PR)。`ship-state.sh` 新增 `detect_bootstrap()`(BOOTSTRAP verdict + note/scope/可照抄 cmd,遠端有 branch 或 detached 一律 STOP);ship-paths.md 新增〈Bootstrap〉節與「無 PR 可 merge 時」分支(不猜、依狀態給選項);SKILL.md 的 never-push-default 加機制門控例外句 + Step 1/5 接上;branch-first.sh STOP 訊息指路。tests 新增 4 情境(bootstrap/detached/遠端有 branch 反例/baseline 後失效),先 RED(5 紅)後 GREEN,全 suite exit 0。
 
 - ✅ **2026-07-21 skills 下沉三部曲收官(PR #21/#22/#23)**:check-crawl-quality(掃描+扣分表下沉 `crawl-quality-scan.py`)→ project(resolve 子指令/branch-first.sh 首支 mutation 腳本/dossier 偵測門檻單一來源;clean-room 盲寫比對見 `docs/project-spec.md` 附錄)→ handoff(consume 子指令,consume-once 機械保證)。三 PR 皆 deep-review autofix+autocodex 全循環;dossier 簽章與 consume 已消費偵測各經三輪對抗收斂(啟發式偵測器的攻擊面逐輪遞窄,最終拍板邊界明文入 SKILL/註解);tests/run.sh 235→478 斷言全綠。
 

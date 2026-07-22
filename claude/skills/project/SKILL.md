@@ -68,7 +68,7 @@ Project Log 進度：
 These are hard constraints. Read them before touching git.
 
 - **NEVER push without explicit user confirmation.** Always show the Step 4 ship summary first and wait for an affirmative reply. No confirmation → STOP.
-- **NEVER push to the default / protected branch directly.** On a protected default branch, open a PR instead.
+- **NEVER push to the default / protected branch directly.** On a protected default branch, open a PR instead. Sole exception: `ship-state.sh` prints `verdict: BOOTSTRAP` — it measured zero branches on the remote, so no default branch exists yet. That exemption covers **exactly one push** (creating the baseline) and expires the moment the baseline exists. Only the script grants it; never carry it over from memory or from an earlier turn's authorization.
 - **NEVER merge the PR.** Opening a PR ≠ merging it. Merge only on an explicit user instruction.
 - **Branch FIRST, before any commit.** If changes must be committed while `HEAD` is the default branch (or detached), create a feature branch **before** committing — not at push time. This is unconditional: do it regardless of protection state (see Step 1, item 5), even when protection is confirmed off.
 - **Unknown protection = protected.** If `gh` is missing or the protection query fails, treat the default branch as protected (PR path). Do not assume it is open.
@@ -137,7 +137,7 @@ These are hard constraints. Read them before touching git.
 2. **變更集**（= 此 branch **相對 default 的變更**，即 PR 將含的內容；**不等於「未 push」**——已 push 到 feature branch upstream 的 commit 仍落在此範圍，push 狀態由 Step 5 處理且 push 為冪等）：取腳本的 `files-vs-default` + `working-tree` 合併為完整**檔案**清單（Step 2 判模組、Step 4 列變更檔都靠它；`commits-ahead` 只有主旨、無檔名，deep-review 交接的「clean tree + 只剩 branch commit」情境靠 `files-vs-default` 列檔）。無變更（腳本印 `changes: NONE`）→ 跳過此 repo，**除非符合下述 docs-only mode**。
    **Docs-only mode**：repo git 無變更（tree clean、無領先 default 的 commit），但 session 記憶中有本 session **已 ship**（已 merge／已 push）的變更 → 不跳過。變更集改由那批 commit 重建檔案清單：逐 commit `git -C <repo> show --name-only <sha>`（已 merge 進 default 者用 default 上的對應 commit）。後續步驟照常：Step 2 據此同步文檔、Step 3 只會產生 `docs:` commit、branch-first／protection／Step 4 確認全部適用；Step 2 掃完確認文檔皆已同步 → 該 repo 無事可做，如實回報。**A clean tree does not mean "nothing to ship" — "code shipped, docs lagging" is the common case this mode exists for.**
 3. **branch protection**：取腳本的 `protection:` verdict（classic + ruleset 都查過）——`PROTECTED` / `OPEN` / `UNKNOWN → treat as PROTECTED`。**Never reinterpret the script's UNKNOWN as "probably open" — Unknown = protected, the script already says so.** verdict 附 `viewerPermission=READ`（classic `Not Found`）→ 身分分離情境，後續處置（`git push --dry-run` 探權限、Step 4 摘要點明、不自行硬推）見 `references/ship-paths.md`。
-4. **決定 ship 路徑**：取腳本的 `ship-path:`——protected（或未知）→ **PR 路徑**（推 feature branch + 必開 PR）；確定無保護 → **直接 push 路徑**（推 feature branch，PR 可選）。**兩條路徑都推 feature branch、都不直推 default**（branch-first 無條件）——「直接 push」指**省去開 PR 的步驟、直接 push 該 branch**，不是直推 default。把變更合進 default branch 一律是**使用者**的事（agent 不 merge、不直推 default）。
+4. **決定 ship 路徑**：腳本印 `verdict: BOOTSTRAP`（全新空 repo，遠端零 branch）→ 走 **bootstrap 路徑**（`references/ship-paths.md`「Bootstrap」）：branch-first 與 protection 判定在此皆不適用（沒有 default 可保護），Step 4 摘要須標明「此 push 將決定遠端 default branch」。其餘 `verdict: STOP` 一律停下照訊息處理，**不得**自行當成 bootstrap。否則取腳本的 `ship-path:`——protected（或未知）→ **PR 路徑**（推 feature branch + 必開 PR）；確定無保護 → **直接 push 路徑**（推 feature branch，PR 可選）。**兩條路徑都推 feature branch、都不直推 default**（branch-first 無條件）——「直接 push」指**省去開 PR 的步驟、直接 push 該 branch**，不是直推 default。把變更合進 default branch 一律是**使用者**的事（agent 不 merge、不直推 default）。
 5. **Branch-first（無條件，依全域「if on default branch, branch first」）**：目標——**到 Step 5 送出前，當前 branch 一定不是 default branch（也不是 detached HEAD）**，**不論 protection**。已在 feature branch（如 deep-review 結尾）→ 跳過。否則執行：
 
    ```
@@ -198,6 +198,7 @@ Ship 摘要：
 
 - **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`，多 repo 須 `-R <owner/repo>` 綁定）：有則指向、無則 `gh pr create`（同樣 `-R` 綁定；title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。完整綁定指令見 `references/ship-paths.md`。輸出 PR URL，並附一句提示：「說『merge』即可由我接手最後一哩（squash-merge + 清 branch + 同步本地 default）」——序列見 `references/ship-paths.md`「Merge 最後一哩」。**不 push default branch；未獲明說 merge 前不 merge。**
 - **直接 push 路徑**（確定無保護）：push **當前 branch**（branch-first 無條件，故此處一定是 feature branch、非 default）：`git -C <repo> push -u origin <feature-branch>`（**顯式 remote + branch**，不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref；`origin` 為 stand-in）。在 feature branch 時可**附帶提示**是否開 PR（不強制；尊重「無保護→直接 push」）。
+- **Bootstrap 路徑**（`verdict: BOOTSTRAP`）：照抄腳本的 `bootstrap-cmd:`（推本地 default 建立 baseline），完成後**重跑 `ship-state.sh` 確認 BOOTSTRAP 已消失**——此後回到正常路徑，後續 commit 一律 feature branch。
 - 多 repo：逐 repo 送出，最後彙總（各 repo 的 PR URL / push 結果）。
 - push 失敗處理（`rejected` / 無 upstream / gh 未登入）→ 見 `references/ship-paths.md`「push 失敗處理」（單一來源）。
 

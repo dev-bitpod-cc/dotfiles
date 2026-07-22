@@ -9,7 +9,9 @@
 # 逐 repo 輸出：branch / remotes / default / 變更集（files-vs-default 三點、
 # commits-ahead 兩點、working-tree porcelain）/ misplaced（誤 commit 在本地
 # default，附 branch-first-cmd 供照抄）/ dossier 偵測（STATUS.md 衛生，門檻
-# 單一來源在本腳本）/ protection verdict / ship-path / branch-first。
+# 單一來源在本腳本）/ protection verdict / ship-path / branch-first。default 定位
+# 不到時改印 bootstrap 判定（遠端零 branch → BOOTSTRAP + 可照抄 push 指令；遠端有
+# branch → STOP，見 detect_bootstrap）。
 #
 # resolve 輸出單行 verdict（照 verdict 走，勿重新詮釋）：
 #   resolve: REPO <toplevel>   token 解析為 repo 根（兩端 realpath 正規化後相等；'.' 恆為
@@ -23,8 +25,9 @@
 #            1 = 有 repo 無效；2 = 用法錯誤
 #
 # 設計原則：
-# - 唯讀。不 fetch、不 commit、不 switch——mutation 一律留給 skill 流程（branch-first
-#   搬移、提交、push 都在 Step 1/3/5 由 model 依 Critical gate 執行）。
+# - 唯讀。不 commit、不 switch——mutation 一律留給 skill 流程（branch-first
+#   搬移、提交、push 都在 Step 1/3/5 由 model 依 Critical gate 執行）。不 fetch，唯一
+#   碰網路的例外是 default 定位不到時的 bootstrap 判定（ls-remote，理由見 detect_bootstrap）。
 # - protection 判定封裝於此（classic + ruleset，邏輯解說見 references/ship-paths.md，
 #   本腳本為可執行權威）。Unknown = protected 直接印在輸出裡，不留給 model 重新詮釋。
 #
@@ -115,6 +118,46 @@ detect_default_branch() {
         fi
     done
     echo ""
+}
+
+# Bootstrap 偵測（僅在 default 定位不到時呼叫）：分辨「遠端零 branch」（全新空 repo，
+# 尚無 default branch 可保護 → 可建 baseline）與「遠端有 branch 但本地定位不到 default」
+# （未 fetch / default 名非 main|master → 絕不可推）。兩者的正確處置完全相反。
+#
+# ⚠ 本函式是本腳本**唯一碰網路**的地方（檔頭「不 fetch」設計原則的顯性例外）。理由：
+# 未 fetch 的 clone 下，兩種情境的本地 ref 長得一模一樣，靠本地狀態無法分辨；猜錯的
+# 代價是把 feature branch 推成遠端 default branch（GitHub 以第一個 push 的 branch 為
+# default，事後只能人工進 settings 改）。ls-remote 唯讀、不改任何本地 ref。
+# 例外限縮在 default: NONE 分支內——正常路徑一次網路都不碰。
+#
+# 防授權蔓延：BOOTSTRAP 的成立條件是「遠端零 branch」，baseline 一 push 條件即永久為假，
+# 本函式再也不會印 BOOTSTRAP、branch-first 恢復 REQUIRED。豁免作用域由此機制界定，
+# 不靠 agent 記憶（實證失效模式：初始匯入的 push 授權被延伸到後續 commit）。
+detect_bootstrap() {
+    local repo="$1" remote="$2" branch="$3" toplevel="$4" heads rc n
+    heads="$(git -C "$repo" ls-remote --heads "$remote" 2>&1)"
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "remote-heads: UNKNOWN（ls-remote 失敗 rc=${rc}：$(printf '%s' "${heads}" | head -1)）"
+        echo "verdict: STOP（無法判定遠端是否為空——網路/認證問題，修好再跑；NOT bootstrap，勿臆測）"
+        return
+    fi
+    if [ -n "$heads" ]; then
+        n="$(printf '%s\n' "${heads}" | wc -l | tr -d ' ')"
+        echo "remote-heads: ${n}（遠端有 branch，但本地定位不到 default）"
+        printf '%s\n' "${heads}" | awk '{print $2}' | print_list "$n"
+        echo "verdict: STOP（NOT bootstrap——先 git fetch，或由使用者指定 default 名；此情境直推會推錯 branch）"
+        return
+    fi
+    echo "remote-heads: 0（遠端無任何 branch）"
+    if [ "$branch" = "DETACHED" ]; then
+        echo "verdict: STOP（遠端雖空，但 HEAD detached、無 branch 名可當 baseline——先 switch 到具名 branch）"
+        return
+    fi
+    echo "verdict: BOOTSTRAP（全新空 repo 的第一次 ship：遠端尚無 default branch，故無 default 可保護、branch-first 在此不適用）"
+    echo "bootstrap-note: 首推的 branch 將成為遠端 default branch —— 推 '${branch}' 即以它為 default（事後只能人工進 repo settings 改），Step 4 摘要須向使用者標明"
+    echo "bootstrap-scope: 豁免僅涵蓋下面這一次 push（建立 baseline）。baseline 一存在，本 verdict 即不再出現、branch-first 與 never-push-default 全數恢復——後續 commit 一律走 feature branch"
+    echo "bootstrap-cmd: git -C '${toplevel}' push -u ${remote} ${branch}"
 }
 
 # protection 判定（classic + ruleset；判定順序見 ship-paths.md）
@@ -252,7 +295,8 @@ check_repo() {
     default="$(detect_default_branch "$repo" "$remote")"
     if [ -z "$default" ]; then
         echo "default: NONE（找不到 $remote/HEAD、$remote/main、$remote/master）"
-        echo "verdict: STOP（無法定位 default branch，交由使用者確認）"
+        # 全新空 repo？兩種 default: NONE 的處置相反，交由 detect_bootstrap 實測遠端分辨
+        detect_bootstrap "$repo" "$remote" "$branch" "$toplevel"
         return 0
     fi
     echo "default: $default"

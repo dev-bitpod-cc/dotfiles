@@ -12,7 +12,7 @@
 #   6. render-ssh-config.sh 區塊替換、--check、marker 防呆
 #   7. add-new-host.sh --dry-run 煙霧測試（不動任何檔案）
 #   8. git-hygiene.sh（ready4quit skill script）verdict 判定
-#   9. ship-state.sh（project skill script）偵測與 protection 判定（gh stub；含 resolve 子指令 / dossier 偵測）
+#   9. ship-state.sh（project skill script）偵測與 protection 判定（gh stub；含 resolve 子指令 / bootstrap 判定 / dossier 偵測）
 #  9b. branch-first.sh（project skill script）情況 A/B 判定與誤 commit 救援序列（真 git fixture）
 #  10. review-state.sh（deep-review skill script）scope-priority / round / branch-first / continuity 判定
 #  11. review-context.sh（repo-review skill script）range 解析 / guidance / autofix gate（含分岔 base / detached HEAD / 閘序）
@@ -369,6 +369,56 @@ if echo "$out" | grep -q "resolve: UNKNOWN"; then ok "repo 外目錄 → UNKNOWN
 
 "$SS_SCRIPT" resolve >/dev/null 2>&1
 assert_rc "resolve 無 token → exit 2" 2 $?
+
+# --- bootstrap 偵測（全新空 repo 的第一次 ship；default 定位不到時才觸發）---
+# 兩種「default: NONE」的正確處置完全相反：遠端零 branch → 可建 baseline；遠端有
+# branch 但本地定位不到 → 絕不可推（推了就把 feature branch 變成遠端 default）。
+# 本區塊釘死「分辨得出來」與「baseline 建立後豁免自動失效」。
+
+# 情境 1：遠端零 branch + 本地 main 有 commit → BOOTSTRAP
+git init --bare -q "$TMP/bs-origin.git"
+git init -q -b main "$TMP/bs-work"
+(cd "$TMP/bs-work" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/bs-origin.git")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bs-work")"
+assert_rc "空 remote → exit 0（verdict 即成功）" 0 $?
+if echo "$out" | grep -q "verdict: BOOTSTRAP"; then ok "遠端零 branch → BOOTSTRAP verdict"; else bad "遠端零 branch 未判 BOOTSTRAP（${out}）"; fi
+if echo "$out" | grep -q "remote-heads: 0"; then ok "BOOTSTRAP 附遠端 branch 數證據"; else bad "BOOTSTRAP 缺 remote-heads 證據"; fi
+if echo "$out" | grep -q "bootstrap-cmd: .*push -u origin main"; then ok "BOOTSTRAP 附可照抄 push 指令（推本地 default 名）"; else bad "BOOTSTRAP 缺 bootstrap-cmd"; fi
+if echo "$out" | grep -q "bootstrap-note:.*default branch"; then ok "BOOTSTRAP 標明首推將決定遠端 default"; else bad "BOOTSTRAP 未標明 default 後果"; fi
+if echo "$out" | grep -q "bootstrap-scope:"; then ok "BOOTSTRAP 標明豁免作用域（防授權蔓延）"; else bad "BOOTSTRAP 缺 scope 行（授權會蔓延到後續 commit）"; fi
+
+# 情境 2：遠端零 branch + detached HEAD → 不可 bootstrap（無 branch 名可當 default）
+(cd "$TMP/bs-work" && git checkout -q --detach)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bs-work")"
+if echo "$out" | grep -q "verdict: STOP" && ! echo "$out" | grep -q "verdict: BOOTSTRAP"; then
+    ok "空 remote + detached HEAD → STOP（非 bootstrap）"
+else bad "detached HEAD 誤判 bootstrap（${out}）"; fi
+(cd "$TMP/bs-work" && git checkout -q main)
+
+# 情境 3（關鍵反例）：遠端**有** branch 但本地無 remote-tracking 且名非 main/master
+# → default 定位不到，但**絕不可** bootstrap 直推
+git init --bare -q "$TMP/bs-trunk.git"
+git init -q -b trunk "$TMP/bs-seed"
+(cd "$TMP/bs-seed" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/bs-trunk.git" && git push -qu origin trunk)
+git init -q -b main "$TMP/bs-nofetch"
+(cd "$TMP/bs-nofetch" \
+    && echo hi > g.txt && "${GITC[@]}" add g.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/bs-trunk.git")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bs-nofetch")"
+if echo "$out" | grep -q "verdict: STOP" && ! echo "$out" | grep -q "BOOTSTRAP"; then
+    ok "遠端有 branch 但定位不到 default → STOP（不得誤判 bootstrap）"
+else bad "遠端有 branch 卻判 bootstrap——會把 feature branch 推成遠端 default（${out}）"; fi
+if echo "$out" | grep -q "remote-heads: 1"; then ok "反例附遠端 branch 數證據（供使用者 fetch/指定）"; else bad "反例缺 remote-heads 證據"; fi
+
+# 情境 4（機制失效）：baseline 建立後 → 永不再印 BOOTSTRAP，branch-first 恢復 REQUIRED
+(cd "$TMP/bs-work" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bs-work")"
+if ! echo "$out" | grep -q "BOOTSTRAP"; then ok "baseline 建立後 → BOOTSTRAP 豁免自動失效（機制而非記憶）"; else bad "baseline 已存在仍印 BOOTSTRAP（授權可蔓延）"; fi
+if echo "$out" | grep -q "branch-first: REQUIRED"; then ok "baseline 建立後 → branch-first 恢復 REQUIRED"; else bad "baseline 後未恢復 branch-first"; fi
 
 # --- dossier 偵測行（Step 2 衛生檢查；門檻單一來源 = 本腳本）---
 
