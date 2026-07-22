@@ -6,6 +6,7 @@ SKILL.md Step 1/5 的展開。涵蓋 repo 解析、protection 偵測、branch-fi
 
 ## 目錄
 - [Repo / default branch 解析](#repo--default-branch-解析)
+- [Bootstrap：全新空 repo 的第一次 ship](#bootstrap全新空-repo-的第一次-ship)
 - [Branch protection 偵測](#branch-protection-偵測)
 - [gh 帳號權限 vs git push 身分（身分分離）](#gh-帳號權限-vs-git-push-身分身分分離)
 - [Branch-first 與誤 commit 搬移](#branch-first-與誤-commit-搬移)
@@ -30,6 +31,23 @@ git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null   # 如 
 # 失敗 fallback：(cd <repo> && gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
 # 再 fallback：依序試 main / master（git rev-parse --verify origin/main）
 ```
+
+## Bootstrap：全新空 repo 的第一次 ship
+
+**唯一觸發來源**：`ship-state.sh` 印 `verdict: BOOTSTRAP`（腳本以 `git ls-remote --heads` **實測**遠端零 branch，不是推測）。任何其他來源——使用者說「這是新 repo」、上一輪對話的授權、你自己的推論——都**不構成** bootstrap。
+
+為什麼此處是例外：遠端還沒有 default branch，**沒有 default 可保護、也沒有別人的工作可破壞**。而 GitHub 以**第一個被 push 的 branch** 為 default branch——此時照 branch-first 開 `feat/xxx` 再推，遠端 default 就變成 `feat/xxx`（事後只能人工進 repo settings 改）。故 bootstrap 這一次：branch-first 不適用，推本地 default 名建立 baseline。
+
+```bash
+# 1. 照抄 ship-state.sh 的 bootstrap-cmd（repo / remote / branch 已填好）
+git -C <repo> push -u origin <local-default>
+# 2. baseline 建立後重跑偵測：BOOTSTRAP 應已消失，protection / branch-first 回到正常判定
+~/.claude/skills/project/scripts/ship-state.sh <repo>
+```
+
+- **仍走 Step 4 硬 gate**：摘要須明列「此 push 將決定遠端 default branch = `<branch>`」再等確認。
+- **The exemption covers exactly this one push — creating the baseline.** It expires the moment the baseline exists; every later commit goes through a feature branch, rules unchanged. The script stops printing the verdict on its own, so re-check it — never carry the exemption forward from memory or from an earlier turn's authorization.
+- 拿到的是 `verdict: STOP`（遠端有 branch／`ls-remote` 失敗／detached HEAD）→ **NOT bootstrap**：照訊息處理（先 `git fetch`、修網路、或切到具名 branch），**絕不**改推 default branch。
 
 ## Branch protection 偵測
 
@@ -133,7 +151,14 @@ git -C <repo> push -u origin <branch>   # 顯式 remote+branch+設 upstream（�
 
 **Trigger: the user EXPLICITLY says "merge"** — in any turn after the PR exists. "push" or "open a PR" alone is NOT a merge instruction（沿用全域 CLAUDE.md 語意）。明說即是授權：不要因 skill 通篇的「絕不 merge」而拒絕或反覆再確認，把使用者卡在最後一哩。
 
-標準收尾序列：
+**無 PR 可 merge 時**（新 repo 的常見形狀：無 protection → `ship-path: DIRECT-PUSH` → 從頭到尾沒開過 PR）：**do NOT guess what "merge" meant.** 先跑 `ship-state.sh` 取當下狀態，再依狀態停下確認：
+
+- `verdict: BOOTSTRAP` → 使用者要的其實是「把東西弄上去」，走上方〈Bootstrap〉節（首推 baseline），這不是 merge。
+- default 已存在、當前在 feature branch、但無 PR → 問一句選哪條：**開 PR 再 squash-merge**（留紀錄，預設建議），或**只把 branch push 上去**由使用者自行合併。
+- feature branch 尚未 push → 先照 Step 4/5 送出，再回到本節。
+- **"merge" is never permission to push the default branch.** 使用者要的是變更進 default，不是繞過流程進 default。
+
+標準收尾序列（PR 已存在）：
 
 ```bash
 gh pr merge <PR-number|URL> -R "$repo_slug" --squash --delete-branch
