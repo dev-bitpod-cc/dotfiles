@@ -353,7 +353,10 @@ check_repo() {
     prot="$(detect_protection "$repo" "$remote" "$default")"
     echo "$prot"
     case "$prot" in
-        *OPEN*) echo "ship-path: DIRECT-PUSH（仍推 feature branch，絕不直推 ${default}）" ;;
+        # 無保護**仍預設 PR**（SKILL Step 1 第 4 項：跨 repo 單一形狀＋審查紀錄）。
+        # 直推 feature branch 是 escape hatch，需使用者明說不用 PR——故此處印 PR，
+        # 不印 DIRECT-PUSH：verdict 是 model 照抄的東西，兩邊不一致等於留一個誘導錯誤的破口
+        *OPEN*) echo "ship-path: PR（${default} 無保護，但預設仍開 PR；使用者明說「不用 PR」才退為直推 feature branch，絕不直推 ${default}）" ;;
         *)      echo "ship-path: PR（推 feature branch + 開 PR，不 merge）" ;;
     esac
 
