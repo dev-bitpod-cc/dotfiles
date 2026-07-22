@@ -373,6 +373,53 @@ if echo "$out" | grep -q "resolve: UNKNOWN"; then ok "repo 外目錄 → UNKNOWN
 "$SS_SCRIPT" resolve >/dev/null 2>&1
 assert_rc "resolve 無 token → exit 2" 2 $?
 
+# --- 殘留 branch 衛生（已完全併入 default 的 local/remote branch）---
+# merge 最後一哩只清它自己 merge 的那支，規則生效前的老 branch 會無聲累積
+# （實證：dotfiles 累到 2 支才被偶然發現）。只印訊號 + 清掃指令，絕不代刪。
+
+git init --bare -q "$TMP/sb-origin.git"
+git init -q -b main "$TMP/sb-work"
+(cd "$TMP/sb-work" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/sb-origin.git" && git push -qu origin main)
+
+# 乾淨（只有 main）→ 不得印 stale-branches（無殘留時保持安靜）
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
+if ! echo "$out" | grep -q "stale-branches"; then ok "無殘留 branch → 不印 stale-branches（不噪音）"; else bad "無殘留卻印 stale-branches（${out}）"; fi
+
+# 造一支已完全併入 main 的 local + remote branch（模擬 merge 後沒清）
+(cd "$TMP/sb-work" \
+    && git switch -qc feat/old-merged && git push -qu origin feat/old-merged \
+    && git switch -q main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
+if echo "$out" | grep -q "stale-branches:"; then ok "已併入 default 的殘留 branch → 印 stale-branches"; else bad "殘留 branch 未偵測（${out}）"; fi
+if echo "$out" | grep -q "feat/old-merged"; then ok "stale-branches 列出 branch 名"; else bad "stale-branches 未列名"; fi
+if echo "$out" | grep -q "cleanup-cmd:"; then ok "stale-branches 附清掃指令（供照抄，不代刪）"; else bad "stale-branches 缺 cleanup-cmd"; fi
+if echo "$out" | grep -q "fetch --prune"; then ok "清掃指令前置 fetch --prune（防 remote-tracking 殘影誤刪）"; else bad "清掃指令未前置 fetch --prune"; fi
+
+# origin/HEAD 存在時（真實 clone 的常態）：其 short form 是**裸 remote 名**（"origin"），
+# 不是 branch——列進去會污染清單並讓 cleanup-cmd 拼出 `--deleteorigin`（實地跑真 repo 才
+# 抓到，原 fixture 無 origin/HEAD 故漏測）
+(cd "$TMP/sb-work" && git remote set-head origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
+if ! echo "$out" | grep -qE "^  remote: origin$"; then ok "origin/HEAD 不被當成殘留 branch"; else bad "裸 remote 名混入殘留清單（${out}）"; fi
+if echo "$out" | grep -q -- "--delete origin/" ; then bad "cleanup-cmd 的 remote branch 名未剝 remote 前綴"; else ok "cleanup-cmd 剝除 remote 前綴"; fi
+if echo "$out" | grep -qE -- "--delete [a-z]" ; then ok "cleanup-cmd 的 --delete 與 branch 名有空白分隔"; else bad "cleanup-cmd 拼接缺空白（如 --deleteorigin）"; fi
+
+# 未併入 default 的 branch（有獨立 commit）→ 不得列入（那是還沒 ship 的工作）
+(cd "$TMP/sb-work" \
+    && git switch -qc feat/in-progress && echo wip > w.txt \
+    && "${GITC[@]}" add w.txt && "${GITC[@]}" commit -qm "feat: wip" \
+    && git switch -q main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
+if ! echo "$out" | grep -q "feat/in-progress"; then ok "未併入 default 的 branch 不列入殘留（不誤報未 ship 的工作）"; else bad "誤把未 merge 的 branch 當殘留（${out}）"; fi
+
+# 當前 branch 即使已併入 default 也不列入（不建議刪自己腳下那支）
+(cd "$TMP/sb-work" && git switch -q feat/old-merged)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
+if ! echo "$out" | grep -qE "^  local: .*feat/old-merged"; then ok "當前 branch 不列入 local 殘留"; else bad "把當前 branch 列為可刪殘留（${out}）"; fi
+(cd "$TMP/sb-work" && git switch -q main)
+
 # --- bootstrap 偵測（全新空 repo 的第一次 ship；default 定位不到時才觸發）---
 # 兩種「default: NONE」的正確處置完全相反：遠端零 branch → 可建 baseline；遠端有
 # branch 但本地定位不到 → 絕不可推（推了就把 feature branch 變成遠端 default）。
