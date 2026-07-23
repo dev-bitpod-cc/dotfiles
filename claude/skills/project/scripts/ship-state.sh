@@ -42,6 +42,9 @@ GH_BIN="${SHIP_STATE_GH:-gh}"
 # 不另寫數字，改門檻只改這裡）
 DOSSIER_MAX_LINES=300  # 全檔超過即「當次收斂」硬訊號（krepo 599 行先例：訊號密度崩壞）
 DOSSIER_STALE_DAYS=30  # STATUS.md 最後 commit 落後 repo 活動超過即過期（假狀態比沒有更糟）
+DOSSIER_MAX_BYTES=24576      # 行數代理會被巨型單行架空（evint 117 行/38KB 實證）；24KB ≈ 300 行 × krepo 收斂後密度（~85B/行）
+DOSSIER_MAX_LINE_BYTES=1000  # 巨型單行風格的早期糾正訊號（≈330 中文字；正常換行段落 <300B）。量 bytes 非字元——macOS BSD awk 的 length 不分 locale 一律數 bytes，字元門檻跨平台不確定
+DOSSIER_ENTRY_MAX_BYTES=800  # 決策/里程碑單一條目蒸餾上限（決策≤5行×~160B；量 bytes 防單行繞過行數）
 
 if [ $# -eq 0 ]; then
     echo "用法：$0 <repo-path>... | resolve <token>" >&2
@@ -208,9 +211,13 @@ detect_dossier() {
         echo "dossier: NONE（無 STATUS.md——repo 非 trivial 時列入 Step 4 附註建議建立）"
         return
     fi
-    local lines
+    # 三個尺寸量測皆為確定性訊號（prose 下沉為腳本——蒸餾判斷歸 model、量測歸腳本）：
+    # 行數（換行風格 repo 最易讀的代理）、bytes（風格不敏感後盾）、最長行（巨型單行早期糾正）。
+    local lines bytes maxlen
     lines="$(wc -l < "$f" | tr -d ' ')"
-    echo "dossier: STATUS.md（${lines} 行）"
+    bytes="$(wc -c < "$f" | tr -d ' ')"
+    maxlen="$(LC_ALL=C awk '{ if (length > m) m = length } END { print m + 0 }' "$f")"
+    echo "dossier: STATUS.md（${lines} 行 / ${bytes} bytes / 最長行 ${maxlen} bytes）"
     # 標題掃描先剝 fenced code block（```/~~~ 圍欄內的範例標題不算章節）。
     # CommonMark 規則：closer 須與 opener 同字元且長度 ≥ opener——單純 toggle 會被
     # 四反引號外層包三反引號範例的巢狀圍欄誤判提前關欄（C3 審查實證）
@@ -240,6 +247,26 @@ detect_dossier() {
     fi
     if [ "$lines" -gt "$DOSSIER_MAX_LINES" ]; then
         echo "dossier-flag: 全檔 ${lines} 行 > ${DOSSIER_MAX_LINES}（硬訊號——當次收斂：蒸餾＋歸檔 docs/archive/）"
+    fi
+    if [ "$bytes" -gt "$DOSSIER_MAX_BYTES" ]; then
+        echo "dossier-flag: 全檔 ${bytes} bytes > ${DOSSIER_MAX_BYTES}（行數代理失真——硬訊號同全檔過長：當次收斂，蒸餾＋改正常換行段落）"
+    fi
+    if [ "$maxlen" -gt "$DOSSIER_MAX_LINE_BYTES" ]; then
+        echo "dossier-flag: 最長行 ${maxlen} bytes > ${DOSSIER_MAX_LINE_BYTES}（巨型單行——rewrap 後仍超標者需蒸餾，不是只換行）"
+    fi
+    # 決策/里程碑條目蒸餾上限：以頂層「- 」bullet 為條目邊界、續行（含縮排子彈）併入條目，
+    # 量 bytes（LC_ALL=C 下 awk length 即 bytes）防巨型單行繞過行數。只掃這兩節——
+    # 「進行中」條目含 spec 區（Context/Goal/AC/Constraints）合法偏大，設上限會逼薄工作合約。
+    # 掃 unfenced 版：fenced 範例內的假標題不得切換節狀態（同簽章偵測的理由）。
+    local max_entry
+    max_entry="$(printf '%s\n' "$unfenced" | LC_ALL=C awk '
+        function flush() { if (cur > max) max = cur; cur = 0 }
+        /^##[[:space:]]/ { flush(); insec = ($0 ~ /決策|里程碑|已完成/); next }
+        insec && /^-[[:space:]]/ { flush(); cur = length($0); next }
+        insec && cur { cur += length($0) + 1 }
+        END { flush(); print max + 0 }')"
+    if [ "$max_entry" -gt "$DOSSIER_ENTRY_MAX_BYTES" ]; then
+        echo "dossier-flag: 決策/里程碑節最大條目 ${max_entry} bytes > ${DOSSIER_ENTRY_MAX_BYTES}（蒸餾上限——決策留結論、里程碑一行化，推導史沉 git history）"
     fi
     # 「進行中」節內的 ✅ = 完成項未移走；其他節（里程碑）的 ✅ 合法，不得誤報
     if awk '/^##[[:space:]]/{ in_sec = ($0 ~ /進行中/) } in_sec && /✅/ { found=1 } END { exit !found }' "$f"; then

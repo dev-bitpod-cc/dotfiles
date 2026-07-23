@@ -532,6 +532,48 @@ if echo "$out" | grep -q "dossier-flag:.*Session Log"; then ok "Session Log 章�
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
 if echo "$out" | grep -q "dossier-flag:.*> 300"; then ok "全檔 >300 行 → flag"; else bad ">300 行未偵測"; fi
 
+# 總量 bytes 超標但行數遠低於 300 → bytes flag（行數代理被巨型單行架空的後盾；
+# 每行 ~548 bytes < 1000，不得連帶觸發最長行 flag——測試隔離）
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"
+  awk 'BEGIN { s = "- 填充"; for (i = 0; i < 30; i++) s = s "巨量內容累積"; for (r = 0; r < 120; r++) print s }'
+  echo; echo "## 已完成（里程碑）"; echo "- ✅ 無"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -qE "dossier-flag:.*全檔.*bytes > "; then ok "行數少但總 bytes 超標 → bytes flag（風格不敏感後盾）"; else bad "bytes 超標未偵測（行數代理可被巨型單行架空）"; fi
+if echo "$out" | grep -q "dossier-flag:.*> 300"; then bad "bytes fixture 不應觸發行數 flag（行數僅 ~125）"; else ok "bytes fixture 未誤觸發行數 flag"; fi
+if echo "$out" | grep -q "dossier-flag:.*最長行"; then bad "bytes fixture 不應觸發最長行 flag（每行 ~548B < 1000）"; else ok "bytes fixture 未誤觸發最長行 flag"; fi
+
+# 巨型單行（1202 bytes > 1000）→ 最長行 flag（總量未爆前的早期風格糾正）
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"
+  awk 'BEGIN { s = "- "; for (i = 0; i < 1200; i++) s = s "x"; print s }'
+  echo; echo "## 已完成（里程碑）"; echo "- ✅ 無"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*最長行"; then ok "1202 bytes 單行 → 最長行 flag"; else bad "巨型單行未偵測"; fi
+if echo "$out" | grep -qE "dossier-flag:.*全檔.*bytes > "; then bad "最長行 fixture 不應觸發總量 bytes flag（全檔 <2KB）"; else ok "最長行 fixture 未誤觸發 bytes flag"; fi
+
+# 決策節單一條目 >800 bytes（正常換行的多行條目，每行 <1000B）→ 條目 flag（行數繞不過蒸餾上限）
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 項目：還在做"; echo
+  echo "## 關鍵決策（附理由）"
+  awk 'BEGIN { s = "- 選了方案甲："; for (i = 0; i < 60; i++) s = s "理由與推導"; print s
+               t = "  續行補充："; for (i = 0; i < 60; i++) t = t "更多細節"; print t }'
+  echo "- 短決策：一行帶過"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*最大條目"; then ok "決策節條目 >800 bytes → 條目 flag（蒸餾上限）"; else bad "決策節超大條目未偵測"; fi
+if echo "$out" | grep -q "dossier-flag:.*最長行"; then bad "條目 fixture 不應觸發最長行 flag（每行 <1000B）"; else ok "條目 fixture 未誤觸發最長行 flag"; fi
+
+# 里程碑節超大條目（單行 872 bytes：>800 條目上限、<1000 最長行門檻）→ 條目 flag（一行化的機器面）
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 項目：還在做"; echo
+  echo "## 已完成（里程碑）"
+  awk 'BEGIN { s = "- ✅ 2026-07-01 大功告成："; for (i = 0; i < 70; i++) s = s "過程敘事"; print s }'; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*最大條目"; then ok "里程碑節散文條目 → 條目 flag（一行化機器面）"; else bad "里程碑超大條目未偵測"; fi
+
+# 作用域反例：「進行中」的 >800 bytes 條目（spec 區合法偏大）不得觸發條目 flag
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"
+  awk 'BEGIN { s = "- 工作項 spec："; for (i = 0; i < 70; i++) s = s "合約細節"; print s }'
+  echo; echo "## 已完成（里程碑）"; echo "- ✅ 無"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*最大條目"; then bad "進行中的大條目誤觸發條目 flag（作用域應限決策/里程碑）"; else ok "進行中大條目未誤觸發（spec 區合法偏大）"; fi
+
 # 簽章不符：STATUS.md 存在但非 dossier（撞名領域產物，無「進行中」章節）→ flag
 cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
 # 爬蟲設定檢查表
