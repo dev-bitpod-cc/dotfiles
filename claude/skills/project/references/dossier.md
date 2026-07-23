@@ -67,15 +67,25 @@ STATUS.md 是**就地演化**的常駐檔:進行中項完成後移入里程碑�
 下文門檻數字為當前值的說明性引用、以腳本為準):
 
 - 「進行中」項完成即移入里程碑(一行化);⏸️ 項保留但須註明暫停原因與重啟條件。
-- 里程碑保留最近一季+常青重大項;更早的合併壓縮或刪除(git history 就是 audit trail)。
+- **傘狀工作項中途蒸餾**:「進行中」的長工作項若含多個逐一 ship 的子里程碑(如 MVP 衝刺的
+  M1/M2/…)——子里程碑 merge 當次,其進度敘事就地收斂為 1–3 行(結果+關鍵指標+PR/commit 指向),
+  全史沉 git history;里程碑節已有對應條目時,「進行中」不得保留該子里程碑的全量敘事(雙重記載)。
+  不等傘收攏才蒸餾(實證:evint 的 MVP 傘下 M1–M6 已 merge,全量敘事滯留「進行中」與里程碑雙重記載)。
+- 決策條目記「選了什麼、為什麼、放棄了什麼」的**結論**;推導過程、eval 數字演進、迭代史沉
+  git history。過季且不再影響現行方向的決策 → 合併壓縮或歸檔(同里程碑規則)。
 - 被推翻的決策直接刪或改寫為現行決策;**死路不刪**(防重工的本體,只在確認不再適用時移除)。
-- 全檔 > 300 行是硬訊號,當次 ship 就收斂,不留待「下次再整理」。
+- 全檔 > 300 行**或 > 24KB** 是硬訊號,當次 ship 就收斂,不留待「下次再整理」。條目與單行的
+  蒸餾上限量測已下沉腳本(決策/里程碑條目 bytes、最長行 bytes)——flag 出現即當次蒸餾該條目。
 - 存量 STATUS.md 若有規範外章節(如 Session Log):精華蒸餾進決策/死路/里程碑,
   全文歸檔 `docs/archive/`(先例:krepo 2026-07-17 收斂,599→~210 行)。
 
 **Anti-patterns(hard rules):**
 
 - **NEVER leave a ✅-done item under 進行中** — done means moved to 里程碑, one line.
+- **NEVER write mega-line prose** — a 2,000-char single line defeats the line gate, diff
+  readability, and review(observed: evint 117 lines / 38.7KB read as "small" by `wc -l`).
+  The script flags it; if wrapping alone would clear the flag, the entry needs distillation,
+  not wrapping.
 - **NEVER add an append-only log section (Session Log etc.) to a dossier** — that is what
   git history is for; observed failure: krepo's Session Log grew to 60% of the file.
 
