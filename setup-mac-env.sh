@@ -288,6 +288,7 @@ brew install \
   git \
   gh \
   wget \
+  rsync \
   htop \
   tree \
   tmux \

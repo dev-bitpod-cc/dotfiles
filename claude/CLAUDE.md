@@ -60,6 +60,7 @@ When the user pastes third-party review findings, read the source code and verif
 - 大量資料迴圈內呼叫 API/DB → 改用批次操作
 - **shell 訊息裡 `$var` 緊接全形標點** → bash 會把全形字元併入變數名（`"（exit=$rc）"` → `set -u` 下噴 `rc）: unbound variable`）。繁中訊息幾乎必踩，且**只在錯誤路徑觸發**、正常測試照樣全綠。一律寫 `${var}`。（dotfiles 有 `tests/run.sh` 第 1b 節 gate 擋，其他 repo 沒有）
 - **`sd` 的替換字串含 shell 變數** → `$job` 會被當成 capture group 展開為空，靜默毀損程式碼且過得了 `bash -n` 與 shellcheck。含 `$` 的替換改用 Edit 或 python 字面替換
+- **macOS 內建 CLI 是凍結的舊版**（Apple 因 GPLv3 停更：bash 3.2、rsync 已換自寫 openrsync、BSD awk 的 `length` 不分 locale 一律數 **bytes**）→ 分兩層應對：互動/運維工具用 brew 新版（rsync 已入 setup-mac-env.sh）；**腳本/tests 只用 POSIX 確定性子集**（量 bytes 明寫 `LC_ALL=C`，讓 BSD/GNU 結果一致），需要 GNU 行為就顯式呼叫 `gawk` 並 `command -v` 檢查——**勿靠 gnubin PATH shadowing**（隱形環境依賴，shellcheck 抓不到、換一台機器就變行為）
 
 ## 測試
 
