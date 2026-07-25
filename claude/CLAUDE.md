@@ -28,36 +28,12 @@ When the user pastes third-party review findings, read the source code and verif
 - repo 路徑 + commit range 取最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊，range 直接沿用其 `base..head`（base 已錨定）；即使變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。報告未記錄 base（如新 session）→ 先跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh show --repo <repo>`（anchor 檔在即得錨定 base，跨 session 有效）；anchor 也無，才回退用 `HEAD~1..HEAD`。
 - 收到 findings 後的處理判準：**最近一次 `/deep-review` 帶 `autofix`** → 驗證後自動修復並 commit；否則、或無法確定當時是否帶 autofix（如新 session）→ 列出 findings 等使用者決定。
 
-## Security
-
-- NEVER hardcode secrets, API keys, or passwords.
-- Manage secrets via environment variables or a `.env` file.
-- NEVER commit `.env`, `*.pem`, `*.key`, `credentials.json`.
-- New project: ensure `.gitignore` covers sensitive files.
-
 ---
 
 # Code Conventions（程式碼慣例）
 
-## Naming
-
-- **Python**: vars/functions `snake_case`, classes `PascalCase`, constants `UPPER_SNAKE`
-- **TypeScript**: vars/functions `camelCase`, classes/types `PascalCase`, constants `UPPER_SNAKE`
-- **Filenames**: `kebab-case`（如 `setup-mac-env.sh`）；例外：**Python 可 import 的模組/套件檔一律 `snake_case`**（如 `risk_model.py`——kebab-case 無法 import），僅獨立執行腳本可 kebab-case
-
-## Error Handling
-
-- 外部服務呼叫一律 try/except（或 try/catch），不讓第三方錯誤 crash 主流程
-- 失敗時 log 足夠的 context（什麼操作、什麼輸入、什麼錯誤），不只 `except: pass`
-- 可重試的操作（HTTP、DB）考慮加 retry with backoff
-- 使用者輸入在邊界驗證，內部函式之間信任參數
-
 ## 已知地雷
 
-- SQL 字串拼接 → 一律用參數化查詢
-- `datetime.now()` → 注意 timezone，需要 UTC 用 `datetime.now(UTC)`
-- float 比較 → 金額、分數不要用 `==` 比較浮點數
-- 大量資料迴圈內呼叫 API/DB → 改用批次操作
 - **shell 訊息裡 `$var` 緊接全形標點** → bash 會把全形字元併入變數名（`"（exit=$rc）"` → `set -u` 下噴 `rc）: unbound variable`）。繁中訊息幾乎必踩，且**只在錯誤路徑觸發**、正常測試照樣全綠。一律寫 `${var}`。（dotfiles 有 `tests/run.sh` 第 1b 節 gate 擋，其他 repo 沒有）
 - **`sd` 的替換字串含 shell 變數** → `$job` 會被當成 capture group 展開為空，靜默毀損程式碼且過得了 `bash -n` 與 shellcheck。含 `$` 的替換改用 Edit 或 python 字面替換
 - **macOS 內建 CLI 是凍結的舊版**（Apple 因 GPLv3 停更：bash 3.2、rsync 已換自寫 openrsync、BSD awk 的 `length` 不分 locale 一律數 **bytes**）→ 分兩層應對：互動/運維工具用 brew 新版（rsync 已入 setup-mac-env.sh）；**腳本/tests 只用 POSIX 確定性子集**（量 bytes 明寫 `LC_ALL=C`，讓 BSD/GNU 結果一致），需要 GNU 行為就顯式呼叫 `gawk` 並 `command -v` 檢查——**勿靠 gnubin PATH shadowing**（隱形環境依賴，shellcheck 抓不到、換一台機器就變行為）
@@ -68,7 +44,6 @@ When the user pastes third-party review findings, read the source code and verif
 - **不需要**：設定檔、純 glue code、一次性腳本
 - **檔案位置**：與原始碼同目錄或 `tests/`，依專案既有慣例
 - **命名**：Python `test_*.py`，TypeScript `*.test.ts`
-- **原則**：測行為不測實作、mock 外部依賴但不 mock 被測邏輯本身、每個 test case 只驗證一件事
 
 ---
 
