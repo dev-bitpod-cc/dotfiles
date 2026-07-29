@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-23)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-29)
 
 ---
 
@@ -24,13 +24,32 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   零 dossier-flag。
 - **Constraints**:條目 flag 只掃決策/里程碑兩節(進行中 spec 區合法偏大);蒸餾與傘狀雙重
   記載比對留判斷層不下沉。
-- **進度**:三訊號實作+tests 9 斷言 GREEN(508/0);dossier.md/SKILL.md/pressure-tests S12
-  規範面完成;本檔收斂完成。待 ship。
+- **進度**:三訊號實作+tests 9 斷言 GREEN;dossier.md/SKILL.md/pressure-tests S12
+  規範面完成;本檔收斂完成。**第二批(2026-07-29)**:krepo 實戰再暴露三個「規範要 agent 做腳本
+  該做的事」的失敗(猜錯超標條目白壓兩輪/壓字壓不動實為粒度過粗/憑印象挑錯收斂章節)→ 再下沉
+  三訊號(條目行號、建議收斂目標 85%、`dossier-sections:` 各節佔比),SKILL.md 逐條處置複述
+  刪除改指腳本(消一處已漂移的重複記載),S12 同步四類訊號。tests 524/0。待 ship。
 
 ---
 
 ## 關鍵決策(附理由)
 
+- **2026-07-29 剝 code fence 採 `\001` 哨兵前綴,不是丟棄也不是清空**:兩個下游各有硬要求
+  ——條目 flag 要報行號故**行號須對齊原檔**(丟棄會讓 NR 全數位移);`dossier-sections:` 佔比
+  要正確故**長度須保留真實**(清空會讓 fence 重的章節被低估到**排名倒轉**,實測 26KB 決策節
+  報成 403 bytes 沉到 4.5KB 節後面,而該表正是要 agent 據以挑收斂對象)。**量長度前必須剝
+  哨兵**,否則每 fenced 行虛胖 1 byte、短行多的 fence 讓單節佔比破 100%(實測 149%)。
+- **2026-07-29 哨兵只中和「行首錨定」的 pattern,非錨定比對必須自行 skip 哨兵行**:
+  `^##`/`^#{1,6}`/`^-` 三個家族靠前綴即失效,但「進行中含 ✅」用的是無錨點的 `/✅/`——
+  圍欄內貼的測試輸出(滿是 ✅)照樣被看見。**且加哨兵反而製造新方向的誤報**:圍欄內的假
+  標題原本會把 `in_sec` 關掉(歪打正著),哨兵讓它不再切節後,`in_sec` 一路開著把圍欄內的
+  ✅ 全算進「進行中」。修法 `/^\001/ { next }`。**新增消費點時先問:我的 pattern 有錨點嗎?**
+- **2026-07-29 大輸入的存在性比對一律 herestring,禁用 `printf | grep -q`**:`grep -q` 命中即
+  退出,大輸入下上游 printf 吃 **SIGPIPE(141)**、pipefail 讓整條判偽——簽章偵測的 `!` 反轉後
+  **正常的大 dossier 被誤報「簽章不符」**(該 flag 的處置是「停下、勿當 dossier 改」,等於整份
+  檔案被拒絕處理)。小檔不發作故潛伏至今(115KB fixture 實測 rc=141)。完整現象、krepo 的同型
+  前例、以及「守門測試命中點須在前段」已入 `claude/CLAUDE.md` 已知地雷。輸入恆小的三處
+  remote/gh 比對不動(no failing scenario, no change)。
 - **2026-07-23 macOS 凍結內建 CLI 的應對分兩層,不用 gnubin 取代**:互動/運維工具用 brew
   新版(rsync 入 setup-mac-env.sh,解 openrsync 旗標坑);skill 腳本/tests 只用 POSIX 確定性
   子集(LC_ALL=C 量 bytes),需要 GNU 行為顯式 gawk+command -v 檢查。gnubin PATH shadowing
@@ -112,6 +131,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 - [ ] R4 non-blocking 建議未修:新增 prose 的中文半形標點與既有全形混排;Transfer 模式 commit
   紀律歸屬未明示;evals/README 路徑基準寫法;handoff evals H4 排序
+- [ ] dossier 訊號 R5 non-blocking 未修(2026-07-29,皆非 blocking、無失敗案例):
+  `dossier-sections` 百分比因標題行不計而系統性略低於 100%(需在說明點一句);SKILL.md「唯一的
+  例外」與 S12「使用者堅持不動也是例外」說法不一致;最長行 flag 訊息缺「何時處置」;S12 fixture
+  規格內部不一致(setup 寫 >800B 條目、expected 要最長行 flag 需 >1000B);條目作用域用子字串
+  比對(`決策|里程碑|已完成`)而非簽章那種端錨定,標題寫成「## 進行中(已完成 M1)」會誤掃;
+  `CLAUDE.md` 摘要句未提「非錨定 pattern 的 ✅ 例外」
 - [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
 - [ ] Scenario 11 的「merge 但無 PR」分支只在 SKILL body 一行指標帶到 ship-paths,GREEN 實測中
   弱模型未展開讀——非違規故未補;重現才加明示(Iron Law)

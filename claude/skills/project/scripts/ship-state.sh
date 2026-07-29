@@ -45,6 +45,8 @@ DOSSIER_STALE_DAYS=30  # STATUS.md 最後 commit 落後 repo 活動超過即過�
 DOSSIER_MAX_BYTES=24576      # 行數代理會被巨型單行架空（evint 117 行/38KB 實證）；24KB ≈ 300 行 × krepo 收斂後密度（~85B/行）
 DOSSIER_MAX_LINE_BYTES=1000  # 巨型單行風格的早期糾正訊號（≈330 中文字；正常換行段落 <300B）。量 bytes 非字元——macOS BSD awk 的 length 不分 locale 一律數 bytes，字元門檻跨平台不確定
 DOSSIER_ENTRY_MAX_BYTES=800  # 決策/里程碑單一條目蒸餾上限（決策≤5行×~160B；量 bytes 防單行繞過行數）
+DOSSIER_SECTIONS_TOP_N=6     # 各節佔比只列前 N 大——超標時要的是「該動哪一節」，尾巴小節是噪音
+DOSSIER_TARGET_PCT=85        # 收斂建議目標＝門檻的百分比。壓到「剛好低於門檻」等於下次 ship 必再觸發（krepo #33 收到 23,920/24,576、隔天加兩條決策就再越線）——留餘裕才是一次做完
 
 if [ $# -eq 0 ]; then
     echo "用法：$0 <repo-path>... | resolve <token>" >&2
@@ -203,8 +205,10 @@ detect_protection() {
     fi
 }
 
-# dossier（STATUS.md）唯讀偵測：存在性、行數、進行中 ✅、規範外章節、過期。
-# 只印訊號不下處置——收斂/歸檔/建立建議是 SKILL.md Step 2 的 model 決策。
+# dossier（STATUS.md）唯讀偵測：存在性、尺寸訊號、進行中 ✅、規範外章節、過期。
+# **量測與逐 flag 處置皆在此**（單一來源；SKILL.md Step 2 只說「照 flag 訊息做」、不複述——
+# 兩邊各寫一份必然漂移，實證：SKILL 曾把「改正常換行段落」列為處置，腳本卻明說換行不夠）。
+# 留給 model 的判斷層：蒸餾什麼內容、傘狀雙重記載比對、使用者說「別動它」時怎麼處置。
 detect_dossier() {
     local repo="$1" f="$1/STATUS.md"
     if [ ! -f "$f" ]; then
@@ -221,6 +225,20 @@ detect_dossier() {
     # 標題掃描先剝 fenced code block（```/~~~ 圍欄內的範例標題不算章節）。
     # CommonMark 規則：closer 須與 opener 同字元且長度 ≥ opener——單純 toggle 會被
     # 四反引號外層包三反引號範例的巢狀圍欄誤判提前關欄（C3 審查實證）
+    #
+    # 剝除方式是**前綴 \001 哨兵**，不是丟棄、也不是清空——兩個下游同時有要求：
+    # - 行號要對齊原檔：條目 flag 得報「超標的是第幾行」，丟棄會讓後續 NR 全數位移。
+    # - 長度要保留真實值：清空會讓 fence 重的章節在 dossier-sections 佔比中被低估，
+    #   嚴重時排名倒轉（實測 26KB 的決策節報成 403 bytes、沉到 4.5KB 的節後面）。
+    #   那正是該功能要防的「挑錯收斂對象」，清空等於讓它主動誤導。
+    # 哨兵前綴打掉三個 pattern 家族（^##[[:space:]] 章節/簽章、^#{1,6} Session Log、
+    # ^-[[:space:]] 條目起始），圍欄內的假標題/假條目照樣不被誤認。讀 unfenced 的 code site
+    # 共五處：簽章 grep、分節 awk、條目 awk、✅ awk、Session Log grep。
+    # **新增消費者時記得也吃 unfenced**——漏一個就是誤報（✅ 偵測就漏過一次）。
+    # 例外：上面三個全檔量測（行數/bytes/最長行）刻意讀原檔——它們量的是檔案本身的體積，
+    # fence 內容同樣佔預算。副作用：fence 裡的長行（長指令/base64/URL）會觸發最長行 flag，
+    # 該處置提示對 code block 無意義，人工判斷即可。
+    # 代價：fenced 內容計入條目與分節 bytes——那是對的，那些 bytes 真的佔 dossier 預算。
     local unfenced
     unfenced="$(awk '
         {
@@ -230,26 +248,54 @@ detect_dossier() {
                 ch = substr(line, 1, 1)
                 n = 1
                 while (substr(line, n + 1, 1) == ch) n++
-                if (!fence) { fence = 1; fch = ch; flen = n; next }
+                if (!fence) { fence = 1; fch = ch; flen = n; print "\001" $0; next }
                 if (ch == fch && n >= flen) { fence = 0 }
+                print "\001" $0
                 next
             }
-            if (!fence) print
+            if (!fence) { print } else { print "\001" $0 }
         }' "$f")"
     # dossier 簽章（回流自 clean-room 盲寫版）：雙訊號——「進行中」章節 + 任一 dossier
     # 專屬章節（STATUS.md 命名互斥規則見 references/dossier.md）。flag 缺席即被當
     # dossier 編輯，誤放行比誤攔截危險（攔截只是停下告知），故：
     # - 章節名須為**標題結尾**（允許裝飾前綴「## ⏳ 進行中」與括號後綴「已完成(里程碑)」），
     #   子字串比對會把「## 進行中的部署」＋「## 已完成的部署」這類領域看板誤認成 dossier
-    if ! printf '%s\n' "$unfenced" | grep -qE '^##[[:space:]].*進行中[[:space:]]*$' \
-        || ! printf '%s\n' "$unfenced" | grep -qE '^##[[:space:]].*(決策|死路|技術債|里程碑|已完成|已知缺口|移交準備度?)[[:space:]]*([（(][^（()）]*[）)])?[[:space:]]*$'; then
+    # ⚠ 用 herestring 不用 `printf | grep -q`：grep -q 命中即退出，上游 printf 在大輸入下
+    # （unfenced 可達 100KB+）寫不完就拿到 SIGPIPE(141)，`set -o pipefail` 讓整條判偽 →
+    # `!` 反轉後**正常的大 dossier 被誤報簽章不符**，而該 flag 的處置是「停下、勿當 dossier 改」。
+    # 實證：115KB fixture 下 cond1/cond2 皆 rc=141；小檔不發作（printf 寫得完），故潛伏。
+    # 同型前例：krepo 的 scripts/backup/lib/dest_r2.sh（保底清單比對）。已入 claude/CLAUDE.md 已知地雷。
+    if ! grep -qE '^##[[:space:]].*進行中[[:space:]]*$' <<< "$unfenced" \
+        || ! grep -qE '^##[[:space:]].*(決策|死路|技術債|里程碑|已完成|已知缺口|移交準備度?)[[:space:]]*([（(][^（()）]*[）)])?[[:space:]]*$' <<< "$unfenced"; then
         echo "dossier-flag: 簽章不符（缺「進行中」或 dossier 專屬章節——撞名領域產物？勿當 dossier 改；spec 模式遇之停下告知）"
     fi
+    # 收斂建議目標：不是「壓到剛好低於門檻」（見 DOSSIER_TARGET_PCT 註解）
+    local target_lines target_bytes oversize=0
+    target_lines=$(( DOSSIER_MAX_LINES * DOSSIER_TARGET_PCT / 100 ))
+    target_bytes=$(( DOSSIER_MAX_BYTES * DOSSIER_TARGET_PCT / 100 ))
     if [ "$lines" -gt "$DOSSIER_MAX_LINES" ]; then
-        echo "dossier-flag: 全檔 ${lines} 行 > ${DOSSIER_MAX_LINES}（硬訊號——當次收斂：蒸餾＋歸檔 docs/archive/）"
+        oversize=1
+        echo "dossier-flag: 全檔 ${lines} 行 > ${DOSSIER_MAX_LINES}（硬訊號——當次收斂：蒸餾＋歸檔 docs/archive/；建議收斂至 ≤ ${target_lines} 行，留得下數次 ship 的成長）"
     fi
     if [ "$bytes" -gt "$DOSSIER_MAX_BYTES" ]; then
-        echo "dossier-flag: 全檔 ${bytes} bytes > ${DOSSIER_MAX_BYTES}（行數代理失真——硬訊號同全檔過長：當次收斂，蒸餾＋改正常換行段落）"
+        oversize=1
+        echo "dossier-flag: 全檔 ${bytes} bytes > ${DOSSIER_MAX_BYTES}（行數代理失真——硬訊號同全檔過長：當次收斂，蒸餾＋改正常換行段落；建議收斂至 ≤ ${target_bytes} bytes）"
+    fi
+    # 各節佔比：只在超標時印（平時是噪音）。沒有這行，收斂對象只能靠印象猜——
+    # 實證：krepo 2026-07-29 憑印象挑了里程碑節開刀，一輪 PR 只省 905 bytes，
+    # 真正的大戶是關鍵決策 30% + 進行中 25%。量一次就不會挑錯。
+    if [ "$oversize" -eq 1 ]; then
+        local sections
+        sections="$(LC_ALL=C awk '
+            # b > 0 而非 sec != ""：第一個 ## 之前的前言（檔頭註解 + H1 + 定位句）與空名
+            # 章節原本被靜默丟棄，表格會把 agent 導向錯的地方——殘量要現身、空節不佔位
+            function emit() { if (b > 0) printf "%d\t%s\n", b, (sec == "" ? "(前言/未分節)" : sec) }
+            /^##[[:space:]]/ { emit(); sec = $0; sub(/^##[[:space:]]+/, "", sec); b = 0; next }
+            { l = $0; sub(/^\001/, "", l); b += length(l) + 1 }
+            END { emit() }' <<< "$unfenced" | LC_ALL=C sort -rn | head -n "$DOSSIER_SECTIONS_TOP_N" | LC_ALL=C awk -v total="$bytes" -F'\t' '
+            { printf "%s%s %d (%d%%)", (NR > 1 ? " / " : ""), $2, $1, ($1 * 100 / total) }
+            END { printf "\n" }')"
+        [ -n "$sections" ] && echo "dossier-sections: ${sections}（前 ${DOSSIER_SECTIONS_TOP_N} 大；先量再決定動哪節）"
     fi
     if [ "$maxlen" -gt "$DOSSIER_MAX_LINE_BYTES" ]; then
         echo "dossier-flag: 最長行 ${maxlen} bytes > ${DOSSIER_MAX_LINE_BYTES}（巨型單行——rewrap 後仍超標者需蒸餾，不是只換行）"
@@ -258,21 +304,32 @@ detect_dossier() {
     # 量 bytes（LC_ALL=C 下 awk length 即 bytes）防巨型單行繞過行數。只掃這兩節——
     # 「進行中」條目含 spec 區（Context/Goal/AC/Constraints）合法偏大，設上限會逼薄工作合約。
     # 掃 unfenced 版：fenced 範例內的假標題不得切換節狀態（同簽章偵測的理由）。
-    local max_entry
-    max_entry="$(printf '%s\n' "$unfenced" | LC_ALL=C awk '
-        function flush() { if (cur > max) max = cur; cur = 0 }
+    # 同時記錄超標條目的起始行號：只報 bytes 不報位置時，agent 的預設猜測是「應該是我剛
+    # 寫的那條」——多 session 並行改同一份 dossier 時經常猜錯（krepo 2026-07-29 實證：
+    # 猜錯兩次、白壓兩輪，最後自己寫 awk 才找到真正超標的是別人稍早改的條目）。
+    # 只給行號不給內容摘錄：LC_ALL=C 下 substr 按 bytes 切，中文會被截在字中間變亂碼。
+    local entry_out max_entry max_entry_line
+    entry_out="$(LC_ALL=C awk '
+        function flush() { if (cur > max) { max = cur; maxline = curline } cur = 0 }
         /^##[[:space:]]/ { flush(); insec = ($0 ~ /決策|里程碑|已完成/); next }
-        insec && /^-[[:space:]]/ { flush(); cur = length($0); next }
-        insec && cur { cur += length($0) + 1 }
-        END { flush(); print max + 0 }')"
+        insec && /^-[[:space:]]/ { flush(); cur = length($0); curline = NR; next }
+        insec && cur { l = $0; sub(/^\001/, "", l); cur += length(l) + 1 }
+        END { flush(); printf "%d\t%d\n", max + 0, maxline + 0 }' <<< "$unfenced")"
+    max_entry="${entry_out%%	*}"
+    max_entry_line="${entry_out##*	}"
     if [ "$max_entry" -gt "$DOSSIER_ENTRY_MAX_BYTES" ]; then
-        echo "dossier-flag: 決策/里程碑節最大條目 ${max_entry} bytes > ${DOSSIER_ENTRY_MAX_BYTES}（蒸餾上限——決策留結論、里程碑一行化，推導史沉 git history）"
+        echo "dossier-flag: 決策/里程碑節最大條目 ${max_entry} bytes > ${DOSSIER_ENTRY_MAX_BYTES}（在第 ${max_entry_line} 行；蒸餾上限——決策留結論、里程碑一行化，推導史沉 git history。**若該條涵蓋多個決策 → 拆成多條，不是壓字**）"
     fi
-    # 「進行中」節內的 ✅ = 完成項未移走；其他節（里程碑）的 ✅ 合法，不得誤報
-    if awk '/^##[[:space:]]/{ in_sec = ($0 ~ /進行中/) } in_sec && /✅/ { found=1 } END { exit !found }' "$f"; then
+    # 「進行中」節內的 ✅ = 完成項未移走；其他節（里程碑）的 ✅ 合法，不得誤報。
+    # ⚠ `/✅/` **沒有行首錨點**，哨兵中和不了它——必須自行 `/^\001/ { next }` 跳過圍欄行。
+    # 少了那條會出現兩個方向的誤報：①圍欄內貼的測試輸出（滿是 ✅）被當成未移走的完成項
+    # ②哨兵讓圍欄內的假標題不再切節，in_sec 一路開著，圍欄內的 ✅ 全算進「進行中」
+    # （②是加哨兵後才出現的回歸——改動前假標題會把 in_sec 關掉，反而歪打正著）
+    if awk '/^\001/ { next } /^##[[:space:]]/{ in_sec = ($0 ~ /進行中/) } in_sec && /✅/ { found=1 } END { exit !found }' <<< "$unfenced"; then
         echo "dossier-flag: 「進行中」含 ✅ 完成項（Step 2 當場移入里程碑）"
     fi
-    if printf '%s\n' "$unfenced" | grep -qE '^#{1,6}[[:space:]].*Session Log'; then
+    # herestring 同上：避免大輸入下 grep -q 早退觸發 SIGPIPE + pipefail 的偽陰性
+    if grep -qE '^#{1,6}[[:space:]].*Session Log' <<< "$unfenced"; then
         echo "dossier-flag: 規範外章節（Session Log）——git history 才是 log，蒸餾後歸檔"
     fi
     # 過期：STATUS.md 最後 commit 落後 repo 最新活動的天數（%ct = committer time）
