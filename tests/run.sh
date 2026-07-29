@@ -499,6 +499,8 @@ DOSSIER
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
 if echo "$out" | grep -q "dossier: STATUS.md"; then ok "有 STATUS.md → dossier 行含行數"; else bad "缺 dossier: STATUS.md 行"; fi
 if echo "$out" | grep -q "dossier-flag:"; then bad "乾淨 dossier 不應有 flag（$(echo "$out" | grep 'dossier-flag:')）"; else ok "乾淨 dossier → 無 dossier-flag（已完成節 ✅ 未誤報）"; fi
+# 各節佔比只在全檔超標時印——常態輸出多一段佔比表就成了每次 ship 的噪音
+if echo "$out" | grep -q "^dossier-sections:"; then bad "未超標卻印 dossier-sections（污染常態輸出）"; else ok "未超標 → 不印 dossier-sections"; fi
 
 # 「進行中」含 ✅ → flag（working tree 內容即測，不需 commit）
 cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
@@ -531,6 +533,7 @@ if echo "$out" | grep -q "dossier-flag:.*Session Log"; then ok "Session Log 章�
 { echo "# 測試專案 STATUS"; echo; echo "## 進行中"; seq 1 310 | sed 's/^/- filler /'; } > "$TMP/ds-work/STATUS.md"
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
 if echo "$out" | grep -q "dossier-flag:.*> 300"; then ok "全檔 >300 行 → flag"; else bad ">300 行未偵測"; fi
+if echo "$out" | grep -q "建議收斂至 ≤ 255 行"; then ok "行數 flag 附建議收斂目標（300 × 85%）"; else bad "行數 flag 缺建議收斂目標"; fi
 
 # 總量 bytes 超標但行數遠低於 300 → bytes flag（行數代理被巨型單行架空的後盾；
 # 每行 ~548 bytes < 1000，不得連帶觸發最長行 flag——測試隔離）
@@ -541,6 +544,43 @@ out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
 if echo "$out" | grep -qE "dossier-flag:.*全檔.*bytes > "; then ok "行數少但總 bytes 超標 → bytes flag（風格不敏感後盾）"; else bad "bytes 超標未偵測（行數代理可被巨型單行架空）"; fi
 if echo "$out" | grep -q "dossier-flag:.*> 300"; then bad "bytes fixture 不應觸發行數 flag（行數僅 ~125）"; else ok "bytes fixture 未誤觸發行數 flag"; fi
 if echo "$out" | grep -q "dossier-flag:.*最長行"; then bad "bytes fixture 不應觸發最長行 flag（每行 ~548B < 1000）"; else ok "bytes fixture 未誤觸發最長行 flag"; fi
+# 建議收斂目標：壓到「剛好低於門檻」等於下次 ship 必再觸發，故 flag 要直接給目標值
+if echo "$out" | grep -q "建議收斂至 ≤ 20889 bytes"; then ok "bytes flag 附建議收斂目標（門檻 85%）"; else bad "bytes flag 缺建議收斂目標（agent 會停在剛好過關處）"; fi
+# 各節佔比：超標時才印，供 model 決定收哪一節（憑印象挑會挑錯——krepo 實證 905B/PR）
+if echo "$out" | grep -q "^dossier-sections:"; then ok "全檔超標 → 印各節佔比"; else bad "全檔超標未印 dossier-sections（收斂對象只能靠猜）"; fi
+# 釘住「最大戶排第一」＋數值形狀：排序方向是這功能的全部價值（挑錯對象正是它要防的），
+# 只 grep「行存在 + 含某節名」的斷言在 sort -rn → sort -n 突變下照樣全綠（R1 審查實證）
+if echo "$out" | grep -qE "^dossier-sections: 進行中 [0-9]{4,} \([0-9]+%\)"; then ok "各節佔比：最大戶排第一、附 bytes 與百分比"; else bad "dossier-sections 排名或數值形狀錯（實得：$(echo "$out" | grep dossier-sections)）"; fi
+
+# fence 重的章節不得被低估到排名倒轉：剝 fence 時若「清空」該行（而非哨兵前綴保留長度），
+# 決策節 30KB 的 code block 會被算成幾百 bytes、沉到小章節後面——而 SKILL.md 正是要 agent
+# 照這張表挑收斂對象，等於主動誤導（R1 審查實證：26KB 節報成 403 bytes）
+# 本 fixture 一份守四件事（皆需「大檔 + fenced 假章節」才會發作，故合為一份）：
+#   ①分節 bytes 不因剝 fence 而低估（排名倒轉）②fence 內假標題不誤判簽章
+#   ③fence 內的「## 進行中 / - ✅」範例不誤報完成項未移走
+#   ④大輸入下 Session Log 仍偵測得到（herestring；pipe 版會 SIGPIPE 早退成偽陰性）
+# ⚠️ Session Log 與假 ✅ 都必須放在**大 fence 之前**：grep -q / awk 命中即退出，命中點在
+# 檔尾的話上游 printf 早就寫完、SIGPIPE 不會發作，守門形同虛設（實測：置於檔尾時把
+# herestring 改回 printf|grep 仍全綠）。前段命中才逼出「寫不完 → SIGPIPE → pipefail」
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 短項目"; echo
+  echo "## Session Log"
+  echo "- 2026-07-29 這是規範外章節，應被偵測到"; echo
+  echo "## 關鍵決策（附理由）"
+  echo '```markdown'
+  echo "## 進行中"
+  echo "- ✅ 這是文件範例裡的完成項，不是真的狀態"
+  awk 'BEGIN { s = "# "; for (i = 0; i < 20; i++) s = s "fenced_payload_line_content_"; for (r = 0; r < 200; r++) print s }'
+  echo '```'
+  echo
+  echo "## 已完成（里程碑）"
+  awk 'BEGIN { s = "- ✅ 里程碑填充"; for (i = 0; i < 10; i++) s = s "內容"; for (r = 0; r < 30; r++) print s }'; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -qE "^dossier-sections: 關鍵決策（附理由） [0-9]{5,}"; then ok "fenced 內容計入分節 bytes（大 fence 章節排第一，未被低估）"; else bad "fence 章節被低估／排名倒轉（實得：$(echo "$out" | grep dossier-sections)）"; fi
+if echo "$out" | grep -q "dossier-flag:.*簽章"; then bad "大輸入下簽章偽陽性（grep -q 早退 + pipefail）"; else ok "大檔簽章判定正確（herestring 防 SIGPIPE 偽陽性）"; fi
+# ✅ 偵測必須吃 unfenced：讀原檔會把 fence 內的範例當成真的「進行中含 ✅」
+if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then bad "fence 內的 ✅ 範例被誤報為完成項未移走（✅ 偵測未吃 unfenced）"; else ok "fence 內的 ✅ 範例不誤報"; fi
+# Session Log 偵測的失效方向是偽陰性（命中才早退），比簽章那處更隱蔽——必須有具名守門
+if echo "$out" | grep -q "dossier-flag:.*Session Log"; then ok "大檔（>pipe buffer）Session Log 仍偵測到（herestring 防 SIGPIPE 偽陰性）"; else bad "大輸入下 Session Log 偽陰性（grep -q 早退 + pipefail）"; fi
 
 # 巨型單行（1202 bytes > 1000）→ 最長行 flag（總量未爆前的早期風格糾正）
 { echo "# 測試專案 STATUS"; echo; echo "## 進行中"
@@ -559,6 +599,68 @@ if echo "$out" | grep -qE "dossier-flag:.*全檔.*bytes > "; then bad "最長行
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
 if echo "$out" | grep -q "dossier-flag:.*最大條目"; then ok "決策節條目 >800 bytes → 條目 flag（蒸餾上限）"; else bad "決策節超大條目未偵測"; fi
 if echo "$out" | grep -q "dossier-flag:.*最長行"; then bad "條目 fixture 不應觸發最長行 flag（每行 <1000B）"; else ok "條目 fixture 未誤觸發最長行 flag"; fi
+# 定位：只報 bytes 不報位置時，agent 會預設「應該是我剛寫的那條」——多 session 並行改同一份
+# dossier 時經常猜錯（krepo 2026-07-29 實證：猜錯兩次、白壓兩輪）。大條目在本 fixture 的第 7 行
+if echo "$out" | grep -q "dossier-flag:.*最大條目.*在第 7 行"; then ok "條目 flag 帶正確行號（定位）"; else bad "條目 flag 缺行號或行號錯（實得：$(echo "$out" | grep '最大條目')）"; fi
+# 手段提示：條目超標更常是粒度過粗（一條記多個決策），壓字壓不動
+if echo "$out" | grep -q "拆成多條"; then ok "條目 flag 提示拆分而非壓字"; else bad "條目 flag 缺拆分提示"; fi
+
+# 條目 bytes 同樣要剝哨兵：條目續行區含 fence 時每行虛胖 1 byte，足以把未超標的條目推過門檻
+# （300 行 fence = +300B，650B 的條目就被誤判成 >800B）。fixture 調成「剝哨兵→不觸發、
+# 不剝→觸發」，故拿掉條目 awk 的 sub(/^\001/) 就會紅——這是該防線唯一的守門
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 項目"; echo
+  echo "## 關鍵決策（附理由）"
+  echo "- 選了方案甲：理由見範例"
+  echo '```yaml'
+  awk 'BEGIN { for (r = 0; r < 300; r++) print "k" }'
+  echo '```'; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*最大條目"; then bad "條目 bytes 因 fence 虛胖而誤觸發門檻（條目 awk 未剝哨兵；實得：$(echo "$out" | grep '最大條目')）"; else ok "條目 bytes 已剝哨兵（fence 續行不虛胖）"; fi
+
+# ✅ 偵測的非錨定比對：`/✅/` 沒有行首錨點，哨兵中和不了它——fence 必須放在「進行中」節內
+# 才測得到（既有 fence fixture 把圍欄放在決策節，in_sec=0 永遠踩不到這條路徑）。
+# 圍欄內同時放假標題與 ✅：假標題被哨兵擋掉後不再切節，若沒 skip 哨兵行，in_sec 會一路
+# 開著把圍欄內的 ✅ 全算進來（此為加哨兵後才出現的回歸方向）
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 還在做的項目"
+  echo '```text'
+  echo "## 已完成（里程碑）"
+  echo "- ✅ 這是貼在圍欄內的範例／測試輸出，不是真的完成項"
+  echo '```'
+  echo; echo "## 關鍵決策（附理由）"; echo "- 選了 X 因為 Y"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then bad "「進行中」節內圍欄的 ✅ 被誤報為完成項（非錨定比對未 skip 哨兵行）"; else ok "「進行中」節內圍欄的 ✅ 不誤報（非錨定比對有 skip 哨兵）"; fi
+
+# 分節 bytes 不得虛胖：剝 fence 的 \001 哨兵若在量長度時沒剝掉，每個 fenced 行多算 1 byte，
+# 短行多的 fence（YAML/JSON/log 片段）會讓單節 bytes 超過全檔總量、百分比破 100%
+# （實測曾出現 149%），兩節接近時足以造成排名倒轉——正是這功能要防的失效
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- x"; echo
+  echo "## 關鍵決策（附理由）"; echo '```yaml'
+  awk 'BEGIN { for (r = 0; r < 4000; r++) print "k: v" }'
+  echo '```'; echo; echo "## 已完成（里程碑）"; echo "- ✅ 無"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+maxpct="$(echo "$out" | grep '^dossier-sections:' | grep -oE '\([0-9]+%\)' | tr -d '()%' | LC_ALL=C sort -rn | head -1)"
+if [ -n "$maxpct" ] && [ "$maxpct" -le 100 ]; then ok "分節佔比不破 100%（哨兵長度已剝除，短行 fence 不虛胖）"; else bad "分節佔比異常或 dossier-sections 消失：maxpct=${maxpct:-<空>}（實得：$(echo "$out" | grep dossier-sections)）"; fi
+
+# 第一個 ## 之前的前言不得被靜默丟棄：SKILL.md 要 agent 照這張表挑收斂對象，
+# 殘量不現身時會把人導向兩個 4 bytes 的小節
+{ echo "# 測試專案 STATUS"
+  awk 'BEGIN { s = "前言填充"; for (i = 0; i < 20; i++) s = s "內容"; for (r = 0; r < 300; r++) print s }'
+  echo; echo "## 進行中"; echo "- x"; echo; echo "## 關鍵決策（附理由）"; echo "- y"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -qE "^dossier-sections: \(前言/未分節\) [0-9]{4,}"; then ok "前言殘量現身於分節表（不靜默丟棄）"; else bad "前言 bytes 被丟棄，表格會誤導收斂對象（實得：$(echo "$out" | grep dossier-sections)）"; fi
+
+# 行號 vs fenced block：剝 code fence 時若「丟棄」該行而非**前綴 \001 哨兵保留原行**，後續行號
+# 全數位移、flag 指向錯的地方。fixture 讓真條目落在第 12 行、其前有 4 行 fenced（含假標題）
+# ——完全丟棄式剝除會報第 8 行。本條守的是**行號對齊**；長度保留（分節佔比不被低估）由上面
+# 那條 fence 佔比測試守，兩條分工不同、勿合併，也勿與更上面的無 fence 版合併
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 項目：還在做"; echo
+  echo '```markdown'; echo "## 關鍵決策（附理由）"; echo "- fence 內的假條目"; echo '```'
+  echo
+  echo "## 關鍵決策（附理由）"
+  awk 'BEGIN { s = "- 選了方案甲："; for (i = 0; i < 60; i++) s = s "理由與推導"; print s
+               t = "  續行補充："; for (i = 0; i < 60; i++) t = t "更多細節"; print t }'; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*最大條目.*在第 12 行"; then ok "行號不受 fenced block 位移（哨兵前綴式剝除）"; else bad "fenced block 使行號位移（實得：$(echo "$out" | grep '最大條目')）"; fi
 
 # 里程碑節超大條目（單行 872 bytes：>800 條目上限、<1000 最長行門檻）→ 條目 flag（一行化的機器面）
 { echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 項目：還在做"; echo

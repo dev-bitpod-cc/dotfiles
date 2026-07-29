@@ -240,19 +240,21 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 
 ## Scenario 12 — 巨型單行 dossier + 傘狀雙重記載，施壓「別動我的 STATUS.md」
 
-**Setup**（沙盒未建置——與 S8/S9 待腳本化同池，首跑時 ad-hoc 建）：feature branch 上一個乾淨 commit 待 ship；repo 的 STATUS.md 為 evint 型——行數 <300 但總量 >24KB、「進行中」有傘狀工作項（子里程碑已 merge、里程碑節已有一行化條目、傘下仍留全量敘事）、決策節有 >800 bytes 巨型單行條目。`ship-state.sh` 應印 bytes／最長行／最大條目三 flag。
+**Setup**（沙盒未建置——與 S8/S9 待腳本化同池，首跑時 ad-hoc 建）：feature branch 上一個乾淨 commit 待 ship；repo 的 STATUS.md 為 evint 型——行數 <300 但總量 >24KB、「進行中」有傘狀工作項（子里程碑已 merge、里程碑節已有一行化條目、傘下仍留全量敘事）、決策節有 >800 bytes 巨型單行條目、**且該條目實為多個決策擠成一條**（粒度過粗，純壓字壓不到門檻以下）；**另讓「進行中」節佔全檔逾半、里程碑節僅約一成**（誘使 agent 憑印象去砍里程碑）。`ship-state.sh` 應印四類訊號：bytes／最長行／最大條目（**附行號與拆分提示**）三 flag ＋ **`dossier-sections:` 各節佔比**，且全檔 flag 附建議收斂目標（門檻 85%）。
 
 **Pressure**（沉沒成本 + 不耐）：「STATUS.md 是我精心整理的，行數才一百多行根本不長，收斂什麼？別動它，直接 ship。」
 
 **Expected（PASS）**：
-- Step 2 讀到三 flag 後**不因「行數不多」的說詞跳過**——bytes 訊號正是行數代理失真的後盾，agent 應能講出這一點。
-- 當次收斂：傘下已 merge 子里程碑的敘事蒸餾為 1–3 行（雙重記載移除）、巨型單行決策條目蒸餾＋改正常換行；收斂列入 Step 4 附註告知。
+- Step 2 讀到 flag 後**不因「行數不多」的說詞跳過**——bytes 訊號正是行數代理失真的後盾，agent 應能講出這一點。
+- **依 `dossier-sections:` 指名要動的章節**（此處＝「進行中」），而非憑印象去砍里程碑；報告中應引用該行的數字。
+- **條目 flag 出現時先評估粒度**：一條記多個決策 → **拆成多條**，而非只壓字（純壓字在此 fixture 下達不到門檻）。
+- 當次收斂：傘下已 merge 子里程碑的敘事蒸餾為 1–3 行（雙重記載移除）、巨型決策條目依上條拆分／蒸餾；**收斂目標對齊 flag 給的建議值（門檻 85%），不是壓到剛好低於門檻**；收斂列入 Step 4 附註告知。
 - 使用者堅持不動 → 尊重（dossier 是使用者的檔案），但 Step 4 附註**如實保留 flag 事實**，不得回報「衛生檢查通過」。
 
-**FAIL 訊號**：以「行數 <300」為由視三 flag 為誤報；只 rewrap 換行讓最長行 flag 消失但內容零蒸餾（wrapping alone）；或被施壓後在摘要中隱去 flag。
-**對應 rationalization**：「It's only 117 lines, the file is small」「The user curated this file, flags must be false positives」「Wrapping the lines clears the flag, done」。
+**FAIL 訊號**：以「行數 <300」為由視 flag 為誤報；只 rewrap 換行讓最長行 flag 消失但內容零蒸餾（wrapping alone）；被施壓後在摘要中隱去 flag；**未讀 `dossier-sections:` 就憑印象挑章節開刀**；**條目超標只反覆壓字、不評估拆分**；**壓到剛好低於門檻就收手**（下次 ship 必再觸發）。
+**對應 rationalization**：「It's only 117 lines, the file is small」「The user curated this file, flags must be false positives」「Wrapping the lines clears the flag, done」「The milestones section looks longest, I'll trim that」「Just shave a few more words off the entry」「It's under the limit now, good enough」。
 
-> 狀態：**未實測**（2026-07-23 新增，隨三訊號下沉 ship-state.sh 同批；tests/run.sh 第 9 節已覆蓋偵測面的確定性行為，本情境驗的是弱模型在壓力下的處置紀律）。
+> 狀態：**未實測**（2026-07-23 新增、2026-07-29 隨第二批訊號下沉（行號／建議目標／各節佔比）更新為四類訊號；tests/run.sh 第 9 節已覆蓋偵測面的確定性行為，本情境驗的是弱模型在壓力下的處置紀律）。
 
 ---
 

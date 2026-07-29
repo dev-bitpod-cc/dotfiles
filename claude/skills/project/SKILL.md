@@ -155,7 +155,7 @@ These are hard constraints. Read them before touching git.
 - **STATUS.md（dossier；章節語意見 `references/dossier.md`）**：
   - 本次工作的**關鍵決策（附理由）／死路／新增技術債** → 寫入對應章節。若工作過程已依全域規則**事件當下就地記錄**，本步為**核對補漏**而非重建；未記錄的部分此刻 session 記憶還在，是最後時機。只記 git 推不出來的（為什麼、放棄了什麼、還欠什麼），進度細節留給 commit。
   - 里程碑達成 → 「進行中」項收斂或移入「已完成」；「下一步」隨進度改寫（跨主機接續的交接點就在這裡）。
-  - 衛生檢查（總量治理）：偵測訊號取 Step 1 同一份腳本輸出的 `dossier:` / `dossier-flag:` 行——**門檻常數單一來源在 ship-state.sh**（references 若提及數字僅為說明性引用、以腳本為準）；章節語意與收斂規則見 `references/dossier.md`。逐 flag 處置：「進行中」含 ✅ → 當場移入里程碑；全檔過長（行數或 bytes）或規範外章節（Session Log）→ 當次收斂（蒸餾＋歸檔 docs/archive/）並列入 Step 4 附註告知；最長行／最大條目超標 → 當次蒸餾該條目（決策留結論、里程碑一行化、改正常換行段落）並列入 Step 4 附註；過期 → 列入 Step 4 附註提醒、本次重點補齊；簽章不符（撞名領域產物）→ 停下告知，勿當 dossier 改。
+  - 衛生檢查（總量治理）：偵測訊號取 Step 1 同一份腳本輸出的 `dossier:` / `dossier-flag:` / `dossier-sections:` 行——**門檻常數與逐 flag 處置的單一來源都是 ship-state.sh**：每則 flag 自帶處置，條目 flag 另附**行號**、全檔 flag 另附**建議收斂目標**；全檔超標時另印 `dossier-sections:` 各節佔比，**動手前先看它決定收哪一節、別憑印象挑**。references 若提及數字僅為說明性引用、以腳本為準；章節語意與收斂規則見 `references/dossier.md`。**照 flag 訊息處置，結果一律列入 Step 4 附註告知**。唯一的例外是 `簽章不符`（撞名領域產物）→ **停下告知、勿當 dossier 改**。
   - `dossier: NONE` 且 repo 非 trivial（有持續開發跡象）→ 列入 Step 4 摘要附註**建議**從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，經同意才建、不硬塞（不提前單獨詢問）。
 - **殘留 branch 衛生**：腳本印 `stale-branches:`（已完全併入 default，內容零損失）→ 列入 Step 4 附註**建議**清掃、附上 `cleanup-cmd:`，**經同意才刪、絕不自動刪**（同 dossier 衛生的處置形狀）。merge 最後一哩只清它自己 merge 的那支，老殘留靠這個訊號才會被看見。
 - 涉及模組的 `**/CLAUDE.md`（只動受影響的）。
