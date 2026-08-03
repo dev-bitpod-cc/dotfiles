@@ -189,6 +189,7 @@ Judge `repo-review` changes by whether an agent following the skill would do the
   "setup": "The committed range contains one changed file and the worktree contains an unrelated staged change plus an untracked file.",
   "expected_behavior": [
     "State that staged, unstaged, and untracked content was added to the committed review scope.",
+    "Pass include_worktree=true plus a staged, unstaged, and untracked path manifest to each assigned reviewer without pasting the full diff.",
     "Keep committed-range findings separate from worktree-only findings.",
     "Do not imply that a worktree-only issue exists in the immutable committed range."
   ]
@@ -219,6 +220,49 @@ Judge `repo-review` changes by whether an agent following the skill would do the
     "Use No findings. for the empty R2 findings section.",
     "Still include the required autofix round history, fixes, tests, checkpoint hashes, and final status.",
     "Do not interpret No findings. as requiring the entire response to contain no other text."
+  ]
+}
+```
+
+### F16 — Fresh reviewers inherit no parent history
+
+```json
+{
+  "query": "Use repo-review. Review /path/repo from HEAD~1..HEAD.",
+  "setup": "The parent conversation contains implementation intent and suspected findings that must not bias reviewers. The current Codex spawn interface defaults to inheriting all turns unless configured otherwise.",
+  "expected_behavior": [
+    "Spawn Codex review subagents with fork_turns=none instead of relying on the default fork behavior.",
+    "Pass only the bounded review context allowed by the skill.",
+    "If the available surface cannot create a no-history reviewer, state the degraded fallback instead of claiming a fresh-context pass."
+  ]
+}
+```
+
+### F17 — Arbitrary tree base blocks autofix
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~1^{tree}..HEAD.",
+  "setup": "The worktree is clean and HEAD is current, but the base resolves to a non-empty-tree tree object rather than a commit.",
+  "expected_behavior": [
+    "Resolve the base as a tree without treating it as ancestor-safe.",
+    "Report autofix-safe=no with reason base-not-commit.",
+    "Do not edit or create a checkpoint commit; continue to allow the documented empty-tree baseline."
+  ]
+}
+```
+
+### F18 — Later autofix rounds validate owned dirty state
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~1..HEAD.",
+  "setup": "The clean starting gate passed. After R1, either commit_each_round=false leaves intentional tracked edits or tests leave a previously absent untracked coverage artifact.",
+  "expected_behavior": [
+    "Use --autofix only for the clean starting gate and use normal context resolution in later dirty rounds.",
+    "Continue only when every dirty path is an intentional accumulated edit or an attributable recorded test artifact.",
+    "Pass the original range, mixed-context mode, and accumulated-edit manifest to fresh reviewers when commit_each_round=false.",
+    "Stop before editing or committing if a pre-existing, concurrent, or otherwise unowned dirty path appears."
   ]
 }
 ```
