@@ -6,34 +6,33 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-07-29)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-03)
 
 ---
 
 ## 進行中
 
-### dossier 總量治理——風格不敏感防線(prose 下沉為腳本)⏳
-
-- **Context**:三天實戰檢視(krepo/evint/dotfiles 對照)發現行數門檻與完成標記掃描皆對寫作
-  風格敏感——evint 117 行/38.7KB(最長行 2,787 字元)雙代理同時靜默;dotfiles 自身同型輕症。
-  計畫全文:`~/.claude/plans/resilient-churning-bird.md`。
-- **Goal**:`ship-state.sh` 下沉三個確定性訊號(總量 24KB/最長行 1000B/決策·里程碑條目 800B);
-  dossier.md 補傘狀中途蒸餾與決策蒸餾上限;SKILL.md Step 2 處置對齊;dotfiles STATUS.md
-  自家收斂為首個驗證案例。
-- **AC**:tests/run.sh 新斷言先 RED 後 GREEN、全 suite exit 0;收斂後 ship-state 對本 repo
-  零 dossier-flag。
-- **Constraints**:條目 flag 只掃決策/里程碑兩節(進行中 spec 區合法偏大);蒸餾與傘狀雙重
-  記載比對留判斷層不下沉。
-- **進度**:三訊號實作+tests 9 斷言 GREEN;dossier.md/SKILL.md/pressure-tests S12
-  規範面完成;本檔收斂完成。**第二批(2026-07-29)**:krepo 實戰再暴露三個「規範要 agent 做腳本
-  該做的事」的失敗(猜錯超標條目白壓兩輪/壓字壓不動實為粒度過粗/憑印象挑錯收斂章節)→ 再下沉
-  三訊號(條目行號、建議收斂目標 85%、`dossier-sections:` 各節佔比),SKILL.md 逐條處置複述
-  刪除改指腳本(消一處已漂移的重複記載),S12 同步四類訊號。tests 524/0。待 ship。
+(暫無——最近一批「codex repo-review autofix 契約補強」已完成待 ship,見已完成里程碑)
 
 ---
 
 ## 關鍵決策(附理由)
 
+- **2026-08-03 repo-review 多輪 autofix 死鎖以「gate 一次、之後查 ownership」解,不放寬 clean
+  要求**:C2 轉交的 F5 判定為 **true positive**——`--autofix` 要求 clean worktree,而規範要求每輪
+  rerun helper,R1 修完 worktree 必髒 → 第二輪必得 `autofix-safe:no`,契約自我封死。解法是
+  `--autofix` 只當**首次編輯前的一次性起始 gate**,後續回合改跑不帶 flag 的 helper 並逐一比對
+  dirty path 歸屬,遇 pre-existing/concurrent/未記錄即停。**反向解(放寬 clean 要求)會讓「絕不碰
+  使用者變更」整條保證失效**——根因是判定時機錯置,不是判定太嚴。
+- **2026-08-03 autofix 安全判定補 `base-not-commit`——tree base 的 ancestor 檢查回 `n/a` 不是
+  `no`**:`HEAD~1^{tree}..HEAD` 這類 base 先前一路穿過 ancestor gate 拿到 `autofix-safe:yes`,
+  等於在無法界定祖先關係的範圍上放行改檔+checkpoint。新判定置於 ancestor gate **之前**,條件
+  `BASE_TYPE != commit && BASE_HASH != EMPTY_TREE`——刻意保留 empty-tree baseline 的既有豁免
+  (該路徑語意明確且已有測試,一併擋掉會誤傷首次全 repo review)。
+- **2026-08-03 Codex reviewer 的 fresh context 要顯式 `fork_turns=none`,不靠預設**:spawn 介面
+  預設繼承全部 turns,規範只寫「用 fresh-context subagent」等於**spec 上宣稱 fresh、行為上帶著
+  parent 的實作意圖與嫌疑清單**——delegate 的價值(獨立重推結論)當場歸零。介面無法建立無歷史
+  reviewer 時一律明說降級,不得聲稱跑過 fresh-context pass。
 - **2026-07-29 剝 code fence 採 `\001` 哨兵前綴,不是丟棄也不是清空**:兩個下游各有硬要求
   ——條目 flag 要報行號故**行號須對齊原檔**(丟棄會讓 NR 全數位移);`dossier-sections:` 佔比
   要正確故**長度須保留真實**(清空會讓 fence 重的章節被低估到**排名倒轉**,實測 26KB 決策節
@@ -149,15 +148,21 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   實戰(autocodex 迭代中 rebase/重試)尚未驗過
 - [ ] codex plugin 去留待定:實質只當傳輸管道,exec 接管後僅剩 `/codex:transfer` 獨有——
   exec 路徑跑穩數輪後重新評估 uninstall
-- [ ] codex C2 轉交 findings(2026-07-21 代收):F5 repo-review 多輪 autofix 契約疑似死鎖
-  (傾向 true positive,需 helper 實際行為定奪);F6 skill-building-guide 的
-  `$skill-creator/scripts/quick_validate.py` 路徑解析(context-dependent)
+- [ ] codex C2 轉交 findings 餘項(2026-07-21 代收):F6 skill-building-guide 的
+  `$skill-creator/scripts/quick_validate.py` 路徑解析(context-dependent)。F5(多輪 autofix
+  死鎖)已於 2026-08-03 判 true positive 並修復
+- [ ] repo-review 新契約(起始 gate 一次 + 後續 ownership 檢查、mixed-context manifest)僅由
+  evals F16–F18 規格覆蓋,**實戰未跑過**——下次真跑 autofix 多輪時確認弱模型不會退回每輪帶
+  `--autofix`
 - [ ] /project 手感驗證後半段:spec→實作(即時記錄)待驗;mid-work re-spec 2026-07-21 研究後
   判維持不改(Iron Law:no failing scenario, no instruction)——除非觀察到照過時 spec 執行或
   擅自擴大範圍,才補程序+RED eval
 
 ## 已完成(里程碑)
 
+- ✅ 2026-08-03 codex repo-review 契約補強:autofix 起始 gate 一次化+後續 ownership 檢查(解 C2 F5 死鎖)、tree base 擋 autofix、reviewer `fork_turns=none`、mixed-context manifest;順帶 gitignore_global 收 `**/.claude/settings.local.json`(單機 key 檔全 repo 免誤 commit)。evals F16–F18,tests 526/0
+- ✅ 2026-08-03 macOS 大型 notarized binary 路徑快取卡死地雷入庫(#33;syspolicyd 以完整路徑為 key,`killall` 解)
+- ✅ 2026-07-29 dossier 治理再下沉三訊號:條目行號/建議收斂目標/各節佔比(#32;SKILL.md 逐條處置複述改指腳本,消一處已漂移的重複記載)
 - ✅ 2026-07-22 殘留 branch 衛生訊號+實地清掉兩支老殘留(#28;教訓:git fixture 須複製真 clone 的 origin/HEAD ref 佈局)
 - ✅ 2026-07-22 無 protection repo 改 PR 預設,Scenario 11 首次覆蓋 OPEN 路徑(u3 RED→GREEN,#27)
 - ✅ 2026-07-22 /project 補 bootstrap 路徑——空 repo 首次 ship 的機制門控豁免(tests 先 RED 後 GREEN,#26)

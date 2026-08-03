@@ -136,6 +136,9 @@ if [ "$AUTOFIX" -eq 1 ]; then
   elif [ "$DETACHED_HEAD" = "yes" ]; then
     AUTOFIX_SAFE="no"
     AUTOFIX_REASON="detached-head"
+  elif [ "$BASE_TYPE" != "commit" ] && [ "$BASE_HASH" != "$EMPTY_TREE" ]; then
+    AUTOFIX_SAFE="no"
+    AUTOFIX_REASON="base-not-commit"
   elif [ "$BASE_IS_ANCESTOR" = "no" ]; then
     AUTOFIX_SAFE="no"
     AUTOFIX_REASON="base-not-ancestor"

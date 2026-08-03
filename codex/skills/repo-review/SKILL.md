@@ -27,7 +27,7 @@ Resolve the bundled `scripts/review-context.sh` relative to this `SKILL.md`; do 
 scripts/review-context.sh <repo-path> <base..head> [--autofix]
 ```
 
-Use `--autofix` only in autofix mode. Treat the helper as canonical for the repo root, requested refs, immutable object IDs, current HEAD and branch state, ancestry and merge base, worktree and autofix safety, review range, guidance paths, changed files, stat, baseline status, and next-round policy. Use model judgment for findings.
+Use `--autofix` only for the clean starting gate before the first edit in autofix mode. Treat the helper as canonical for the repo root, requested refs, immutable object IDs, current HEAD and branch state, ancestry and merge base, worktree and autofix safety, review range, guidance paths, changed files, stat, baseline status, and next-round policy. Use model judgment for findings.
 
 After resolution, use immutable object IDs in subagent prompts, diffs, checkpoint ranges, reports, and handoffs. Never allow moving refs to drift across rounds.
 
@@ -41,7 +41,7 @@ Read applicable guidance before review. The helper discovers paths from the curr
 
 ## Delegate The First Pass
 
-When this skill is explicitly invoked or the user requests subagents, use fresh-context subagents when available. If unavailable, state the fallback and perform a narrow local review.
+When this skill is explicitly invoked or the user requests subagents, use fresh-context subagents when available. With Codex collaboration tools, set `fork_turns="none"`; never rely on the default fork behavior. If the surface cannot create a no-history reviewer, state the degraded fallback and perform a narrow local review instead of claiming a fresh-context pass.
 
 - Small diff: use up to two reviewers, split between correctness/security and tests/integration/deploy/configuration.
 - Medium diff: use up to three or four reviewers with distinct module or concern ownership.
@@ -50,7 +50,7 @@ When this skill is explicitly invoked or the user requests subagents, use fresh-
 
 Respect `max_subagents` and actual concurrency over these sizing defaults. Avoid duplicate broad scopes; overlap only at critical interfaces or security boundaries.
 
-Give each subagent only the repo path, immutable range, applicable guidance, diff stat, bounded files or concerns, and required output shape. Do not paste the full diff or pass patch intent, suspected findings, prior conclusions, or implementation history. Let reviewers obtain the diff with read-only Git commands.
+Give each subagent only the repo path, immutable range, applicable guidance, diff stat, bounded files or concerns, and required output shape. When `include_worktree=true` or a no-checkpoint autofix pass includes accumulated edits, also pass the effective mixed-context mode plus a status-derived manifest separating staged, unstaged, and untracked paths. Tell reviewers to inspect those paths; report worktree-only findings separately for `include_worktree=true`, or review the original range plus accumulated edits in no-checkpoint autofix. Do not paste the full diff or pass patch intent, suspected findings, prior conclusions, or implementation history. Let reviewers obtain the committed and worktree diffs with read-only Git commands.
 
 The main agent must not perform an equivalent whole-diff first pass before delegation. After subagents return, inspect only enough source to verify plausible findings, deduplicate them, resolve contradictions, and calibrate severity. Re-derive conclusions from code rather than defending patch intent.
 
@@ -78,19 +78,21 @@ Do not edit files or create commits in review mode.
 
 ## Run Autofix Mode
 
-Before any edit, require `autofix-safe:yes`, a clean starting worktree, current requested head, attached branch, and ancestor-safe range. If the helper reports `autofix-safe:no`, stop before editing or committing and report `autofix-reason`. If the requested head was not the original current HEAD, stop unless the user explicitly approves extending beyond that head or supplies a target branch.
+Before the first edit, run the helper with `--autofix` and require `autofix-safe:yes`, a clean starting worktree, current requested head, attached branch, and ancestor-safe range. If the starting gate reports `autofix-safe:no`, stop before editing or committing and report `autofix-reason`. If the requested head was not the original current HEAD, stop unless the user explicitly approves extending beyond that head or supplies a target branch.
+
+After the starting gate passes, run later helper calls without `--autofix`. Recheck that HEAD is current, the branch is attached, and the base remains ancestor-safe. Compare every dirty path with the recorded intentional edits and test outputs: with checkpoint commits, allow only attributable new untracked test artifacts; without checkpoint commits, also allow accumulated intentional edits. Stop before another edit or commit when any path is pre-existing, concurrent, unrecorded, or otherwise ownership-ambiguous.
 
 Never stage or commit pre-existing or concurrent user changes. If ownership overlaps or becomes ambiguous, stop. Never push.
 
 For each review pass `R1` through `R<max_rounds>`:
 
-1. Rerun the helper and read current canonical context and guidance.
+1. Rerun the helper without `--autofix` after R1, read current canonical context and guidance, and apply the later-round ownership checks above.
 2. Spawn new fresh-context reviewers; do not reuse earlier prompts or conclusions.
 3. Verify and consolidate findings. Stop clean when no blocking findings remain. Stop without another fix when this is the last allowed review pass.
 4. Fix only verified blocking findings with minimal changes.
 5. Before testing, record intentional edit paths and worktree status. Run relevant tests or checks. If none are discoverable, state that and perform reasonable static verification.
 6. If tests fail or the environment blocks validation, do not commit; stop and report the blocker.
-7. Recheck status, stage only verified intentional paths, and inspect the staged diff. Stop if a pre-existing or concurrent path would be included.
+7. With `commit_each_round=true`, recheck status, stage only verified intentional paths, and inspect the staged diff. Stop if a pre-existing or concurrent path would be included. With `commit_each_round=false`, do not stage or commit.
 8. Keep only new untracked outputs that were absent before and are attributable to the recorded test command unstaged; list them without letting them block later committed-range review.
 9. With `commit_each_round=true`, create a checkpoint such as `fix: R1 review fixes`. If the original resolved head was current HEAD, review `<resolved-base>..HEAD` next. Otherwise use only an explicitly approved target range.
 10. With `commit_each_round=false`, review the original immutable range plus accumulated worktree edits, recompute that mixed context every round, and state that it can grow.

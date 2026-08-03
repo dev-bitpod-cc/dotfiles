@@ -992,11 +992,17 @@ if echo "$out" | grep -q "^autofix-safe: no$" && echo "$out" | grep -q "^autofix
     ok "requested head 非 current HEAD → autofix-safe no"
 else bad "requested-head-not-current gate 失效"; fi
 
-out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$RRC_EMPTY_TREE..HEAD")"
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" "$RRC_EMPTY_TREE..HEAD" --autofix)"
 if echo "$out" | grep -q "^resolved-base-type: tree$" && echo "$out" | grep -q "^baseline-range: yes$" \
-    && echo "$out" | grep -q "^base-is-ancestor: yes$"; then
-    ok "empty-tree baseline range 支援（base-is-ancestor yes）"
+    && echo "$out" | grep -q "^base-is-ancestor: yes$" && echo "$out" | grep -q "^autofix-safe: yes$"; then
+    ok "empty-tree baseline range 支援 autofix（base-is-ancestor yes）"
 else bad "empty-tree baseline range 輸出錯誤"; fi
+
+out="$("$RRC_SCRIPT" "$TMP/rrc-work" 'HEAD~1^{tree}..HEAD' --autofix)"
+if echo "$out" | grep -q "^resolved-base-type: tree$" && echo "$out" | grep -q "^base-is-ancestor: n/a$" \
+    && echo "$out" | grep -q "^autofix-safe: no$" && echo "$out" | grep -q "^autofix-reason: base-not-commit$"; then
+    ok "任意 tree base → autofix 擋（base-not-commit）"
+else bad "非 empty-tree base 誤通過 autofix"; fi
 
 # 新訊號基準：branch / detached-head / base-is-ancestor / merge-base / guidance-source
 out="$("$RRC_SCRIPT" "$TMP/rrc-work" "HEAD~1..HEAD")"
@@ -1076,6 +1082,11 @@ if grep -q "Historical-only guidance is discovered" "$ROOT/codex/skills/repo-rev
     && grep -q "No-findings wording coexists with autofix history" "$ROOT/codex/skills/repo-review/evals.md"; then
     ok "repo-review v2 evals 覆蓋 historical guidance 與 autofix clean output"
 else bad "repo-review v2 behavior evals 不完整"; fi
+if grep -q "Fresh reviewers inherit no parent history" "$ROOT/codex/skills/repo-review/evals.md" \
+    && grep -q "Arbitrary tree base blocks autofix" "$ROOT/codex/skills/repo-review/evals.md" \
+    && grep -q "Later autofix rounds validate owned dirty state" "$ROOT/codex/skills/repo-review/evals.md"; then
+    ok "repo-review GPT-5.6 evals 覆蓋 fresh context 與 autofix safety"
+else bad "repo-review GPT-5.6 behavior evals 不完整"; fi
 
 echo "▶ 13. handoff-anchor.sh 錨點驗證與生命週期判定"
 HA_SCRIPT="$ROOT/claude/skills/handoff/scripts/handoff-anchor.sh"
