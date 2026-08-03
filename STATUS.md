@@ -18,6 +18,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 關鍵決策(附理由)
 
+- **2026-08-03 codex 的決策發聲採「產原料寫進行中、ship 端蒸餾」,不讓 codex 學 dossier 規範**:
+  #34 暴露 cross-agent 記錄斷點——codex 改 `codex/skills/`、Claude 端 ship,理由只能從 diff 反推。
+  界線是原理性的:**機制(補 gate、加測試)反推無損,但否決的方案與死路在 diff 裡永遠沒有痕跡**
+  ——走過的路才留下 diff。故 `codex/AGENTS.md` 只要求把推不到的那部分追加到 STATUS.md
+  「進行中」(尺寸 flag 刻意不掃該節),不 commit 不管格式,蒸餾與章節語意留 ship 端;並帶
+  「純機制改動免寫」免除條款(always-on context,無免除=每次小改都付儀式成本)。
 - **2026-08-03 repo-review 多輪 autofix 死鎖以「gate 一次、之後查 ownership」解,不放寬 clean
   要求**:C2 轉交的 F5 判定為 **true positive**——`--autofix` 要求 clean worktree,而規範要求每輪
   rerun helper,R1 修完 worktree 必髒 → 第二輪必得 `autofix-safe:no`,契約自我封死。解法是
