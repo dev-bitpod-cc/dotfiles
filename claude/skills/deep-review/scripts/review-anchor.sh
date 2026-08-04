@@ -208,12 +208,13 @@ cmd_squash_cmd() {
         echo "verdict: WARNING — 無 commit 可 squash（reset 到 HEAD 無作用，照印無害）"
     else
         git -C "$REPO" log --oneline "${base_hash}..HEAD" | sed 's/^/  /'
-        # 審查前既有 commits = subject 非 review 產生的固定樣式（R{N} fix / codex fix /
-        # wip snapshot；codex 輪標歷史上 R、C 並見，兩者都認）。squash 語意不變、僅告知
-        # ——SKILL.md 要求主 agent 在 reset 前向使用者轉述此行。
+        # 審查前既有 commits = subject 非 review 產生的固定樣式。現行格式**不編輪號**
+        # （中性化，避免 reviewer 跑 git log 反推審查進度與剩餘輪數）；舊的 R{N}/codex R{N}
+        # 格式一併保留——歷史 branch 上仍有舊 commit，不認會誤報成「審查前既有」。
+        # squash 語意不變、僅告知——SKILL.md 要求主 agent 在 reset 前向使用者轉述此行。
         local n_pre
         n_pre="$(git -C "$REPO" log --format=%s "${base_hash}..HEAD" \
-            | grep -Evc '^(fix: R[0-9]+ review fixes|fix: codex [RC][0-9]+ fixes|wip: pre-review snapshot)$')" || true
+            | grep -Evc '^(fix: address (review|external review) findings|fix: R[0-9]+ review fixes|fix: codex [RC][0-9]+ fixes|wip: pre-review snapshot)$')" || true
         if [ "${n_pre:-0}" -gt 0 ]; then
             echo "warning: 將壓掉 ${n_pre} 顆審查前既有 commit（清單見上，非本次 review 產生）"
         fi

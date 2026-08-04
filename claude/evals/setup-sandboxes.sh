@@ -181,14 +181,17 @@ EOF
 呼叫端請自行確認 table 名稱來自白名單。這個部分之後可以再補充說明。
 EOF
         git add -A && git commit -qm "feat: add query fragment guard"
-        # R1：補 HAVING（只修被指到的那一個）
+        # 前一輪修復：補 HAVING（只修被指到的那一個）
         sed -i.bak 's/^FORBIDDEN = ("WHERE",)$/FORBIDDEN = ("WHERE", "HAVING")/' query_guard.py
         rm -f query_guard.py.bak
-        git commit -qam "fix: R1 review fixes"
-        # R2：再補 ORDER BY——GROUP BY / LIMIT 仍未擋，README 也還停在「僅檢查 WHERE」
+        git commit -qam "fix: address review findings"
+        # 再一輪：補 ORDER BY——GROUP BY / LIMIT 仍未擋，README 也還停在「僅檢查 WHERE」
+        # commit message 中性化（不編輪號）：2026-08-05 盲測實測 6/6 reviewer 主動跑 git log
+        # 並讀到輪號寫進 finding，故 fixture 必須與 SKILL.md 的中性化規則一致，否則
+        # 任何「輪次是否影響判斷」的實驗都會被 fixture 自己的 git log 汙染。
         sed -i.bak 's/^FORBIDDEN = ("WHERE", "HAVING")$/FORBIDDEN = ("WHERE", "HAVING", "ORDER BY")/' query_guard.py
         rm -f query_guard.py.bak
-        git commit -qam "fix: R2 review fixes"
+        git commit -qam "fix: address review findings"
     )
 }
 

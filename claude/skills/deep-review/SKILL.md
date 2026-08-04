@@ -46,10 +46,10 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, Agent
 **WIP snapshot（僅 working-tree 模式）**：record **之後**、R1 審查之前，working tree 有未提交變更 → `git add -A && git commit -m "wip: pre-review snapshot"`（`add -A` 尊重 .gitignore）——使用者原始變更與後續 fix commits 分離，中途 revert 壞修復不誤傷原始工作；anchor base = pre-WIP HEAD，最終 squash 終態與未拆分時相同。此後各輪審查範圍統一用 record 印出的 `diff-cmd:` 行（整行照抄轉交 subagent）。
 
 ```
-R1 review → 未通過 → 主 agent 修復 → commit「fix: R1 review fixes」
-R2 review → 未通過 → 主 agent 修復 → commit「fix: R2 review fixes」
-R3 review → 未通過 → 主 agent 修復 → commit「fix: R3 review fixes」
-R4 review → 未通過 → 主 agent 修復 → commit「fix: R4 review fixes」
+R1 review → 未通過 → 主 agent 修復 → commit「fix: address review findings」
+R2 review → 未通過 → 主 agent 修復 → commit「fix: address review findings」
+R3 review → 未通過 → 主 agent 修復 → commit「fix: address review findings」
+R4 review → 未通過 → 主 agent 修復 → commit「fix: address review findings」
 R5 review → 通過 → 結束（squash 成乾淨 commit）
           → 未通過 → 停止，輸出累積報告，交還使用者
 ```
@@ -95,7 +95,7 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
   → 背景執行 codex-exec-review.sh run（呼叫協議見下方）
   → 收到 findings → 主 agent 逐條驗證（true positive / false positive）
   → 全部 false positive 或無 blocking findings → 結束
-  → 有 true positive → 主 agent 修復 → commit「fix: codex R{N} fixes」
+  → 有 true positive → 主 agent 修復 → commit「fix: address external review findings」
   → 再跑一次 codex-exec-review.sh run 審查修復部分
   → 重複直到無 blocking findings 或達上限
 ```
@@ -129,7 +129,7 @@ Hard constraints — violating any of these invalidates the codex round:
 
 - **C2+ 收斂判準**：finding 指向本輪修復 commit（增量 range 內新增/修改行）→ 照常驗證；屬 Completeness 深井（見 `references/reviewer-brief.md`：baseline backlog 或 prose artifact，**不分模式**）→ non-blocking、不阻擋通過、不觸發再一輪修復。
 
-**Squash**：codex 階段的 `fix: codex R{N} fixes` commit 與先前的 `fix: R{N} review fixes` commit 一起納入最終 squash。
+**Squash**：codex 階段的 `fix: address external review findings` commit 與先前的 `fix: address review findings` commit 一起納入最終 squash。
 
 ### 迭代紀律：每輪修復後 commit
 
@@ -137,9 +137,9 @@ Hard constraints — violating any of these invalidates the codex round:
 
 ```
 Round 1 review（未通過）
-  → 修復問題 → commit「fix: R1 review fixes」
+  → 修復問題 → commit「fix: address review findings」
 Round 2 review（未通過）
-  → 修復問題 → commit「fix: R2 review fixes」
+  → 修復問題 → commit「fix: address review findings」
 Round N review — 通過
   → squash 成一個有意義的 commit
 ```
@@ -148,6 +148,8 @@ Round N review — 通過
 - 不 commit → 每輪 subagent 都要處理完整累積 diff，context 隨輪次膨脹，大型變更會撞 context 上限
 - 有 commit → working tree clean，Step 1 自動使用 `git diff <base>...HEAD` 審查完整 branch 狀態
 - Round 偵測依賴 `git log`，不 commit 則無法正確偵測輪次
+
+**Commit message 不編輪號**（一律 `fix: address review findings`，codex 階段 `fix: address external review findings`）。`fix: R4 review fixes` 這種寫法會讓 reviewer 跑一次 `git log` 就反推出審查進度與剩餘輪數——那是 Step 4 花力氣關掉的洩漏管道，不該從 commit history 漏回去。Round 偵測不受影響：`review-state.sh` 數的是 `fix|refactor` 前綴的 commit 數，不解析輪號。
 
 ## 執行流程
 
@@ -249,31 +251,56 @@ B4. 其餘（working-tree diff、<base>...HEAD branch diff、commit range、HEAD
 
 ### 4. 委派 subagent 審查
 
-#### 傳給 subagent 的資訊
+#### 審查契約（固定模板，主 agent 只填變數槽）
 
-**傳**（事實與規則——傳「取得方式」，不搬內容）：
-- 每個 repo 的路徑 + **審查範圍的取得指令**（如 `git diff <base>...HEAD`、`git diff HEAD` + untracked 檔清單、或檔案/range 引數），由 subagent **以唯讀指令自行收集** diff 與變更檔完整內容
-- 每個 repo 的 CLAUDE.md、專案設定檔**路徑**（subagent 自行 Read）
-- 每個 repo 的路徑和名稱（識別用）
-- 輪次資訊——**只傳當前輪次**（reviewer 用它調整重心）。NEVER pass the round cap or rounds-remaining ("R5 is the last round"). Knowing the deadline only creates an incentive to wave things through.
-- **審查判準的路徑**：`~/.claude/skills/deep-review/references/reviewer-brief.md`，並要求 subagent **先 Read 完該檔再開始評分**。判準不由主 agent 摘要轉述——摘要即漂移。
+主 agent **照下列模板構造 subagent prompt**，只替換 `{}` 內的變數；模板本體逐輪不變、與輪次無關。這是**白名單**——不是「避開幾種禁語」，而是「只送這一份」。
+
+```
+You are an independent code reviewer. You have no prior context on this change.
+
+Scope — review the complete cumulative diff:
+  {diff-cmd 行，整行照抄；多 repo 時逐 repo 列出}
+
+Repo: {repo_path}{多 repo 時逐一列出路徑與名稱}
+Project conventions — read these yourself: {CLAUDE.md／設定檔路徑清單，無則寫 none}
+
+Reviewing criteria — Read this file completely before scoring anything:
+  ~/.claude/skills/deep-review/references/reviewer-brief.md
+It defines the dimensions, severity levels, pass bar, same-class sweep, and the
+Completeness 深井 non-blocking clause. Follow it as written; do not substitute
+your own standards.
+
+Judge independently: correctness, security, regression, required tests,
+deployment/configuration, and contract issues.
+
+- Do NOT assume any part of this diff has already been reviewed or fixed.
+- Do NOT adjust severity for repair cost, process stage, or delivery pressure.
+- Every finding must carry: severity, file:line, triggering behavior, concrete
+  impact, supporting evidence.
+- Report "No findings" only when no concrete issue meets the bar. Finding count
+  does not affect how this review is judged — a correct "No findings" and a
+  correct blocking finding are equally valuable.
+
+{baseline 模式才附這行，其餘模式整行省略：}
+Note: this diff includes a pre-existing baseline. Completeness gaps in the
+baseline that this change does not touch are non-blocking (see the brief's
+深井 clause).
+
+Output: verdict (PASS/FAIL per the brief's 通過標準) + findings grouped by root
+cause + non-blocking items listed separately.
+```
+
+**變數槽只有這些**：`diff-cmd` 行、repo 路徑與名稱、專案 context 檔路徑。其餘一字不改。
+
+**MUST NOT appear anywhere in the prompt** — these are leak channels, not style preferences:
+
+> round number, round cap, rounds remaining, "final round", "last pass", "we're near max rounds", prior-round findings, the author's fix summary, "please verify the fixes", "only look for newly introduced problems", or any framing that the change is near completion or has already been vetted.
+
+輪次是 **orchestration 層的私有狀態**：Step 2 照常偵測，用來決定何時停、報告怎麼寫——但不進 reviewer 的上下文。同理，`fix:` commit 的 message 不編輪號（見「迭代紀律」），避免 reviewer 跑 `git log` 時反推進度。
+
+**Why a fixed template rather than a ban list**: a ban list must enumerate every phrasing, and enumeration provably leaks — 本 repo 實測過一次（列了 `final round`，實際寫法是 `FINAL allowed review round`，差點誤判；見 evals.md 2026-08-04 方法論教訓）。同一個 blocklist-vs-allowlist 教訓。
 
 **Hand the subagent the *range*, not the diff text.** Re-sending the full diff through the main context costs double tokens for zero information gain — the subagent runs the exact same `git diff` and sees the identical content. Main agent stays at stat-level. Same principle for the bar: hand over the brief's *path*, never a paraphrase of it.
-
-**The blocking bar is fixed from R1, and so is the task.** Two distinct loopholes, both banned:
-
-1. **Relaxing the bar** — no "only wording nits left, please pass", no "the bar is whether following it breaks, not whether it could be better", no relaxed threshold in any wording.
-2. **Reframing the task** — no "this round is about convergence, not discovery", no "don't hunt for findings", no "judging whether it has converged matters more than finding new problems". Every round's task is identical: find what is wrong. A reviewer told to judge convergence stops looking, and **zero findings then reads as clean code** — the report shows nothing to detect, which makes this the more dangerous of the two.
-
-Later rounds shift emphasis (brief 的「審查重心隨輪次調整」), never the bar and never the task. If prose nits are inflating the round count, that is the Completeness 深井 clause's job and it reaches the reviewer intact via the brief. Inventing a bar — or a different job — in the prompt turns "R5 passed" into grade inflation, not convergence.
-
-> 唯一例外：baseline 模式 Round 2+ 的那句 scope 補充（見 Step 5），那是 skill 規定的範圍說明，不是判準放寬。
-
-**不傳**（作者脈絡）：
-- 主 agent 對「為什麼這樣改」的解釋
-- 主 agent 對跨 repo 關聯性的分析
-- 上一輪 review 報告
-- Session 中的對話脈絡
 
 Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多個關聯 PR——自己讀 diff、自己判斷關聯性、自己檢查一致性。
 
@@ -299,7 +326,7 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 3. 若未通過且已達 R5 → 輸出 autofix 終止報告，結束（不進入 codex 階段）
 4. 若未通過且未達上限 → 主 agent 依修復計畫執行修復 → 驗證（見「修復後驗證」）→ 測試通過才 commit → 回到 Step 4 發起下一輪審查；若驗證無法通過（反覆修仍紅或環境擋住）→ 依「修復後驗證」停止，輸出終止/blocked 報告（沿用 Autofix 終止模板，於收斂失敗分析註明是測試卡關），不進下一輪
    - **context 處理**：Step 3 的專案 context（CLAUDE.md、設定檔）沿用，不重新收集；diff 由**每輪全新的 subagent 自行收集**（傳同一條 range 指令即可——修復 commit 後 HEAD 前進，subagent 跑 `git diff <base>...HEAD` 拿到的自然是涵蓋最新修復的完整 diff），主 agent 不搬運 diff 內容、也不讓 subagent 沿用任何舊輪產物
-   - **baseline 模式的收斂（autofix 與 autocodex 機制不同）**：autofix 的 range **不縮**（fixer 需看完整狀態確認沒改壞），改縮 **blocking 判準**——baseline 模式 Round 2+ 給 subagent 的指令補一句：「基線已於 Round 1 全量審過，本輪聚焦『修復是否正確 + 是否引入新問題』；基線 backlog（completeness 深井）若非本輪修復觸及 → non-blocking，列報告但不阻擋通過。」此 range 機制 diff 模式不套用、照常全審；但 diff 內若含 prose artifact，其措辭/完整度 nits 仍套 Completeness 深井判準（見 `references/reviewer-brief.md`，不分模式）。
+   - **baseline 模式的收斂（autofix 與 autocodex 機制不同）**：autofix 的 range **不縮**（fixer 需看完整狀態確認沒改壞），改縮 **blocking 判準**——baseline 模式時，契約模板加上那個 baseline 條件行（見 Step 4 模板；它描述的是 artifact 狀態「此 diff 含既有基線」，**不提輪次、不提已審過幾次**）。此 range 機制 diff 模式不套用、照常全審；但 diff 內若含 prose artifact，其措辭/完整度 nits 仍套 Completeness 深井判準（見 `references/reviewer-brief.md`，不分模式）。
    - **成本與邊界**：autofix baseline 因 range 不縮，subagent 每輪吃 `<empty-tree>..HEAD`（整庫）diff——大型 repo 會撞 Step 4 的 context 上限。靠 Step 4「規模策略 >40」依模組分拆 subagent 緩解；若仍過大，建議全庫稽核改走 autocodex（codex 階段 C2+ 才有縮 range）。autocodex 縮 range / autofix 縮判準 的差異源於：autocodex 是無狀態第三方、autofix 的 fixer 需看完整狀態。
 
 **非 Autofix + Autocodex 模式**：手動審查通過後，主 agent 輸出通過報告，接著自動進入 Step 6。
@@ -313,7 +340,7 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 報告核心原則：
 - 問題**按根因分組**，不按嚴重度排列，讓 fixer 一次解決共因問題
 - 修復計畫由 subagent 根據具體問題產出
-- 修完後先 commit（如 `fix: R{N} review fixes`），再執行下一輪 `/deep-review`
+- 修完後先 commit（如 `fix: address review findings`），再執行下一輪 `/deep-review`
 - 最終通過後，主 agent squash 所有 review fix commits：執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，照 `squash-cmd:` 輸出照抄 reset（腳本拒給——`verdict: STOP`——時停下交使用者，勿自行湊 hash；腳本印 `warning:`（將壓掉審查前既有 commits）時，reset 前須向使用者轉述該行——autofix 通過報告中列出即可，不必中斷等待），重新 commit 後跑 `clear`。message 採原始功能變更的語意（不是 `fix: review fixes`），遵循專案 Conventional Commits，並附 `Co-Authored-By` trailer（以 runtime system prompt 的 Git 區塊為權威，勿在 skill 寫死 model 名稱/版本）
 - **通過報告必須附「第三方審查資訊」**：列出每個 repo 的 commit 範圍（`base..head`，base = anchor 記錄的審查起點，跨 session 可用 `review-anchor.sh show` 恢復）和變更摘要，方便使用者轉交第三方 reviewer。R5 終止報告不需要此區塊（代碼尚未就緒）
 
@@ -330,7 +357,7 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
    - **false positive**：codex 誤判，不處理
    - **context-dependent**：需更多 context 才能判定——**可能是真 bug** → 當 true positive 修；**屬 completeness / prose 深井**（見 `references/reviewer-brief.md`）→ non-blocking，不修、不觸發再一輪
 4. 若無 true positive blocking findings（深井不算）→ 輸出 codex 通過報告，執行最終 squash，結束
-5. 有 true positive（非深井）→ 主 agent 修復 → commit `fix: codex R{N} fixes` → 回到步驟 2（下一輪 range 由 `codex-next` 給出，兩模式 C2+ 皆只審增量，見上方「Commit range 更新」）
+5. 有 true positive（非深井）→ 主 agent 修復 → commit `fix: address external review findings` → 回到步驟 2（下一輪 range 由 `codex-next` 給出，兩模式 C2+ 皆只審增量，見上方「Commit range 更新」）
 6. 達到上限（3 輪審查、2 輪修復）仍有 true positive（指向修復本身、非 Completeness 深井）→ 輸出 codex 終止報告，停止
 
 > 步驟 3 驗證時，屬 Completeness 深井的 finding（baseline backlog 或 prose artifact，見 `references/reviewer-brief.md`，**不分模式**）→ non-blocking，不觸發步驟 5 的再一輪修復；只有指向本輪修復 commit 的真 bug / 安全 / 契約斷裂才算 blocking。達上限時若只剩深井（無真 bug）→ 判通過走通過報告，非終止報告。

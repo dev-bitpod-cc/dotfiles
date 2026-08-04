@@ -1088,6 +1088,14 @@ if grep -q "Fresh reviewers inherit no parent history" "$ROOT/codex/skills/repo-
     && grep -q "Later autofix rounds validate owned dirty state" "$ROOT/codex/skills/repo-review/evals.md"; then
     ok "repo-review GPT-5.6 evals 覆蓋 fresh context 與 autofix safety"
 else bad "repo-review GPT-5.6 behavior evals 不完整"; fi
+if grep -q "Review-pass position stays private" "$ROOT/codex/skills/repo-review/evals.md" \
+    && grep -q "Checkpoint metadata does not reveal review progress" "$ROOT/codex/skills/repo-review/evals.md"; then
+    ok "repo-review evals 覆蓋輪次隔離與 metadata 洩漏"
+else bad "repo-review 盲審 behavior evals 不完整"; fi
+if [ -f "$ROOT/codex/skills/repo-review/references/reviewer-brief.md" ] \
+    && grep -q "references/reviewer-brief.md" "$ROOT/codex/skills/repo-review/SKILL.md"; then
+    ok "repo-review reviewer brief 已納入 runtime contract"
+else bad "repo-review reviewer brief 缺失或未連結"; fi
 
 echo "▶ 13. handoff-anchor.sh 錨點驗證與生命週期判定"
 HA_SCRIPT="$ROOT/claude/skills/handoff/scripts/handoff-anchor.sh"
@@ -2115,6 +2123,24 @@ git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp2"
     && echo v2 > v.txt && "${GITC[@]}" commit -qam "fix: R1 review fixes")
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp2")"
 if echo "$out" | grep -q "warning: 將壓掉"; then bad "純 review commits 誤發警告"; else ok "純 review commits 無警告"; fi
+
+# 中性化 commit message（不編輪號，避免 reviewer 跑 git log 反推進度）：
+# 新格式須被認得，且舊格式仍認（歷史 branch 上還有舊 commit，誤判會噴假 warning）
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp3"
+"$RA_SCRIPT" record --repo "$TMP/ra-imp3" --mode working-tree >/dev/null
+(cd "$TMP/ra-imp3" && git switch -qc feat/n \
+    && echo n1 > n.txt && "${GITC[@]}" add n.txt && "${GITC[@]}" commit -qm "wip: pre-review snapshot" \
+    && echo n2 > n.txt && "${GITC[@]}" commit -qam "fix: address review findings" \
+    && echo n3 > n.txt && "${GITC[@]}" commit -qam "fix: address review findings" \
+    && echo n4 > n.txt && "${GITC[@]}" commit -qam "fix: address external review findings" \
+    && echo n5 > n.txt && "${GITC[@]}" commit -qam "fix: R1 review fixes" \
+    && echo n6 > n.txt && "${GITC[@]}" commit -qam "fix: codex C1 fixes")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp3")"
+if grep -q "warning: 將壓掉" <<< "$out"; then bad "中性化 commit message 被誤判為審查前既有 commit"; else ok "中性/舊格式 commit message 皆認得（新舊並存不誤判）"; fi
+# 反向：真的審查前既有 commit 仍要被抓出來（不因放寬 pattern 而漏報）
+(cd "$TMP/ra-imp3" && echo n7 > n.txt && "${GITC[@]}" commit -qam "feat: unrelated work")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp3")"
+if grep -q "warning: 將壓掉 1 顆審查前既有 commit" <<< "$out"; then ok "放寬 pattern 後仍抓得到真既有 commit"; else bad "既有 commit 漏報"; fi
 
 echo "▶ 20. verify-tests.sh（deep-review skill script）框架偵測與 exit 契約（uv/bun stub）"
 VT_SCRIPT="$ROOT/claude/skills/deep-review/scripts/verify-tests.sh"

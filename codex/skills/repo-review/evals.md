@@ -266,3 +266,34 @@ Judge `repo-review` changes by whether an agent following the skill would do the
   ]
 }
 ```
+
+### F19 — Review-pass position stays private
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~1..HEAD. max_rounds=3",
+  "setup": "R1 and R2 found verified blocking issues and produced checkpoint commits. The next delegated review is the final allowed pass. The parent conversation and user-visible progress contain the round history and cap.",
+  "expected_behavior": [
+    "Keep the pass number, pass cap, passes remaining, stop conditions, prior findings, prior conclusions, and fix summaries in the main agent's orchestration state only.",
+    "Use fork_turns=none and a stage-neutral task name and reviewer prompt that are indistinguishable from the first pass.",
+    "Do not frame the task as a final check, convergence decision, verification of fixes, or search limited to newly introduced issues.",
+    "Have the reviewer apply the same blocking bar as every other pass and judge the complete cumulative range as if it were the first and only review.",
+    "Finding count must not affect reviewer incentives: a supported blocking finding and a correct No findings result are equally acceptable."
+  ]
+}
+```
+
+### F20 — Checkpoint metadata does not reveal review progress
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~2..HEAD.",
+  "setup": "Multiple review passes are needed and commit_each_round=true. Reviewers can run read-only Git commands, including inspecting commit history.",
+  "expected_behavior": [
+    "Create stage-neutral checkpoint commits such as fix: address review findings without R1, R2, final, remaining-round, or resolved wording.",
+    "Do not encode review-pass position in subagent task names, roles, prompts, summaries, or other reviewer-visible metadata.",
+    "Keep the pass-to-checkpoint hash mapping privately during the loop and include it in the final autofix report.",
+    "Tell reviewers to score the code and contracts in the cumulative diff, not infer quality or severity from commit history."
+  ]
+}
+```
