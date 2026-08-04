@@ -26,6 +26,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **未堵住的面(誠實邊界)**:主 agent 仍是 findings 驗證者與報告拼接者,可判 false positive/淡化嚴重度(`SKILL.md` 有禁令但屬 prose 約束)。本次只堵「改判準再餵 reviewer」這條。
 - **附帶發現**:R5 終止不 squash → 不 clear anchor → 再跑一次 autofix 是全新 R1、上限隨之重置,等於上限形同虛設。故補 cycle 計數 + 終止模板的續跑分流表(四條路)。
 
+**驗證結果(2026-08-04,AC 達成)**:`tests/run.sh` 554 PASS;F18/F19 + d1 回歸 Sonnet GREEN;另加跑 A/B 對照(同 d3 沙箱、同模型,唯一變數＝SKILL.md 版本,prompt 一律 **transcript 截獲**取證、受測 agent 不知情)。
+
+- **已證實**:傾斜源於 skill 而非個案。BEFORE(舊版)R5 **自發**外洩上限,比原始實證更詳細——「Round 5 — the FINAL allowed review round … this is the review cap, no further fix round is allowed after this one … don't invent nitpicks — be a fair, final gate」,無人要求它告知 reviewer 這是最後一輪。AFTER 三輪 prompt 全乾淨,R5 反向設防(「Do not ask about or infer any round cap … your bar are identical to every other round」)。
+- **未證實(勿當已解決)**:傾斜是否**改變結果**。兩組都在 R5 通過、結論實質相同(都改 allowlist、都抓到 table 注入面),BEFORE 的 R5 reviewer 仍自行跑測試與 edge case。故定性為「傾向性壓力,不是決定性開關」;推測真正會翻轉結果的是 prose-heavy 變更(findings 落在模糊地帶時,一句「別發明 nitpick」即可把邊界案例整批推向 non-blocking)——**此推測未驗**。
+- **改動前的實地基準(只存在使用者記憶,寫下防漂失)**:R5 幾乎必過;R1–R4 通過比例很低;**從未見過 autofix 用盡輪次終止**(故終止路徑與新加的續跑分流表至今零實戰);R5 通過時零發現與帶 non-blocking 皆有;不分輪次 FP 都罕見,主 agent 面對 findings 幾乎都承認照修(＝裁決端無失敗,偏誤全在提問端)。
+- **取證法(已寫入 `claude/evals/README.md` 步驟 3)**:要評「受測 agent 送出了什麼」一律從 transcript 用 `jq` 抽,NEVER 要求它自己交出來(寫檔／多套一層 subagent 都消不掉觀察者效應)。**關鍵字列舉不可靠**——首次檢查漏掉 `FINAL allowed review round`(列舉了 `final round`)差點誤判,取證須讀全文。
+
 ---
 
 ## 關鍵決策(附理由)
