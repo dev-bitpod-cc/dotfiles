@@ -6,51 +6,38 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-04)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-05)
 
 ---
 
 ## 進行中
 
-### deep-review:審查偏誤治理(兩批,2026-08-04~05;細節見 `claude/skills/deep-review/evals.md` 執行紀錄)
+(暫無——deep-review 審查偏誤治理已完成待 ship,見已完成里程碑)
 
-**Context**:使用者觀察多輪 autofix「幾乎都跑到 R5 才通過」。追查證實**偏誤在提問端而非裁決端**——主 agent 在後期輪次自行往 subagent prompt 加放寬語與任務重定義,並洩漏「最後一輪/額度用盡」;而它面對 findings 幾乎都承認照修(FP 罕見)。第二批另修 codex 第三方審查的三條中等 findings(全為 true positive)。
-
-**關鍵取捨**:
-
-- **判準傳遞下沉為交路徑**(`references/reviewer-brief.md`),不是再加一層 prose 要求「請務必逐字轉交」——那是用 prose 治 prose 病。SKILL.md body 反而縮小。
-- **禁語清單升級為固定契約模板(黑名單→白名單)**:列舉**可證會漏**——自己的偵測 regex 列了 `final round`、漏掉實際寫法 `FINAL allowed review round`,差點誤判。與 codex 同批審的 fixture(blocklist vs allowlist)同一教訓。
-- **輪次重心節整節刪除**:保留輪次的理由(brief 需要它調重心)站不住——**補丁痕跡是 code 的性質,不是 history 的性質**。理由消失後只剩錨定風險。
-- **cycle 計數判「anchor 未經 clear 就重新 record」**,不比對 base hash(working-tree 模式必失效);它是告知性事實、不是 gate。
-- **同型掃描不假裝腳本化**:語意判斷無確定性 pattern,強行寫 gate 只產生誤判。
-- **commit message 中性化的評估被實測翻案**:先前判它「需主動查 log、價值較低」——盲測 **6/6 agent 主動跑 `git log` 並讀到輪號**,是必然的洩漏管道。
-- **未堵住的面(誠實邊界)**:主 agent 仍是 findings 驗證者與報告拼接者。分離的是**判斷**不是**提問**——`Separating the judge does nothing if the same party writes the question.`
-- **Codex repo-review 移植的額外實證**:`max_rounds=1` blind forward test 中 reviewer 照樣抓到除零 regression,但主 agent 略過原本 F14 的「最後 pass 不修」句子,仍修復並 commit。故不只複製禁令,改成 findings 驗證後、任何 edit/test/stage 前的獨立 gate;重跑同 fixture 後正確停在原 HEAD、無 checkpoint。
-
-**驗證強度(勿當已解決)**:
-
-- **已證實**:傾斜源於 skill 非個案(A/B 對照,舊版 R5 **自發**外洩上限並要求「別發明 nitpick」,新版反向設防);6/6 reviewer 主動查 git log 讀到輪號。
-- **弱證據**:盲測第二輪 blocking 平均 3.67→2.67(−27%),差異**全落在灰色地帶**(`table` 零驗證 A 組 3/3 blocking、B 組 1/3),真問題(SQLi、README 事實錯誤)兩組完全一致。n=3/組、B 組內變異 2/4/2 → **弱證據非證實**。
-- **失敗記錄**:盲測第一輪 INCONCLUSIVE——fixture 當時帶 `fix: R1/R2` 輪號,兩組都從 git log 讀到,**操縱被 fixture 自己覆蓋**。修正 fixture 後才得乾淨對照。
-- **改動前實地基準(只存在使用者記憶,寫下防漂失)**:R5 幾乎必過;R1–R4 通過比例很低;**從未見過用盡輪次終止**(故續跑分流表至今零實戰);R5 通過時零發現與帶 non-blocking 皆有;FP 罕見。
-
-- **codex C2/C3 六條全為 true positive(無深井),其中 C2-F1 是我造成的迴歸**:
-  `git add -A` 誤收 codex 端 repo-review 的工作,**同一錯誤犯三次**。第三次根因不是
-  手滑,是循環陷阱——每次 commit 後把他人的 8 行 `cp` 回 working tree,下次編輯同一
-  檔案就疊上去,`git add <整檔>` 必然再收。**三次都只有乾淨 checkout 看得見**(本機
-  因檔案在磁碟上恆綠),前兩次是 codex 抓到/因它而警覺。教訓四條:
-  (a) 多 session 共用 working tree 時 commit 一律顯式路徑;
-  (b) 混檔誤收按**檔案內的區段**拆,不是只按目錄拆;
-  (c) 拆完必須 `git clone --no-local` 建乾淨 checkout 實測;
-  (d) **混檔期間他人的區段先不放回 working tree**,等自己全部 commit 完才最後放回。
-- **squash 既有-commit 判定改「範圍 ∪ subject」聯集**:純 subject 漏撞名的上一場殘留(中性化後名稱固定通用,碰撞機率上升);純範圍漏 review 期間混入的他線 commit。anchor 新增 `head_at_record` 作時間邊界;舊 anchor 無此欄位則退回純 subject(向後相容)。
-- **契約模板補 untracked 條件槽**:白名單設計把既有需求(priority 2 的「diff + untracked 逐檔」)鎖在門外,reviewer 會漏審新檔且不自知。白名單的風險就在這裡——收得太緊會擋掉必要資訊。
-
-**取證法**(已入 `claude/evals/README.md` 步驟 3):要評「受測 agent 送出了什麼」一律從 transcript 用 `jq` 抽,NEVER 要求它自己交出來(寫檔／多套一層 subagent 都消不掉觀察者效應)。**關鍵字列舉不可靠,須讀全文**。
-
-**新契約模板已實測(2026-08-05 d3 全流程重跑)**:兩輪 prompt **字元數完全相同(1326/1326)**＝模板逐輪不變、只動變數槽;七項契約要素全中、零輪次/上限洩漏;沙箱 git 實查 squash parent == anchor、中間 commit 全為中性格式;R4 subagent 主動做同型掃描。
+---
 
 ## 關鍵決策(附理由)
+
+- **2026-08-05 reviewer 的提問端一律走白名單契約,不用禁語黑名單**:列舉禁語**可證會漏**
+  ——本 repo 實測一次(偵測 regex 列了 `final round`、實際寫法是 `FINAL allowed review
+  round`,差點誤判對照組乾淨),與同批 codex fixture 的 blocklist-vs-allowlist 是同一教訓。
+  白名單的代價要一起記:**收太緊會擋掉必要資訊**(契約模板漏了 priority 2 的 untracked
+  清單槽,reviewer 會整批漏審新檔且不自知,由 codex C2/C3 連兩輪抓到)。
+- **2026-08-05「審查者與作者分離」的邊界=分離判斷、不分離提問**:`Separating the judge
+  does nothing if the same party writes the question.` 主 agent 仍構造 subagent prompt,
+  故硬約束全下在提問端(判準交路徑、bar 與 task 恆定、輪次/上限不外洩)。裁決端實測無失敗
+  (FP 罕見、幾乎都承認照修),故**不加 judge 覆核、不加 FP 記錄欄位**——no failing
+  scenario, no instruction。
+- **2026-08-05 輪次是 orchestration 私有狀態,但隱蔽有已知殘留**:保留輪次的原理由(brief
+  需要它調重心)站不住——**補丁痕跡是 code 的性質、不是 history 的性質**。中性化 commit
+  message 擋掉輪號與剩餘輪數,**擋不掉「已改過幾次」**(commit 數量本身即訊號),要消除得
+  每輪 squash、破壞迭代紀律,故接受殘留但文件不得宣稱成完全隔離。
+- **2026-08-05 多 session 共用 working tree:commit 一律顯式路徑,`git add -A` 是誤收源**:
+  同一錯誤犯三次(誤收 codex 端 repo-review 工作)。第三次根因是循環陷阱——每次 commit 後
+  把他人區段 `cp` 回 working tree,下次編輯同檔就疊上去、整檔 add 必然再收。**三次都只有
+  乾淨 checkout 看得見**(本機因檔案在磁碟上恆綠)。四條:(a) 顯式路徑;(b) 混檔按**檔案內
+  區段**拆、不是只按目錄;(c) 拆完必跑 `git clone --no-local` 實測;(d) 混檔期間他人區段
+  先不放回,等自己全部 commit 完才最後放回。
 
 - **2026-08-03 codex 的決策發聲採「產原料寫進行中、ship 端蒸餾」,不讓 codex 學 dossier 規範**:
   #34 暴露 cross-agent 記錄斷點——codex 改 `codex/skills/`、Claude 端 ship,理由只能從 diff 反推。
@@ -208,6 +195,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
+- ✅ 2026-08-05 deep-review 審查偏誤治理:定位「多輪 autofix 幾乎都跑到 R5 才通過」的根因在
+  **提問端**(主 agent 自行放寬 subagent prompt),修法為判準下沉 `reviewer-brief.md`、提問端
+  改白名單契約、輪次徹底隱蔽、同型掃描、上限後續跑分流。取捨見決策節,驗證三層(已證實／
+  弱證據／失敗記錄)與 codex 三輪九條 findings 見 `claude/skills/deep-review/evals.md`。
+  (tests 547→564)
 - ✅ 2026-08-04 lftp 納入標準工具鏈取代內建 sftp:兩支 setup 加裝+版控 `lftprc`,部署改走新
   `ensure-lftprc.sh`(接 dotsync 本機/遠端兩段,config 免逐台重跑 setup 即散佈;binary 仍需
   `brew install`——brewup 只 upgrade 既有 formula);14 台機隊 config+binary 全到位(4.9.3)。
