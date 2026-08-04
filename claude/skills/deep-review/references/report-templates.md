@@ -42,7 +42,7 @@
 跨檔案契約同步狀態 + 相關專案慣例是否符合。
 
 ### 整體性評估
-{Round 2+ 輸出} 補丁痕跡、重複邏輯、抽象不一致等。
+補丁痕跡、重複邏輯、抽象不一致等（**恆常評估，不分輪次**——判斷依據是 code 本身，非 commit 次數）。
 
 ### 修復計畫
 {由 subagent 根據本次具體問題產出，不是固定文字}
@@ -52,10 +52,10 @@
 2. 再處理根因 B — {具體做法}
 3. 獨立問題逐一修正
 
-{Round 4+ 且仍有結構性問題}
-> **建議退一步重寫**：{區塊} 已過多輪修補，建議重新設計後從頭寫過。
+{若結構性問題已深到補丁補不動}
+> **建議退一步重寫**：{區塊} 的抽象已被反覆修補侵蝕，建議重新設計後從頭寫過。
 
-修完後，先 commit（如 `fix: R{N} review fixes`），再執行下一輪 `/deep-review`。
+修完後，先 commit（如 `fix: address review findings`），再執行下一輪 `/deep-review`。
 最終通過後，squash 成乾淨的 commit。
 ```
 
@@ -94,12 +94,12 @@
 - 文件與實作是否同步
 
 ### 整體性評估
-{Round 2+ 輸出}
+（同單 repo 格式）
 
 ### 修復計畫
 （同單 repo 格式）
 
-修完後，逐 repo commit（如 `fix: R{N} review fixes`），再執行下一輪 `/deep-review`。
+修完後，逐 repo commit（如 `fix: address review findings`），再執行下一輪 `/deep-review`。
 最終通過後，squash 成乾淨的 commit。
 ```
 
@@ -125,8 +125,8 @@
 {若無建議等級問題則省略此區塊}
 
 ### Commit 建議
-{若有多筆 review fix commit（如 fix: R1/R2/R3 review fixes）}
-主 agent 執行 squash：`git reset --soft <squash base hash>`（定義見 SKILL.md Autofix 段的表；固定 hash，勿用會移動的 ref 如 `origin/<default>`）後重新 commit，message 採原始功能變更的語意（如 `feat: 新增 X 功能`），不用 `fix: review fixes`。格式遵循專案 Conventional Commits 慣例。
+{若有多筆 review fix commit（如 fix: address review findings）}
+主 agent 執行 squash：跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，把 `squash-cmd:` 整行照抄執行（腳本已解析出固定 hash 並驗過存在性與祖先關係；回 `verdict: STOP` 就停下交使用者，勿自行湊 hash、勿用會移動的 ref）。reset 後重新 commit，message 採原始功能變更的語意（如 `feat: 新增 X 功能`），不用 `fix: address review findings`。格式遵循專案 Conventional Commits 慣例。
 {squash-cmd 印 `warning:`（將壓掉審查前既有 commits）時，在此轉述該行讓使用者知悉}
 {若只有一筆 commit + clean working tree}
 可以直接 push。
@@ -169,27 +169,35 @@
 | R5 | {N} | — | 未自動修復 |
 
 ### 收斂失敗分析
-{為什麼三輪修不完——是修 A 引入 B？還是結構性問題反覆觸發？}
+{為什麼四輪修不完——是修 A 引入 B？結構性問題反覆觸發？還是同一條規則的實例每輪只修一個？}
+{必須落到下方「續跑分流」表的其中一列，並寫明判斷依據；只描述現象不給分流等於沒交付}
 
 ### 剩餘問題
 （同未通過格式，按根因分組）
 
 ### Branch 狀態處置
 
-目前 branch 上有 {N} 個 review fix commit（`fix: R1~R4 review fixes`）。
+目前 branch 上有 {N} 個 review fix commit（`fix: address review findings`）。
 
 {根據剩餘問題的性質選擇建議}
-- 若建議重寫 → `git reset --soft <squash base hash>`（定義見 SKILL.md Autofix 段的表；勿用會移動的 ref）回到起點，帶著所有變更重新設計 {區塊}，再重新 commit
-- 若可繼續修 → 保留現有 commit，在此基礎上繼續人工修復，完成後 squash
+- 若建議重寫 → 執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，把 `squash-cmd:` 整行照抄執行（`reset --soft` 到錨點）回到起點，帶著所有變更重新設計 {區塊}，再重新 commit。**腳本回 `verdict: STOP` 就停下交使用者，勿自行湊 hash**——它擋的是 hash 已 GC 或已非 HEAD 祖先（review 期間 rebase／換 branch）的情況，硬 reset 會把不屬於本次審查的 commits 一併攤進 index
+- 若可繼續修 → 保留現有 commit，在此基礎上繼續人工修復，完成後 squash（同樣照 `squash-cmd` 輸出）
 
-### 建議下一步
+### 續跑分流
 
-{根據剩餘問題的性質給出具體建議}
-- 若剩餘問題是結構性的 → 建議重寫哪個區塊、用什麼方式
-- 若剩餘問題是收斂震盪 → 指出震盪的根源，建議固定哪個方向
-- 若剩餘問題只是建議等級 → 應判定為通過（走通過模板 + Non-blocking follow-up），不應進入此終止報告
+**本批變更的第 {cycle} 個 review 週期**（取 `review-anchor.sh record` 的 `cycle:` 行；未印即第 1 個）。
 
-改完後可再跑 `/deep-review` 或 `/deep-review autofix`。
+{勾選其中一列，並說明為何是這列——不可全列照抄}
+
+| 剩餘問題的樣子 | 建議行動 |
+|---|---|
+| 有界、具體、彼此無關 | 人工修完再跑一次（變更集已不同，輪次重新計數合理） |
+| 結構性：每輪修 A 就冒出 B | 照 `review-anchor.sh squash-cmd` 輸出 reset 回錨點（STOP 就停，勿自湊 hash），帶著變更重新設計 {區塊}，別在補丁上疊補丁 |
+| 收斂震盪：同一區塊來回、方向反覆 | 由使用者拍板固定一個方向再跑；不拍板則再跑幾輪結果相同 |
+| 只剩深井／建議等級 | 判定為通過（走通過模板 + Non-blocking follow-up），不應進入此終止報告 |
+| 難以判定，且 `cycle` ≥ 2 | **換視角而非換輪次**。注意：**此刻直接跑 `/deep-review autocodex` 到不了 codex 階段**——SKILL.md Step 6 只在主 agent 審查通過後才進入，而現在的前提就是還有 blocking findings。兩條可行路徑：(a) 人工修掉剩餘 blocking → 主審通過後才跑 `autocodex`；(b) 不經 deep-review，直接把 `base..head`（取 `review-anchor.sh show`）交給外部 reviewer |
+
+**再跑一次 `/deep-review autofix` 不是預設下一步**——同 reviewer 對同一批 code 再開一輪多半挖出同類型的東西，且輪次上限會隨新一場 review 重置。先照上表分流，再決定要不要續跑。
 ```
 
 ## 報告模板 — Codex 第三方審查通過
@@ -212,7 +220,7 @@
 | C1 | {範圍} | {N} | 0 | — | 全為 false positive，無需修復 |
 
 ### Completeness 深井（non-blocking）
-{codex 指出但屬深井、非本輪修復觸及的問題（見 SKILL.md「Completeness 深井」節）。含兩種來源：baseline 基線 backlog（僅 baseline 模式）與 prose artifact 深井（不分模式——skill/.md/runbook 的措辭清晰度、「還可以更完整」類）。列出供使用者排優先序，不阻擋通過}
+{codex 指出但屬深井、非本輪修復觸及的問題（見 `reviewer-brief.md`「Completeness 深井」節）。含兩種來源：baseline 基線 backlog（僅 baseline 模式）與 prose artifact 深井（不分模式——skill/.md/runbook 的措辭清晰度、「還可以更完整」類）。列出供使用者排優先序，不阻擋通過}
 - [Backlog] {finding 描述} — {baseline 完整度類別：a11y / edge case / 測試覆蓋 …}
 - [Prose] {finding 描述} — {措辭/完整度類，非事實錯誤、非夾帶指令 misbehave、非 cross-ref 斷掉}
 {若無深井項則省略此區塊；diff 模式仍可能有 prose 深井，勿因模式略過}

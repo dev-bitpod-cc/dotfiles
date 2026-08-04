@@ -6,17 +6,38 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-04)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-05)
 
 ---
 
 ## 進行中
 
-(暫無——最近一批「lftp 納入標準工具鏈」已完成待 ship,見已完成里程碑)
+(暫無——deep-review 審查偏誤治理已完成待 ship,見已完成里程碑)
 
 ---
 
 ## 關鍵決策(附理由)
+
+- **2026-08-05 reviewer 的提問端一律走白名單契約,不用禁語黑名單**:列舉禁語**可證會漏**
+  ——本 repo 實測一次(偵測 regex 列了 `final round`、實際寫法是 `FINAL allowed review
+  round`,差點誤判對照組乾淨),與同批 codex fixture 的 blocklist-vs-allowlist 是同一教訓。
+  白名單的代價要一起記:**收太緊會擋掉必要資訊**(契約模板漏了 priority 2 的 untracked
+  清單槽,reviewer 會整批漏審新檔且不自知,由 codex C2/C3 連兩輪抓到)。
+- **2026-08-05「審查者與作者分離」的邊界=分離判斷、不分離提問**:`Separating the judge
+  does nothing if the same party writes the question.` 主 agent 仍構造 subagent prompt,
+  故硬約束全下在提問端(判準交路徑、bar 與 task 恆定、輪次/上限不外洩)。裁決端實測無失敗
+  (FP 罕見、幾乎都承認照修),故**不加 judge 覆核、不加 FP 記錄欄位**——no failing
+  scenario, no instruction。
+- **2026-08-05 輪次是 orchestration 私有狀態,但隱蔽有已知殘留**:保留輪次的原理由(brief
+  需要它調重心)站不住——**補丁痕跡是 code 的性質、不是 history 的性質**。中性化 commit
+  message 擋掉輪號與剩餘輪數,**擋不掉「已改過幾次」**(commit 數量本身即訊號),要消除得
+  每輪 squash、破壞迭代紀律,故接受殘留但文件不得宣稱成完全隔離。
+- **2026-08-05 多 session 共用 working tree:commit 一律顯式路徑,`git add -A` 是誤收源**:
+  同一錯誤犯三次(誤收 codex 端 repo-review 工作)。第三次根因是循環陷阱——每次 commit 後
+  把他人區段 `cp` 回 working tree,下次編輯同檔就疊上去、整檔 add 必然再收。**三次都只有
+  乾淨 checkout 看得見**(本機因檔案在磁碟上恆綠)。四條:(a) 顯式路徑;(b) 混檔按**檔案內
+  區段**拆、不是只按目錄;(c) 拆完必跑 `git clone --no-local` 實測;(d) 混檔期間他人區段
+  先不放回,等自己全部 commit 完才最後放回。
 
 - **2026-08-03 codex 的決策發聲採「產原料寫進行中、ship 端蒸餾」,不讓 codex 學 dossier 規範**:
   #34 暴露 cross-agent 記錄斷點——codex 改 `codex/skills/`、Claude 端 ship,理由只能從 diff 反推。
@@ -174,6 +195,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
+- ✅ 2026-08-05 deep-review 審查偏誤治理:定位「多輪 autofix 幾乎都跑到 R5 才通過」的根因在
+  **提問端**(主 agent 自行放寬 subagent prompt),修法為判準下沉 `reviewer-brief.md`、提問端
+  改白名單契約、輪次徹底隱蔽、同型掃描、上限後續跑分流。取捨見決策節,驗證三層(已證實／
+  弱證據／失敗記錄)與 codex 三輪九條 findings 見 `claude/skills/deep-review/evals.md`。
+  (tests 547→564)
 - ✅ 2026-08-04 lftp 納入標準工具鏈取代內建 sftp:兩支 setup 加裝+版控 `lftprc`,部署改走新
   `ensure-lftprc.sh`(接 dotsync 本機/遠端兩段,config 免逐台重跑 setup 即散佈;binary 仍需
   `brew install`——brewup 只 upgrade 既有 formula);14 台機隊 config+binary 全到位(4.9.3)。

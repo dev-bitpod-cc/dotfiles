@@ -2034,6 +2034,51 @@ if [ -f "$ra_anchor" ]; then bad "clear 未刪檔"; else ok "clear 刪除 anchor
 "$RA_SCRIPT" clear --repo "$TMP/ra-work" >/dev/null
 assert_rc "clear 幂等（檔不存在仍 0）" 0 $?
 
+# --- untracked 目錄須展開為個別檔案（codex C3 F1）---
+# 預設 `git status --porcelain` 會把整個未追蹤目錄折疊成一行 "?? dir/"，
+# 而契約模板要求 reviewer「逐檔讀取」——拿到目錄會整批漏審。
+git clone -q "$TMP/ra-origin.git" "$TMP/rs-unt"
+mkdir -p "$TMP/rs-unt/newdir/sub"
+echo x > "$TMP/rs-unt/newdir/sub/a.txt"
+echo y > "$TMP/rs-unt/newdir/b.txt"
+out="$("$RS_SCRIPT" "$TMP/rs-unt")"
+if grep -q "newdir/sub/a.txt" <<< "$out" && grep -q "newdir/b.txt" <<< "$out"; then ok "untracked 目錄展開為個別檔案"; else bad "untracked 目錄被折疊（reviewer 會整批漏審）"; fi
+if grep -qE "^  newdir/$" <<< "$out"; then bad "仍輸出折疊的目錄行"; else ok "不輸出折疊的目錄行"; fi
+
+# --- 續跑週期計數（cycle）：R5 終止不 squash、anchor 未 clear → 重新 record 即第 2 週期 ---
+# 為何：SKILL.md 要在終止報告分流「同 reviewer 再跑一輪 vs 換視角」，需要「這是第幾個週期」
+# 是事實而非 model 記憶。判準取「anchor 未經 clear 就重新 record」（base hash 比對在
+# working-tree 模式失效——續跑時 HEAD 已因 fix commits 前進）。
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-cyc"
+ra_cyc_anchor="$(git -C "$TMP/ra-cyc" rev-parse --absolute-git-dir)/deep-review/anchor"
+out="$("$RA_SCRIPT" record --repo "$TMP/ra-cyc" --mode working-tree)"
+if grep -qxF "cycle=1" "$ra_cyc_anchor"; then ok "首次 record → cycle=1"; else bad "首次 record cycle 未落地"; fi
+if grep -q "^cycle:" <<< "$out"; then bad "cycle=1 不該印告知行"; else ok "cycle=1 不印告知行（首場 review 無雜訊）"; fi
+out="$("$RA_SCRIPT" record --repo "$TMP/ra-cyc" --mode working-tree)"
+if grep -qxF "cycle=2" "$ra_cyc_anchor"; then ok "未 clear 即重新 record → cycle=2"; else bad "cycle 未遞增"; fi
+if grep -q "^cycle: 2 " <<< "$out"; then ok "cycle≥2 印告知行（供終止報告分流）"; else bad "cycle≥2 未印告知行"; fi
+if grep -q "^cycle: 2 " <<< "$("$RA_SCRIPT" show --repo "$TMP/ra-cyc")"; then ok "show 帶出 cycle（跨 session 恢復）"; else bad "show 未帶 cycle"; fi
+# codex-next 會重寫整份 anchor——不可吃掉 cycle
+"$RA_SCRIPT" codex-next --repo "$TMP/ra-cyc" >/dev/null
+if grep -qxF "cycle=2" "$ra_cyc_anchor"; then ok "codex-next 保留 cycle"; else bad "codex-next 覆寫掉 cycle"; fi
+# clear（squash 完成）→ 下一場 review 歸 1
+"$RA_SCRIPT" clear --repo "$TMP/ra-cyc" >/dev/null
+"$RA_SCRIPT" record --repo "$TMP/ra-cyc" --mode working-tree >/dev/null
+if grep -qxF "cycle=1" "$ra_cyc_anchor"; then ok "clear 後 record → cycle 歸 1"; else bad "clear 後 cycle 未歸零"; fi
+
+# --- head_at_record 須驗祖先鏈，分岔時退回純 subject（codex C3 F2）---
+# record 後切到含同一 base 的 sibling branch：har 不再是 HEAD 祖先，
+# base..har 與 har..HEAD 相加不等於 base..HEAD → 會把不會被 reset 壓掉的舊 commit 算進警告。
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp5"
+(cd "$TMP/ra-imp5" && git switch -qc feat/a \
+    && echo a1 > a.txt && "${GITC[@]}" add a.txt && "${GITC[@]}" commit -qm "feat: work A")
+"$RA_SCRIPT" record --repo "$TMP/ra-imp5" --mode branch-diff --base origin/main >/dev/null
+(cd "$TMP/ra-imp5" && git switch -qc feat/b origin/main \
+    && echo b1 > b.txt && "${GITC[@]}" add b.txt && "${GITC[@]}" commit -qm "fix: address review findings")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp5")"
+if grep -q "warning: 將壓掉" <<< "$out"; then bad "分岔歷史誤報既有 commit（har 未驗祖先鏈）"; else ok "分岔時退回純 subject，不誤報既有 commit"; fi
+if grep -q "^note: head_at_record" <<< "$out"; then ok "分岔時印退回告知行"; else bad "未告知已退回純 subject"; fi
+
 # 用法錯誤 / 非 git repo
 "$RA_SCRIPT" bogus --repo "$TMP/ra-work" >/dev/null 2>&1
 assert_rc "未知子指令 → exit 2" 2 $?
@@ -2082,9 +2127,25 @@ assert_rc "tests-baseline 非法值 → exit 2" 2 $?
 "$RA_SCRIPT" record --repo "$TMP/ra-imp" --mode branch-diff --base origin/main >/dev/null
 if grep -q "^tests_baseline=" "$ra_imp_anchor"; then bad "無 flag 時 tests_baseline 殘留"; else ok "無 flag 覆蓋 → tests_baseline 不殘留"; fi
 
-# squash-cmd 警告：feat: w feature 為審查前既有（1 顆）；fix: R1 review fixes 屬 review 產生
+# squash-cmd 警告：兩顆都在 record 之前 → 都算審查前既有（含 subject 恰為 review 樣式的
+# 那顆——它是上一場 review 的殘留，本次沒產生它）。舊的純 subject 判定會漏算後者。
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp")"
-if echo "$out" | grep -q "warning: 將壓掉 1 顆審查前既有 commit"; then ok "squash-cmd 警告既有 commits（數量正確）"; else bad "squash 既有-commit 警告缺失"; fi
+if echo "$out" | grep -q "warning: 將壓掉 2 顆審查前既有 commit"; then ok "squash-cmd 警告既有 commits（record 前的都算，含 subject 撞名者）"; else bad "squash 既有-commit 警告缺失或漏算撞名者"; fi
+
+# 撞名情境（codex C2 F3）：審查前既有 commit 的 subject 恰為現行 review 樣式 →
+# 純 subject 判定會誤認成 review 產生而不警告；範圍判定（record 當時的 HEAD 為界）才抓得到。
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp4"
+(cd "$TMP/ra-imp4" && git switch -qc feat/collide \
+    && echo p1 > p.txt && "${GITC[@]}" add p.txt && "${GITC[@]}" commit -qm "fix: address review findings")
+"$RA_SCRIPT" record --repo "$TMP/ra-imp4" --mode branch-diff --base origin/main >/dev/null
+(cd "$TMP/ra-imp4" && echo p2 > p.txt && "${GITC[@]}" commit -qam "fix: address review findings")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp4")"
+if grep -q "warning: 將壓掉 1 顆審查前既有 commit" <<< "$out"; then ok "撞名的審查前既有 commit 仍被算入（範圍判定）"; else bad "撞名既有 commit 漏報（subject 判定的碰撞）"; fi
+
+# 聯集判定的另一半：record 之後混入的非 review commit，範圍判定看不到、subject 判定要接住
+(cd "$TMP/ra-imp4" && echo p3 > p.txt && "${GITC[@]}" commit -qam "feat: unrelated work")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp4")"
+if grep -q "warning: 將壓掉 2 顆審查前既有 commit" <<< "$out"; then ok "record 後混入的非 review commit 由 subject 判定接住（聯集）"; else bad "聯集判定失效"; fi
 
 # 全為 review 產生的 commits（wip snapshot + fix）→ 無警告
 git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp2"
@@ -2094,6 +2155,24 @@ git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp2"
     && echo v2 > v.txt && "${GITC[@]}" commit -qam "fix: R1 review fixes")
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp2")"
 if echo "$out" | grep -q "warning: 將壓掉"; then bad "純 review commits 誤發警告"; else ok "純 review commits 無警告"; fi
+
+# 中性化 commit message（不編輪號，避免 reviewer 跑 git log 反推進度）：
+# 新格式須被認得，且舊格式仍認（歷史 branch 上還有舊 commit，誤判會噴假 warning）
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp3"
+"$RA_SCRIPT" record --repo "$TMP/ra-imp3" --mode working-tree >/dev/null
+(cd "$TMP/ra-imp3" && git switch -qc feat/n \
+    && echo n1 > n.txt && "${GITC[@]}" add n.txt && "${GITC[@]}" commit -qm "wip: pre-review snapshot" \
+    && echo n2 > n.txt && "${GITC[@]}" commit -qam "fix: address review findings" \
+    && echo n3 > n.txt && "${GITC[@]}" commit -qam "fix: address review findings" \
+    && echo n4 > n.txt && "${GITC[@]}" commit -qam "fix: address external review findings" \
+    && echo n5 > n.txt && "${GITC[@]}" commit -qam "fix: R1 review fixes" \
+    && echo n6 > n.txt && "${GITC[@]}" commit -qam "fix: codex C1 fixes")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp3")"
+if grep -q "warning: 將壓掉" <<< "$out"; then bad "中性化 commit message 被誤判為審查前既有 commit"; else ok "中性/舊格式 commit message 皆認得（新舊並存不誤判）"; fi
+# 反向：真的審查前既有 commit 仍要被抓出來（不因放寬 pattern 而漏報）
+(cd "$TMP/ra-imp3" && echo n7 > n.txt && "${GITC[@]}" commit -qam "feat: unrelated work")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp3")"
+if grep -q "warning: 將壓掉 1 顆審查前既有 commit" <<< "$out"; then ok "放寬 pattern 後仍抓得到真既有 commit"; else bad "既有 commit 漏報"; fi
 
 echo "▶ 20. verify-tests.sh（deep-review skill script）框架偵測與 exit 契約（uv/bun stub）"
 VT_SCRIPT="$ROOT/claude/skills/deep-review/scripts/verify-tests.sh"
