@@ -2103,9 +2103,25 @@ assert_rc "tests-baseline 非法值 → exit 2" 2 $?
 "$RA_SCRIPT" record --repo "$TMP/ra-imp" --mode branch-diff --base origin/main >/dev/null
 if grep -q "^tests_baseline=" "$ra_imp_anchor"; then bad "無 flag 時 tests_baseline 殘留"; else ok "無 flag 覆蓋 → tests_baseline 不殘留"; fi
 
-# squash-cmd 警告：feat: w feature 為審查前既有（1 顆）；fix: R1 review fixes 屬 review 產生
+# squash-cmd 警告：兩顆都在 record 之前 → 都算審查前既有（含 subject 恰為 review 樣式的
+# 那顆——它是上一場 review 的殘留，本次沒產生它）。舊的純 subject 判定會漏算後者。
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp")"
-if echo "$out" | grep -q "warning: 將壓掉 1 顆審查前既有 commit"; then ok "squash-cmd 警告既有 commits（數量正確）"; else bad "squash 既有-commit 警告缺失"; fi
+if echo "$out" | grep -q "warning: 將壓掉 2 顆審查前既有 commit"; then ok "squash-cmd 警告既有 commits（record 前的都算，含 subject 撞名者）"; else bad "squash 既有-commit 警告缺失或漏算撞名者"; fi
+
+# 撞名情境（codex C2 F3）：審查前既有 commit 的 subject 恰為現行 review 樣式 →
+# 純 subject 判定會誤認成 review 產生而不警告；範圍判定（record 當時的 HEAD 為界）才抓得到。
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp4"
+(cd "$TMP/ra-imp4" && git switch -qc feat/collide \
+    && echo p1 > p.txt && "${GITC[@]}" add p.txt && "${GITC[@]}" commit -qm "fix: address review findings")
+"$RA_SCRIPT" record --repo "$TMP/ra-imp4" --mode branch-diff --base origin/main >/dev/null
+(cd "$TMP/ra-imp4" && echo p2 > p.txt && "${GITC[@]}" commit -qam "fix: address review findings")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp4")"
+if grep -q "warning: 將壓掉 1 顆審查前既有 commit" <<< "$out"; then ok "撞名的審查前既有 commit 仍被算入（範圍判定）"; else bad "撞名既有 commit 漏報（subject 判定的碰撞）"; fi
+
+# 聯集判定的另一半：record 之後混入的非 review commit，範圍判定看不到、subject 判定要接住
+(cd "$TMP/ra-imp4" && echo p3 > p.txt && "${GITC[@]}" commit -qam "feat: unrelated work")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp4")"
+if grep -q "warning: 將壓掉 2 顆審查前既有 commit" <<< "$out"; then ok "record 後混入的非 review commit 由 subject 判定接住（聯集）"; else bad "聯集判定失效"; fi
 
 # 全為 review 產生的 commits（wip snapshot + fix）→ 無警告
 git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp2"

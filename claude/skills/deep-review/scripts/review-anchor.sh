@@ -151,6 +151,7 @@ cmd_record() {
         printf 'branch=%s\n'   "$branch"
         printf 'recorded=%s\n' "$(date +%s)"
         printf 'cycle=%s\n'    "$cycle"
+        printf 'head_at_record=%s\n' "$(git -C "$REPO" rev-parse HEAD)"
         [ -n "$TB_VAL" ] && printf 'tests_baseline=%s\n' "$TB_VAL"
     } > "$ANCHOR"
     echo "anchor-recorded: ${base_hash}（mode=${MODE_VAL}${BASE_REF:+, base-ref=${BASE_REF}}）"
@@ -208,13 +209,27 @@ cmd_squash_cmd() {
         echo "verdict: WARNING — 無 commit 可 squash（reset 到 HEAD 無作用，照印無害）"
     else
         git -C "$REPO" log --oneline "${base_hash}..HEAD" | sed 's/^/  /'
-        # 審查前既有 commits = subject 非 review 產生的固定樣式。現行格式**不編輪號**
-        # （中性化，避免 reviewer 跑 git log 反推審查進度與剩餘輪數）；舊的 R{N}/codex R{N}
-        # 格式一併保留——歷史 branch 上仍有舊 commit，不認會誤報成「審查前既有」。
+        # 審查前既有 commits：兩種判定取**聯集**，各補對方的盲點——
+        #   (a) 範圍：record 當時的 HEAD 之前的一律算既有。抓得到「subject 恰好撞上 review
+        #       樣式」的殘留(上一場 review 的 fix commit)——中性化後名稱固定通用，純 subject
+        #       判定必然誤放行(codex C2 F3)。
+        #   (b) subject：head_at_record 之後、但 subject 非 review 固定樣式者。抓得到 review
+        #       期間混入的他線 commit——範圍判定看不到它。
+        # 舊 anchor 無 head_at_record → 退回純 subject 判定(向後相容)。
+        # 現行格式不編輪號(中性化)；舊 R{N}/codex R{N} 樣式一併認，否則歷史 branch 誤報。
         # squash 語意不變、僅告知——SKILL.md 要求主 agent 在 reset 前向使用者轉述此行。
-        local n_pre
-        n_pre="$(git -C "$REPO" log --format=%s "${base_hash}..HEAD" \
+        local n_pre n_before har subj_range
+        har="$(aget head_at_record)"
+        if [ -n "$har" ] && git -C "$REPO" cat-file -e "${har}^{commit}" 2>/dev/null; then
+            n_before="$(git -C "$REPO" rev-list --count "${base_hash}..${har}")" || n_before=0
+            subj_range="${har}..HEAD"
+        else
+            n_before=0
+            subj_range="${base_hash}..HEAD"
+        fi
+        n_pre="$(git -C "$REPO" log --format=%s "$subj_range" \
             | grep -Evc '^(fix: address (review|external review) findings|fix: R[0-9]+ review fixes|fix: codex [RC][0-9]+ fixes|wip: pre-review snapshot)$')" || true
+        n_pre=$(( n_before + ${n_pre:-0} ))
         if [ "${n_pre:-0}" -gt 0 ]; then
             echo "warning: 將壓掉 ${n_pre} 顆審查前既有 commit（清單見上，非本次 review 產生）"
         fi
@@ -224,12 +239,13 @@ cmd_squash_cmd() {
 
 cmd_codex_next() {
     [ -f "$ANCHOR" ] || die_stop "無 anchor（先跑 record）"
-    local base_hash mode_v branch_v recorded_v cycle_v tb_v head_full empty_tree c_head c_round round range
+    local base_hash mode_v branch_v recorded_v cycle_v har_v tb_v head_full empty_tree c_head c_round round range
     base_hash="$(aget base)"
     mode_v="$(aget mode)"
     branch_v="$(aget branch)"
     recorded_v="$(aget recorded)"
     cycle_v="$(aget cycle)"
+    har_v="$(aget head_at_record)"
     tb_v="$(aget tests_baseline)"
     c_head="$(aget codex_head)"
     c_round="$(aget codex_round)"
@@ -276,6 +292,7 @@ cmd_codex_next() {
         printf 'branch=%s\n'      "$branch_v"
         printf 'recorded=%s\n'    "$recorded_v"
         [ -n "$cycle_v" ] && printf 'cycle=%s\n' "$cycle_v"
+        [ -n "$har_v" ] && printf 'head_at_record=%s\n' "$har_v"
         [ -n "$tb_v" ] && printf 'tests_baseline=%s\n' "$tb_v"
         printf 'codex_head=%s\n'  "$head_full"
         printf 'codex_round=%s\n' "$round"

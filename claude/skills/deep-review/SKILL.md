@@ -149,7 +149,7 @@ Round N review — 通過
 - 有 commit → working tree clean，Step 1 自動使用 `git diff <base>...HEAD` 審查完整 branch 狀態
 - Round 偵測依賴 `git log`，不 commit 則無法正確偵測輪次
 
-**Commit message 不編輪號**（一律 `fix: address review findings`，codex 階段 `fix: address external review findings`）。`fix: R4 review fixes` 這種寫法會讓 reviewer 跑一次 `git log` 就反推出審查進度與剩餘輪數——那是 Step 4 花力氣關掉的洩漏管道，不該從 commit history 漏回去。Round 偵測不受影響：`review-state.sh` 數的是 `fix|refactor` 前綴的 commit 數，不解析輪號。
+**Commit message 不編輪號**（一律 `fix: address review findings`，codex 階段 `fix: address external review findings`）。`fix: R4 review fixes` 這種寫法會讓 reviewer 跑一次 `git log` 就反推出**剩餘輪數**——那是 Step 4 花力氣關掉的洩漏管道，不該從 commit history 漏回去。**但擋不掉「已改過幾次」**（commit 數量本身即訊號），該殘留見 Step 4 的說明。Round 偵測不受影響：`review-state.sh` 數的是 `fix|refactor` 前綴的 commit 數，不解析輪號。
 
 ## 執行流程
 
@@ -261,6 +261,11 @@ You are an independent code reviewer. You have no prior context on this change.
 Scope — review the complete cumulative diff:
   {diff-cmd 行，整行照抄；多 repo 時逐 repo 列出}
 
+{僅當審查範圍含 untracked 檔（非 autofix 的 priority 2 路徑）才附此段，否則整段省略：}
+Also in scope — these untracked files are NOT covered by the command above.
+Read each one in full and treat its entire content as added lines:
+  {untracked 檔案路徑逐行列出，取 review-state.sh 的 `untracked` 輸出}
+
 Repo: {repo_path}{多 repo 時逐一列出路徑與名稱}
 Project conventions — read these yourself: {CLAUDE.md／設定檔路徑清單，無則寫 none}
 
@@ -290,13 +295,17 @@ Output: verdict (PASS/FAIL per the brief's 通過標準) + findings grouped by r
 cause + non-blocking items listed separately.
 ```
 
-**變數槽只有這些**：`diff-cmd` 行、repo 路徑與名稱、專案 context 檔路徑。其餘一字不改。
+**變數槽只有這些**：`diff-cmd` 行、repo 路徑與名稱、專案 context 檔路徑、untracked 檔清單（條件段）、baseline 條件行。其餘一字不改。
+
+> untracked 那段是**必要的 scope 資訊、不是額外指示**——priority 2 明訂審查範圍 = `git diff HEAD` + untracked 逐檔（見 Step 1），而 `git diff HEAD` 不含 untracked。少了它 reviewer 會漏審新檔且不自知（codex C2 抓到的契約衝突）。
 
 **MUST NOT appear anywhere in the prompt** — these are leak channels, not style preferences:
 
 > round number, round cap, rounds remaining, "final round", "last pass", "we're near max rounds", prior-round findings, the author's fix summary, "please verify the fixes", "only look for newly introduced problems", or any framing that the change is near completion or has already been vetted.
 
-輪次是 **orchestration 層的私有狀態**：Step 2 照常偵測，用來決定何時停、報告怎麼寫——但不進 reviewer 的上下文。同理，`fix:` commit 的 message 不編輪號（見「迭代紀律」），避免 reviewer 跑 `git log` 時反推進度。
+輪次是 **orchestration 層的私有狀態**：Step 2 照常偵測，用來決定何時停、報告怎麼寫——但不進 reviewer 的上下文。同理，`fix:` commit 的 message 不編輪號（見「迭代紀律」）。
+
+**已知殘留，不要宣稱成完全隔離**：reviewer 會自行跑 `git log`（實測 6/6 都跑），而每輪恰好產生一個 fix commit——**數同名 commit 仍可反推「已改過幾次」**。中性化擋掉的是輪號與「還剩幾輪」，擋不掉「已完成幾輪」。要完全消除得每輪 squash，那會破壞迭代紀律與 context 控制，成本大於收益，故接受此殘留。
 
 **Why a fixed template rather than a ban list**: a ban list must enumerate every phrasing, and enumeration provably leaks — 本 repo 實測過一次（列了 `final round`，實際寫法是 `FINAL allowed review round`，差點誤判；見 evals.md 2026-08-04 方法論教訓）。同一個 blocklist-vs-allowlist 教訓。
 
