@@ -2034,6 +2034,17 @@ if [ -f "$ra_anchor" ]; then bad "clear 未刪檔"; else ok "clear 刪除 anchor
 "$RA_SCRIPT" clear --repo "$TMP/ra-work" >/dev/null
 assert_rc "clear 幂等（檔不存在仍 0）" 0 $?
 
+# --- untracked 目錄須展開為個別檔案（codex C3 F1）---
+# 預設 `git status --porcelain` 會把整個未追蹤目錄折疊成一行 "?? dir/"，
+# 而契約模板要求 reviewer「逐檔讀取」——拿到目錄會整批漏審。
+git clone -q "$TMP/ra-origin.git" "$TMP/rs-unt"
+mkdir -p "$TMP/rs-unt/newdir/sub"
+echo x > "$TMP/rs-unt/newdir/sub/a.txt"
+echo y > "$TMP/rs-unt/newdir/b.txt"
+out="$("$RS_SCRIPT" "$TMP/rs-unt")"
+if grep -q "newdir/sub/a.txt" <<< "$out" && grep -q "newdir/b.txt" <<< "$out"; then ok "untracked 目錄展開為個別檔案"; else bad "untracked 目錄被折疊（reviewer 會整批漏審）"; fi
+if grep -qE "^  newdir/$" <<< "$out"; then bad "仍輸出折疊的目錄行"; else ok "不輸出折疊的目錄行"; fi
+
 # --- 續跑週期計數（cycle）：R5 終止不 squash、anchor 未 clear → 重新 record 即第 2 週期 ---
 # 為何：SKILL.md 要在終止報告分流「同 reviewer 再跑一輪 vs 換視角」，需要「這是第幾個週期」
 # 是事實而非 model 記憶。判準取「anchor 未經 clear 就重新 record」（base hash 比對在
@@ -2054,6 +2065,19 @@ if grep -qxF "cycle=2" "$ra_cyc_anchor"; then ok "codex-next 保留 cycle"; else
 "$RA_SCRIPT" clear --repo "$TMP/ra-cyc" >/dev/null
 "$RA_SCRIPT" record --repo "$TMP/ra-cyc" --mode working-tree >/dev/null
 if grep -qxF "cycle=1" "$ra_cyc_anchor"; then ok "clear 後 record → cycle 歸 1"; else bad "clear 後 cycle 未歸零"; fi
+
+# --- head_at_record 須驗祖先鏈，分岔時退回純 subject（codex C3 F2）---
+# record 後切到含同一 base 的 sibling branch：har 不再是 HEAD 祖先，
+# base..har 與 har..HEAD 相加不等於 base..HEAD → 會把不會被 reset 壓掉的舊 commit 算進警告。
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp5"
+(cd "$TMP/ra-imp5" && git switch -qc feat/a \
+    && echo a1 > a.txt && "${GITC[@]}" add a.txt && "${GITC[@]}" commit -qm "feat: work A")
+"$RA_SCRIPT" record --repo "$TMP/ra-imp5" --mode branch-diff --base origin/main >/dev/null
+(cd "$TMP/ra-imp5" && git switch -qc feat/b origin/main \
+    && echo b1 > b.txt && "${GITC[@]}" add b.txt && "${GITC[@]}" commit -qm "fix: address review findings")
+out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp5")"
+if grep -q "warning: 將壓掉" <<< "$out"; then bad "分岔歷史誤報既有 commit（har 未驗祖先鏈）"; else ok "分岔時退回純 subject，不誤報既有 commit"; fi
+if grep -q "^note: head_at_record" <<< "$out"; then ok "分岔時印退回告知行"; else bad "未告知已退回純 subject"; fi
 
 # 用法錯誤 / 非 git repo
 "$RA_SCRIPT" bogus --repo "$TMP/ra-work" >/dev/null 2>&1

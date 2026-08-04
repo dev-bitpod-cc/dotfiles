@@ -220,10 +220,19 @@ cmd_squash_cmd() {
         # squash 語意不變、僅告知——SKILL.md 要求主 agent 在 reset 前向使用者轉述此行。
         local n_pre n_before har subj_range
         har="$(aget head_at_record)"
-        if [ -n "$har" ] && git -C "$REPO" cat-file -e "${har}^{commit}" 2>/dev/null; then
+        # 範圍判定只有在 base ≤ har ≤ HEAD 的線性祖先鏈下才成立——分岔（record 後 rebase／
+        # 切到含同一 base 的 sibling branch）時，base..har 與 har..HEAD 相加不等於 base..HEAD，
+        # 會把不會被 reset 壓掉的舊 commit 算進警告（codex C3 F2）。驗不過就退回純 subject。
+        if [ -n "$har" ] \
+            && git -C "$REPO" cat-file -e "${har}^{commit}" 2>/dev/null \
+            && git -C "$REPO" merge-base --is-ancestor "$har" HEAD 2>/dev/null \
+            && git -C "$REPO" merge-base --is-ancestor "$base_hash" "$har" 2>/dev/null; then
             n_before="$(git -C "$REPO" rev-list --count "${base_hash}..${har}")" || n_before=0
             subj_range="${har}..HEAD"
         else
+            if [ -n "$har" ]; then
+                echo "note: head_at_record 非 base..HEAD 的線性祖先鏈（rebase／換 branch？）——既有-commit 判定退回純 subject"
+            fi
             n_before=0
             subj_range="${base_hash}..HEAD"
         fi

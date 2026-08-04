@@ -103,7 +103,9 @@ check_repo() {
 
     # -- working tree（含 untracked）--
     local porcelain n_dirty untracked
-    porcelain="$(git -C "$repo" status --porcelain)"
+    # -uall：預設會把整個未追蹤目錄折疊成單行 "?? dir/"，而契約模板要求 reviewer
+    # 逐檔讀取——拿到目錄名會整批漏審（codex C3 F1 實測）。展開成個別檔案。
+    porcelain="$(git -C "$repo" status --porcelain -uall)"
     if [ -n "$porcelain" ]; then
         n_dirty="$(printf '%s\n' "$porcelain" | wc -l | tr -d ' ')"
         echo "working-tree: $n_dirty 檔（含 untracked）"
