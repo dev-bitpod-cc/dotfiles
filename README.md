@@ -115,6 +115,7 @@ git, gh, wget, htop, tree, tmux, bun, node, python3, uv, jq, yq
 | direnv | 目錄環境變數自動載入 | - |
 | just | 任務執行器 | make |
 | watchexec | 檔案變更監控執行 | - |
+| lftp | SFTP 傳檔（續傳／mirror／並行） | sftp |
 
 ### AI CLI
 

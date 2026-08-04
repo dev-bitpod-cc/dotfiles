@@ -24,6 +24,7 @@
 #  17. codex-exec-review.sh（deep-review skill script）exit 契約 / job 產物 / resume（codex stub）
 #  18. ensure-codex-skills.sh 幂等連結 ~/.codex/skills → dotfiles
 # 18b. ensure-codex-guidance.sh 幂等連結全域 ~/.codex/AGENTS.md → dotfiles
+# 18c. ensure-lftprc.sh 幂等連結 ~/.lftprc → dotfiles（含 .lftprc.local 保證存在且不覆寫）
 #  19. review-anchor.sh（deep-review skill script）錨點生命週期 / squash-cmd / codex-next
 #  20. verify-tests.sh（deep-review skill script）框架偵測與 exit 契約（uv/bun stub）
 #  21. crawl-quality-scan.py（check-crawl-quality skill script）確定性掃描 / 扣分帳目 / --classify 覆核
@@ -1838,6 +1839,90 @@ for setup_file in setup-mac-env.sh setup-linux-env.sh; do
         ok "$setup_file 以實際 clone 路徑部署 guidance"
     else
         bad "$setup_file 未把實際 clone 路徑傳給 guidance helper"
+    fi
+done
+
+echo "▶ 18c. ensure-lftprc.sh 幂等連結 ~/.lftprc（含 .lftprc.local 契約）"
+ELR="$ROOT/scripts/ensure-lftprc.sh"
+elr="$TMP/elr"
+mkdir -p "$elr/source" "$elr/home"
+echo "# managed lftprc" > "$elr/source/lftprc"
+echo "# my own lftprc" > "$elr/home/.lftprc"
+
+# 既有實體檔必須備份後接管，不得直接刪除使用者設定。
+SOURCE_FILE="$elr/source/lftprc" TARGET_HOME="$elr/home" BACKUP_ROOT="$elr/backup" bash "$ELR" >/dev/null
+assert_rc "lftprc 實體檔接管 → exit 0" 0 $?
+if [ -L "$elr/home/.lftprc" ]; then ok "lftprc 目的地已換成 symlink"; else bad "lftprc 目的地不是 symlink"; fi
+assert_eq "lftprc symlink 指向版控來源" "$elr/source/lftprc" "$(readlink "$elr/home/.lftprc")"
+if grep -rq 'my own lftprc' "$elr/backup" 2>/dev/null; then ok "既有 lftprc 已備份"; else bad "既有 lftprc 未備份"; fi
+# lftprc 結尾 source ~/.lftprc.local，缺檔會讓 lftp 每次啟動印錯誤
+if [ -f "$elr/home/.lftprc.local" ]; then ok "已自動建立 .lftprc.local"; else bad "未建立 .lftprc.local"; fi
+
+# .lftprc.local 是使用者的機器特定設定——重跑絕不可清空
+echo "set net:timeout 99" > "$elr/home/.lftprc.local"
+SOURCE_FILE="$elr/source/lftprc" TARGET_HOME="$elr/home" BACKUP_ROOT="$elr/backup" bash "$ELR" >/dev/null
+if grep -q 'net:timeout 99' "$elr/home/.lftprc.local"; then ok "重跑不覆寫既有 .lftprc.local"; else bad "重跑清空了 .lftprc.local"; fi
+
+# symlink 已正確時的早退路徑仍須補回被刪掉的 .lftprc.local（易漏）
+rm -f "$elr/home/.lftprc.local"
+SOURCE_FILE="$elr/source/lftprc" TARGET_HOME="$elr/home" BACKUP_ROOT="$elr/backup" bash "$ELR" >/dev/null
+if [ -f "$elr/home/.lftprc.local" ]; then ok "symlink 已正確時仍補回 .lftprc.local"; else bad "早退路徑跳過 .lftprc.local"; fi
+
+# 錯誤 symlink 可替換；正確 symlink 重跑保持 inode 不變。
+mkdir -p "$elr/other" && echo wrong > "$elr/other/lftprc"
+ln -sfn "$elr/other/lftprc" "$elr/home/.lftprc"
+SOURCE_FILE="$elr/source/lftprc" TARGET_HOME="$elr/home" BACKUP_ROOT="$elr/backup" bash "$ELR" >/dev/null
+assert_eq "錯誤 lftprc symlink 已替換" "$elr/source/lftprc" "$(readlink "$elr/home/.lftprc")"
+elr_before="$(ecs_inode "$elr/home/.lftprc")"
+SOURCE_FILE="$elr/source/lftprc" TARGET_HOME="$elr/home" BACKUP_ROOT="$elr/backup" bash "$ELR" >/dev/null
+elr_after="$(ecs_inode "$elr/home/.lftprc")"
+assert_eq "lftprc helper 重跑幂等" "$elr_before" "$elr_after"
+
+# 來源不存在（舊 clone 尚未 pull 到 lftprc）→ 靜默 exit 0，不留半成品
+mkdir -p "$elr/empty-home"
+SOURCE_FILE="$elr/missing-lftprc" TARGET_HOME="$elr/empty-home" bash "$ELR" >/dev/null
+assert_rc "lftprc 來源不存在 → exit 0" 0 $?
+if [ ! -e "$elr/empty-home/.lftprc" ] && [ ! -e "$elr/empty-home/.lftprc.local" ]; then
+    ok "來源不存在不建立任何 lftp 檔案"
+else
+    bad "來源不存在卻建立了 lftp 檔案"
+fi
+
+# ln 失敗 → 非 0 + 警告；原檔已搬去備份時必須還原（同 guidance 的 codex C2 契約）
+mkdir -p "$elr/fail-home" "$elr/bin"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$elr/bin/ln"
+chmod +x "$elr/bin/ln"
+elr_out="$(PATH="$elr/bin:$PATH" SOURCE_FILE="$elr/source/lftprc" TARGET_HOME="$elr/fail-home" BACKUP_ROOT="$elr/fail-backup" bash "$ELR" 2>&1)"
+elr_rc=$?
+assert_rc "lftprc ln 失敗 → exit 非 0" 1 "$elr_rc"
+if printf '%s\n' "$elr_out" | grep -q '⚠️'; then ok "lftprc ln 失敗印警告"; else bad "lftprc ln 失敗無警告"; fi
+mkdir -p "$elr/restore-home"
+echo "# precious lftprc" > "$elr/restore-home/.lftprc"
+PATH="$elr/bin:$PATH" SOURCE_FILE="$elr/source/lftprc" TARGET_HOME="$elr/restore-home" \
+    BACKUP_ROOT="$elr/restore-backup" bash "$ELR" >/dev/null 2>&1
+assert_rc "既有實體 lftprc + ln 失敗 → exit 1" 1 $?
+if [ -f "$elr/restore-home/.lftprc" ] && grep -q 'precious lftprc' "$elr/restore-home/.lftprc"; then
+    ok "ln 失敗後原 lftprc 已還原（設定不消失）"
+else
+    bad "ln 失敗後原 lftprc 消失（僅剩備份）"
+fi
+
+for wiring_file in setup-mac-env.sh setup-linux-env.sh scripts/dotfiles-sync.sh; do
+    if grep -q 'ensure-lftprc.sh' "$ROOT/$wiring_file"; then
+        ok "$wiring_file 已接上 lftprc helper"
+    else
+        bad "$wiring_file 未接上 lftprc helper"
+    fi
+done
+# dotfiles-sync 需本機段與遠端段都呼叫，否則遠端主機拿不到 config
+assert_eq "dotfiles-sync 本機+遠端兩處都呼叫 lftprc helper" 2 \
+    "$(grep -c 'ensure-lftprc.sh' "$ROOT/scripts/dotfiles-sync.sh")"
+for setup_file in setup-mac-env.sh setup-linux-env.sh; do
+    # shellcheck disable=SC2016  # 刻意比對 setup 原始碼中的字面 $SCRIPT_DIR，不在測試 shell 展開
+    if grep -q 'DOTFILES_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/ensure-lftprc.sh"' "$ROOT/$setup_file"; then
+        ok "$setup_file 以實際 clone 路徑部署 lftprc"
+    else
+        bad "$setup_file 未把實際 clone 路徑傳給 lftprc helper"
     fi
 done
 

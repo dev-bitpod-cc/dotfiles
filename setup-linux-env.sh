@@ -385,6 +385,7 @@ brew install \
   jq \
   yq \
   httpie \
+  lftp \
   git-delta \
   ripgrep \
   fd \
@@ -1220,6 +1221,18 @@ else
 fi
 
 # ================================================
+# 步驟 4.9: 設定 lftp 配置
+# ================================================
+if [ -f "$SCRIPT_DIR/scripts/ensure-lftprc.sh" ]; then
+    print_info "設定 lftp 配置..."
+    # 邏輯單一來源：dotfiles-sync.sh 也呼叫同一支，故新主機與既有主機行為一致
+    DOTFILES_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/ensure-lftprc.sh"
+    print_success "已建立 ~/.lftprc symlink"
+else
+    print_info "未找到 ensure-lftprc.sh，跳過 lftp 配置"
+fi
+
+# ================================================
 # 步驟 5: 驗證
 # ================================================
 print_header "步驟 5: 驗證安裝"
@@ -1266,6 +1279,7 @@ check_tool eza && echo "  ✅ eza" || echo "  ❌ eza"
 check_tool zoxide && echo "  ✅ zoxide" || echo "  ❌ zoxide"
 check_tool delta && echo "  ✅ git-delta" || echo "  ❌ git-delta"
 check_tool http && echo "  ✅ httpie" || echo "  ❌ httpie"
+check_tool lftp && echo "  ✅ lftp" || echo "  ❌ lftp"
 check_tool tldr && echo "  ✅ tldr" || echo "  ❌ tldr"
 check_tool tokei && echo "  ✅ tokei" || echo "  ❌ tokei"
 check_tool sd && echo "  ✅ sd" || echo "  ❌ sd"

@@ -299,6 +299,7 @@ brew install \
   jq \
   yq \
   httpie \
+  lftp \
   git-delta \
   ripgrep \
   fd \
@@ -1146,6 +1147,18 @@ else
 fi
 
 # ================================================
+# 步驟 5.9: 設定 lftp 配置
+# ================================================
+if [ -f "$SCRIPT_DIR/scripts/ensure-lftprc.sh" ]; then
+    print_info "設定 lftp 配置..."
+    # 邏輯單一來源：dotfiles-sync.sh 也呼叫同一支，故新主機與既有主機行為一致
+    DOTFILES_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/ensure-lftprc.sh"
+    print_success "已建立 ~/.lftprc symlink"
+else
+    print_info "未找到 ensure-lftprc.sh，跳過 lftp 配置"
+fi
+
+# ================================================
 # 步驟 6: 驗證
 # ================================================
 print_header "步驟 6: 驗證安裝"
@@ -1189,6 +1202,7 @@ check_tool eza && echo "  ✅ eza" || echo "  ❌ eza"
 check_tool zoxide && echo "  ✅ zoxide" || echo "  ❌ zoxide"
 check_tool delta && echo "  ✅ git-delta" || echo "  ❌ git-delta"
 check_tool http && echo "  ✅ httpie" || echo "  ❌ httpie"
+check_tool lftp && echo "  ✅ lftp" || echo "  ❌ lftp"
 check_tool tldr && echo "  ✅ tldr" || echo "  ❌ tldr"
 check_tool tokei && echo "  ✅ tokei" || echo "  ❌ tokei"
 check_tool sd && echo "  ✅ sd" || echo "  ❌ sd"
@@ -1287,6 +1301,7 @@ eza --version 2>/dev/null | head -1 || echo "❌ eza 未安裝"
 zoxide --version 2>/dev/null || echo "❌ zoxide 未安裝"
 delta --version 2>/dev/null || echo "❌ git-delta 未安裝"
 http --version 2>/dev/null || echo "❌ httpie 未安裝"
+lftp --version 2>/dev/null | head -1 || echo "❌ lftp 未安裝"
 jq --version 2>/dev/null || echo "❌ jq 未安裝"
 yq --version 2>/dev/null | head -1 || echo "❌ yq 未安裝"
 tldr --version 2>/dev/null || echo "❌ tldr 未安裝"
@@ -1436,6 +1451,7 @@ echo -e "  ${BLUE}dust${NC}              # 磁碟空間分析"
 echo -e "  ${BLUE}direnv${NC}            # 目錄環境變數自動載入"
 echo -e "  ${BLUE}just${NC}              # 任務執行器"
 echo -e "  ${BLUE}watchexec${NC}         # 檔案變更監控執行"
+echo -e "  ${BLUE}lftp sftp://<host>${NC} # SFTP 客戶端（吃 ~/.ssh/config alias 與 CA cert）"
 
 echo ""
 echo "PATH 說明："

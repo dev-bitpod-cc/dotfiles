@@ -6,13 +6,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-03)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-04)
 
 ---
 
 ## 進行中
 
-(暫無——最近一批「codex repo-review autofix 契約補強」已完成待 ship,見已完成里程碑)
+(暫無——最近一批「lftp 納入標準工具鏈」已完成待 ship,見已完成里程碑)
 
 ---
 
@@ -127,6 +127,14 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 死路(試過但放棄——防重工)
 
+- **mc(Midnight Commander)當遠端檔案管理器**:評估後放棄,理由是**協定層而非偏好**——
+  mc 的 `sftp://` VFS 走內建 libssh2,**不支援 OpenSSH 使用者憑證**,而內網主機一律
+  cert 認證(`id_autogen-cert.pub`,principal `jjshen`),等於主要路徑不通;可用的 `fish://`
+  雖外呼真 ssh 能吃 cert,但每個操作起一次遠端 shell、且 macOS 還要處理 F1–F10 被
+  Mission Control 攔截與 subshell 不繼承 cwd。同樣需求 `lftp` 的 sftp backend 預設就外呼
+  `ssh -a -x`(已實測 `set -a` 確認),cert 與 `~/.ssh/config` alias 原生生效,無這些摩擦。
+  **若日後想重評 mc,先確認 libssh2 是否已支援 OpenSSH cert,否則結論不變。**
+
 - **「/project log 包裝/並存 /uap」**:disable-model-invocation 下無法鏈式呼叫,只能複製
   pressure-tested 的 ship 防護邏輯——違反 single-source;功能上與「uap 強化」完全收斂,直接取代。
 - **repo 內放一次性交接檔(HANDOFF.md commit→刪除循環)**:實證 general-rag-cs 的已消費
@@ -166,6 +174,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
+- ✅ 2026-08-04 lftp 納入標準工具鏈取代內建 sftp:兩支 setup 加裝+版控 `lftprc`,部署改走新
+  `ensure-lftprc.sh`(接 dotsync 本機/遠端兩段,config 免逐台重跑 setup 即散佈;binary 仍需
+  `brew install`——brewup 只 upgrade 既有 formula);13 台機隊就地裝妥 4.9.3。選 lftp 而非 mc
+  的理由見死路節。(tests 526→547)**教訓:lftp `ls <單一檔案>` 走 opendir、對非目錄報
+  "No such file" 並 exit 1,但檔案其實已傳成功**——極易誤判成傳輸失敗而重試/回滾,列單檔須用
+  `cls`;已就地寫進 `lftprc` 註解(踩點在使用時,不在讀 dossier 時)。
+
 - ✅ 2026-08-03 codex repo-review 契約補強:autofix 起始 gate 一次化+後續 ownership 檢查(解 C2 F5 死鎖)、tree base 擋 autofix、reviewer `fork_turns=none`、mixed-context manifest;順帶 gitignore_global 收 `**/.claude/settings.local.json`(單機 key 檔全 repo 免誤 commit)。(#34;evals F16–F18,tests 526/0)
 - ✅ 2026-08-03 macOS 大型 notarized binary 路徑快取卡死地雷入庫(#33;syspolicyd 以完整路徑為 key,`killall` 解)
 - ✅ 2026-07-29 dossier 治理再下沉三訊號:條目行號/建議收斂目標/各節佔比(#32;SKILL.md 逐條處置複述改指腳本,消一處已漂移的重複記載)
@@ -186,6 +201,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   `brew reinstall --cask codex` 補完並清 `*.upgrading` 殘留。**勿用 xattr 除 quarantine 或
   --no-quarantine**(核可即足夠,那是不必要的安全弱化)。僅 codex 實際升版時發生(對話框綁
   CDHash 問一次);經 SSH 的 allup 對話框只出現在實體螢幕,該 Mac 須先本機核可過該版。
+- **m4mini 未裝 lftp**(其餘 13 台皆已裝):本次指定範圍是「所有 Linux 主機 + macs」,
+  刻意未擅自擴大。`~/.lftprc` 會由 dotsync 送達該機,但 binary 需補 `brew install lftp`。
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,
   改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
 - biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+credentials 明文散於三台。
