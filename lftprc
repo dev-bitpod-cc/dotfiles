@@ -1,0 +1,42 @@
+# lftp 全域設定（由 dotfiles 管理，setup 腳本 symlink 至 ~/.lftprc）
+#
+# 機器特定設定請寫 ~/.lftprc.local（不受版控、不會被本腳本覆寫）
+
+# ── SSH / 認證 ────────────────────────────────────────────
+# lftp 的 sftp 後端預設外呼真正的 ssh（sftp:connect-program = "ssh -a -x"），
+# 因此 ~/.ssh/config 的 Host alias、id_autogen + CA cert 全部原生生效：
+#     lftp sftp://eagle03
+# 毋須在此重複任何認證設定，也不用打 IP。
+# （對照組：mc 的 sftp:// VFS 走內建 libssh2，不認 OpenSSH 憑證。）
+
+# 裸主機名預設走 sftp——上游預設是 ftp，內網沒有 ftp server
+# 設定後 `lftp eagle03` 等同 `lftp sftp://eagle03`
+set cmd:default-protocol sftp
+
+# 地雷：sftp backend 的 `ls <單一檔案>` 走 opendir，對非目錄一律報
+# "No such file" 並回 exit 1——put 其實已成功，只是驗證指令自己失敗。
+# 要列單一檔案用 `cls -l <path>`（走 stat），腳本裡尤其重要。
+
+# ── 網路韌性 ──────────────────────────────────────────────
+# 上游預設 max-retries=1000 + reconnect-interval-base=15，
+# 主機沒開機時會卡住數小時才放棄，內網用途改成快速失敗
+set net:max-retries 3
+set net:timeout 20
+set net:reconnect-interval-base 5
+
+# ── 傳輸效能 ──────────────────────────────────────────────
+# mirror 並行傳輸檔案數（上游預設 0 ＝ 不並行）
+set mirror:parallel-transfer-count 4
+# 單一大檔分段並行下載，即 pget -n 的預設值
+set pget:default-n 4
+# 讓 mirror 對大檔也套用分段下載（上游預設 0 ＝ 不套用）
+set mirror:use-pget-n 4
+
+# ── 安全 ─────────────────────────────────────────────────
+# 覆寫既有檔案前先確認（明寫以免上游預設變動）
+set xfer:clobber no
+# 保留各主機的 cd 歷史，重連時回到上次位置
+set cmd:save-cwd-history yes
+
+# 機器特定覆寫（setup 腳本保證此檔存在，缺檔會讓 lftp 每次啟動報錯）
+source ~/.lftprc.local

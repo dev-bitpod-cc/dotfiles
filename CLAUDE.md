@@ -28,6 +28,7 @@
 | 搜尋替換 | `sd` | sed |
 | 目錄跳轉 | `z <keyword>` | cd |
 | HTTP 請求 | `http` (HTTPie) | curl |
+| SFTP 傳檔 | `lftp` | sftp |
 | JSON 處理 | `jq` | - |
 | YAML 處理 | `yq` | - |
 | Git diff | `gd` (自動使用 delta) | git diff |

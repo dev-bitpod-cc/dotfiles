@@ -12,7 +12,23 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(暫無——最近一批「codex repo-review autofix 契約補強」已完成待 ship,見已完成里程碑)
+**lftp 納入標準工具鏈(取代 OpenSSH 內建 sftp)** — 實作完成待 ship(branch `feat/lftp-sftp-client`)
+
+- Context:內網主機全走 SSH CA cert(`id_autogen` + cert),需要一個比 `/usr/bin/sftp`
+  更堪用的互動式 SFTP client(續傳、mirror、並行、書籤)。
+- 做了什麼:`lftp` 加入 mac/linux 兩支 setup 的 brew 清單與驗證區塊;新增版控的
+  `lftprc`(root-level,循 `tmux.conf` symlink 慣例)+ 兩支 setup 的 symlink 部署步驟
+  (mac 5.9 / linux 4.9),並 `touch ~/.lftprc.local`;CLAUDE.md 工具表與全域可用工具行同步。
+- AC:`tests/run.sh` exit 0(526 pass);`lftp eagle03` 裸主機名走 sftp、put/get/rm
+  往返 exit 0 且內容一致——**皆已實測通過**,遠端測試檔已確認清除。
+- 待確認:`~/.lftprc` symlink 已在本機(macmini)就地建立;**其他主機需 push 後
+  `dotsync` + 重跑 setup 才會生效**,尚未 push。
+
+**本次踩到的坑(非顯而易見)**
+
+- **lftp sftp backend 的 `ls <單一檔案>` 走 opendir,對非目錄一律報 "No such file"
+  並回 exit 1**——上傳其實已成功,是驗證指令自己失敗,極易誤判成傳輸失敗而重試/回滾。
+  列單一檔案要用 `cls -l <path>`(走 stat)。已就地寫進 `lftprc` 註解,因為踩點在使用時而非讀 dossier 時。
 
 ---
 
@@ -126,6 +142,14 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   不傳播全機隊。
 
 ## 死路(試過但放棄——防重工)
+
+- **mc(Midnight Commander)當遠端檔案管理器**:評估後放棄,理由是**協定層而非偏好**——
+  mc 的 `sftp://` VFS 走內建 libssh2,**不支援 OpenSSH 使用者憑證**,而內網主機一律
+  cert 認證(`id_autogen-cert.pub`,principal `jjshen`),等於主要路徑不通;可用的 `fish://`
+  雖外呼真 ssh 能吃 cert,但每個操作起一次遠端 shell、且 macOS 還要處理 F1–F10 被
+  Mission Control 攔截與 subshell 不繼承 cwd。同樣需求 `lftp` 的 sftp backend 預設就外呼
+  `ssh -a -x`(已實測 `set -a` 確認),cert 與 `~/.ssh/config` alias 原生生效,無這些摩擦。
+  **若日後想重評 mc,先確認 libssh2 是否已支援 OpenSSH cert,否則結論不變。**
 
 - **「/project log 包裝/並存 /uap」**:disable-model-invocation 下無法鏈式呼叫,只能複製
   pressure-tested 的 ship 防護邏輯——違反 single-source;功能上與「uap 強化」完全收斂,直接取代。

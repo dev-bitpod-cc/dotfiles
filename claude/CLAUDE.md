@@ -103,7 +103,7 @@ When the user pastes third-party review findings, read the source code and verif
 
 ## 可用工具
 
-bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, gh, httpie, shellcheck, sd, hyperfine, tokei, tldr, tmux, direnv, just, watchexec
+bun, node, uv, eza, bat, fd, rg, fzf, zoxide, jq, yq, delta, lazygit, dust, gh, httpie, lftp, shellcheck, sd, hyperfine, tokei, tldr, tmux, direnv, just, watchexec
 
 ## 工具安裝原則
 
