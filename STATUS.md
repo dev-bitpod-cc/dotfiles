@@ -12,7 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(暫無——deep-review 審查偏誤治理已完成待 ship,見已完成里程碑)
+(暫無——deep-review 審查偏誤治理已 merge(#38);codex repo-review 移植已 commit 待 ship,見已完成里程碑)
 
 ---
 
@@ -32,6 +32,14 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   需要它調重心)站不住——**補丁痕跡是 code 的性質、不是 history 的性質**。中性化 commit
   message 擋掉輪號與剩餘輪數,**擋不掉「已改過幾次」**(commit 數量本身即訊號),要消除得
   每輪 squash、破壞迭代紀律,故接受殘留但文件不得宣稱成完全隔離。
+- **2026-08-05 git 收尾序列不得串成一行、更不得吞掉中間錯誤**:merge 最後一哩把
+  `git switch main 2>/dev/null; git pull origin main` 串一行——switch 因 working tree 有他線
+  未 commit 變更而失敗(本地 default 尚落後、切換會覆蓋),錯誤被 `2>/dev/null` 吃掉、又沒檢
+  exit code,於是 **pull 在 feature branch 上跑成 rebase**,把 16 顆往已 squash 的 default 重放
+  炸出滿地衝突。`rebase --abort` 可完整還原(含 autostash),但這是不必要的險。**ship-paths.md
+  的序列本來就是分開的指令**;正確替代是 `git fetch origin <default>:<default>`(更新本地 ref、
+  不碰 working tree)再切。與同日的 `git add -A` 誤收同一根源:**為省事把 git 動作合併,錯誤
+  就藏在中間**。
 - **2026-08-05 多 session 共用 working tree:commit 一律顯式路徑,`git add -A` 是誤收源**:
   同一錯誤犯三次(誤收 codex 端 repo-review 工作)。第三次根因是循環陷阱——每次 commit 後
   把他人區段 `cp` 回 working tree,下次編輯同檔就疊上去、整檔 add 必然再收。**三次都只有
@@ -195,6 +203,10 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
+- ✅ 2026-08-05 codex repo-review 移植同批治理(由 codex 撰寫、Claude 代 ship):新增
+  `references/reviewer-brief.md`(判準下沉、要求 reviewer 直讀不改寫)、固定 stage-neutral
+  prompt 模板、pass 位置列為 orchestration-private(**範圍比 deep-review 側更廣:含 task/role
+  names 與 checkpoint messages**,該差距已列已知缺口);evals 補 F19/F20,tests 加兩組契約檢查。
 - ✅ 2026-08-05 deep-review 審查偏誤治理:定位「多輪 autofix 幾乎都跑到 R5 才通過」的根因在
   **提問端**(主 agent 自行放寬 subagent prompt),修法為判準下沉 `reviewer-brief.md`、提問端
   改白名單契約、輪次徹底隱蔽、同型掃描、上限後續跑分流。取捨見決策節,驗證三層(已證實／
@@ -220,6 +232,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - ✅ 2026-07-16 多主機工作流改造(c673844;/project 取代 /uap、SessionStart pull hook、dossier/transfer 模板)
 
 ## 已知缺口
+
+- **deep-review 側的輪次隱蔽未涵蓋 task/role names 與 checkpoint metadata**:codex repo-review
+  同批移植時把隱蔽範圍寫得更廣——pass 位置不得經由 reviewer prompt、**task names、role
+  names、checkpoint messages** 或任何 reviewer-visible metadata 外洩。deep-review 目前只做到
+  prompt 與 commit message 兩條管道;Agent 工具的 `description` 欄是否進 subagent context
+  未經實測(本 session 跑盲測時用過「盲測 A1(Round 1)」這類含輪次的 description)。**先量再
+  補**:要嘛實測 description 是否可見,要嘛比照 codex 直接把它納入禁區。
 
 - **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper 首次執行核可)**:cask 的 completion artifact
   首次 exec quarantine 過的新 binary,同步等系統核可對話框(常沒搶到焦點,看似卡死於
