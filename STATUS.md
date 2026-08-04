@@ -34,7 +34,15 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **失敗記錄**:盲測第一輪 INCONCLUSIVE——fixture 當時帶 `fix: R1/R2` 輪號,兩組都從 git log 讀到,**操縱被 fixture 自己覆蓋**。修正 fixture 後才得乾淨對照。
 - **改動前實地基準(只存在使用者記憶,寫下防漂失)**:R5 幾乎必過;R1–R4 通過比例很低;**從未見過用盡輪次終止**(故續跑分流表至今零實戰);R5 通過時零發現與帶 non-blocking 皆有;FP 罕見。
 
-- **codex C2 四條全為 true positive(無深井),其中 F1 是我造成的迴歸**:`git add -A` 誤收 codex 端 repo-review 的工作,**同一錯誤犯兩次**——第一次還原只拆 `codex/` 目錄、漏了 `tests/run.sh` 裡 codex 加的契約檢查(混檔);修 F3 時又在含那 8 行的版本上編輯並 `git add tests/run.sh` 再收一次。後果只有**乾淨 checkout** 才看得見(本機因檔案在磁碟上恆綠),由 codex 抓到。**教訓兩條**:(a) 多 session 共用 working tree 時 commit 一律顯式路徑;(b) 混檔誤收要按**檔案內的區段**拆,不是只按目錄拆;(c) 拆完必須用 `git clone --no-local` 建乾淨 checkout 實測,不能只跑本機。
+- **codex C2/C3 六條全為 true positive(無深井),其中 C2-F1 是我造成的迴歸**:
+  `git add -A` 誤收 codex 端 repo-review 的工作,**同一錯誤犯三次**。第三次根因不是
+  手滑,是循環陷阱——每次 commit 後把他人的 8 行 `cp` 回 working tree,下次編輯同一
+  檔案就疊上去,`git add <整檔>` 必然再收。**三次都只有乾淨 checkout 看得見**(本機
+  因檔案在磁碟上恆綠),前兩次是 codex 抓到/因它而警覺。教訓四條:
+  (a) 多 session 共用 working tree 時 commit 一律顯式路徑;
+  (b) 混檔誤收按**檔案內的區段**拆,不是只按目錄拆;
+  (c) 拆完必須 `git clone --no-local` 建乾淨 checkout 實測;
+  (d) **混檔期間他人的區段先不放回 working tree**,等自己全部 commit 完才最後放回。
 - **squash 既有-commit 判定改「範圍 ∪ subject」聯集**:純 subject 漏撞名的上一場殘留(中性化後名稱固定通用,碰撞機率上升);純範圍漏 review 期間混入的他線 commit。anchor 新增 `head_at_record` 作時間邊界;舊 anchor 無此欄位則退回純 subject(向後相容)。
 - **契約模板補 untracked 條件槽**:白名單設計把既有需求(priority 2 的「diff + untracked 逐檔」)鎖在門外,reviewer 會漏審新檔且不自知。白名單的風險就在這裡——收得太緊會擋掉必要資訊。
 
