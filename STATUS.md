@@ -12,43 +12,31 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-### deep-review:reviewer 判準下沉 + 同型掃描 + 上限後分流
+### deep-review:審查偏誤治理(兩批,2026-08-04~05;細節見 `claude/skills/deep-review/evals.md` 執行紀錄)
 
-**Context**:使用者觀察多輪 autofix「幾乎都跑到 R5 才通過」,追問後取得兩份一手 RED——(a) 同一條規則的實例散落三輪才修完(WHERE/HAVING → FROM/LIMIT → GROUP BY);(b) 主 agent 在 R4/R5 自行往 subagent prompt 加收斂指示(「只剩措辭風格請判通過」),自承「R5 通過有一部分來自我調整了判準的表述方式」。
-
-**AC**:F18/F19 + d1 回歸在 Sonnet GREEN、`tests/run.sh` exit 0。
-
-**關鍵取捨(當下記錄)**:
-
-- **(b) 的修法選「交路徑」而非「要求逐字轉交」**:根因是判準傳遞方式本身是 prose(舊 SKILL.md 只寫「下方的審查指引」,主 agent 自行決定摘要多少 → 必然漂移)。再加一層 prose 要求「請務必逐字轉交」是**用 prose 治 prose 病**。故抽 `references/reviewer-brief.md`,主 agent 交路徑、subagent 自 Read——與 F16/F17 下沉同精神,且 SKILL.md body 反而縮小(380→338)。
-- **cycle 計數判準取「anchor 未經 clear 就重新 record」,不比對 base hash**:後者在 working-tree 模式必失效(續跑時 HEAD 已因 fix commits 前進)。誤判情形(中途放棄改審全新變更會誤計 cycle 2)可接受——它是印給使用者看的告知性事實,不是 gate。
-- **同型掃描不假裝腳本化**:「什麼算同一條規則」是語意判斷,無確定性 pattern;強行寫 gate 只會產生誤判。下沉能做的是讓這條指令**隨檔案完整抵達 reviewer**,而非被主 agent 摘掉。
-- **未堵住的面(誠實邊界)**:主 agent 仍是 findings 驗證者與報告拼接者,可判 false positive/淡化嚴重度(`SKILL.md` 有禁令但屬 prose 約束)。本次只堵「改判準再餵 reviewer」這條。
-- **附帶發現**:R5 終止不 squash → 不 clear anchor → 再跑一次 autofix 是全新 R1、上限隨之重置,等於上限形同虛設。故補 cycle 計數 + 終止模板的續跑分流表(四條路)。
-- **Codex repo-review 移植的額外實證**:`max_rounds=1` blind forward test 中 reviewer 照樣抓到除零 regression,但主 agent 略過原本 F14 的「最後 pass 不修」句子,仍修復並 commit。故不只複製禁令,改成 findings 驗證後、任何 edit/test/stage 前的獨立 gate;重跑同 fixture 後正確停在原 HEAD、無 checkpoint。
-
-**驗證結果(2026-08-04,AC 達成)**:`tests/run.sh` 554 PASS;F18/F19 + d1 回歸 Sonnet GREEN;另加跑 A/B 對照(同 d3 沙箱、同模型,唯一變數＝SKILL.md 版本,prompt 一律 **transcript 截獲**取證、受測 agent 不知情)。
-
-- **已證實**:傾斜源於 skill 而非個案。BEFORE(舊版)R5 **自發**外洩上限,比原始實證更詳細——「Round 5 — the FINAL allowed review round … this is the review cap, no further fix round is allowed after this one … don't invent nitpicks — be a fair, final gate」,無人要求它告知 reviewer 這是最後一輪。AFTER 三輪 prompt 全乾淨,R5 反向設防(「Do not ask about or infer any round cap … your bar are identical to every other round」)。
-- **未證實(勿當已解決)**:傾斜是否**改變結果**。兩組都在 R5 通過、結論實質相同(都改 allowlist、都抓到 table 注入面),BEFORE 的 R5 reviewer 仍自行跑測試與 edge case。故定性為「傾向性壓力,不是決定性開關」;推測真正會翻轉結果的是 prose-heavy 變更(findings 落在模糊地帶時,一句「別發明 nitpick」即可把邊界案例整批推向 non-blocking)——**此推測未驗**。
-- **改動前的實地基準(只存在使用者記憶,寫下防漂失)**:R5 幾乎必過;R1–R4 通過比例很低;**從未見過 autofix 用盡輪次終止**(故終止路徑與新加的續跑分流表至今零實戰);R5 通過時零發現與帶 non-blocking 皆有;不分輪次 FP 都罕見,主 agent 面對 findings 幾乎都承認照修(＝裁決端無失敗,偏誤全在提問端)。
-- **取證法(已寫入 `claude/evals/README.md` 步驟 3)**:要評「受測 agent 送出了什麼」一律從 transcript 用 `jq` 抽,NEVER 要求它自己交出來(寫檔／多套一層 subagent 都消不掉觀察者效應)。**關鍵字列舉不可靠**——首次檢查漏掉 `FINAL allowed review round`(列舉了 `final round`)差點誤判,取證須讀全文。
-
-### deep-review:codex findings + 固定審查契約 + 輪次徹底隱蔽(第二輪,2026-08-05)
-
-**Context**:上批推上 branch 後交 codex 第三方審查(range `c4024a7..2ad999c`),取得三條中等 findings(逐條讀原始碼獨立驗證,**全為 true positive**);同時取得一份第三方行為分析,主張 max_rounds 屬 orchestration 私有狀態、不該進 reviewer 上下文,並給出固定契約與盲測法。
+**Context**:使用者觀察多輪 autofix「幾乎都跑到 R5 才通過」。追查證實**偏誤在提問端而非裁決端**——主 agent 在後期輪次自行往 subagent prompt 加放寬語與任務重定義,並洩漏「最後一輪/額度用盡」;而它面對 findings 幾乎都承認照修(FP 罕見)。第二批另修 codex 第三方審查的三條中等 findings(全為 true positive)。
 
 **關鍵取捨**:
 
-- **禁止清單升級為固定契約模板(黑名單→白名單)**:原硬約束是列舉禁語,而列舉**可證會漏**——A/B 對照時我自己的偵測 regex 列了 `final round`、漏掉實際寫法 `FINAL allowed review round`,差點誤判「BEFORE 也乾淨」。與 codex 這次審的 fixture(blocklist vs allowlist)是同一教訓,回打到我自己的規則上。
-- **輪次「重心調整」節整節刪除,不是改寫**:原本保留傳輪次的理由是 brief 需要它調整重心,但該理由站不住——**補丁痕跡是 code 的性質,不是 history 的性質**。一段 code 像不像一次寫成,看 code 就知道。理由消失後,保留輪次只剩錨定風險。
-- **commit message 中性化的評估被實測翻案**:先前判它「需 reviewer 主動查 log 才生效、價值較低」——盲測實測 **6/6 agent 主動跑 `git log`**、6/6 讀到輪號,多數寫進 finding 正文(prompt 完全沒提 commit history)。它是**必然發生的洩漏管道**,不是偶發。
-- **盲測第一輪的設計缺陷(記錄失敗而非抹掉)**:fixture 當時仍是 `fix: R1/R2 review fixes`,兩組都從 git log 讀到輪次,**操縱被 fixture 自己覆蓋** → INCONCLUSIVE。修正 fixture 後重跑才得到乾淨對照。
-- **驗證強度誠實界定**:第二輪 blocking 平均 3.67→2.67(−27%),差異**全落在灰色地帶**(`table` 零驗證 A 組 3/3 blocking、B 組 1/3),真問題(SQLi、README 事實錯誤)兩組完全一致。但 n=3/組、B 組內變異 2/4/2,**弱證據而非證實**。
+- **判準傳遞下沉為交路徑**(`references/reviewer-brief.md`),不是再加一層 prose 要求「請務必逐字轉交」——那是用 prose 治 prose 病。SKILL.md body 反而縮小。
+- **禁語清單升級為固定契約模板(黑名單→白名單)**:列舉**可證會漏**——自己的偵測 regex 列了 `final round`、漏掉實際寫法 `FINAL allowed review round`,差點誤判。與 codex 同批審的 fixture(blocklist vs allowlist)同一教訓。
+- **輪次重心節整節刪除**:保留輪次的理由(brief 需要它調重心)站不住——**補丁痕跡是 code 的性質,不是 history 的性質**。理由消失後只剩錨定風險。
+- **cycle 計數判「anchor 未經 clear 就重新 record」**,不比對 base hash(working-tree 模式必失效);它是告知性事實、不是 gate。
+- **同型掃描不假裝腳本化**:語意判斷無確定性 pattern,強行寫 gate 只產生誤判。
+- **commit message 中性化的評估被實測翻案**:先前判它「需主動查 log、價值較低」——盲測 **6/6 agent 主動跑 `git log` 並讀到輪號**,是必然的洩漏管道。
+- **未堵住的面(誠實邊界)**:主 agent 仍是 findings 驗證者與報告拼接者。分離的是**判斷**不是**提問**——`Separating the judge does nothing if the same party writes the question.`
+- **Codex repo-review 移植的額外實證**:`max_rounds=1` blind forward test 中 reviewer 照樣抓到除零 regression,但主 agent 略過原本 F14 的「最後 pass 不修」句子,仍修復並 commit。故不只複製禁令,改成 findings 驗證後、任何 edit/test/stage 前的獨立 gate;重跑同 fixture 後正確停在原 HEAD、無 checkpoint。
 
-**驗證結果(2026-08-05)**:`tests/run.sh` 556 PASS(新增 commit-message pattern 新舊並存測試,含「放寬後仍抓得到真既有 commit」反向斷言);d1 回歸沙箱 git 實查 PASS(squash parent == 錨點、main 未動、anchor 已清);兩輪盲測各 6 agent。**待辦**:`/deep-review` 全流程在新契約模板下的 d3 重跑尚未執行(F18/F19 以舊 prompt 形態驗過)。
+**驗證強度(勿當已解決)**:
 
----
+- **已證實**:傾斜源於 skill 非個案(A/B 對照,舊版 R5 **自發**外洩上限並要求「別發明 nitpick」,新版反向設防);6/6 reviewer 主動查 git log 讀到輪號。
+- **弱證據**:盲測第二輪 blocking 平均 3.67→2.67(−27%),差異**全落在灰色地帶**(`table` 零驗證 A 組 3/3 blocking、B 組 1/3),真問題(SQLi、README 事實錯誤)兩組完全一致。n=3/組、B 組內變異 2/4/2 → **弱證據非證實**。
+- **失敗記錄**:盲測第一輪 INCONCLUSIVE——fixture 當時帶 `fix: R1/R2` 輪號,兩組都從 git log 讀到,**操縱被 fixture 自己覆蓋**。修正 fixture 後才得乾淨對照。
+- **改動前實地基準(只存在使用者記憶,寫下防漂失)**:R5 幾乎必過;R1–R4 通過比例很低;**從未見過用盡輪次終止**(故續跑分流表至今零實戰);R5 通過時零發現與帶 non-blocking 皆有;FP 罕見。
+
+**取證法**(已入 `claude/evals/README.md` 步驟 3):要評「受測 agent 送出了什麼」一律從 transcript 用 `jq` 抽,NEVER 要求它自己交出來(寫檔／多套一層 subagent 都消不掉觀察者效應)。**關鍵字列舉不可靠,須讀全文**。
+
+**待辦**:`/deep-review` 全流程在新契約模板下的 d3 重跑尚未執行(F18/F19 以舊 prompt 形態驗過)。
 
 ## 關鍵決策(附理由)
 
