@@ -70,6 +70,9 @@ local_helper_warn=0
 # 確保全域 Codex guidance 指向 dotfiles（幂等；既有主機免重跑 setup）
 [ -f "$DOTFILES_DIR/scripts/ensure-codex-guidance.sh" ] && { bash "$DOTFILES_DIR/scripts/ensure-codex-guidance.sh" 2>/dev/null || local_helper_warn=1; } || true
 
+# 確保 ~/.lftprc 指向 dotfiles（幂等；既有主機免重跑 setup）
+[ -f "$DOTFILES_DIR/scripts/ensure-lftprc.sh" ] && { bash "$DOTFILES_DIR/scripts/ensure-lftprc.sh" 2>/dev/null || local_helper_warn=1; } || true
+
 if [ "$local_helper_warn" -eq 0 ]; then
     echo -e "${GREEN}  ✅ 本機完成${NC}"
 else
@@ -115,6 +118,8 @@ SSHEOF
             [ -f scripts/ensure-codex-skills.sh ] && { bash scripts/ensure-codex-skills.sh 2>/dev/null || helper_warn=1; } || true
             # 確保全域 Codex guidance 指向 dotfiles（幂等）
             [ -f scripts/ensure-codex-guidance.sh ] && { bash scripts/ensure-codex-guidance.sh 2>/dev/null || helper_warn=1; } || true
+            # 確保 ~/.lftprc 指向 dotfiles（幂等）
+            [ -f scripts/ensure-lftprc.sh ] && { bash scripts/ensure-lftprc.sh 2>/dev/null || helper_warn=1; } || true
             if [ "$helper_warn" -eq 0 ]; then echo "OK"; else echo "OK_HELPER_WARN"; fi
         else
             echo "NO_DOTFILES"

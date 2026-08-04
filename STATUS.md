@@ -21,8 +21,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   (mac 5.9 / linux 4.9),並 `touch ~/.lftprc.local`;CLAUDE.md 工具表與全域可用工具行同步。
 - AC:`tests/run.sh` exit 0(526 pass);`lftp eagle03` 裸主機名走 sftp、put/get/rm
   往返 exit 0 且內容一致——**皆已實測通過**,遠端測試檔已確認清除。
-- 待確認:`~/.lftprc` symlink 已在本機(macmini)就地建立;**其他主機需 push 後
-  `dotsync` + 重跑 setup 才會生效**,尚未 push。
+- 散佈:config 改走 `scripts/ensure-lftprc.sh`(循既有 ensure-* 慣例,被 dotsync
+  本機段+遠端段與兩支 setup 共同呼叫),故**`~/.lftprc` 免重跑 setup、`dotsync` 即散佈**;
+  setup 內原本的 inline symlink 區塊已改為呼叫同一支,邏輯單一來源。
+  binary 則不走此途——`brewup` 只 upgrade 既有 formula,新 formula 需 `brew install`。
+- 已就地安裝 lftp 4.9.3 的主機:本機 macmini + 11 台 Linux(eagle03/06/07/08/09、db01、
+  ap01、ap02、agent01、fe01、be01)+ macs,共 13 台。**m4mini 刻意未含**(不在本次指定範圍)。
+- 待確認:尚未 push;push 後跑一次 `dotsync` 讓各主機拿到 `~/.lftprc`。
 
 **本次踩到的坑(非顯而易見)**
 

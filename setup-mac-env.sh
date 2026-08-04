@@ -1149,22 +1149,13 @@ fi
 # ================================================
 # 步驟 5.9: 設定 lftp 配置
 # ================================================
-if [ -f "$SCRIPT_DIR/lftprc" ]; then
+if [ -f "$SCRIPT_DIR/scripts/ensure-lftprc.sh" ]; then
     print_info "設定 lftp 配置..."
-    # 移除舊的 symlink 或檔案
-    [ -L ~/.lftprc ] && rm ~/.lftprc
-    [ -f ~/.lftprc ] && mv ~/.lftprc ~/.lftprc.backup
-    # 建立 symlink
-    ln -sf "$SCRIPT_DIR/lftprc" ~/.lftprc
+    # 邏輯單一來源：dotfiles-sync.sh 也呼叫同一支，故新主機與既有主機行為一致
+    DOTFILES_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/ensure-lftprc.sh"
     print_success "已建立 ~/.lftprc symlink"
-
-    # lftprc 結尾會 source 此檔；缺檔會讓 lftp 每次啟動印一行錯誤
-    if [ ! -f ~/.lftprc.local ]; then
-        touch ~/.lftprc.local
-        print_success "已建立 ~/.lftprc.local（機器特定設定，不受版控）"
-    fi
 else
-    print_info "未找到 lftprc，跳過 lftp 配置"
+    print_info "未找到 ensure-lftprc.sh，跳過 lftp 配置"
 fi
 
 # ================================================
