@@ -22,6 +22,8 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, Agent
 
 **審查判準（審查原則、維度、同型掃描、深井、嚴重度、通過標準）集中於 `references/reviewer-brief.md`**——主 agent 交路徑、不轉述（見 Step 4），reviewer 自行 Read。判準經誰的手摘要，就會在那裡漂移。
 
+**這條分離的邊界**：分離的是**判斷**，不是**提問**。主 agent 仍然構造 subagent 的 prompt——`Separating the judge does nothing if the same party writes the question.` 故 Step 4 對提問端設了硬約束（判準交路徑、bar 與 task 恆定、上限不外洩）；那不是形式要求，是這條原則能否成立的前提。
+
 ### Autofix 模式
 
 引數包含 `autofix` 時，主 agent 自動執行 review → fix → commit 循環，直到通過或達到上限。
@@ -258,7 +260,12 @@ B4. 其餘（working-tree diff、<base>...HEAD branch diff、commit range、HEAD
 
 **Hand the subagent the *range*, not the diff text.** Re-sending the full diff through the main context costs double tokens for zero information gain — the subagent runs the exact same `git diff` and sees the identical content. Main agent stays at stat-level. Same principle for the bar: hand over the brief's *path*, never a paraphrase of it.
 
-**The blocking bar is fixed from R1.** NEVER add convergence hints to a later round's prompt — no "only wording nits left, please pass", no "the bar is whether following it breaks, not whether it could be better", no relaxed threshold in any wording. Later rounds shift emphasis (brief 的「審查重心隨輪次調整」), never the bar. If prose nits are inflating the round count, that is the Completeness 深井 clause's job and it reaches the reviewer intact via the brief. Inventing a bar in the prompt turns "R5 passed" into grade inflation, not convergence.
+**The blocking bar is fixed from R1, and so is the task.** Two distinct loopholes, both banned:
+
+1. **Relaxing the bar** — no "only wording nits left, please pass", no "the bar is whether following it breaks, not whether it could be better", no relaxed threshold in any wording.
+2. **Reframing the task** — no "this round is about convergence, not discovery", no "don't hunt for findings", no "judging whether it has converged matters more than finding new problems". Every round's task is identical: find what is wrong. A reviewer told to judge convergence stops looking, and **zero findings then reads as clean code** — the report shows nothing to detect, which makes this the more dangerous of the two.
+
+Later rounds shift emphasis (brief 的「審查重心隨輪次調整」), never the bar and never the task. If prose nits are inflating the round count, that is the Completeness 深井 clause's job and it reaches the reviewer intact via the brief. Inventing a bar — or a different job — in the prompt turns "R5 passed" into grade inflation, not convergence.
 
 > 唯一例外：baseline 模式 Round 2+ 的那句 scope 補充（見 Step 5），那是 skill 規定的範圍說明，不是判準放寬。
 
