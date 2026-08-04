@@ -1088,6 +1088,14 @@ if grep -q "Fresh reviewers inherit no parent history" "$ROOT/codex/skills/repo-
     && grep -q "Later autofix rounds validate owned dirty state" "$ROOT/codex/skills/repo-review/evals.md"; then
     ok "repo-review GPT-5.6 evals 覆蓋 fresh context 與 autofix safety"
 else bad "repo-review GPT-5.6 behavior evals 不完整"; fi
+if grep -q "Review-pass position stays private" "$ROOT/codex/skills/repo-review/evals.md" \
+    && grep -q "Checkpoint metadata does not reveal review progress" "$ROOT/codex/skills/repo-review/evals.md"; then
+    ok "repo-review evals 覆蓋輪次隔離與 metadata 洩漏"
+else bad "repo-review 盲審 behavior evals 不完整"; fi
+if [ -f "$ROOT/codex/skills/repo-review/references/reviewer-brief.md" ] \
+    && grep -q "references/reviewer-brief.md" "$ROOT/codex/skills/repo-review/SKILL.md"; then
+    ok "repo-review reviewer brief 已納入 runtime contract"
+else bad "repo-review reviewer brief 缺失或未連結"; fi
 
 echo "▶ 13. handoff-anchor.sh 錨點驗證與生命週期判定"
 HA_SCRIPT="$ROOT/claude/skills/handoff/scripts/handoff-anchor.sh"
