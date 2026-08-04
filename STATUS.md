@@ -12,7 +12,19 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(暫無——最近一批「lftp 納入標準工具鏈」已完成待 ship,見已完成里程碑)
+### deep-review:reviewer 判準下沉 + 同型掃描 + 上限後分流
+
+**Context**:使用者觀察多輪 autofix「幾乎都跑到 R5 才通過」,追問後取得兩份一手 RED——(a) 同一條規則的實例散落三輪才修完(WHERE/HAVING → FROM/LIMIT → GROUP BY);(b) 主 agent 在 R4/R5 自行往 subagent prompt 加收斂指示(「只剩措辭風格請判通過」),自承「R5 通過有一部分來自我調整了判準的表述方式」。
+
+**AC**:F18/F19 + d1 回歸在 Sonnet GREEN、`tests/run.sh` exit 0。
+
+**關鍵取捨(當下記錄)**:
+
+- **(b) 的修法選「交路徑」而非「要求逐字轉交」**:根因是判準傳遞方式本身是 prose(舊 SKILL.md 只寫「下方的審查指引」,主 agent 自行決定摘要多少 → 必然漂移)。再加一層 prose 要求「請務必逐字轉交」是**用 prose 治 prose 病**。故抽 `references/reviewer-brief.md`,主 agent 交路徑、subagent 自 Read——與 F16/F17 下沉同精神,且 SKILL.md body 反而縮小(380→338)。
+- **cycle 計數判準取「anchor 未經 clear 就重新 record」,不比對 base hash**:後者在 working-tree 模式必失效(續跑時 HEAD 已因 fix commits 前進)。誤判情形(中途放棄改審全新變更會誤計 cycle 2)可接受——它是印給使用者看的告知性事實,不是 gate。
+- **同型掃描不假裝腳本化**:「什麼算同一條規則」是語意判斷,無確定性 pattern;強行寫 gate 只會產生誤判。下沉能做的是讓這條指令**隨檔案完整抵達 reviewer**,而非被主 agent 摘掉。
+- **未堵住的面(誠實邊界)**:主 agent 仍是 findings 驗證者與報告拼接者,可判 false positive/淡化嚴重度(`SKILL.md` 有禁令但屬 prose 約束)。本次只堵「改判準再餵 reviewer」這條。
+- **附帶發現**:R5 終止不 squash → 不 clear anchor → 再跑一次 autofix 是全新 R1、上限隨之重置,等於上限形同虛設。故補 cycle 計數 + 終止模板的續跑分流表(四條路)。
 
 ---
 

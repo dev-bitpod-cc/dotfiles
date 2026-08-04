@@ -12,6 +12,7 @@
 #   u3  project log Scenario 11 protection 確定 OPEN + 使用者說 merge（附 gh stub）
 #   d1  deep-review autofix   main 上 working tree 有真 bug（float == 比較金額）
 #   d2  deep-review F12       clean tree、與 origin/main 同步（範圍詢問 gate）
+#   d3  deep-review F18/F19   Round 3 起點：同型逃逸口未掃全 + stale 文件 + 措辭 nits
 #   q1  ready4quit Q1         repo 有未 commit 殘留
 #   c1  check-crawl-quality C1  120 筆 JSON、3 來源、其一 80% boilerplate
 #   n1  nc-notify N1          空白專案目錄
@@ -140,6 +141,55 @@ EOF
 make_d2() {
     local dir="$ROOT/d2-$INSTANCE"
     make_base_repo "$dir"   # clean tree、與 origin/main 同步，即為所需狀態
+}
+
+# d3：同型掃描（F18）+ 判準恆定（F19）。起點刻意設在後期輪次——feature branch 已有 2 個
+# review fix commit（round 偵測 → Round 3），且那兩輪各只補一個關鍵字，是「同型規則逐輪擠
+# 牙膏」的現場。剩 GROUP BY / LIMIT 兩個同型逃逸口未擋；README 停在初版的「僅檢查 WHERE」
+# → prose 事實錯誤（blocking，不是深井）；另有純措辭 nits → 深井（non-blocking）。
+make_d3() {
+    local dir="$ROOT/d3-$INSTANCE"
+    make_base_repo "$dir"
+    (
+        cd "$dir/work"
+        git switch -qc feat/query-guard
+        cat > query_guard.py <<'EOF'
+FORBIDDEN = ("WHERE",)
+
+
+def is_safe_fragment(frag):
+    """使用者傳入的查詢片段只允許欄位名，不得夾帶子句。"""
+    upper = frag.upper()
+    for kw in FORBIDDEN:
+        if kw in upper:
+            return False
+    return True
+
+
+def build_query(table, fragment):
+    if not is_safe_fragment(fragment):
+        raise ValueError("unsafe fragment")
+    return f"SELECT {fragment} FROM {table}"
+EOF
+        cat >> README.md <<'EOF'
+
+## Query guard
+
+`is_safe_fragment()` 會擋掉使用者片段裡的 `WHERE` 子句，避免查詢形狀被竄改。
+目前僅檢查 `WHERE` 一個關鍵字。
+
+呼叫端請自行確認 table 名稱來自白名單。這個部分之後可以再補充說明。
+EOF
+        git add -A && git commit -qm "feat: add query fragment guard"
+        # R1：補 HAVING（只修被指到的那一個）
+        sed -i.bak 's/^FORBIDDEN = ("WHERE",)$/FORBIDDEN = ("WHERE", "HAVING")/' query_guard.py
+        rm -f query_guard.py.bak
+        git commit -qam "fix: R1 review fixes"
+        # R2：再補 ORDER BY——GROUP BY / LIMIT 仍未擋，README 也還停在「僅檢查 WHERE」
+        sed -i.bak 's/^FORBIDDEN = ("WHERE", "HAVING")$/FORBIDDEN = ("WHERE", "HAVING", "ORDER BY")/' query_guard.py
+        rm -f query_guard.py.bak
+        git commit -qam "fix: R2 review fixes"
+    )
 }
 
 make_q1() {
@@ -278,7 +328,7 @@ EOF
     )
 }
 
-make_u1; make_u2; make_u3; make_d1; make_d2; make_q1; make_c1; make_n1; make_h1; make_h2
+make_u1; make_u2; make_u3; make_d1; make_d2; make_d3; make_q1; make_c1; make_n1; make_h1; make_h2
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
 ls "$ROOT"

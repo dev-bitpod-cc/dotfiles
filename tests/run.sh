@@ -2034,6 +2034,27 @@ if [ -f "$ra_anchor" ]; then bad "clear 未刪檔"; else ok "clear 刪除 anchor
 "$RA_SCRIPT" clear --repo "$TMP/ra-work" >/dev/null
 assert_rc "clear 幂等（檔不存在仍 0）" 0 $?
 
+# --- 續跑週期計數（cycle）：R5 終止不 squash、anchor 未 clear → 重新 record 即第 2 週期 ---
+# 為何：SKILL.md 要在終止報告分流「同 reviewer 再跑一輪 vs 換視角」，需要「這是第幾個週期」
+# 是事實而非 model 記憶。判準取「anchor 未經 clear 就重新 record」（base hash 比對在
+# working-tree 模式失效——續跑時 HEAD 已因 fix commits 前進）。
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-cyc"
+ra_cyc_anchor="$(git -C "$TMP/ra-cyc" rev-parse --absolute-git-dir)/deep-review/anchor"
+out="$("$RA_SCRIPT" record --repo "$TMP/ra-cyc" --mode working-tree)"
+if grep -qxF "cycle=1" "$ra_cyc_anchor"; then ok "首次 record → cycle=1"; else bad "首次 record cycle 未落地"; fi
+if grep -q "^cycle:" <<< "$out"; then bad "cycle=1 不該印告知行"; else ok "cycle=1 不印告知行（首場 review 無雜訊）"; fi
+out="$("$RA_SCRIPT" record --repo "$TMP/ra-cyc" --mode working-tree)"
+if grep -qxF "cycle=2" "$ra_cyc_anchor"; then ok "未 clear 即重新 record → cycle=2"; else bad "cycle 未遞增"; fi
+if grep -q "^cycle: 2 " <<< "$out"; then ok "cycle≥2 印告知行（供終止報告分流）"; else bad "cycle≥2 未印告知行"; fi
+if grep -q "^cycle: 2 " <<< "$("$RA_SCRIPT" show --repo "$TMP/ra-cyc")"; then ok "show 帶出 cycle（跨 session 恢復）"; else bad "show 未帶 cycle"; fi
+# codex-next 會重寫整份 anchor——不可吃掉 cycle
+"$RA_SCRIPT" codex-next --repo "$TMP/ra-cyc" >/dev/null
+if grep -qxF "cycle=2" "$ra_cyc_anchor"; then ok "codex-next 保留 cycle"; else bad "codex-next 覆寫掉 cycle"; fi
+# clear（squash 完成）→ 下一場 review 歸 1
+"$RA_SCRIPT" clear --repo "$TMP/ra-cyc" >/dev/null
+"$RA_SCRIPT" record --repo "$TMP/ra-cyc" --mode working-tree >/dev/null
+if grep -qxF "cycle=1" "$ra_cyc_anchor"; then ok "clear 後 record → cycle 歸 1"; else bad "clear 後 cycle 未歸零"; fi
+
 # 用法錯誤 / 非 git repo
 "$RA_SCRIPT" bogus --repo "$TMP/ra-work" >/dev/null 2>&1
 assert_rc "未知子指令 → exit 2" 2 $?

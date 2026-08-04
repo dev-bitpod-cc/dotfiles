@@ -169,7 +169,8 @@
 | R5 | {N} | — | 未自動修復 |
 
 ### 收斂失敗分析
-{為什麼三輪修不完——是修 A 引入 B？還是結構性問題反覆觸發？}
+{為什麼四輪修不完——是修 A 引入 B？結構性問題反覆觸發？還是同一條規則的實例每輪只修一個？}
+{必須落到下方「續跑分流」表的其中一列，並寫明判斷依據；只描述現象不給分流等於沒交付}
 
 ### 剩餘問題
 （同未通過格式，按根因分組）
@@ -182,14 +183,21 @@
 - 若建議重寫 → `git reset --soft <squash base hash>`（定義見 SKILL.md Autofix 段的表；勿用會移動的 ref）回到起點，帶著所有變更重新設計 {區塊}，再重新 commit
 - 若可繼續修 → 保留現有 commit，在此基礎上繼續人工修復，完成後 squash
 
-### 建議下一步
+### 續跑分流
 
-{根據剩餘問題的性質給出具體建議}
-- 若剩餘問題是結構性的 → 建議重寫哪個區塊、用什麼方式
-- 若剩餘問題是收斂震盪 → 指出震盪的根源，建議固定哪個方向
-- 若剩餘問題只是建議等級 → 應判定為通過（走通過模板 + Non-blocking follow-up），不應進入此終止報告
+**本批變更的第 {cycle} 個 review 週期**（取 `review-anchor.sh record` 的 `cycle:` 行；未印即第 1 個）。
 
-改完後可再跑 `/deep-review` 或 `/deep-review autofix`。
+{勾選其中一列，並說明為何是這列——不可全列照抄}
+
+| 剩餘問題的樣子 | 建議行動 |
+|---|---|
+| 有界、具體、彼此無關 | 人工修完再跑一次（變更集已不同，輪次重新計數合理） |
+| 結構性：每輪修 A 就冒出 B | `git reset --soft {squash base hash}` 帶著變更重新設計 {區塊}，別在補丁上疊補丁 |
+| 收斂震盪：同一區塊來回、方向反覆 | 由使用者拍板固定一個方向再跑；不拍板則再跑幾輪結果相同 |
+| 只剩深井／建議等級 | 判定為通過（走通過模板 + Non-blocking follow-up），不應進入此終止報告 |
+| 難以判定，且 `cycle` ≥ 2 | **換視角而非換輪次**：`/deep-review autocodex` 交獨立第三方，或人工審。同一個 reviewer 再跑第三個週期價值最低 |
+
+**再跑一次 `/deep-review autofix` 不是預設下一步**——同 reviewer 對同一批 code 再開一輪多半挖出同類型的東西，且輪次上限會隨新一場 review 重置。先照上表分流，再決定要不要續跑。
 ```
 
 ## 報告模板 — Codex 第三方審查通過
@@ -212,7 +220,7 @@
 | C1 | {範圍} | {N} | 0 | — | 全為 false positive，無需修復 |
 
 ### Completeness 深井（non-blocking）
-{codex 指出但屬深井、非本輪修復觸及的問題（見 SKILL.md「Completeness 深井」節）。含兩種來源：baseline 基線 backlog（僅 baseline 模式）與 prose artifact 深井（不分模式——skill/.md/runbook 的措辭清晰度、「還可以更完整」類）。列出供使用者排優先序，不阻擋通過}
+{codex 指出但屬深井、非本輪修復觸及的問題（見 `reviewer-brief.md`「Completeness 深井」節）。含兩種來源：baseline 基線 backlog（僅 baseline 模式）與 prose artifact 深井（不分模式——skill/.md/runbook 的措辭清晰度、「還可以更完整」類）。列出供使用者排優先序，不阻擋通過}
 - [Backlog] {finding 描述} — {baseline 完整度類別：a11y / edge case / 測試覆蓋 …}
 - [Prose] {finding 描述} — {措辭/完整度類，非事實錯誤、非夾帶指令 misbehave、非 cross-ref 斷掉}
 {若無深井項則省略此區塊；diff 模式仍可能有 prose 深井，勿因模式略過}

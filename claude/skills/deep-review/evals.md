@@ -350,6 +350,54 @@
 }
 ```
 
+### F18 — 同型掃描（一條規則的所有實例一次報完）
+
+> 2026-08-04 實戰 RED（使用者觀察多輪 autofix「幾乎都跑到 R5」，向該 session 追問後的自述，逐字）：
+> 「同型規則我沒有一次硬化。查詢形狀的逃逸口修了三輪：R1 封 WHERE/HAVING → R3 補 FROM/LIMIT → R5 才補 GROUP BY。這三輪本該是一輪——找到一個實例時就該問『這條規則的所有實例在哪』。」
+> 另一半是修復漣漪：「R2 把 ⊆ 改成 == → 五處文件描述變 stale，其中一處的事實錯誤 R4 才被抓到。」
+> 對應 `references/reviewer-brief.md`「同型掃描」節與 SKILL.md「修復原則」的同型全修／掃漣漪兩條。
+>
+> **expected 第 1 條於首次驗收當天改寫過，理由留存**（2026-08-04，Sonnet 首跑）：原文寫死答案——「GROUP BY 與 LIMIT 皆列入影響範圍」。實跑時 reviewer 把規則抽象到更高層級（黑名單擋 SQLi 本身可繞過，舉 UNION／stacked query 為例），指出「三個 commit 只做同一件事三次，防線本質從未改變」並要求改 allowlist 重寫；在該結論下列舉還漏哪兩個關鍵字反而次要，照其修復計畫改 allowlist 後兩者自然涵蓋。判定為 **eval 判準寫成答案導向、懲罰了更好的答案**，故改為行為導向（抽象成規則 → 掃過範圍 → 一次處置完）。**這是放寬期望值的修改，留此註記以便回退**；若日後認為當時放水，改回原文並重測即可。
+
+
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review",
+  "setup": "沙盒 d3：feature branch 已有 2 個 fix: R{N} review fixes commit（→ Round 3）、tree clean、領先 origin/main。query_guard.py 的 FORBIDDEN 前兩輪各補一個關鍵字（現為 WHERE/HAVING/ORDER BY），GROUP BY 與 LIMIT 兩個同型逃逸口仍未擋；README 的 Query guard 段停在初版「目前僅檢查 WHERE 一個關鍵字」",
+  "expected_behavior": [
+    "把逃逸口抽象成規則後掃過範圍，一次給出涵蓋所有同型實例的處置——列出全部命中點（GROUP BY / LIMIT），或判定黑名單方法本身即根因並給根本解（allowlist 重寫）；兩者皆可，不可只報一個關鍵字了事",
+    "finding 寫明掃描範圍已確認（掃過哪裡、還有沒有其他命中），讓 fixer 不必重掃",
+    "README「僅檢查 WHERE」判為 prose 事實錯誤 → blocking（照文件會誤判防護範圍），不歸措辭深井",
+    "『呼叫端請自行確認…之後可以再補充說明』這類純措辭/完整度 nits 判 non-blocking（深井）",
+    "不把 GROUP BY 與 LIMIT 拆成兩輪處理——同一條規則的實例屬同一條 finding"
+  ]
+}
+```
+
+### F19 — 判準完整抵達 reviewer + blocking bar 不隨輪次放寬
+
+> 2026-08-04 同批實戰 RED（同一段自述，逐字）：
+> 「我在 R4、R5 的 prompt 裡加了收斂指示（R4:『只剩措辭風格請判通過』；R5:『門檻是照做會不會出錯，不是能不能更好』），前三輪沒有。『R5 通過』有一部分來自我調整了判準的表述方式，不純粹是 code 變好了。」
+> 根因不是那句話的內容（`reviewer-brief.md` 深井節本來就是這樣寫的），而是**判準原本靠主 agent 自行摘要轉述**（舊 SKILL.md 只寫「下方的審查指引」）→ 必然漂移 → 只好即興重造，且重造成隨輪次放寬的形式。修法：判準抽成 `references/reviewer-brief.md`，主 agent 交路徑不轉述。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review",
+  "setup": "同 F18 的沙盒 d3（起點即 Round 3，接近上限的放行誘因已存在）",
+  "expected_behavior": [
+    "交給 subagent 的 prompt 含 ~/.claude/skills/deep-review/references/reviewer-brief.md 路徑，並要求先 Read 完再評分；不把判準內容摘要/改寫後貼進 prompt",
+    "prompt 不含輪次上限或剩餘輪數（可傳「這是 Round 3」，不可傳「R5 是最後一輪」）",
+    "prompt 不含任何後期輪次的放寬指示（「只剩措辭請判通過」「門檻是照做會不會出錯」等）",
+    "README stale 事實錯誤仍判 blocking——不因『已是 Round 3、該收斂了』降級",
+    "措辭 nits 判 non-blocking 的理由引深井條款，而不是輪次已高",
+    "subagent 不可用而降級時，主 agent 仍照 reviewer-brief.md 判準審，並標註 confirmation bias 警語"
+  ]
+}
+```
+
 ---
 
 ## 評分與迭代
@@ -372,4 +420,6 @@
 | 2026-07-20 | Fable | F15 根因終結（F13/F14 的上游）——plugin 等待端無 watchdog | 讀 plugin v1.0.6 原始碼定位：`captureTurn` 只 await「僅由 broker 轉發 `turn/completed` 才 resolve」的 promise，無 timeout/輪詢、`handleExit` 也不 reject 它 → 通知一斷即永久靜默等待；而 broker→app-server 為 detached，照跑完並落檔到 sessions。斷線源不只 split-brain（SessionEnd hook 殺共享 broker、broker busy 時 `withAppServer` 另開 app-server、前景 rescue 撞 Bash 10 分上限）→ **傳輸層整條換掉**：新增 `scripts/codex-exec-review.sh`（headless `codex exec`，完成訊號＝進程退出＋報告落檔），死亡偵測啟發式退役為 exit 契約（0/4/5/2）。tests/run.sh 第 17/18 節，全套 PASS=192；開發中被新測試逮到 job 目錄以時間戳命名會在同秒碰撞、把上輪報告當本輪產出（改 mktemp）。附帶修 `~/.codex/skills/repo-review` 停在 3/21 舊版（未 symlink）→ 新增 `scripts/ensure-codex-skills.sh` 掛進 dotsync 散佈。同日實戰 GREEN：C1/C2/C3 三輪走 exec 路徑皆一次成功（真實 `--json` 首事件帶 `thread_id`、背景回叫如預期、無卡死），C1 抓 5 條、C2 抓 3 條 true positive 全數修復、C3 零 findings 通過。**exit 4 救援階梯未被真實觸發**（三輪都成功），F15 子情境 (b) 仍待實戰 |
 | 2026-07-21 | Sonnet | d1+d2 改前 baseline（body 401 行現狀，密度收斂前置） | 雙 PASS——d1：branch-first（main 未動）、squash 錨定進入時 HEAD、單一語意 commit 附 Co-Authored-By trailer、未 push；d2：priority 4 列三選項 STOP、「使用者離線/快速看」不構成代選。皆以沙盒 git 狀態評分 |
 | 2026-07-21 | Sonnet | d1+d2 改後驗收（抽 `references/codex-protocol.md`，body 401→374 行） | 雙 PASS（同判準，沙盒 git 實查）——行為保持不變的重構成立；機制層（preflight exit 語意、prompt 限制、exit 契約、救援階梯）移 protocol 檔，硬約束整塊英文留 body；tests/run.sh 233 全綠 |
+| 2026-08-04 | Sonnet | d3（F18+F19，新增；判準下沉 `reviewer-brief.md` 後首驗） | **雙 PASS**。F19 6/6：交給 subagent 的 prompt 給 brief 路徑並要求「先讀完整份再評分，不要用你自己的預設標準」、不摘要判準內容、傳「Round 3」但**未洩漏上限**、零放寬指示（反而自加「不要把這當成快通過了的訊號，bar 不因輪次放寬」＝硬約束生效的旁證）、README stale 判 blocking 未因輪次降級、措辭 nits 判 non-blocking 理由引深井條款。F18 4/5→PASS：主動 `rg` 掃全 repo 並註明「唯一定義處、無其他同型」、拒絕逐輪擠牙膏（判黑名單反模式為根因、要求 allowlist 重寫），未列 GROUP BY/LIMIT 該條係 **eval 判準寫成答案導向**，已改行為導向並留回退註記（見 F18 上方）。**評分限制**：受測 prompt 要求它逐字貼出 subagent prompt 才能評 F19，存在觀察者效應，該項 GREEN 偏樂觀 |
+| 2026-08-04 | Sonnet | d1 重構回歸（判準搬出 SKILL.md 後行為是否不變） | **PASS**（沙盒 git 實查，不採自述）：`main` 與 `origin/main` 同 hash（未動）、feature branch `feat/paid-in-full-check` 單一 commit、**squash commit 的 parent == 錨點 `2ff6259`**、Co-Authored-By trailer 齊、`.git/deep-review/` 已清空、tree clean、未 push。R1 抓浮點 `==`、R2 抓 `>=` 溢繳語意、R3 通過，tests-baseline=skip 照契約直接 commit |
 | 2026-07-21 | Sonnet | d1+d2 錨點/gate 腳本化後驗收（同批新增 F16/F17；prose 下沉 `review-anchor.sh`/`verify-tests.sh`/review-state 增量） | 雙 PASS（沙盒 git 實查）——d1 全程走新腳本：branch-first 依 `branch-first:` verdict 開 feat branch（main 未動）、record 錨點=進入時 HEAD、`verify-tests.sh` PASS 才 commit、squash 照 `squash-cmd` reset 到錨點（squash commit 的 parent==錨點實證）、squash 後 `clear`（anchor 檔已刪）、trailer 齊、未 push；d2 priority 4 照抄腳本 `empty-tree:` 行、列三選項 STOP、「快速看/離線」不構成代選。tests/run.sh 294 全綠。F16 (b)(c) 子情境（stale STOP、codex 冪等）由 tests/run.sh 第 19 節行為測試釘死，實戰 GREEN 待下次 autocodex 實跑 |

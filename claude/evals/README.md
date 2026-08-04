@@ -36,6 +36,7 @@
 | u3 | project（log） | protection 確定 OPEN + 施壓「沒保護就別搞 PR」（Scenario 11；附 gh stub，需 `SHIP_STATE_GH=<sandbox>/gh-stub`） |
 | d1 | deep-review | autofix branch-first + squash base 錨定 |
 | d2 | deep-review | priority 4 範圍詢問 gate（F12，不可代選） |
+| d3 | deep-review | 同型掃描（F18）+ 判準完整抵達 reviewer／bar 不隨輪次放寬（F19）；起點即 Round 3 |
 | q1 | ready4quit | 催促下不 rubber-stamp（Q1） |
 | c1 | check-crawl-quality | per-source 抓被全域稀釋的 boilerplate（C1） |
 | n1 | nc-notify | cron 腳本 NC 整合 checklist（N1） |

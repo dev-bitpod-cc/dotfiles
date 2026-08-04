@@ -16,6 +16,8 @@
 #         working-tree → 當下 HEAD
 #         baseline     → 當下 HEAD（empty-tree 非 commit，絕不作 reset 目標）
 #       無條件覆蓋（新一輪 review 開始即重記；codex_* state 一併歸零）。
+#       cycle：anchor 仍在就重新 record = 前一場未走完（R5 終止不 squash、故不 clear）→
+#         cycle+1 並印告知行，供終止報告分流「同 reviewer 再跑 vs 換視角」；clear 後歸 1。
 #       --tests-baseline：autofix 前置跑 verify-tests.sh 的結果（pass/fail/skip），
 #         供「修復後驗證」區分「修復改壞」vs「baseline 本來就紅」（fail → 測試不做 gate）。
 #       branch-diff / working-tree 模式另印 diff-cmd:（審查範圍的 diff 指令，供照抄轉交
@@ -134,16 +136,28 @@ cmd_record() {
     fi
     local branch
     branch="$(git -C "$REPO" symbolic-ref --short -q HEAD)" || branch="DETACHED"
+    # 續跑週期：anchor 仍在 = 前一場 review 未走完（R5 終止不 squash、也就不 clear）。
+    # 不比對 base hash——working-tree 模式續跑時 HEAD 已因 fix commits 前進，比對必失效。
+    # 舊版 anchor 無 cycle key → 視為 1，本次即第 2 週期。
+    local prev_cycle cycle=1
+    if [ -f "$ANCHOR" ]; then
+        prev_cycle="$(aget cycle)"
+        cycle=$(( ${prev_cycle:-1} + 1 ))
+    fi
     mkdir -p "$GITDIR/deep-review"
     {
         printf 'base=%s\n'     "$base_hash"
         printf 'mode=%s\n'     "$MODE_VAL"
         printf 'branch=%s\n'   "$branch"
         printf 'recorded=%s\n' "$(date +%s)"
+        printf 'cycle=%s\n'    "$cycle"
         [ -n "$TB_VAL" ] && printf 'tests_baseline=%s\n' "$TB_VAL"
     } > "$ANCHOR"
     echo "anchor-recorded: ${base_hash}（mode=${MODE_VAL}${BASE_REF:+, base-ref=${BASE_REF}}）"
     echo "branch: ${branch}"
+    if [ "$cycle" -gt 1 ]; then
+        echo "cycle: ${cycle} — 前一場 review 未走完即重啟（R5 終止後續跑，或中途放棄）；終止報告須據此分流，勿逕自再跑一輪"
+    fi
     [ -n "$TB_VAL" ] && echo "tests-baseline: ${TB_VAL}"
     # range 模式審查指令 = range 引數本身、baseline 為全庫審查，...HEAD 都會審錯範圍——不印
     case "$MODE_VAL" in
@@ -158,6 +172,11 @@ cmd_show() {
         die_stop "無 anchor（先跑 record）"
     fi
     echo "anchor: $(aget base)（mode=$(aget mode), branch 當時=$(aget branch), recorded $(fmt_epoch "$(aget recorded)")）"
+    local cyc
+    cyc="$(aget cycle)"
+    if [ "${cyc:-1}" -gt 1 ] 2>/dev/null; then
+        echo "cycle: ${cyc} — 本批變更的第 ${cyc} 個 review 週期（前一場未走完）"
+    fi
     if [ -n "$(aget tests_baseline)" ]; then
         echo "tests-baseline: $(aget tests_baseline)"
     fi
@@ -204,11 +223,12 @@ cmd_squash_cmd() {
 
 cmd_codex_next() {
     [ -f "$ANCHOR" ] || die_stop "無 anchor（先跑 record）"
-    local base_hash mode_v branch_v recorded_v tb_v head_full empty_tree c_head c_round round range
+    local base_hash mode_v branch_v recorded_v cycle_v tb_v head_full empty_tree c_head c_round round range
     base_hash="$(aget base)"
     mode_v="$(aget mode)"
     branch_v="$(aget branch)"
     recorded_v="$(aget recorded)"
+    cycle_v="$(aget cycle)"
     tb_v="$(aget tests_baseline)"
     c_head="$(aget codex_head)"
     c_round="$(aget codex_round)"
@@ -254,6 +274,7 @@ cmd_codex_next() {
         printf 'mode=%s\n'        "$mode_v"
         printf 'branch=%s\n'      "$branch_v"
         printf 'recorded=%s\n'    "$recorded_v"
+        [ -n "$cycle_v" ] && printf 'cycle=%s\n' "$cycle_v"
         [ -n "$tb_v" ] && printf 'tests_baseline=%s\n' "$tb_v"
         printf 'codex_head=%s\n'  "$head_full"
         printf 'codex_round=%s\n' "$round"
