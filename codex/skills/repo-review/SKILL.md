@@ -39,8 +39,6 @@ After resolution, use immutable object IDs in subagent prompts, diffs, checkpoin
 
 Read applicable guidance before review. The helper discovers paths from the current worktree. When `head-is-current:no`, independently inspect the resolved head with `git ls-tree` and read the historical guidance with `git show <resolved-head>:<path>`. Discover guidance that exists only in the historical tree as well as historical versions of current paths; do not let current, newly added, changed, or deleted guidance leak across revisions.
 
-Resolve the bundled `references/reviewer-brief.md` relative to this `SKILL.md`. Read it completely before delegation and use it when verifying findings. Require every reviewer to read the same file directly; do not paraphrase its bar.
-
 ## Delegate The First Pass
 
 When this skill is explicitly invoked or the user requests subagents, use fresh-context subagents when available. With Codex collaboration tools, set `fork_turns="none"`; never rely on the default fork behavior. If the surface cannot create a no-history reviewer, state the degraded fallback and perform a narrow local review instead of claiming a fresh-context pass.
@@ -52,35 +50,19 @@ When this skill is explicitly invoked or the user requests subagents, use fresh-
 
 Respect `max_subagents` and actual concurrency over these sizing defaults. Avoid duplicate broad scopes; overlap only at critical interfaces or security boundaries.
 
-Treat the pass number, pass cap, passes remaining, stop conditions, prior findings, prior conclusions, and fix summaries as orchestration-private state. Never expose them through reviewer prompts, task names, role names, checkpoint messages, or other reviewer-visible metadata. Use stage-neutral task names based only on the assigned module or concern. Do not ask reviewers to verify fixes, judge convergence, limit their search to newly introduced issues, or infer quality from prior review activity.
-
-Construct every reviewer prompt from this fixed, stage-neutral template. Replace only the braced fields and omit the mixed-context block when it does not apply; do not add workflow history or a stage-specific preamble:
-
-```text
-You are an independent code reviewer with no prior context on this change.
-Perform this bounded review yourself; do not delegate or run an autofix loop.
-
-Repositories:
-{For each assigned repo: path; immutable resolved-base..resolved-head; applicable
-guidance paths or none; diff stat.}
-Assigned scope: {bounded files or concerns}
-Reviewer criteria: {absolute path to references/reviewer-brief.md}
-
-Read the repository guidance and reviewer criteria completely before judging.
-Collect the committed diff yourself with read-only Git commands and review the
-complete assigned cumulative change. Return findings in the criteria's format.
-
-{Mixed context: mode plus staged, unstaged, and untracked path manifest. Inspect
-these paths too and keep worktree-only findings separate when include_worktree=true.}
-```
-
-Give reviewers no additional context beyond the template fields. Do not paste the full diff. When `include_worktree=true` or a no-checkpoint autofix pass includes accumulated edits, fill the mixed-context block with the effective mode and a status-derived manifest; for no-checkpoint autofix, review the original range plus accumulated edits. Let reviewers obtain committed and worktree diffs with read-only Git commands.
+Give each subagent only the repo path, immutable range, applicable guidance, diff stat, bounded files or concerns, and required output shape. When `include_worktree=true` or a no-checkpoint autofix pass includes accumulated edits, also pass the effective mixed-context mode plus a status-derived manifest separating staged, unstaged, and untracked paths. Tell reviewers to inspect those paths; report worktree-only findings separately for `include_worktree=true`, or review the original range plus accumulated edits in no-checkpoint autofix. Do not paste the full diff or pass patch intent, suspected findings, prior conclusions, or implementation history. Let reviewers obtain the committed and worktree diffs with read-only Git commands.
 
 The main agent must not perform an equivalent whole-diff first pass before delegation. After subagents return, inspect only enough source to verify plausible findings, deduplicate them, resolve contradictions, and calibrate severity. Re-derive conclusions from code rather than defending patch intent.
 
 ## Apply The Finding Standard
 
-Apply `references/reviewer-brief.md` without changing its threshold between passes. Verify each finding against the reviewed revision, order findings by severity, and keep repository boundaries explicit. Optional observations never drive an autofix loop.
+Report only concrete issues that could cause a reader, operator, or executing agent to do the wrong thing. Treat correctness, security, regression, required-test, deploy/configuration, and broken cross-file or cross-repo contract findings as blocking. Ignore style unless it creates a material correctness or maintenance hazard.
+
+For shell, Git, `gh`, SQL, and other executable snippets, verify real semantics, including empty arguments, two-dot versus three-dot ranges, missing upstreams, untracked files, cwd or repo ambiguity, placeholder expansion, escaping, and destructive behavior in mixed state.
+
+For `SKILL.md`, README, runbook, and other operational prose, treat incorrect commands, contradictions, broken references, and stale operational facts as blocking. Treat clarity, extra examples, broader edge-case coverage, and general completeness as optional. Optional prose improvements must not drive an autofix loop.
+
+Each finding must include severity, a precise file reference, the triggering behavior, and its concrete impact. Verify the reference against the reviewed revision. Order findings by severity and keep repository boundaries explicit.
 
 When `include_worktree=true`, review staged, unstaged, and untracked content in addition to the committed range, state that expanded scope, and report worktree-only findings separately from committed-range findings.
 
@@ -105,16 +87,15 @@ Never stage or commit pre-existing or concurrent user changes. If ownership over
 For each review pass `R1` through `R<max_rounds>`:
 
 1. Rerun the helper without `--autofix` after R1, read current canonical context and guidance, and apply the later-round ownership checks above.
-2. Spawn new fresh-context reviewers with stage-neutral task names and the fixed template; do not reuse earlier reviewers, prompts, or conclusions.
-3. Verify and consolidate findings. Stop clean when no blocking findings remain.
-4. Before any edit, privately compare the current pass with `max_rounds`. If this is the last allowed review pass and blocking findings remain, stop immediately and report them; do not edit, test, stage, or create another checkpoint.
-5. Otherwise, fix only verified blocking findings with minimal changes.
-6. Before testing, record intentional edit paths and worktree status. Run relevant tests or checks. If none are discoverable, state that and perform reasonable static verification.
-7. If tests fail or the environment blocks validation, do not commit; stop and report the blocker.
-8. With `commit_each_round=true`, recheck status, stage only verified intentional paths, and inspect the staged diff. Stop if a pre-existing or concurrent path would be included. With `commit_each_round=false`, do not stage or commit.
-9. Keep only new untracked outputs that were absent before and are attributable to the recorded test command unstaged; list them without letting them block later committed-range review.
-10. With `commit_each_round=true`, create a stage-neutral checkpoint such as `fix: address review findings`; keep the pass-to-checkpoint mapping in orchestration state for the final report. If the original resolved head was current HEAD, review `<resolved-base>..HEAD` next. Otherwise use only an explicitly approved target range.
-11. With `commit_each_round=false`, review the original immutable range plus accumulated worktree edits, recompute that mixed context every round, and state that it can grow.
+2. Spawn new fresh-context reviewers; do not reuse earlier prompts or conclusions.
+3. Verify and consolidate findings. Stop clean when no blocking findings remain. Stop without another fix when this is the last allowed review pass.
+4. Fix only verified blocking findings with minimal changes.
+5. Before testing, record intentional edit paths and worktree status. Run relevant tests or checks. If none are discoverable, state that and perform reasonable static verification.
+6. If tests fail or the environment blocks validation, do not commit; stop and report the blocker.
+7. With `commit_each_round=true`, recheck status, stage only verified intentional paths, and inspect the staged diff. Stop if a pre-existing or concurrent path would be included. With `commit_each_round=false`, do not stage or commit.
+8. Keep only new untracked outputs that were absent before and are attributable to the recorded test command unstaged; list them without letting them block later committed-range review.
+9. With `commit_each_round=true`, create a checkpoint such as `fix: R1 review fixes`. If the original resolved head was current HEAD, review `<resolved-base>..HEAD` next. Otherwise use only an explicitly approved target range.
+10. With `commit_each_round=false`, review the original immutable range plus accumulated worktree edits, recompute that mixed context every round, and state that it can grow.
 
 Also stop when validation is blocked, repository safety becomes ambiguous, or the same finding survives two fix attempts. Optional findings never justify another round.
 
