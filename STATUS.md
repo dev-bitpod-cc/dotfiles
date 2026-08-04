@@ -6,34 +6,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-03)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-04)
 
 ---
 
 ## 進行中
 
-**lftp 納入標準工具鏈(取代 OpenSSH 內建 sftp)** — 實作完成待 ship(branch `feat/lftp-sftp-client`)
-
-- Context:內網主機全走 SSH CA cert(`id_autogen` + cert),需要一個比 `/usr/bin/sftp`
-  更堪用的互動式 SFTP client(續傳、mirror、並行、書籤)。
-- 做了什麼:`lftp` 加入 mac/linux 兩支 setup 的 brew 清單與驗證區塊;新增版控的
-  `lftprc`(root-level,循 `tmux.conf` symlink 慣例)+ 兩支 setup 的 symlink 部署步驟
-  (mac 5.9 / linux 4.9),並 `touch ~/.lftprc.local`;CLAUDE.md 工具表與全域可用工具行同步。
-- AC:`tests/run.sh` exit 0(526 pass);`lftp eagle03` 裸主機名走 sftp、put/get/rm
-  往返 exit 0 且內容一致——**皆已實測通過**,遠端測試檔已確認清除。
-- 散佈:config 改走 `scripts/ensure-lftprc.sh`(循既有 ensure-* 慣例,被 dotsync
-  本機段+遠端段與兩支 setup 共同呼叫),故**`~/.lftprc` 免重跑 setup、`dotsync` 即散佈**;
-  setup 內原本的 inline symlink 區塊已改為呼叫同一支,邏輯單一來源。
-  binary 則不走此途——`brewup` 只 upgrade 既有 formula,新 formula 需 `brew install`。
-- 已就地安裝 lftp 4.9.3 的主機:本機 macmini + 11 台 Linux(eagle03/06/07/08/09、db01、
-  ap01、ap02、agent01、fe01、be01)+ macs,共 13 台。**m4mini 刻意未含**(不在本次指定範圍)。
-- 待確認:尚未 push;push 後跑一次 `dotsync` 讓各主機拿到 `~/.lftprc`。
-
-**本次踩到的坑(非顯而易見)**
-
-- **lftp sftp backend 的 `ls <單一檔案>` 走 opendir,對非目錄一律報 "No such file"
-  並回 exit 1**——上傳其實已成功,是驗證指令自己失敗,極易誤判成傳輸失敗而重試/回滾。
-  列單一檔案要用 `cls -l <path>`(走 stat)。已就地寫進 `lftprc` 註解,因為踩點在使用時而非讀 dossier 時。
+(暫無——最近一批「lftp 納入標準工具鏈」已完成待 ship,見已完成里程碑)
 
 ---
 
@@ -195,6 +174,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
+- ✅ 2026-08-04 lftp 納入標準工具鏈取代內建 sftp:兩支 setup 加裝+版控 `lftprc`,部署改走新
+  `ensure-lftprc.sh`(接 dotsync 本機/遠端兩段,config 免逐台重跑 setup 即散佈;binary 仍需
+  `brew install`——brewup 只 upgrade 既有 formula);13 台機隊就地裝妥 4.9.3。選 lftp 而非 mc
+  的理由見死路節。(tests 526→547)**教訓:lftp `ls <單一檔案>` 走 opendir、對非目錄報
+  "No such file" 並 exit 1,但檔案其實已傳成功**——極易誤判成傳輸失敗而重試/回滾,列單檔須用
+  `cls`;已就地寫進 `lftprc` 註解(踩點在使用時,不在讀 dossier 時)。
+
 - ✅ 2026-08-03 codex repo-review 契約補強:autofix 起始 gate 一次化+後續 ownership 檢查(解 C2 F5 死鎖)、tree base 擋 autofix、reviewer `fork_turns=none`、mixed-context manifest;順帶 gitignore_global 收 `**/.claude/settings.local.json`(單機 key 檔全 repo 免誤 commit)。(#34;evals F16–F18,tests 526/0)
 - ✅ 2026-08-03 macOS 大型 notarized binary 路徑快取卡死地雷入庫(#33;syspolicyd 以完整路徑為 key,`killall` 解)
 - ✅ 2026-07-29 dossier 治理再下沉三訊號:條目行號/建議收斂目標/各節佔比(#32;SKILL.md 逐條處置複述改指腳本,消一處已漂移的重複記載)
@@ -215,6 +201,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   `brew reinstall --cask codex` 補完並清 `*.upgrading` 殘留。**勿用 xattr 除 quarantine 或
   --no-quarantine**(核可即足夠,那是不必要的安全弱化)。僅 codex 實際升版時發生(對話框綁
   CDHash 問一次);經 SSH 的 allup 對話框只出現在實體螢幕,該 Mac 須先本機核可過該版。
+- **m4mini 未裝 lftp**(其餘 13 台皆已裝):本次指定範圍是「所有 Linux 主機 + macs」,
+  刻意未擅自擴大。`~/.lftprc` 會由 dotsync 送達該機,但 binary 需補 `brew install lftp`。
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,
   改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
 - biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+credentials 明文散於三台。
