@@ -36,7 +36,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 **取證法**(已入 `claude/evals/README.md` 步驟 3):要評「受測 agent 送出了什麼」一律從 transcript 用 `jq` 抽,NEVER 要求它自己交出來(寫檔／多套一層 subagent 都消不掉觀察者效應)。**關鍵字列舉不可靠,須讀全文**。
 
-**待辦**:`/deep-review` 全流程在新契約模板下的 d3 重跑尚未執行(F18/F19 以舊 prompt 形態驗過)。
+**新契約模板已實測(2026-08-05 d3 全流程重跑)**:兩輪 prompt **字元數完全相同(1326/1326)**＝模板逐輪不變、只動變數槽;七項契約要素全中、零輪次/上限洩漏;沙箱 git 實查 squash parent == anchor、中間 commit 全為中性格式;R4 subagent 主動做同型掃描。
 
 ## 關鍵決策(附理由)
 
