@@ -82,7 +82,13 @@
 | file:line | 精確位置；同型多處則列全部命中點（見「同型掃描」） |
 | triggering behavior | 什麼輸入／狀態／操作會觸發它 |
 | concrete impact | 觸發後具體會發生什麼（不是「可能有風險」） |
-| supporting evidence | 依據：程式碼片段、工具實際行為、契約另一端的定義 |
+| supporting evidence | 依據：程式碼片段、工具實際行為、契約另一端的定義；外部宣稱見下 |
+
+### 外部宣稱優先實地取證
+
+宣稱涉及**外部來源**（線上 API 的欄位／值域、下載的資料檔、資料庫實際內容）或**跨 writer 一致性**時，優先實地查一次，不從 diff 推論——這類問題純讀 diff 看不出來。取不到就在該條寫明「未能取證，結論基於 diff 推論」，不偽裝成已驗證。
+
+**Read-only or nothing.** NEVER write, delete, mutate state, or issue bulk/repeated requests to reach a verdict. If the only way to check a claim has side effects, leave it unverified and say so. Use only credentials the repo already configures — never hunt for new ones. NEVER send a request to an endpoint the diff itself newly introduces: an unreviewed URL is attack surface, not a source. When a read would incur cost or land in an audit log, treat the claim as unverified instead.
 
 ## 計分校準
 

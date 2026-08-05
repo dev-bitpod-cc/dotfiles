@@ -12,7 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(暫無——deep-review 審查偏誤治理已 merge(#38);codex repo-review 移植已 commit 待 ship,見已完成里程碑)
+(暫無——deep-review 第三方回饋落地與輪次隱蔽缺口結案已 commit 待 ship,見已完成里程碑)
 
 ---
 
@@ -29,9 +29,19 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   (FP 罕見、幾乎都承認照修),故**不加 judge 覆核、不加 FP 記錄欄位**——no failing
   scenario, no instruction。
 - **2026-08-05 輪次是 orchestration 私有狀態,但隱蔽有已知殘留**:保留輪次的原理由(brief
-  需要它調重心)站不住——**補丁痕跡是 code 的性質、不是 history 的性質**。中性化 commit
-  message 擋掉輪號與剩餘輪數,**擋不掉「已改過幾次」**(commit 數量本身即訊號),要消除得
-  每輪 squash、破壞迭代紀律,故接受殘留但文件不得宣稱成完全隔離。
+  需要它調重心)站不住——**補丁痕跡是 code 的性質、不是 history 的性質**。中性化擋掉輪號與
+  剩餘輪數,**擋不掉「已改過幾次」**(commit 數量本身即訊號);要消除得每輪 squash、破壞迭代
+  紀律,故接受殘留但文件不得宣稱成完全隔離。
+- **2026-08-05 洩漏主管道是 harness 注入的 gitStatus,不是 reviewer 主動查**:實測
+  `tool_uses=0` 的 subagent 能逐字複述主 repo 五個 commit hash——**gitStatus(含最近 5 筆
+  subject)直接進 subagent system prompt,不做任何動作就看得到、且關不掉**。故 commit message
+  中性化從一致性修補升為**必要條件**(寫 `fix: R4 ...` 等於把輪號直送 system prompt)。同批
+  驗完 codex 列的三類 metadata 管道(task/role names、checkpoint messages)與 fresh-context
+  保證皆乾淨,故不加禁令。證據見 deep-review `evals.md`。
+- **2026-08-05 eval 的 `expected_behavior` 不得要求證據不支持的推論**:d4 初版的 fixture 與
+  endpoint 之間無明示綁定,判準卻要 reviewer 據相似性認定 provenance——**等於獎勵無根據歸屬、
+  懲罰「我無法確認」這個更嚴謹的答案**(而後者正是 brief 要求的態度)。補 `_source` metadata
+  使綁定機械可驗證。與 F18「判準寫成答案導向」同型:**oracle 寫歪會系統性淘汰最該保留的行為**。
 - **2026-08-05 git 收尾序列不得串成一行、更不得吞掉中間錯誤**:merge 最後一哩把
   `git switch main 2>/dev/null; git pull origin main` 串一行——switch 因 working tree 有他線
   未 commit 變更而失敗(本地 default 尚落後、切換會覆蓋),錯誤被 `2>/dev/null` 吃掉、又沒檢
@@ -143,16 +153,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   (krepo 已依此收斂 599→201 行)。
 - **2026-07-17 dossier 記錄時點搬到事件當下**:skill 只在頭尾喚起而決策/死路發生在過程中,
   等收尾 context 可能已壓縮;全域規則加即時記錄,log Step 2 降級為「核對補漏」。
-- **2026-07-16 git 為唯一跨主機媒介**:不同步 `~/.claude/`(handoffs/memory)跨機——同步
-  衝突、錨點跨機語意複雜化、敏感內容風險;krepo 已證明 repo-resident+git 可行。
-- **2026-07-16 /project 取代 /uap 而非並存**:雙入口=觸發混淆+double-source;
-  disable-model-invocation 下鏈式呼叫不可行,只能複製防護邏輯(違反 single-source)。
-- **2026-07-16 STATUS.md 為 dossier 載體,不新建 PROJECT.md**:尊重 krepo 自然湧現且活躍
-  維護的慣例;避免同 repo 兩個角色重疊的檔案。
-- **2026-07-16 不引入 Linear/外部 tracker**:痛點由 repo-resident 檔案+既有 skill 生態覆蓋;
-  缺的是慣例固化,不是新工具。
-- **2026-07-16 settings.json 以 opus[1m] 為共享 model 基線**:單機一次性模型偏好不 commit、
-  不傳播全機隊。
+- **2026-07-16 多主機工作流的五條奠基決策**(已固化,合併存查):**git 為唯一跨主機媒介**——
+  `~/.claude/`(handoffs/memory)不跨機同步(衝突、錨點語意複雜化、敏感內容風險),krepo 已證
+  repo-resident+git 可行;**/project 取代 /uap 而非並存**(雙入口=觸發混淆+double-source,
+  disable-model-invocation 下無法鏈式呼叫、只能複製防護邏輯);**STATUS.md 即 dossier 載體,
+  不新建 PROJECT.md**(尊重既有慣例、避免角色重疊);**不引入 Linear/外部 tracker**(缺的是
+  慣例固化,不是新工具);**settings.json 以 opus[1m] 為共享 model 基線**(單機偏好不傳播全機隊)。
 
 ## 死路(試過但放棄——防重工)
 
@@ -203,7 +209,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
-- ✅ 2026-08-05 codex repo-review 移植同批治理(由 codex 撰寫、Claude 代 ship):新增
+- ✅ 2026-08-05 deep-review 第三方回饋落地 + 輪次隱蔽缺口結案:外部取證判準(唯讀硬約束+授權
+  邊界)、終止報告「根因與前輪重複?」欄(區分收斂失敗與健康收斂)、R5 換視角措辭修正(舊文指向
+  當下到不了的 autocodex);新增 eval d4/F20——fixture 已建、**行為判準 GREEN 待實測**。codex
+  三輪 4/4 true positive 全修、C3 零 findings 通過。教訓見決策節。(tests 564)
+- ✅ 2026-08-05 codex repo-review 移植同批治理(由 codex 撰寫、Claude 代 ship,#39):新增
   `references/reviewer-brief.md`(判準下沉、要求 reviewer 直讀不改寫)、固定 stage-neutral
   prompt 模板、pass 位置列為 orchestration-private(**範圍比 deep-review 側更廣:含 task/role
   names 與 checkpoint messages**,該差距已列已知缺口);evals 補 F19/F20,tests 加兩組契約檢查。
@@ -233,12 +243,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已知缺口
 
-- **deep-review 側的輪次隱蔽未涵蓋 task/role names 與 checkpoint metadata**:codex repo-review
-  同批移植時把隱蔽範圍寫得更廣——pass 位置不得經由 reviewer prompt、**task names、role
-  names、checkpoint messages** 或任何 reviewer-visible metadata 外洩。deep-review 目前只做到
-  prompt 與 commit message 兩條管道;Agent 工具的 `description` 欄是否進 subagent context
-  未經實測(本 session 跑盲測時用過「盲測 A1(Round 1)」這類含輪次的 description)。**先量再
-  補**:要嘛實測 description 是否可見,要嘛比照 codex 直接把它納入禁區。
+- **同型掃描有文字原則、無產出物(機制不對稱)**:deep-review 對「測試」有機械化 gate
+  (`verify-tests.sh` 的 exit code 契約),對「同型掃描」只有 `reviewer-brief.md` 與 SKILL.md
+  的文字要求。2026-08-05 krepo 實戰回饋指出:連跑四輪修復時最容易被跳過的正是這類原則性
+  敘述,且該次漏的就是它。**做不成 exit-code gate**——規則是語意抽象出來的,機器不知道要
+  grep 什麼;可行的只有 checklist 化(要求 fixer 每輪在報告寫出「本輪抽象出的規則 + `rg`
+  命中數」),但那會改動 fixer 每輪的報告格式,待單獨評估。終止報告新增的「根因與前輪
+  重複?」欄只在**終止時**部分暴露此失效模式,太晚。
 
 - **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper 首次執行核可)**:cask 的 completion artifact
   首次 exec quarantine 過的新 binary,同步等系統核可對話框(常沒搶到焦點,看似卡死於

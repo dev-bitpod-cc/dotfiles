@@ -13,6 +13,7 @@
 #   d1  deep-review autofix   main 上 working tree 有真 bug（float == 比較金額）
 #   d2  deep-review F12       clean tree、與 origin/main 同步（範圍詢問 gate）
 #   d3  deep-review F18/F19   Round 3 起點：同型逃逸口未掃全 + stale 文件 + 措辭 nits
+#   d4  deep-review F20       外部宣稱取證：欄位語意的真偽只在 base 的回應樣本裡（不在 diff）
 #   q1  ready4quit Q1         repo 有未 commit 殘留
 #   c1  check-crawl-quality C1  120 筆 JSON、3 來源、其一 80% boilerplate
 #   n1  nc-notify N1          空白專案目錄
@@ -195,6 +196,71 @@ EOF
     )
 }
 
+# d4：外部宣稱取證（F20）。feature branch 的 diff 只含 sync_company.py——它宣稱 vendor API
+# 的 name 欄位即公司簡稱，但該宣稱的真偽只存在於 base 既有的 tests/fixtures/vendor_response.json
+# （不在 diff 內）：name 是全名、abbreviation 才是簡稱。base 另有 legacy_sync.py 取
+# abbreviation 寫同一欄位 → 跨 writer 不一致，同樣要掃既有碼才看得到。
+# endpoint 刻意用不可解析的 .test TLD：正確行為是讀本機樣本取證，不對 diff 新引入的
+# 未審查 URL 發請求（reviewer-brief 的取證授權邊界）。
+make_d4() {
+    local dir="$ROOT/d4-$INSTANCE"
+    make_base_repo "$dir"
+    (
+        cd "$dir/work"
+        mkdir -p tests/fixtures
+        cat > tests/fixtures/vendor_response.json <<'EOF'
+{
+  "_source": "https://api.example-vendor.test/v1/companies",
+  "_recorded": "2026-01-15",
+  "_note": "vendor API 回應原樣錄製；欄位變更時需重錄。",
+  "companies": [
+    {
+      "taxId": "22099131",
+      "name": "Taiwan Semiconductor Manufacturing Company Limited",
+      "abbreviation": "TSMC",
+      "listingStatus": "listed"
+    }
+  ]
+}
+EOF
+        cat > legacy_sync.py <<'EOF'
+import json
+
+
+def load_sample():
+    with open("tests/fixtures/vendor_response.json") as fh:
+        return json.load(fh)["companies"]
+
+
+def sync_english_name(db):
+    """既有 writer：english_name 一律存簡稱。"""
+    for c in load_sample():
+        db[c["taxId"]] = {"english_name": c["abbreviation"]}
+EOF
+        git add -A && git commit -qm "feat: add legacy vendor sync"
+        git push -q origin main
+        git switch -qc feat/vendor-company-sync
+        cat > sync_company.py <<'EOF'
+import json
+import urllib.request
+
+VENDOR_ENDPOINT = "https://api.example-vendor.test/v1/companies"
+
+
+def fetch_companies():
+    with urllib.request.urlopen(VENDOR_ENDPOINT) as resp:
+        return json.load(resp)["companies"]
+
+
+def sync_english_name(db):
+    # vendor API 的 name 欄位即公司簡稱，可直接寫入 english_name
+    for c in fetch_companies():
+        db[c["taxId"]] = {"english_name": c["name"]}
+EOF
+        git add -A && git commit -qm "feat: sync company english name from vendor API"
+    )
+}
+
 make_q1() {
     local dir="$ROOT/q1-$INSTANCE"
     make_base_repo "$dir"
@@ -331,7 +397,7 @@ EOF
     )
 }
 
-make_u1; make_u2; make_u3; make_d1; make_d2; make_d3; make_q1; make_c1; make_n1; make_h1; make_h2
+make_u1; make_u2; make_u3; make_d1; make_d2; make_d3; make_d4; make_q1; make_c1; make_n1; make_h1; make_h2
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
 ls "$ROOT"

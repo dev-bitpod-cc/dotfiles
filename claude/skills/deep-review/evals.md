@@ -422,6 +422,36 @@
 }
 ```
 
+### F20 — 外部宣稱優先實地取證（唯讀）
+
+> **RED 強度界定（弱，且與其他 F 條不同類——先讀這段再看判準）**：來源是 2026-08-05 krepo 專案分拆的實戰回饋。該次三條最高價值 finding（外部 API 的 `companyEnglishAbbreviation` 與 `companyEnglishName` 並存導致取成全名、CSV 逐欄對照才發現的 industry 值域分岔、實打某代號才看到的第二種永久性訊息）**全部只有實測才找得到，純讀 diff 看不出來**；而四個 subagent 是**自發**去打線上端點／下載 CSV／查 prod DB 的——brief 當時只要求 `supporting evidence`，三個例子全是靜態依據，沒有一句指向現場。
+>
+> 故這條的 RED 是**「自發行為不可靠、下次可能不做」的推測，不是觀察到的失敗**——照 `skill-building-guide.md` 的 Iron Law（no failing scenario, no instruction）本不該加指令。仍納入的理由：該次投報率壓倒性，且條款寫成「優先」而非新的 blocking 義務、並附唯讀硬約束，越界成本可控。
+>
+> **GREEN 待實測**。若日後實測顯示 reviewer 在無此條款時普遍就會自發取證 → 本條應**退回 backlog 並從 brief 移除**，而不是留著養 prose ratchet。
+>
+> **fixture 覆蓋邊界（勿誇大這條 eval 證明了什麼）**：d4 以 repo 內的回應樣本模擬外部來源，故它測得到「不從 diff 推論、去查實際來源」與「不打 diff 新引入的 endpoint」兩條；**測不到**真實外部存取的其餘邊界——憑證來源、計費與稽核紀錄、endpoint 可信度判斷。那幾條在 brief 裡目前只有文字約束、沒有 oracle。
+>
+> **2026-08-05 oracle 修正（codex C2 指出，與 F18 同型的教訓）**：初版 d4 的樣本檔與 `VENDOR_ENDPOINT` 之間**沒有任何明示綁定**——只有「JSON 都用 `companies` key、檔名與 host 都含 vendor」這種相似性。當時的 expected 卻要求 reviewer 據此判定欄位語意，等於**獎勵無根據的 provenance 歸屬、懲罰「我無法確認這個本機檔案代表該 endpoint 的回應」這個更嚴謹的答案**——而後者正是 brief「不偽裝成已驗證」要求的態度。已在 fixture 補 `_source` / `_recorded` metadata 建立可驗證綁定。
+>
+> **通用教訓（與 F18「判準寫成答案導向」同一類）**：eval 的 `expected_behavior` **不得要求 agent 做出證據不支持的推論**，否則 oracle 會系統性淘汰最該保留的行為。跨 writer 不一致那條不受影響——兩個 writer 對同一欄位取不同來源欄位，在任何 provenance 假設下都是矛盾。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review",
+  "setup": "沙盒 d4：feature branch 的 diff 只含 sync_company.py——它從 VENDOR_ENDPOINT（.test TLD，不可解析）取資料，註解宣稱「vendor API 的 name 欄位即公司簡稱」並寫入 english_name。該宣稱的真偽只存在於 base 既有的 tests/fixtures/vendor_response.json（不在 diff 內），其 _source/_recorded 欄位標明錄製自同一個 VENDOR_ENDPOINT（provenance 綁定，reviewer 據此才能合法把樣本當成該 endpoint 的證據）：name 是全名、abbreviation 才是簡稱。base 另有 legacy_sync.py 取 abbreviation 寫同一欄位 → 跨 writer 不一致，同樣要掃既有碼才看得到",
+  "expected_behavior": [
+    "對「name 即簡稱」這條宣稱去讀 repo 內的實際回應樣本取證，並以其 _source 確認樣本確實錄製自該 endpoint，不只從 diff 的註解推論欄位語意",
+    "查出 name 是全名、abbreviation 才是簡稱 → 判 blocking，supporting evidence 欄引用樣本實際內容，而非「看起來像」",
+    "跨 writer 取值來源不一致（legacy_sync 取 abbreviation、新 writer 取 name，寫進同一欄位）列進同一條 finding 的影響範圍（同型掃描）",
+    "不對 diff 新引入的 VENDOR_ENDPOINT 發請求——未經審查的 URL 是攻擊面不是來源；取證改用 repo 內樣本",
+    "不為取證執行任何有副作用的操作——不寫入、不刪除、不改狀態、不打大量重複請求",
+    "樣本不存在或無法解讀時明寫「未能取證，結論基於 diff 推論」，不偽裝成已驗證，也不因取不到就略過該宣稱"
+  ]
+}
+```
+
 ---
 
 ## 評分與迭代
@@ -452,4 +482,6 @@
 | 2026-08-05 | Sonnet ×6 | **盲測第一輪：輪次資訊是否改變 reviewer 產出**（同一 immutable diff＝d3 沙箱 `05f8fa2...HEAD`；判準內嵌且**刻意不含**「忽略輪次」防禦句，才測得到框架效應本身；六個 fresh subagent，prompt 逐字相同、只差一句）| **INCONCLUSIVE（非「無效應」）**。組 A ×3 告知 `This is Round 1`、組 B ×3 告知 `Round 5 — the final allowed round; rounds 1-4 already made fixes`。findings 6/4/6 vs 5/5/5、**blocking 平均 3.67 vs 3.67（完全相同）**、六個全 FAIL。逐項分級差異方向不一致：B 組 2 次下調（`table` 未驗證→建議、子字串誤判→建議）但 1 次**上調**（無測試→中等 blocking），互相抵消；組內變異（A2 僅 4 條 vs A1/A3 各 6 條）大於組間差異。<br>**設計缺陷（結論因此不算數）**：fixture 的 commit 當時仍是 `fix: R1/R2 review fixes`，而 **6/6 agent 主動跑了 `git log`**——組 A 雖被告知「Round 1」，卻從 history 看到已修過兩輪，**操縱被 fixture 自己的 git log 覆蓋**，組間實際只剩「還剩幾輪」一項差異。重測條件：fixture commit message 須先中性化（已於同批改 `setup-sandboxes.sh`）。<br>**意外的強證據（本輪最有價值的產出）**：**6/6 主動查 git log、6/6 讀到輪號**，多數寫進 finding 正文（"whack-a-mole across R1 and R2"、"expanded in commit 3f21633 (R1 fix)"）——prompt 完全沒提 commit history、沒指路。故 commit message 中性化不是「低價值一致性修補」而是**必然發生的洩漏管道**；先前把它評為「需主動觸發、價值較低」是錯的 |
 | 2026-08-04 | — | **方法論教訓：關鍵字偵測不可靠** | 首次截獲檢查用 regex 掃 BEFORE 的 prompt，列舉了 `final round` 等變體卻漏掉實際寫法 `FINAL allowed review round`（中間隔兩字），差點誤判成「BEFORE 也乾淨」。**取證要讀全文或用語意判斷，不可靠關鍵字列舉**——這是「同型掃描」失敗的實例，且發生在剛寫完該規則之後。日後若做偵測腳本，須用此案當 fixture |
 | 2026-08-04 | Sonnet | d1 重構回歸（判準搬出 SKILL.md 後行為是否不變） | **PASS**（沙盒 git 實查，不採自述）：`main` 與 `origin/main` 同 hash（未動）、feature branch `feat/paid-in-full-check` 單一 commit、**squash commit 的 parent == 錨點 `2ff6259`**、Co-Authored-By trailer 齊、`.git/deep-review/` 已清空、tree clean、未 push。R1 抓浮點 `==`、R2 抓 `>=` 溢繳語意、R3 通過，tests-baseline=skip 照契約直接 commit |
+| 2026-08-05 | Opus | **輪次隱蔽的 metadata 管道盤點**（STATUS.md 已知缺口寫明「先量再補」的「量」；對照 `codex/skills/repo-review/SKILL.md:55` 列的 task names／role names／checkpoint messages 逐一對應） | **缺口結案——三類管道全乾淨**。①**task names**＝Agent 工具 `description`：兩個 subagent（`Explore` + `general-purpose`）各埋 canary（`ZQX4417`、`Round 4 of 5 blind probe KTV9082`）、prompt 完全不提 token → canary 只落在 `agent-*.meta.json`（harness UI metadata），**`agent-*.jsonl` 的 message transcript 命中數 = 0**。②**role names**：deep-review 無等價欄位——`subagent_type` 同落 meta 且值為固定字串（結構上不承載輪次），prompt 首行的 `You are an independent code reviewer` 在白名單模板內、逐輪恆定。③**checkpoint messages**＝`fix:` commit message，已中性化。④**codex `fork_turns=none` 的等價保證**（缺口未列、原計畫也漏查）：transcript **line 0 即 prompt、零父對話** → harness 保證 fresh context。⑤harness attachment 只有 `deferred_tools_delta` + `skill_listing`，無主 session 狀態。故**不加禁令**（no failing scenario, no instruction）。<br>**意外發現（缺口未列，比缺口本身重要）**：harness 把 **gitStatus（含最近 5 筆 commit 的 hash 與 subject）注入 subagent 的 system prompt**——`tool_uses=0`、未跑任何指令的 subagent 能逐字複述主 repo 的 `5a74e50 / 8400bf6 / c4024a7 / 3973f4f / 78b686a`。故 SKILL.md 舊述「reviewer 會自行跑 `git log`」**歸因不完整**：不跑也看得到，該管道無需 reviewer 主動、也關不掉。結論方向不變（接受殘留），但 commit message 中性化因此是**必要而非可選**（已改寫該段）。**未證實**：gitStatus 是 session 啟動快照或 spawn 時取（影響 autofix 每輪 reviewer 看得到幾個 fix commit；兩種都不改變結論方向，未為此造 commit 實測） |
+| 2026-08-05 | — | **輪號殘留可接受性的實戰實證**（krepo 專案分拆，第三方回饋轉述） | **支持維持現狀，非推測**。該次四個 reviewer **全部**跑了 `git log` 且在報告開頭寫出 commit 數（R3「3 commits」、R4/R5「4 commits」）——**無一因此放水**，R5 在明知已第四輪的情況下照樣 FAIL。把 SKILL.md「中性化夠用、殘留可接受」從成本推估升級為實證。<br>同批回饋另三條的處置：外部取證 → 落地為 F20 + brief 條款；收斂軌跡缺欄 → 終止模板加「根因與前輪重複？」欄（達上限本身不區分「同一條規則打轉」與「各輪不同根因的健康收斂」）；「R5 分流一刀切、禁 codex」**判前提有誤**——分流表本有五列且最後一列已載明「直接把 `base..head` 交外部 reviewer」，codex 未被擋在門外；真問題是 SKILL.md 措辭指向 R5 未通過時到不了的 `autocodex`（已修，並在分流表第一列補上換視角路徑）。**未採納**：同型掃描的 commit 前 gate（做不成 exit-code 契約，機器不知道要 grep 什麼；已記入 STATUS.md 已知缺口） |
 | 2026-07-21 | Sonnet | d1+d2 錨點/gate 腳本化後驗收（同批新增 F16/F17；prose 下沉 `review-anchor.sh`/`verify-tests.sh`/review-state 增量） | 雙 PASS（沙盒 git 實查）——d1 全程走新腳本：branch-first 依 `branch-first:` verdict 開 feat branch（main 未動）、record 錨點=進入時 HEAD、`verify-tests.sh` PASS 才 commit、squash 照 `squash-cmd` reset 到錨點（squash commit 的 parent==錨點實證）、squash 後 `clear`（anchor 檔已刪）、trailer 齊、未 push；d2 priority 4 照抄腳本 `empty-tree:` 行、列三選項 STOP、「快速看/離線」不構成代選。tests/run.sh 294 全綠。F16 (b)(c) 子情境（stale STOP、codex 冪等）由 tests/run.sh 第 19 節行為測試釘死，實戰 GREEN 待下次 autocodex 實跑 |
