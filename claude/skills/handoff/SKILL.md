@@ -39,6 +39,7 @@ argument-hint: "[resume] [slug]"
 - Routing cross-host continuation into a machine-local handoff — the other host will never see it. Route it to the repo (STATUS.md).
 - Committing a throwaway HANDOFF.md into the repo. The add→delete churn and the rotting consumed-handoff (the general-rag-cs failure mode) are exactly what this forbids — repo-side state lives in STATUS.md, updated in place.
 - Dropping earlier rounds' dead-ends when re-handing off the same slug because "they're in archive/ anyway" — nothing reads archive/ on resume. Carry them forward, or sink them into STATUS.md (see W3 續寫交接).
+- Concluding "no active handoff with this slug, so this is round 1" — a consumed handoff sits in archive/, which is exactly where round 2+ normally finds its predecessor. Check archive before deciding (W1).
 - Treating the aggregate `verdict:` line as the verdict for every repo in a multi-anchor handoff. It is a rollup; reconcile per repo (R3).
 
 ## Write mode（/clear 前交接）
@@ -47,7 +48,14 @@ argument-hint: "[resume] [slug]"
 
 依 session 記憶列出本次工作涉及的 repo（同跨 repo 工作流原則，**不掃 `~/Projects/`**；context 被壓縮就以 pwd 的 repo 為底請使用者補充）。多 repo = 同一份交接檔、多條錨點。
 
-順跑 `handoff-anchor.sh list` 判定本次是首輪或**續寫**（active 已有同 slug、或本 session 稍早 resume 過同一條工作線 → 續寫，寫檔時走 W3 的「續寫交接」）。
+接著**先定 slug**（使用者指定就用，否則依工作線自取），再判定首輪或**續寫**——active 與 archive 兩處都要看：
+
+```
+~/.claude/skills/handoff/scripts/handoff-anchor.sh list             # active：尚未消費的前一份
+ls -1 ~/.claude/handoffs/archive/*-<slug>.md 2>/dev/null | tail -1  # archive：已消費的前幾輪
+```
+
+任一命中、或本 session 稍早 resume 過同一條工作線 → **續寫**，寫檔時走 W3 的「續寫交接」，並把命中那份的路徑帶過去。續寫的前一份**通常在 archive**（resume 時已消費），只查 active 會把第 N 輪誤判成首輪。
 
 ### W2：蓋錨點
 
@@ -98,13 +106,7 @@ slug: <slug>
 整檔覆寫意味著**前一份的內容不會自動留下**——resume 端沒有任何機制會去讀 archive。跨輪仍有效的死路與決策必須主動處理，否則多輪之後「防重工」就空了：
 
 - **主路徑（repo 有 STATUS.md）**：跨輪仍有效的死路/決策沉澱進 dossier 對應章節，交接檔只留本輪增量 + 一句指標（如「既有死路見 STATUS.md 死路節，勿重開」）。這是全域 CLAUDE.md「死路當下寫入 STATUS.md」的自然延伸——dossier 隨 git 走且跨主機，交接檔消費即死。
-- **Fallback（repo 無 dossier，或前一份不在本 session context——如未經 resume 直接 `/handoff <slug>`）**：讀前一份承接，不要憑本輪記憶重寫。
-
-  ```
-  ls -1 ~/.claude/handoffs/archive/*<slug>*.md | tail -1
-  ```
-
-  Read 其「死路」「關鍵決策」兩節，仍有效者逐條帶進新檔。
+- **Fallback（repo 無 dossier，或前一份不在本 session context——如未經 resume 直接 `/handoff <slug>`）**：Read W1 掃到的那一份（active 或 archive 皆可能），取其「死路」「關鍵決策」兩節，仍有效者逐條帶進新檔。不要憑本輪記憶重寫。
 
 ### W4：收尾報告
 

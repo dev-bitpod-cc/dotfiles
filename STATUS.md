@@ -41,17 +41,28 @@ eval 缺口。
 - `--show-toplevel` 會解析 symlink(`/tmp` → `/private/tmp`),測試 fixture 期望值需 realpath 化。
 - evals 實跑屬弱模型手動 session,不在本次範圍。
 
-**進度**:AC 1–5 全數完成。`./tests/run.sh` 572 PASS / 0 FAIL(exit 0)。B1/B2 做過**突變測試**
+**進度**:AC 1–5 完成後跑 codex C1 第三方審查,5 條 findings **全數驗證為 true positive**
+(無 false positive):續寫偵測盲點(高,見上方決策)、archive glob 無邊界子字串比對、沙盒 ROOT
+未正規化、Red Flags 改動後未重跑 eval、STATUS 下一步 stale。前四條已修,eval 實跑進行中。
+以下為初次交付的驗證紀錄:AC 1–5 全數完成。`./tests/run.sh` 572 PASS / 0 FAIL(exit 0)。B1/B2 做過**突變測試**
 ——把 anchors 還原成舊行為,4 條斷言變紅,其中「相對輸入 + 含空白 toplevel」舊版是 exit 0 且
 輸出壞錨點,確認漏洞為真而非理論。三個新沙盒實跑建置並驗語意:h6 verify 確為 FRESH+DRIFTED
 混合、h7 確為 DIVERGED。
 
-**下一步**:commit(`fix:` 腳本 / `docs:` 文件),不 push。H5/H6/H7 待另開弱模型 session 實跑。
+**下一步**:H5/H6/H7 evals 實跑取得 GREEN 紀錄(guide:291——改動紀律型 skill 的 Red Flags
+後沒有重跑紀錄就不算完成)。push 待使用者指示。
 
 ---
 
 ## 關鍵決策(附理由)
 
+- **2026-08-05 handoff 續寫偵測必須查 archive,不能只查 active**:原設計把判準訂為「active 有
+  同 slug **或** 本 session 剛 resume 過」,並刻意不加查 archive 的機制(當時理由:續寫的典型
+  入口是 resume,前一份已在 context)。codex C1 指出這在「新 session 直接 `/handoff <slug>`」
+  路徑上整條失效——前一份已被消費躺在 archive,兩個判準都不成立,第 N 輪被判成首輪,續寫
+  承接規則永遠走不到。**自打臉點:h5 沙盒的 setup 正是該路徑,等於造了自己規則涵蓋不到的
+  反例卻沒察覺。**教訓:規則與 eval fixture 同批寫時,先拿 fixture 對規則逐條走一遍——
+  fixture 是規則的反例產生器,不只是驗收工具。
 - **2026-08-05 `add -A` 禁令的例外只有 deep-review WIP snapshot,且附前置條件**:新立的全域
   禁令與 `deep-review/SKILL.md` 的 `git add -A && git commit -m "wip: ..."` 直接對撞(第三方
   審查抓到,全 repo 唯一衝突點)。**不改 skill**——WIP snapshot 要的正是「使用者原始變更的
