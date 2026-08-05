@@ -12,6 +12,82 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
+### todo:GitHub 多身分收斂——讓標準 URL 直接可用(2026-08-06 記錄,未開工)
+
+**Context**:krepo 拆出 `krepo-common` 後,依賴要寫成 git URL。原本沿用本家的
+`git@github-work:...`,但 **`github-work` 是本機 SSH alias、不是真實主機名**——寫進 repo
+等於要求每個消費者的機器都有同名 alias,而接手者撞到的會是一個「看起來像網路錯誤、
+實際上是少了一段 SSH 設定」的失敗。krepo 端已改標準 `git@github.com:`(已 ship),
+但**機器端的多身分配置還沒收斂**,現在靠 `insteadOf` 撐著,那是多加一層改寫機制、不是簡化。
+
+**Goal**:標準 URL(`git@github.com:`)在每台機器上都直接可用,`insteadOf` 整層移除。
+
+**現況盤點**(2026-08-06 實測):
+
+| 機器 | `github-work` | 個人(`github.com`) |
+|---|---:|---|
+| 工作 mac | **28** | **2**(`isdotgd`、`.dotfiles`) |
+| db01 | 全部 | **0** |
+| 個人 MacBook | 也有工作 repo | 少數幾個 |
+
+**關鍵事實:三台機器的主要身分都是「工作」**——個人 MacBook 上也處理工作 repo,
+而公司開發機不會 clone 個人 repo。所以**沒有機器差異**,不需要 host-local 覆蓋
+(`ssh/config` 的 `Include ~/.ssh/config.local` 機制留著備用即可)。
+
+**方案**(共用設定,三台一致):
+
+```
+Host github.com          # 工作 = 預設 = 標準寫法
+    IdentityFile ~/.ssh/id_github_work
+
+Host github-me           # 個人,少數 repo 明示
+    HostName github.com
+    IdentityFile ~/.ssh/id_github
+```
+
+- **`github-work` 整條刪除**——`github.com` 就是工作,不需要第二條路徑
+- 工作 repo 的 remote 全部改標準 `git@github.com:`(機械替換,見下)
+- 個人 repo 改 `git@github-me:`(工作 mac 只有 2 個)
+- **移除 mac 與 db01 的 `insteadOf`**(2026-08-06 為了讓 krepo 能拉依賴而暫設在各自的
+  `~/.gitconfig`;它們是這次收斂要消滅的對象,不是終態)
+
+剩下的唯一 alias 是 `github-me`,**不可約**——GitHub 一把 SSH key 只能綁一個帳號,
+兩個身分就必須有一種區分方式。
+
+**AC**:
+
+1. 三台機器上 `git clone git@github.com:elandcomtw/...` 直接成功,無 URL 改寫
+2. `gh repo clone` 也對(⚠️ **`gh` 完全不看 SSH alias**,這是 alias 方案永遠解不掉的一半,
+   只有「讓 `github.com` 就是工作身分」能解)
+3. `~/.gitconfig` 內無任何 `insteadOf`,`ssh/config` 內無 `github-work`
+4. 三台機器上 `cd ~/Projects/krepo && uv sync` 都能拉到 `krepo-common`
+5. 個人 repo(`isdotgd`、`dotfiles`)在改用 `github-me` 後仍可 push
+
+**遷移順序**(順序錯會鎖住存取):
+
+```bash
+# 1. 先確認每台機器都有 ~/.ssh/id_github_work（個人 MacBook 也要，它也跑工作 repo）
+# 2. 改 dotfiles 的 ssh/config，部署到各機器，驗證身分：
+#    ssh -T git@github.com   → 應認到 jjshen-eland
+#    ssh -T git@github-me    → 應認到 dev-bitpod-cc
+# 3. 身分驗證通過後才改 remote：
+for d in ~/Projects/*/ ~/.dotfiles; do
+  url=$(git -C "$d" remote get-url origin 2>/dev/null) || continue
+  case "$url" in
+    git@github-work:*) git -C "$d" remote set-url origin "${url/github-work:/github.com:}" ;;
+    git@github.com:dev-bitpod-cc/*) git -C "$d" remote set-url origin "${url/github.com:/github-me:}" ;;
+  esac
+done
+# 4. 最後移除 insteadOf：git config --global --unset-all url.<...>.insteadOf
+```
+
+⚠️ **`.dotfiles` 自己的 remote 也要改**(它是個人 repo)——上面的迴圈已涵蓋,但要記得
+那正是你正在編輯的 repo,改完先 `git remote -v` 確認再 push。
+
+**風險與回退**:動的是憑證設定,改錯會讓所有 repo 存取一起失敗。`ssh/config` 在 git 裡,
+`git checkout ssh/config` 即還原。⚠️ **但部署後才生效**——回退也要重新部署,別以為
+`git checkout` 就完事了。**建議清醒時做,不要在深夜動**。
+
 ### handoff skill 優化(2026-08-05 開工)
 
 **Context**:`handoff` 已是熱路徑(`~/.claude/handoffs/archive/` 52 份實檔)。拿這 52 份做
@@ -43,14 +119,16 @@ eval 缺口。
 
 **進度**:AC 1–5 完成後跑 codex C1 第三方審查,5 條 findings **全數驗證為 true positive**
 (無 false positive):續寫偵測盲點(高,見上方決策)、archive glob 無邊界子字串比對、沙盒 ROOT
-未正規化、Red Flags 改動後未重跑 eval、STATUS 下一步 stale。前四條已修,eval 實跑進行中。
+未正規化、Red Flags 改動後未重跑 eval、STATUS 下一步 stale。五條全數處理完畢:前四條已修,
+第五條(eval)已實跑——**H5/H6/H7 在 Sonnet(目標樓層)全 GREEN**,逐項實查沙盒檔案系統證實,
+guide:291 要求的 GREEN 重跑紀錄已補齊。修 F1 時另發現第一版修復不閉合(只修「有 slug 時查
+archive」,未給 slug 時 agent 自取新名一樣撈不到),已補成「先列 archive 看既有工作線再定 slug」。
 以下為初次交付的驗證紀錄:AC 1–5 全數完成。`./tests/run.sh` 572 PASS / 0 FAIL(exit 0)。B1/B2 做過**突變測試**
 ——把 anchors 還原成舊行為,4 條斷言變紅,其中「相對輸入 + 含空白 toplevel」舊版是 exit 0 且
 輸出壞錨點,確認漏洞為真而非理論。三個新沙盒實跑建置並驗語意:h6 verify 確為 FRESH+DRIFTED
 混合、h7 確為 DIVERGED。
 
-**下一步**:H5/H6/H7 evals 實跑取得 GREEN 紀錄(guide:291——改動紀律型 skill 的 Red Flags
-後沒有重跑紀錄就不算完成)。push 待使用者指示。
+**下一步**:本工作項已完成(codex C1 findings 全清、evals 全 GREEN),push 待使用者指示。
 
 ---
 
