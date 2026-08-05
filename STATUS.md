@@ -22,6 +22,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   「GREEN 待實測」;缺口移出「已知缺口」,gitStatus 新管道寫入決策節。
 - **Constraints(使用者拍板)**:R5 未通過**仍不**自動進 codex 階段(只改措辭、不動機制);
   外部取證限**唯讀、禁副作用**;同型掃描的 commit 前留痕本次**不做**,改記已知缺口。
+- **codex C1 處置**:三條 findings 全驗真。(a) SKILL.md「R5 未通過＝架構問題」的斷言與新
+  模板的健康收斂判準互相矛盾——**同一句話我只修了寫死的數字、沒修因果斷言**,改一句的一部分
+  最容易漏掉另一部分,cross-ref 檢查要連語意一起看不能只比對章節名;(b) F20 指定的 d4 沙盒
+  從未存在(建置器只到 d3),已實作 `make_d4`;(c) 取證條款補授權邊界(只用既有憑證、不打 diff
+  新引入的 endpoint、計費或留稽核則歸未取證)。**d4 的取捨**:以 repo 內回應樣本模擬外部來源、
+  不起 HTTP server(免 port 與背景進程依賴),代價是憑證/計費/endpoint 可信度那幾條邊界仍無
+  oracle——已在 F20 明列覆蓋邊界,勿誇大該 eval 證明了什麼。
 
 (上一批:deep-review 審查偏誤治理已 merge(#38);codex repo-review 移植已 commit 待 ship,見已完成里程碑)
 
