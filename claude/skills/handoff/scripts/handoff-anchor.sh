@@ -4,6 +4,7 @@
 #
 # 用法：
 #   handoff-anchor.sh anchors <repo-path>...   # 產生 frontmatter 錨點行（created + 逐 repo anchor）
+#                                              # 路徑可為相對或 repo 子目錄，錨點一律記 toplevel 絕對路徑
 #   handoff-anchor.sh verify  <handoff.md>     # 驗證交接檔錨點 vs 各 repo 現況
 #   handoff-anchor.sh consume <handoff.md>     # 消費歸檔：mv 到同層 archive/ 加秒級時戳前綴，
 #                                              # 印 archived: <路徑>；已消費（父目錄為
@@ -25,7 +26,7 @@
 #                exit 1 ≠ 已歸檔：讀 stderr 分辨，mv 失敗時交接檔仍在 active）；
 #            2 = 用法錯誤
 #
-# 限制：repo 路徑不可含空白（anchor 行以空白分欄）——anchors 遇含空白路徑直接報錯拒絕。
+# 限制：repo 路徑（解析後的 toplevel）不可含空白（anchor 行以空白分欄）——anchors 直接報錯拒絕。
 # list 的 dir 預設 $HANDOFF_DIR，未設則 ~/.claude/handoffs。
 
 set -uo pipefail
@@ -56,22 +57,29 @@ cmd_anchors() {
     local failed=0
     echo "created: $(date +%Y-%m-%d)"
     for repo in "$@"; do
-        case "$repo" in *[[:space:]]*)
-            echo "error: repo 路徑含空白，錨點格式不支援（anchor 行以空白分欄）：$repo" >&2
-            failed=1
-            continue ;;
-        esac
-        if ! git -C "$repo" rev-parse --show-toplevel >/dev/null 2>&1; then
-            echo "error: 不是 git repo（或路徑不存在）：$repo" >&2
+        # 記錄路徑一律用 toplevel 絕對路徑：輸入可能是相對路徑（`.`）或 repo 子目錄，原樣寫進
+        # 錨點後，日後在 cwd 已不同的新 session verify 會對到**別的 repo**——而失敗訊息會是
+        # 誤導性的 DIVERGED「歷史改寫」（真相是路徑錯），其處置又是整份交接檔降級為線索，
+        # 錨點機制等於白費。順帶把子目錄輸入對齊 repo root。
+        local top
+        top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)"
+        if [ -z "$top" ]; then
+            echo "error: 不是 git repo（或路徑不存在）：${repo}" >&2
             failed=1
             continue
         fi
+        # 空白檢查對解析後的 top 而非原輸入：相對路徑輸入本身可以無空白、toplevel 卻含空白
+        case "$top" in *[[:space:]]*)
+            echo "error: repo 路徑含空白，錨點格式不支援（anchor 行以空白分欄）：${top}" >&2
+            failed=1
+            continue ;;
+        esac
         local branch sha dirty
-        branch="$(git -C "$repo" symbolic-ref --short -q HEAD)" || branch="DETACHED"
+        branch="$(git -C "$top" symbolic-ref --short -q HEAD)" || branch="DETACHED"
         # full sha：short sha 日後可能因物件增長變 ambiguous，導致 verify 誤判 DIVERGED
-        sha="$(git -C "$repo" rev-parse HEAD)"
-        dirty="$(git -C "$repo" status --porcelain | wc -l | tr -d ' ')"
-        echo "anchor: $repo $branch $sha dirty=$dirty"
+        sha="$(git -C "$top" rev-parse HEAD)"
+        dirty="$(git -C "$top" status --porcelain | wc -l | tr -d ' ')"
+        echo "anchor: $top $branch $sha dirty=$dirty"
     done
     return "$failed"
 }
@@ -235,9 +243,12 @@ cmd_list() {
         echo "handoffs: NONE（目錄不存在：${dir}）"
         exit 0
     fi
+    # path 行要能直接餵給 verify/consume，相對輸入先解析成絕對（同 consume 的解析模式）
+    local abs
+    abs="$(CDPATH='' cd -- "$dir" 2>/dev/null && pwd -P)" && dir="$abs"
 
     # -- active 交接檔 --
-    local found=0 f base created age flag
+    local found=0 f base created age flag title
     for f in "$dir"/*.md; do
         [ -f "$f" ] || continue
         found=1
@@ -250,6 +261,11 @@ cmd_list() {
         else
             echo "active: $base — created 無法解析 — SUSPECT"
         fi
+        # path：verify/consume 吃完整路徑，印出來免得讀取端自己手拼
+        echo "  path: $f"
+        # title：多份待選時光看 slug 分不出是哪條工作線；無標題行則整行省略
+        title="$(sed -n 's/^# Handoff:[[:space:]]*//p' "$f" | head -1)"
+        [ -n "$title" ] && echo "  title: $title"
     done
     [ "$found" -eq 0 ] && echo "active: none"
 
