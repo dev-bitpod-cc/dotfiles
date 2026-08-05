@@ -53,6 +53,9 @@
 | n1 | nc-notify | cron 腳本 NC 整合 checklist（N1） |
 | h1 | handoff | write-side 交接：錨點、死路、memory 路由（H1） |
 | h2 | handoff | resume-side：DRIFTED 交接檔對帳 + 消費歸檔（H2） |
+| h5 | handoff | write-side：續寫交接（同 slug 第 2 輪）的跨輪死路承接（H5） |
+| h6 | handoff | resume-side：多 repo 混合 verdict（a FRESH／b DRIFTED）逐 repo 處置（H6） |
+| h7 | handoff | resume-side：DIVERGED（錨點被 amend 掉）內容降級為線索（H7） |
 
 root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒；handoff H3 只需空 handoffs 目錄。
 

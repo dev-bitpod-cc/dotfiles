@@ -1,7 +1,7 @@
 # Handoff — Evals
 
 > 開發/迭代用的評測集，**不從 SKILL.md body 連結**。
-> 沙盒建置：`claude/evals/setup-sandboxes.sh`（h1 / h2 情境；h3 只需空 handoffs 目錄）；手動執行見 `claude/evals/README.md`。
+> 沙盒建置：`claude/evals/setup-sandboxes.sh`（h1 / h2 / h5 / h6 / h7 情境；h3 只需空 handoffs 目錄）；手動執行見 `claude/evals/README.md`。
 > 沙盒版目錄對應：prompt 中明給「handoff 目錄用 <sandbox>/handoffs、memory 目錄用 <sandbox>/memory」，腳本用真實路徑。
 
 ---
@@ -96,6 +96,62 @@
 }
 ```
 
+### H5 — write-side：續寫交接的內容承接（沙盒 h5）
+
+> 依據：52 份實檔中 14 份是同一 slug（`evint-mvp-sprint` 7/22–7/27 共 14 輪），另 4 個 slug 各 2–3 輪
+> ——約 40% 的交接檔屬多輪工作線，而「整檔覆寫」讓前輪死路沒有任何機制會被讀到。
+
+```json
+{
+  "skills": ["handoff"],
+  "query": "幫我寫交接檔，我等下要 /clear。handoff 目錄用 <sandbox>/handoffs、repo 在 <sandbox>/work。",
+  "setup": "active 目錄空、archive/ 有前一份同工作線交接檔（order-pipeline-hardening，含兩條跨輪仍有效的死路：threading 併發打外部 API 被 per-key 限流打回、pydantic v2 遷移被 legacy 相依擋住）；repo 有 STATUS.md，其死路節刻意只有無關的 tenacity 一條；本輪進度：timeout 參數化已 commit、metrics WIP 未 commit。agent 為新 session，前一份不在 context",
+  "expected_behavior": [
+    "偵測到這是續寫（同工作線已有前一份），不當首輪處理",
+    "讀 archive 最近一份，兩條跨輪死路必須有著落——沉澱進 STATUS.md 死路節（主路徑）或帶進新交接檔皆可，但不得雙雙消失",
+    "沉澱進 dossier 者不在交接檔重複貼一次，只留指標 + 本輪增量",
+    "跑 anchors 蓋錨點；dirty>0 → 提醒 metrics WIP 不受錨點保護、不代為 commit",
+    "不把 archive 的前一份撈回 active，也不 append 到舊檔"
+  ]
+}
+```
+
+### H6 — resume-side：多 repo 混合 verdict 的逐 repo 處置（沙盒 h6）
+
+> 依據：14/52（27%）交接檔帶 2–3 條錨點，而 `verify` 的 `verdict:` 是全域聚合旗標
+> ——任一 repo 非 FRESH 即 STALE-RISK，拿它一刀切會讓 FRESH repo 的下一步被無謂降級。
+
+```json
+{
+  "skills": ["handoff"],
+  "query": "接續上次的工作，交接檔在 <sandbox>/handoffs/gateway-and-order-hardening.md，照著把剩下的做完。",
+  "setup": "兩條錨點：repo-a 未動（FRESH）、repo-b 已前進一個 commit（DRIFTED——下一步第 2 條 retry 已被做掉、決策「HTTP client 用 requests」已被換成 httpx）；聚合 verdict 為 STALE-RISK",
+  "expected_behavior": [
+    "動工前跑 handoff-anchor.sh verify（有輸出證據），不逐條重跑底層 git",
+    "repo-a 判 FRESH → 下一步第 1 條（rate limit）照原計畫接續，**不因聚合 STALE-RISK 一併降級為線索**",
+    "repo-b 判 DRIFTED → 讀中間 commit 對帳：retry 不重做、requests 決策不回退，只執行仍有效的 timeout 參數化",
+    "向使用者報告落差（哪個 repo 漂移、哪幾條失效）後才動工",
+    "完成後以 consume 歸檔，不留在 active、不就地標 done"
+  ]
+}
+```
+
+### H7 — resume-side：DIVERGED 的降級處置（沙盒 h7）
+
+```json
+{
+  "skills": ["handoff"],
+  "query": "接續上次的工作，交接檔在 <sandbox>/handoffs/csv-parser-rewrite.md。",
+  "setup": "錨點的 HEAD 被 amend 掉、不在現行歷史上；改寫後 parser.py 已改用 stdlib csv 模組——交接檔的決策「先自己寫而不用 csv 模組」與下一步「加引號欄位支援」都已被現況推翻（csv 模組本來就支援引號）",
+  "expected_behavior": [
+    "verify 判 DIVERGED → 交接內容一律降級為線索，不照著「下一步」直接動手",
+    "改對 repo 現況重建：辨識 parser.py 已改用 csv 模組、引號支援已隨之取得",
+    "落差大 → 先報告並等指示；**NEVER 把 parser 改回自寫版本來迎合交接檔**（repo 才是事實）",
+    "無 verify 輸出就不執行任何下一步"
+  ]
+}
+```
+
 ---
 
 ## 執行紀錄
@@ -108,3 +164,4 @@
 | 2026-07-06 | Sonnet | H2（有 skill） | PASS（5/5：verify 先行、DRIFTED 對帳不重工不回退、只做剩餘項、mv archive/ 帶日期前綴 active 清空、未 push）——實地查檔案系統證實 |
 | 2026-07-06 | Sonnet | H3（有 skill） | PASS（list 實跑、零份 → 停下請使用者指路，不臆測） |
 | 2026-07-16 | Sonnet | H4（有 skill，cutover 驗證輪） | PASS（跨機內容進 STATUS.md 並 commit、交接檔僅 pointer、未 push 且主動標示不可見） |
+| — | — | H5 / H6 / H7 | **未實跑**（2026-08-05 新增情境；沙盒已建置並驗過語意：h6 verify 確為 FRESH+DRIFTED 混合、h7 確為 DIVERGED） |

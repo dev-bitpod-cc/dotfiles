@@ -38,12 +38,16 @@ argument-hint: "[resume] [slug]"
 - Putting a durable rule in the handoff "so it won't get lost after /clear". That is exactly how it gets lost — route it to memory.
 - Routing cross-host continuation into a machine-local handoff — the other host will never see it. Route it to the repo (STATUS.md).
 - Committing a throwaway HANDOFF.md into the repo. The add→delete churn and the rotting consumed-handoff (the general-rag-cs failure mode) are exactly what this forbids — repo-side state lives in STATUS.md, updated in place.
+- Dropping earlier rounds' dead-ends when re-handing off the same slug because "they're in archive/ anyway" — nothing reads archive/ on resume. Carry them forward, or sink them into STATUS.md (see W3 續寫交接).
+- Treating the aggregate `verdict:` line as the verdict for every repo in a multi-anchor handoff. It is a rollup; reconcile per repo (R3).
 
 ## Write mode（/clear 前交接）
 
 ### W1：範圍
 
 依 session 記憶列出本次工作涉及的 repo（同跨 repo 工作流原則，**不掃 `~/Projects/`**；context 被壓縮就以 pwd 的 repo 為底請使用者補充）。多 repo = 同一份交接檔、多條錨點。
+
+順跑 `handoff-anchor.sh list` 判定本次是首輪或**續寫**（active 已有同 slug、或本 session 稍早 resume 過同一條工作線 → 續寫，寫檔時走 W3 的「續寫交接」）。
 
 ### W2：蓋錨點
 
@@ -78,20 +82,33 @@ slug: <slug>
 <試過什麼、為何放棄；真的沒有才寫「無」>
 
 ## 下一步（逐條可執行）
-1. <具體到新 session 能直接動手>
+1. <具體到新 session 能直接動手；多 repo 時每條標所屬 repo，如 `[krepo]`>
 
 ## 涉及檔案
-<相對路徑；不存在的標「待新建」>
+<相對路徑；不存在的標「待新建」；多 repo 時分 repo 列>
 
 ## 坑
 <已知陷阱、環境限制；無則省略本節>
 ```
 
-內容規則（Critical 已定硬約束，這裡是品質要點）：死路一節是交接檔最值錢的部分，新 session 最容易在這裡重蹈覆轍；「下一步」寫到可直接執行，不寫「繼續完成」這種空話。
+內容規則（Critical 已定硬約束，這裡是品質要點）：死路一節是交接檔最值錢的部分，新 session 最容易在這裡重蹈覆轍；「下一步」寫到可直接執行，不寫「繼續完成」這種空話。多 repo 時「下一步」條目必須**看得出所屬 repo**——resume 端是逐 repo 對帳（R3），歸屬只藏在 `cd <path>` 指令裡就對不上帳。
+
+#### 續寫交接（同 slug 第 2 輪起）
+
+整檔覆寫意味著**前一份的內容不會自動留下**——resume 端沒有任何機制會去讀 archive。跨輪仍有效的死路與決策必須主動處理，否則多輪之後「防重工」就空了：
+
+- **主路徑（repo 有 STATUS.md）**：跨輪仍有效的死路/決策沉澱進 dossier 對應章節，交接檔只留本輪增量 + 一句指標（如「既有死路見 STATUS.md 死路節，勿重開」）。這是全域 CLAUDE.md「死路當下寫入 STATUS.md」的自然延伸——dossier 隨 git 走且跨主機，交接檔消費即死。
+- **Fallback（repo 無 dossier，或前一份不在本 session context——如未經 resume 直接 `/handoff <slug>`）**：讀前一份承接，不要憑本輪記憶重寫。
+
+  ```
+  ls -1 ~/.claude/handoffs/archive/*<slug>*.md | tail -1
+  ```
+
+  Read 其「死路」「關鍵決策」兩節，仍有效者逐條帶進新檔。
 
 ### W4：收尾報告
 
-報告：檔案路徑、錨點摘要（含 dirty 提醒）、durable 事實路由結果（寫了哪些 memory / 無）。順跑 `handoff-anchor.sh list` 做 housekeeping——有 EXPIRED 的舊交接檔就列出，建議處置（resume 重驗或確認無用後刪；**刪除先經使用者同意**）。最後提醒：新 session 開場說「接續交接 <slug>」或 `/handoff resume <slug>`。
+報告：檔案路徑、錨點摘要（含 dirty 提醒）、durable 事實路由結果（寫了哪些 memory / 無）。拿 W1 那次 `list` 的輸出做 housekeeping（不必重跑）——有 EXPIRED 的舊交接檔就列出，建議處置（resume 重驗或確認無用後刪；**刪除先經使用者同意**）。最後提醒：新 session 開場說「接續交接 <slug>」或 `/handoff resume <slug>`。
 
 ## Resume mode（新 session 接續）
 
@@ -101,7 +118,7 @@ slug: <slug>
 ~/.claude/skills/handoff/scripts/handoff-anchor.sh list
 ```
 
-指定了 slug 就用它；未指定且僅一份 active → 直接用；多份 → 列給使用者選；零份 → 明說沒有交接檔，請使用者指路（不要憑空猜工作內容）。
+指定了 slug 就用它；未指定且僅一份 active → 直接用；多份 → 列給使用者選；零份 → 明說沒有交接檔，請使用者指路（不要憑空猜工作內容）。`list` 每份會印 `path:`（完整路徑，直接餵給下一步的 verify/consume）與 `title:`（多份時辨識工作線）。
 
 ### R2：驗證
 
@@ -113,11 +130,15 @@ slug: <slug>
 
 ### R3：對帳（reconcile）
 
-| verdict | 處置 |
+**逐 repo 判定、逐 repo 處置**：先把「下一步」各條歸屬到 repo，再套該 repo 的 status。`verify` 尾行的 `verdict:` 只是**全域聚合旗標**（任一 repo 非 FRESH 即 `STALE-RISK`），多錨點時拿它一刀切整份交接檔，會讓 FRESH repo 的下一步被無謂降級。
+
+| 該 repo 的 status | 處置 |
 |---------|------|
-| FRESH | 內容可信，直接依「下一步」接續 |
-| DRIFTED | 讀 verify 列出的中間 commits（必要時 `git show`）：逐條檢查「下一步」是否已被做掉、「決策」是否已被推翻，以 repo 現況修訂計畫，**向使用者報告落差**再動工 |
-| DIVERGED / MISSING / EXPIRED / UNVERIFIABLE | 內容一律降級為線索；對 repo 重建現況，落差大就先報告等指示 |
+| FRESH | 該 repo 的內容可信，直接依「下一步」接續 |
+| DRIFTED | 讀 verify 列出的中間 commits（必要時 `git show`）：逐條檢查該 repo 的「下一步」是否已被做掉、「決策」是否已被推翻，以 repo 現況修訂計畫，**向使用者報告落差**再動工 |
+| DIVERGED / MISSING / BAD-ANCHOR | 該 repo 的內容降級為線索；對 repo 重建現況，落差大就先報告等指示 |
+
+檔案級的 **EXPIRED**（超過 EXPIRE_DAYS）與 **UNVERIFIABLE**（無錨點）不分 repo，**整份**降級為線索。
 
 ### R4：消費歸檔，然後開工
 

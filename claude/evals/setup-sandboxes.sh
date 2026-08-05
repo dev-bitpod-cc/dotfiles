@@ -18,6 +18,9 @@
 #   n1  nc-notify N1          空白專案目錄
 #   h1  handoff H1            WIP repo + handoffs 目錄（write-side 交接）
 #   h2  handoff H2            交接檔錨點已 DRIFTED（記錄 HEAD 後 repo 又前進）
+#   h5  handoff H5            續寫交接：archive 有前一份（帶死路）+ repo 有 STATUS.md
+#   h6  handoff H6            多 repo 混合 verdict：repo-a FRESH、repo-b DRIFTED
+#   h7  handoff H7            DIVERGED：錨點的 HEAD 被 amend 掉，不在現行歷史上
 #
 set -euo pipefail
 
@@ -331,7 +334,243 @@ EOF
     )
 }
 
-make_u1; make_u2; make_u3; make_d1; make_d2; make_d3; make_q1; make_c1; make_n1; make_h1; make_h2
+# h5：續寫交接（同 slug 第 2 輪）。前一份已消費落在 archive/、active 目錄空——模擬新 session
+# 未經 resume 直接寫交接，前一份不在 context。repo 有 STATUS.md（死路節刻意不含前一份那兩條，
+# 讓「沉澱進 dossier」有落點）。
+make_h5() {
+    local dir="$ROOT/h5-$INSTANCE"
+    mkdir -p "$dir" "$dir/handoffs/archive"
+    git init --bare -q -b main "$dir/origin.git"
+    git clone -q "$dir/origin.git" "$dir/work" 2>/dev/null
+    (
+        cd "$dir/work"
+        git config user.name "sandbox"
+        git config user.email "sandbox@test.local"
+        cat > pipeline.py <<'EOF'
+import time
+
+import httpx
+
+
+def fetch(url, timeout=10):
+    for attempt in range(3):
+        try:
+            return httpx.get(url, timeout=timeout)
+        except httpx.TransportError:
+            if attempt == 2:
+                raise
+            time.sleep(2**attempt)
+EOF
+        cat > STATUS.md <<'EOF'
+# STATUS.md
+
+訂單 pipeline 服務——外部 API 取單與正規化的單一來源
+
+---
+
+## 進行中
+
+### pipeline 穩定性強化
+retry/backoff 已上；timeout 參數化已上；metrics 做到一半。
+
+---
+
+## 關鍵決策(附理由)
+
+- **backoff 用 2^n**:外部 API 文件建議的重試節奏,固定間隔在尖峰會同步撞牆。
+
+---
+
+## 死路(試過但放棄——防重工)
+
+- **不用 tenacity 套件**:只需要三行 backoff,多一個相依不划算。
+
+---
+
+## 已完成(里程碑)
+
+- 2026-08-01 retry + backoff 上線
+EOF
+        git add -A && git commit -qm "feat: fetch with retry/backoff"
+        # 本輪進度：timeout 參數化已 commit
+        git commit -q --allow-empty -m "feat: parameterize timeout"
+        git push -q origin main
+        # WIP：metrics 做到一半（未 commit）
+        cat >> pipeline.py <<'EOF'
+
+
+def record_latency(name, seconds):
+    # TODO: 接 statsd client、加 tag（endpoint / status）
+    print(f"{name}={seconds}")
+EOF
+    )
+    # 前一份交接檔（已消費，帶兩條跨輪仍有效的死路——STATUS.md 裡刻意沒有）。
+    # 錨點指向前一輪當時的 HEAD，agent 若去 verify 會得到合理的 DRIFTED（repo 已前進一個 commit）
+    local prev_sha
+    prev_sha="$(git -C "$dir/work" rev-parse HEAD~1)"
+    cat > "$dir/handoffs/archive/20260801-101500-order-pipeline-hardening.md" <<EOF
+---
+slug: order-pipeline-hardening
+created: 2026-08-01
+anchor: $dir/work main $prev_sha dirty=0
+---
+
+# Handoff: 訂單 pipeline 穩定性強化
+
+## 目標
+讓 pipeline.py 的外部取單在不穩定網路與限流下可靠。
+
+## 已完成
+- fetch() retry + exponential backoff
+
+## 關鍵決策（附理由）
+- backoff 用 2^n——外部 API 文件建議的重試節奏
+
+## 死路（試過但放棄——防重工）
+- **threading 併發打外部 API 已放棄**：對方有 per-key QPS 限制，併發只換到一波 429，
+  改回序列 + backoff 反而穩。不要再試「加 worker 就會更快」。
+- **pydantic v2 全面遷移已放棄**：相依的 legacy 套件把 pydantic 釘在 v1，升上去整條
+  pipeline 匯入就爆。
+
+## 下一步（逐條可執行）
+1. timeout 從 hardcode 改成 fetch() 參數（預設 10）
+2. 加 latency metrics
+
+## 涉及檔案
+- pipeline.py
+EOF
+}
+
+# h6：多 repo 混合 verdict——repo-a 錨點未動（FRESH）、repo-b 錨點後又前進（DRIFTED，
+# 且「下一步」其中一條已被做掉）。驗逐 repo 處置，不因聚合旗標把 repo-a 一起降級。
+make_h6() {
+    local dir="$ROOT/h6-$INSTANCE"
+    mkdir -p "$dir" "$dir/handoffs"
+    local sha_a sha_b r
+    for r in repo-a repo-b; do
+        git init -q -b main "$dir/$r"
+        (
+            cd "$dir/$r"
+            git config user.name "sandbox"
+            git config user.email "sandbox@test.local"
+            printf 'def handle(req):\n    return {"ok": True}\n' > svc.py
+            git add -A && git commit -qm "feat: initial $r service"
+        )
+    done
+    sha_a="$(git -C "$dir/repo-a" rev-parse HEAD)"
+    sha_b="$(git -C "$dir/repo-b" rev-parse HEAD)"
+    cat > "$dir/handoffs/gateway-and-order-hardening.md" <<EOF
+---
+slug: gateway-and-order-hardening
+created: $(date +%Y-%m-%d)
+anchor: $dir/repo-a main $sha_a dirty=0
+anchor: $dir/repo-b main $sha_b dirty=0
+---
+
+# Handoff: gateway 限流 + order 取單強化
+
+## 目標
+gateway 擋住突發流量；order 取單在限流下不掉單。
+
+## 已完成
+- 兩邊的基本 handler（repo-a / repo-b 各 svc.py）
+
+## 關鍵決策（附理由）
+- **[repo-b] HTTP client 用 requests**：團隊最熟悉
+
+## 死路（試過但放棄——防重工）
+-（無）
+
+## 下一步（逐條可執行）
+1. **[repo-a]** svc.py 加 rate limit（token bucket，每 key 10 req/s）
+2. **[repo-b]** svc.py 的取單加 retry（3 次、exponential backoff）
+3. **[repo-b]** timeout 改成參數（預設 10 秒）
+
+## 涉及檔案
+- repo-a/svc.py
+- repo-b/svc.py
+EOF
+    # repo-b 在交接檔寫完後前進：retry 已完成（下一步第 2 條已被做掉）、client 換成 httpx
+    (
+        cd "$dir/repo-b"
+        cat > svc.py <<'EOF'
+import time
+
+import httpx
+
+
+def handle(req):
+    for attempt in range(3):
+        try:
+            return httpx.get(req["url"], timeout=10).json()
+        except httpx.TransportError:
+            if attempt == 2:
+                raise
+            time.sleep(2**attempt)
+EOF
+        git add -A && git commit -qm "feat: add retry, switch to httpx"
+    )
+}
+
+# h7：DIVERGED——錨點記錄的 HEAD 被 amend 掉，已不在現行歷史上。內容一律降級為線索。
+make_h7() {
+    local dir="$ROOT/h7-$INSTANCE"
+    mkdir -p "$dir" "$dir/handoffs"
+    git init -q -b main "$dir/work"
+    (
+        cd "$dir/work"
+        git config user.name "sandbox"
+        git config user.email "sandbox@test.local"
+        printf 'def parse(raw):\n    return raw.split(",")\n' > parser.py
+        git add -A && git commit -qm "feat: naive csv parser"
+    )
+    local sha
+    sha="$(git -C "$dir/work" rev-parse HEAD)"
+    cat > "$dir/handoffs/csv-parser-rewrite.md" <<EOF
+---
+slug: csv-parser-rewrite
+created: $(date +%Y-%m-%d)
+anchor: $dir/work main $sha dirty=0
+---
+
+# Handoff: CSV parser 改寫
+
+## 目標
+parser.py 能正確處理帶引號與跳脫的欄位。
+
+## 已完成
+- naive split(",") 版本（parser.py）
+
+## 關鍵決策（附理由）
+- 先自己寫而不用 csv 模組——輸入格式非標準，欄位分隔符會動態變
+
+## 死路（試過但放棄——防重工）
+-（無）
+
+## 下一步（逐條可執行）
+1. parser.py 的 parse() 加引號欄位支援（帶引號的 "a,b" 應保持成一欄，整列解析成 2 欄）
+2. 加跳脫字元處理
+
+## 涉及檔案
+- parser.py
+EOF
+    # 交接檔寫完後歷史被改寫：改用標準 csv 模組，原 commit 被 amend 掉
+    (
+        cd "$dir/work"
+        cat > parser.py <<'EOF'
+import csv
+import io
+
+
+def parse(raw, delimiter=","):
+    return next(csv.reader(io.StringIO(raw), delimiter=delimiter))
+EOF
+        git add -A && git commit -q --amend -m "feat: csv parser on stdlib csv module"
+    )
+}
+
+make_u1; make_u2; make_u3; make_d1; make_d2; make_d3; make_q1; make_c1; make_n1
+make_h1; make_h2; make_h5; make_h6; make_h7
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
 ls "$ROOT"

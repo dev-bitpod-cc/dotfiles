@@ -12,7 +12,41 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(暫無)
+### handoff skill 優化(2026-08-05 開工)
+
+**Context**:`handoff` 已是熱路徑(`~/.claude/handoffs/archive/` 52 份實檔)。拿這 52 份做
+統計後發現機制層(`handoff-anchor.sh` + `tests/run.sh` 第 13 節)紮實,但 SKILL.md 漏掉兩個
+高頻使用模式:**同 slug 多輪續寫**(`evint-mvp-sprint` 7/22–7/27 共 14 輪,另 4 個 slug 各
+2–3 輪,合計約 40%)只有「整檔覆寫」一句、未規定內容承接;**多 repo 錨點**(14/52 = 27%)
+在 R3 只有「單一 verdict → 單一處置」映射、無混合判定處置。
+
+**Goal**:把已被實證的正確行為固化成規則(非發明新流程),並補兩項零成本腳本防禦與三個
+eval 缺口。
+
+**AC**:
+1. SKILL.md W3 有續寫承接規則(主路徑沉澱 STATUS.md + 無 dossier 時讀 archive 前一份的
+   fallback)、W1 有續寫偵測、Red Flags 有反制「反正在 archive 裡」的條目。
+2. SKILL.md R3 改逐 repo status → 處置,並註明 `verdict:` 只是全域聚合旗標;W3 模板要求
+   多 repo 時「下一步/涉及檔案」明標 repo。
+3. `anchors` 記錄 `--show-toplevel` 絕對路徑(相對路徑/子目錄輸入皆對齊 repo root),空白
+   檢查後移到 toplevel;`list` 補 `path:` 行與標題。
+4. `./tests/run.sh` 以 exit code 全綠,含新增斷言且既有斷言不破。
+5. evals.md 有 H5(續寫)/H6(多 repo 混合)/H7(DIVERGED)情境 + 沙盒。
+
+**Constraints**:
+- **明確不動**(實證判定不值得改,避免後續 session 翻案):archive 保留期用 mtime(49/52
+  當天消費、偏差 ≤1 天)、`EXPIRE_DAYS`/EXPIRED/UNVERIFIABLE 分支(從未觸發的保險絲,
+  **不刪也不再擴充生命週期機制**)、verify 的 dirty note(僅 10% 檔案 dirty>0)、模板 7 節
+  (52/52 遵循、死路節 49/52 有實質內容 → 不是 ceremony)。
+- `--show-toplevel` 會解析 symlink(`/tmp` → `/private/tmp`),測試 fixture 期望值需 realpath 化。
+- evals 實跑屬弱模型手動 session,不在本次範圍。
+
+**進度**:AC 1–5 全數完成。`./tests/run.sh` 572 PASS / 0 FAIL(exit 0)。B1/B2 做過**突變測試**
+——把 anchors 還原成舊行為,4 條斷言變紅,其中「相對輸入 + 含空白 toplevel」舊版是 exit 0 且
+輸出壞錨點,確認漏洞為真而非理論。三個新沙盒實跑建置並驗語意:h6 verify 確為 FRESH+DRIFTED
+混合、h7 確為 DIVERGED。
+
+**下一步**:commit(`fix:` 腳本 / `docs:` 文件),不 push。H5/H6/H7 待另開弱模型 session 實跑。
 
 ---
 
@@ -151,6 +185,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   stub 覆蓋;遇真實空報告時確認 resume 能救回,F15(b) 才算 GREEN
 - [ ] review-anchor 的 stale STOP 與 codex-next 冪等(F16 b/c)已由 tests 第 19 節釘死,
   實戰(autocodex 迭代中 rebase/重試)尚未驗過
+- [ ] `claude/evals/setup-sandboxes.sh` 不在 shellcheck / `bash -n` / 全形標點 gate 範圍
+  (第 1、1b、2 節只涵蓋 `scripts/`、`claude/scripts/`、`*/skills/*/scripts/`、functions/setup/tests)。
+  2026-08-05 加 h5/h6/h7 沙盒時靠手動 `shellcheck` 才抓到:**unquoted heredoc(`<<EOF`)內的
+  markdown 反引號會被當命令替換執行**(SC2006),而該檔全靠 heredoc 灌 fixture 內容。沙盒腳本
+  繼續長大就值得納入 gate
 - [ ] codex plugin 去留待定:實質只當傳輸管道,exec 接管後僅剩 `/codex:transfer` 獨有——
   exec 路徑跑穩數輪後重新評估 uninstall
 - [ ] codex C2 轉交 findings 餘項(2026-07-21 代收):F6 skill-building-guide 的
