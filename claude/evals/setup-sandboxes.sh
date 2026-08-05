@@ -210,6 +210,9 @@ make_d4() {
         mkdir -p tests/fixtures
         cat > tests/fixtures/vendor_response.json <<'EOF'
 {
+  "_source": "https://api.example-vendor.test/v1/companies",
+  "_recorded": "2026-01-15",
+  "_note": "vendor API 回應原樣錄製；欄位變更時需重錄。",
   "companies": [
     {
       "taxId": "22099131",
