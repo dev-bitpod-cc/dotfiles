@@ -12,36 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-**deep-review 第三方回饋落地 + 輪次隱蔽缺口結案**(2026-08-05,待 ship)
-
-- **Context**:krepo 專案分拆的 session 跑完整 autofix 到 R5 後提出四點回饋(非要求,供參考);
-  同批處理已知缺口「輪次隱蔽未涵蓋 task/role names 與 checkpoint metadata」寫明的「先量再補」。
-- **Goal**:兩條真陽性落地(reviewer 外部取證、終止報告收斂軌跡)、一條措辭衝突修掉
-  (SKILL.md 指向 R5 未通過時到不了的 `autocodex`)、缺口以實測結案。
-- **AC**:`./tests/run.sh` 全綠(以 exit code 判,不接 tail);F20 規格入 evals 並誠實標
-  「GREEN 待實測」;缺口移出「已知缺口」,gitStatus 新管道寫入決策節。
-- **Constraints(使用者拍板)**:R5 未通過**仍不**自動進 codex 階段(只改措辭、不動機制);
-  外部取證限**唯讀、禁副作用**;同型掃描的 commit 前留痕本次**不做**,改記已知缺口。
-- **codex C1 處置**:三條 findings 全驗真。(a) SKILL.md「R5 未通過＝架構問題」的斷言與新
-  模板的健康收斂判準互相矛盾——**同一句話我只修了寫死的數字、沒修因果斷言**,改一句的一部分
-  最容易漏掉另一部分,cross-ref 檢查要連語意一起看不能只比對章節名;(b) F20 指定的 d4 沙盒
-  從未存在(建置器只到 d3),已實作 `make_d4`;(c) 取證條款補授權邊界(只用既有憑證、不打 diff
-  新引入的 endpoint、計費或留稽核則歸未取證)。**d4 的取捨**:以 repo 內回應樣本模擬外部來源、
-  不起 HTTP server(免 port 與背景進程依賴),代價是憑證/計費/endpoint 可信度那幾條邊界仍無
-  oracle——已在 F20 明列覆蓋邊界,勿誇大該 eval 證明了什麼。
-- **codex C2/C3 處置**:C2 一條真陽性——d4 的 fixture 與 `VENDOR_ENDPOINT` 之間**沒有明示
-  綁定**(只有「都用 companies key、檔名與 host 都含 vendor」的相似性),當時的 expected 卻要
-  reviewer 據此判定欄位語意,等於**獎勵無根據的 provenance 歸屬、懲罰「我無法確認」這個更
-  嚴謹的答案**——而後者正是 brief 自己要求的態度。補 `_source` metadata(與 endpoint 字面
-  相同)使綁定機械可驗證。**通用教訓(與 F18「判準寫成答案導向」同型)**:eval 的
-  `expected_behavior` 不得要求 agent 做出證據不支持的推論,否則 oracle 會系統性淘汰最該
-  保留的行為。C3 零 findings(兩位 reviewer 一致)通過。
-- **squash 刻意不執行**:`squash-cmd` 讀到的是**上一批的 stale anchor**(`c4024a7`,2026-08-04
-  記錄),會壓掉 5 顆含已 merge 的 #38/#39——本批實際只有 `5a74e50..HEAD` 三顆。本次非
-  autofix 流程、未 record 本批 anchor,且 ship 走 PR squash merge,故本地不 squash。
-  **後續若跑 autofix,record 會覆寫 anchor,屆時 squash-cmd 才恢復可信。**
-
-(上一批:deep-review 審查偏誤治理已 merge(#38);codex repo-review 移植已 commit 待 ship,見已完成里程碑)
+(暫無——deep-review 第三方回饋落地與輪次隱蔽缺口結案已 commit 待 ship,見已完成里程碑)
 
 ---
 
@@ -58,17 +29,19 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   (FP 罕見、幾乎都承認照修),故**不加 judge 覆核、不加 FP 記錄欄位**——no failing
   scenario, no instruction。
 - **2026-08-05 輪次是 orchestration 私有狀態,但隱蔽有已知殘留**:保留輪次的原理由(brief
-  需要它調重心)站不住——**補丁痕跡是 code 的性質、不是 history 的性質**。中性化 commit
-  message 擋掉輪號與剩餘輪數,**擋不掉「已改過幾次」**(commit 數量本身即訊號),要消除得
-  每輪 squash、破壞迭代紀律,故接受殘留但文件不得宣稱成完全隔離。
-  **2026-08-05 補實測,缺口結案且歸因更正**:對照 codex 側列的三類管道逐一驗——task names
-  (Agent `description`)canary 只落 `meta.json`、subagent transcript 命中 0;role names 無等價
-  欄位;checkpoint messages 即 fix commit message,已中性化;另補查 codex `fork_turns=none`
-  的等價保證(transcript line 0 即 prompt、零父對話)。**三類全乾淨故不加禁令**。但量到一條
-  沒人列過的:**harness 把 gitStatus(含最近 5 筆 commit hash+subject)注入 subagent system
-  prompt**——`tool_uses=0` 的 subagent 能逐字複述主 repo 五個 hash。故殘留的真正管道是它、
-  不是「reviewer 主動跑 `git log`」,且**關不掉**;這反而使 commit message 中性化從一致性修補
-  升為必要條件(寫 `fix: R4 ...` 等於把輪號直送 system prompt)。證據見 deep-review `evals.md`。
+  需要它調重心)站不住——**補丁痕跡是 code 的性質、不是 history 的性質**。中性化擋掉輪號與
+  剩餘輪數,**擋不掉「已改過幾次」**(commit 數量本身即訊號);要消除得每輪 squash、破壞迭代
+  紀律,故接受殘留但文件不得宣稱成完全隔離。
+- **2026-08-05 洩漏主管道是 harness 注入的 gitStatus,不是 reviewer 主動查**:實測
+  `tool_uses=0` 的 subagent 能逐字複述主 repo 五個 commit hash——**gitStatus(含最近 5 筆
+  subject)直接進 subagent system prompt,不做任何動作就看得到、且關不掉**。故 commit message
+  中性化從一致性修補升為**必要條件**(寫 `fix: R4 ...` 等於把輪號直送 system prompt)。同批
+  驗完 codex 列的三類 metadata 管道(task/role names、checkpoint messages)與 fresh-context
+  保證皆乾淨,故不加禁令。證據見 deep-review `evals.md`。
+- **2026-08-05 eval 的 `expected_behavior` 不得要求證據不支持的推論**:d4 初版的 fixture 與
+  endpoint 之間無明示綁定,判準卻要 reviewer 據相似性認定 provenance——**等於獎勵無根據歸屬、
+  懲罰「我無法確認」這個更嚴謹的答案**(而後者正是 brief 要求的態度)。補 `_source` metadata
+  使綁定機械可驗證。與 F18「判準寫成答案導向」同型:**oracle 寫歪會系統性淘汰最該保留的行為**。
 - **2026-08-05 git 收尾序列不得串成一行、更不得吞掉中間錯誤**:merge 最後一哩把
   `git switch main 2>/dev/null; git pull origin main` 串一行——switch 因 working tree 有他線
   未 commit 變更而失敗(本地 default 尚落後、切換會覆蓋),錯誤被 `2>/dev/null` 吃掉、又沒檢
@@ -180,16 +153,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   (krepo 已依此收斂 599→201 行)。
 - **2026-07-17 dossier 記錄時點搬到事件當下**:skill 只在頭尾喚起而決策/死路發生在過程中,
   等收尾 context 可能已壓縮;全域規則加即時記錄,log Step 2 降級為「核對補漏」。
-- **2026-07-16 git 為唯一跨主機媒介**:不同步 `~/.claude/`(handoffs/memory)跨機——同步
-  衝突、錨點跨機語意複雜化、敏感內容風險;krepo 已證明 repo-resident+git 可行。
-- **2026-07-16 /project 取代 /uap 而非並存**:雙入口=觸發混淆+double-source;
-  disable-model-invocation 下鏈式呼叫不可行,只能複製防護邏輯(違反 single-source)。
-- **2026-07-16 STATUS.md 為 dossier 載體,不新建 PROJECT.md**:尊重 krepo 自然湧現且活躍
-  維護的慣例;避免同 repo 兩個角色重疊的檔案。
-- **2026-07-16 不引入 Linear/外部 tracker**:痛點由 repo-resident 檔案+既有 skill 生態覆蓋;
-  缺的是慣例固化,不是新工具。
-- **2026-07-16 settings.json 以 opus[1m] 為共享 model 基線**:單機一次性模型偏好不 commit、
-  不傳播全機隊。
+- **2026-07-16 多主機工作流的五條奠基決策**(已固化,合併存查):**git 為唯一跨主機媒介**——
+  `~/.claude/`(handoffs/memory)不跨機同步(衝突、錨點語意複雜化、敏感內容風險),krepo 已證
+  repo-resident+git 可行;**/project 取代 /uap 而非並存**(雙入口=觸發混淆+double-source,
+  disable-model-invocation 下無法鏈式呼叫、只能複製防護邏輯);**STATUS.md 即 dossier 載體,
+  不新建 PROJECT.md**(尊重既有慣例、避免角色重疊);**不引入 Linear/外部 tracker**(缺的是
+  慣例固化,不是新工具);**settings.json 以 opus[1m] 為共享 model 基線**(單機偏好不傳播全機隊)。
 
 ## 死路(試過但放棄——防重工)
 
@@ -240,7 +209,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
-- ✅ 2026-08-05 codex repo-review 移植同批治理(由 codex 撰寫、Claude 代 ship):新增
+- ✅ 2026-08-05 deep-review 第三方回饋落地 + 輪次隱蔽缺口結案:外部取證判準(唯讀硬約束+授權
+  邊界)、終止報告「根因與前輪重複?」欄(區分收斂失敗與健康收斂)、R5 換視角措辭修正(舊文指向
+  當下到不了的 autocodex);新增 eval d4/F20——fixture 已建、**行為判準 GREEN 待實測**。codex
+  三輪 4/4 true positive 全修、C3 零 findings 通過。教訓見決策節。(tests 564)
+- ✅ 2026-08-05 codex repo-review 移植同批治理(由 codex 撰寫、Claude 代 ship,#39):新增
   `references/reviewer-brief.md`(判準下沉、要求 reviewer 直讀不改寫)、固定 stage-neutral
   prompt 模板、pass 位置列為 orchestration-private(**範圍比 deep-review 側更廣:含 task/role
   names 與 checkpoint messages**,該差距已列已知缺口);evals 補 F19/F20,tests 加兩組契約檢查。
