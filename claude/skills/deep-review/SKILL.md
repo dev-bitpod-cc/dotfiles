@@ -56,9 +56,9 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 > 上圖為最壞情況。**任一輪通過即進通過分支並 squash**，不必跑滿 R5——R5 是修復輪數上限，非 squash 的前提。
 
-**上限**：4 輪修復、5 次審查。若 R5 仍未通過，代表問題可能在架構層面，繼續自動修只會越補越亂。終止報告須包含 branch 狀態處置建議與**續跑分流**（四條路的判準見報告模板）。
+**上限**：4 輪修復、5 次審查。若 R5 仍未通過，代表問題可能在架構層面，繼續自動修只會越補越亂。終止報告須包含 branch 狀態處置建議與**續跑分流**（判準見報告模板的「續跑分流」表）。
 
-**再跑一次 autofix 不是預設下一步**——同一個 reviewer 對同一批 code 再開一輪，挖出的多是同類型的東西，而輪次上限會隨新一場 review 重置（等於上限失效）。`record` 印出 `cycle: 2+`（前一場未走完即重啟，腳本自動判定）時，終止報告**必須先給分流**，且明列「同 reviewer 再跑第三個週期價值最低，優先換視角（autocodex／人工）」。
+**再跑一次 autofix 不是預設下一步**——同一個 reviewer 對同一批 code 再開一輪，挖出的多是同類型的東西，而輪次上限會隨新一場 review 重置（等於上限失效）。`record` 印出 `cycle: 2+`（前一場未走完即重啟，腳本自動判定）時，終止報告**必須先給分流**，且明列「同 reviewer 再跑第三個週期價值最低，優先換視角」。**換視角的可行形式一律照報告模板的「續跑分流」表**——R5 未通過時直接跑 `/deep-review autocodex` 到不了 codex 階段（Step 6 只在主審通過後才進），故實際只有兩條：人工修掉剩餘 blocking 後才跑 `autocodex`，或直接把 `base..head` 交外部 reviewer。
 
 **修復原則**：主 agent 在修復階段依照 subagent 的修復計畫執行，優先修復所有嚴重與中等問題；建議等級僅在不引入額外風險時順手處理。修復時另兩條硬性動作：
 
@@ -305,7 +305,7 @@ cause + non-blocking items listed separately.
 
 輪次是 **orchestration 層的私有狀態**：Step 2 照常偵測，用來決定何時停、報告怎麼寫——但不進 reviewer 的上下文。同理，`fix:` commit 的 message 不編輪號（見「迭代紀律」）。
 
-**已知殘留，不要宣稱成完全隔離**：reviewer 會自行跑 `git log`（實測 6/6 都跑），而每輪恰好產生一個 fix commit——**數同名 commit 仍可反推「已改過幾次」**。中性化擋掉的是輪號與「還剩幾輪」，擋不掉「已完成幾輪」。要完全消除得每輪 squash，那會破壞迭代紀律與 context 控制，成本大於收益，故接受此殘留。
+**已知殘留，不要宣稱成完全隔離**：commit history 有兩條抵達 reviewer 的管道——(1) **harness 把 gitStatus（含最近 5 筆 commit 的 hash 與 subject）注入 subagent 的 system prompt**，reviewer 不做任何動作就看得到（2026-08-05 實測：`tool_uses=0` 的 subagent 能逐字複述主 repo 的 5 個 commit hash）；(2) reviewer 自行跑 `git log`（實測 6/6 都跑）。每輪恰好產生一個 fix commit，故**數同名 commit 仍可反推「已改過幾次」**。中性化擋掉的是輪號與「還剩幾輪」，擋不掉「已完成幾輪」。要完全消除得每輪 squash，那會破壞迭代紀律與 context 控制，成本大於收益，故接受此殘留。**但管道 (1) 無需 reviewer 主動、也關不掉，故 commit message 中性化是必要而非可選**——寫成 `fix: R4 review fixes` 等於把輪號零成本送進 reviewer 的 system prompt。
 
 **Why a fixed template rather than a ban list**: a ban list must enumerate every phrasing, and enumeration provably leaks — 本 repo 實測過一次（列了 `final round`，實際寫法是 `FINAL allowed review round`，差點誤判；見 evals.md 2026-08-04 方法論教訓）。同一個 blocklist-vs-allowlist 教訓。
 
