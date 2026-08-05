@@ -12,7 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(暫無——deep-review 第三方回饋落地與輪次隱蔽缺口結案已 commit 待 ship,見已完成里程碑)
+(暫無)
 
 ---
 
@@ -42,33 +42,37 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   endpoint 之間無明示綁定,判準卻要 reviewer 據相似性認定 provenance——**等於獎勵無根據歸屬、
   懲罰「我無法確認」這個更嚴謹的答案**(而後者正是 brief 要求的態度)。補 `_source` metadata
   使綁定機械可驗證。與 F18「判準寫成答案導向」同型:**oracle 寫歪會系統性淘汰最該保留的行為**。
-- **2026-08-05 git 收尾序列不得串成一行、更不得吞掉中間錯誤**:merge 最後一哩把
-  `git switch main 2>/dev/null; git pull origin main` 串一行——switch 因 working tree 有他線
-  未 commit 變更而失敗(本地 default 尚落後、切換會覆蓋),錯誤被 `2>/dev/null` 吃掉、又沒檢
-  exit code,於是 **pull 在 feature branch 上跑成 rebase**,把 16 顆往已 squash 的 default 重放
-  炸出滿地衝突。`rebase --abort` 可完整還原(含 autostash),但這是不必要的險。**ship-paths.md
-  的序列本來就是分開的指令**;正確替代是 `git fetch origin <default>:<default>`(更新本地 ref、
-  不碰 working tree)再切。與同日的 `git add -A` 誤收同一根源:**為省事把 git 動作合併,錯誤
-  就藏在中間**。
+- **2026-08-05 git 收尾序列不得串成一行、更不得吞掉中間錯誤**:`git switch main 2>/dev/null;
+  git pull origin main` 串一行——switch 因他線未 commit 變更而失敗,錯誤被 `2>/dev/null` 吃掉
+  又沒檢 exit code,於是 **pull 在 feature branch 上跑成 rebase**,16 顆往已 squash 的 default
+  重放炸出滿地衝突(`rebase --abort` 可完整還原,但屬不必要的險)。正確替代:`git fetch origin
+  <default>:<default>` 更新本地 ref 再切。與 `git add -A` 誤收同根源:**為省事合併 git 動作,
+  錯誤就藏在中間**。
 - **2026-08-05 多 session 共用 working tree:commit 一律顯式路徑,`git add -A` 是誤收源**:
-  同一錯誤犯三次(誤收 codex 端 repo-review 工作)。第三次根因是循環陷阱——每次 commit 後
-  把他人區段 `cp` 回 working tree,下次編輯同檔就疊上去、整檔 add 必然再收。**三次都只有
-  乾淨 checkout 看得見**(本機因檔案在磁碟上恆綠)。四條:(a) 顯式路徑;(b) 混檔按**檔案內
-  區段**拆、不是只按目錄;(c) 拆完必跑 `git clone --no-local` 實測;(d) 混檔期間他人區段
-  先不放回,等自己全部 commit 完才最後放回。
-
+  同一錯誤犯三次(誤收 codex 端 repo-review 工作);第三次是循環陷阱——commit 後把他人區段 `cp`
+  回 working tree,下次編輯同檔就疊上去、整檔 add 必然再收。**三次都只有乾淨 checkout 看得見**
+  (本機檔案在磁碟上恆綠)。四條:(a) 顯式路徑;(b) 混檔按**檔案內區段**拆、非只按目錄;
+  (c) 拆完必跑 `git clone --no-local` 實測;(d) 他人區段最後才放回。
+- **2026-08-05 dossier 超標優先歸檔,不靠壓縮無關的舊條目**:本次為容納新增內容,接連蒸餾五條
+  無關的歷史決策才勉強壓在 24576 門檻下——每次都無損(留結論與理由、砍推導史),但「為了幾百
+  bytes 去改一條無關舊決策」重複五次本身即訊號:**邊際壓縮效益遞減,再壓會開始損失資訊**。
+  改採歸檔後一次降 33%(24556→16444)。**判準**:條目已固化在 skill/腳本/tests 且不再影響現行
+  方向 → 歸檔;仍在生效的一律不歸檔(死路=防重工、技術債=未解決,移出 always-on 即失效)。
+- **2026-08-05 外部取證條款兩端最終都不納入**:codex 端自始拒絕移植;deep-review 側一度納入、
+  同日撤除——**該條的證據(krepo 三條 finding 由 subagent 自發取證找到)恰恰證明規則不必要**,
+  倒果為因;且進 brief 當批即生出第二層規則(授權邊界),而 d4 fixture 測不到那半,留下無 oracle
+  的規則。折衷版(改標註 evidence 為查證/推論)同樣無 RED,降為 backlog。**repo-review 仍移植
+  收斂診斷**(依根因重複/震盪 vs 各輪不同分類)並補了 tests gate。全紀錄見 deep-review `evals.md`。
 - **2026-08-03 codex 的決策發聲採「產原料寫進行中、ship 端蒸餾」,不讓 codex 學 dossier 規範**:
-  #34 暴露 cross-agent 記錄斷點——codex 改 `codex/skills/`、Claude 端 ship,理由只能從 diff 反推。
-  界線是原理性的:**機制(補 gate、加測試)反推無損,但否決的方案與死路在 diff 裡永遠沒有痕跡**
-  ——走過的路才留下 diff。故 `codex/AGENTS.md` 只要求把推不到的那部分追加到 STATUS.md
-  「進行中」(尺寸 flag 刻意不掃該節),不 commit 不管格式,蒸餾與章節語意留 ship 端;並帶
-  「純機制改動免寫」免除條款(always-on context,無免除=每次小改都付儀式成本)。
+  #34 暴露 cross-agent 記錄斷點(codex 改 `codex/skills/`、Claude 端 ship,理由只能從 diff 反推)。
+  界線是原理性的:**機制反推無損,但否決的方案與死路在 diff 裡永遠沒有痕跡**。故 `codex/AGENTS.md`
+  只要求把推不到的那部分追加到「進行中」(不 commit 不管格式),蒸餾與章節語意留 ship 端;並帶
+  「純機制改動免寫」免除條款(無免除=每次小改都付儀式成本)。
 - **2026-08-03 repo-review 多輪 autofix 死鎖以「gate 一次、之後查 ownership」解,不放寬 clean
-  要求**:C2 轉交的 F5 判定為 **true positive**——`--autofix` 要求 clean worktree,而規範要求每輪
-  rerun helper,R1 修完 worktree 必髒 → 第二輪必得 `autofix-safe:no`,契約自我封死。解法是
-  `--autofix` 只當**首次編輯前的一次性起始 gate**,後續回合改跑不帶 flag 的 helper 並逐一比對
-  dirty path 歸屬,遇 pre-existing/concurrent/未記錄即停。**反向解(放寬 clean 要求)會讓「絕不碰
-  使用者變更」整條保證失效**——根因是判定時機錯置,不是判定太嚴。
+  要求**:`--autofix` 要求 clean worktree,而規範要求每輪 rerun helper,R1 修完必髒 → 第二輪必得
+  `autofix-safe:no`,契約自我封死。解法:`--autofix` 只當**首次編輯前的一次性起始 gate**,後續
+  改跑不帶 flag 的 helper 並比對 dirty path 歸屬,遇 pre-existing/concurrent/未記錄即停。
+  **反向解(放寬 clean)會讓「絕不碰使用者變更」整條保證失效**——根因是判定時機錯置,不是太嚴。
 - **2026-08-03 autofix 安全判定補 `base-not-commit`——tree base 的 ancestor 檢查回 `n/a` 不是
   `no`**:`HEAD~1^{tree}..HEAD` 這類 base 先前一路穿過 ancestor gate 拿到 `autofix-safe:yes`,
   等於在無法界定祖先關係的範圍上放行改檔+checkpoint。新判定置於 ancestor gate **之前**,條件
@@ -78,87 +82,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   預設繼承全部 turns,規範只寫「用 fresh-context subagent」等於**spec 上宣稱 fresh、行為上帶著
   parent 的實作意圖與嫌疑清單**——delegate 的價值(獨立重推結論)當場歸零。介面無法建立無歷史
   reviewer 時一律明說降級,不得聲稱跑過 fresh-context pass。
-- **2026-07-29 剝 code fence 採 `\001` 哨兵前綴,不是丟棄也不是清空**:兩個下游各有硬要求
-  ——條目 flag 要報行號故**行號須對齊原檔**(丟棄會讓 NR 全數位移);`dossier-sections:` 佔比
-  要正確故**長度須保留真實**(清空會讓 fence 重的章節被低估到**排名倒轉**,實測 26KB 決策節
-  報成 403 bytes 沉到 4.5KB 節後面,而該表正是要 agent 據以挑收斂對象)。**量長度前必須剝
-  哨兵**,否則每 fenced 行虛胖 1 byte、短行多的 fence 讓單節佔比破 100%(實測 149%)。
-- **2026-07-29 哨兵只中和「行首錨定」的 pattern,非錨定比對必須自行 skip 哨兵行**:
-  `^##`/`^#{1,6}`/`^-` 三個家族靠前綴即失效,但「進行中含 ✅」用的是無錨點的 `/✅/`——
-  圍欄內貼的測試輸出(滿是 ✅)照樣被看見。**且加哨兵反而製造新方向的誤報**:圍欄內的假
-  標題原本會把 `in_sec` 關掉(歪打正著),哨兵讓它不再切節後,`in_sec` 一路開著把圍欄內的
-  ✅ 全算進「進行中」。修法 `/^\001/ { next }`。**新增消費點時先問:我的 pattern 有錨點嗎?**
-- **2026-07-29 大輸入的存在性比對一律 herestring,禁用 `printf | grep -q`**:`grep -q` 命中即
-  退出,大輸入下上游 printf 吃 **SIGPIPE(141)**、pipefail 讓整條判偽——簽章偵測的 `!` 反轉後
-  **正常的大 dossier 被誤報「簽章不符」**(該 flag 的處置是「停下、勿當 dossier 改」,等於整份
-  檔案被拒絕處理)。小檔不發作故潛伏至今(115KB fixture 實測 rc=141)。完整現象、krepo 的同型
-  前例、以及「守門測試命中點須在前段」已入 `claude/CLAUDE.md` 已知地雷。輸入恆小的三處
-  remote/gh 比對不動(no failing scenario, no change)。
-- **2026-07-23 macOS 凍結內建 CLI 的應對分兩層,不用 gnubin 取代**:互動/運維工具用 brew
-  新版(rsync 入 setup-mac-env.sh,解 openrsync 旗標坑);skill 腳本/tests 只用 POSIX 確定性
-  子集(LC_ALL=C 量 bytes),需要 GNU 行為顯式 gawk+command -v 檢查。gnubin PATH shadowing
-  是隱形環境依賴——hooks/cron 的極簡 PATH 下 brew 路徑常缺席,靜默 fallback 回 BSD 版=
-  門檻漂移換個地方發生。已入全域 CLAUDE.md 已知地雷。
-- **2026-07-23 dossier 治理量測下沉三訊號,蒸餾留判斷層**:總量 bytes(風格不敏感後盾)、
-  最長行 bytes(巨型單行早期糾正;macOS BSD awk 的 length 一律數 bytes,字元門檻跨平台
-  不確定,故量 bytes)、決策/里程碑條目 bytes(一行化/結論體的機器面)。蒸餾內容判斷與
-  傘狀雙重記載比對(語意匹配、誤報面大)不下沉。此為 evint「prose 下沉為腳本」方法論回打自身。
-- **2026-07-22 殘留 branch 衛生訊號放 ship-state.sh,不放 /ready4quit**:/project log 高頻且
-  merge 完當下即清掃時機;ready4quit 三檢查全是「未送出」方向,已 merge 殘留屬反方向;
-  另建腳本=第三份 default 偵測副本。判定用本地 ref 不碰網路,cleanup-cmd 前置 fetch --prune;
-  只印訊號不代刪。
-- **2026-07-22 無 protection repo 改「PR 預設、直推降 escape hatch」**:u3 eval 實測「PR 可選」
-  會讓 PR 行為上不存在(spec-behavior drift)。維持不開 protection——真理由是常態 bypass 會
-  養成壞習慣(「開了會擋死自己」是錯的反對理由,已收回)。腳本 verdict 同步改印 PR——verdict
-  是 model 照抄的東西,腳本與 prose 不一致=誘導破口。
-- **2026-07-22 bootstrap 豁免以腳本判定界定作用域,不寫 prose 條款**:成立條件=ship-state
-  實測「遠端零 branch」,baseline 一 push 條件即永久為假、豁免自動失效——授權活在會自己
-  失效的機器判定裡,不在對話記憶(實證:prose 豁免曾蔓延到後續 commit 直落 main)。
-- **2026-07-22 ship-state.sh 破例碰網路(ls-remote),限縮 default: NONE 分支**:「遠端零
-  branch」(可建 baseline)與「有 branch 但定位不到 default」(絕不可推)處置完全相反,
-  未 fetch 的 clone 下本地 ref 無法分辨;正常路徑零網路,反例已入 tests。
-- **2026-07-21 Codex skill authoring 採全域短入口+dotfiles local-delta guide**:
-  `~/.codex/AGENTS.md` 只強制先讀 system $skill-creator 與版控 guide,避免 always-on context
-  膨脹;`ensure-codex-guidance.sh` 比照 skill 散佈機制幂等 symlink。
-- **2026-07-21 skill 腳本維持「git 唯讀+印解析完成指令」,不直接 mutation**:腳本只印
-  squash-cmd/branch-cmd 供照抄,守唯讀慣例又消除 model 心算 hash 錯誤面;不抽跨 skill
-  共用 lib(symlink 邊界破壞自包含;翻案條件=出現第三份副本或副本需同步修改)。
-- **2026-07-21 deep-review 以 clean-room 重寫做低頻探針稽核**:蒸餾需求層規格讓禁讀實作的
-  subagent 盲寫再比對——收斂處=機制被需求逼出、分歧處=規格歧義;比對判準不對稱(機制
-  覆蓋以實戰版為基準)。squash 維持單錨點,改印「壓掉 N 顆既有 commit」警告(成本近零)。
-- **2026-07-21 PR1 誤掃入他線工作後拍板 bundle 不拆分**:拆分需對三個混檔 hunk 外科手術且
-  動另一 session in-flight 狀態,風險大於收益;教訓=多 session 共用 working tree 時 commit
-  一律顯式路徑。
-- **2026-07-21 全域規則四處 carve-out**:bun/uv 限新專案+自有專案(尊重既有 lockfile);
-  Uncertain 自主執行取最合理解讀但假設必須落地標待確認(不可逆/對外不在 fallback 內);
-  bug-fix 重現測試補可行性豁免(先重現再修順序不變);commit types 補 perf/ci。
-- **2026-07-20 autocodex 傳輸層改 headless codex exec,不走 plugin broker**:plugin 等待端無
-  watchdog,通知一斷即永久靜默等待(F13/F14 共同上游);exec 的完成訊號=進程退出+報告落檔
-  兩個 OS 層級事實,雙訊號死亡偵測退役為 exit 契約。引數與儀式不變,plugin 暫留。
-- **2026-07-20 wrapper 的 range 驗證必須對照下游契約,不能只對照 git**:同 bug class 三現
-  (git 可容忍、下游 review-context 拒絕、報告非空→假成功);跨腳本契約只能靠斷言釘死,
-  stub 測不出來。
-- **2026-07-20 settings.json 撤銷 push-to-main 放行(防線對齊)**:prose 最高紀律與 harness
-  明放行反向失守;選移除非 deny,保留使用者明示直推場景。本機 fable 偏好分流
-  `~/.claude/settings.local.json`,repo 基線維持 opus[1m]。
-- **2026-07-20 skill 內 runtime 路徑慣例=`~/.claude/skills/...`**:symlink 由 setup 建立、與
-  clone 路徑解耦;`~/.dotfiles/...` 僅描述原始碼位置。已寫入 skill-building-guide。
-- **2026-07-20 codex skill 散佈補 ensure-codex-skills.sh**:setup 的連結邏輯只在跑 setup 時
-  作用而 dotsync 不套用——缺的是散佈路徑,不是連結邏輯。
-- **2026-07-17 無 protection 兩難以「merge 最後一哩」解,不走分級直推**:卡點在 PR 開完
-  沒人接,不在流程本身;使用者明說 merge 即 agent 接手(squash+清 branch+同步 default),
-  不打破 never-push-default 鐵律、也不強推 protection。
-- **2026-07-17 dossier 增設總量治理(compaction)規則**:krepo 實證 Session Log append-only
-  佔全檔 60%;原規範只防「新增垃圾」不防「總量單調膨脹」→修剪規則+log Step 2 衛生檢查
-  (krepo 已依此收斂 599→201 行)。
-- **2026-07-17 dossier 記錄時點搬到事件當下**:skill 只在頭尾喚起而決策/死路發生在過程中,
-  等收尾 context 可能已壓縮;全域規則加即時記錄,log Step 2 降級為「核對補漏」。
-- **2026-07-16 多主機工作流的五條奠基決策**(已固化,合併存查):**git 為唯一跨主機媒介**——
-  `~/.claude/`(handoffs/memory)不跨機同步(衝突、錨點語意複雜化、敏感內容風險),krepo 已證
-  repo-resident+git 可行;**/project 取代 /uap 而非並存**(雙入口=觸發混淆+double-source,
-  disable-model-invocation 下無法鏈式呼叫、只能複製防護邏輯);**STATUS.md 即 dossier 載體,
-  不新建 PROJECT.md**(尊重既有慣例、避免角色重疊);**不引入 Linear/外部 tracker**(缺的是
-  慣例固化,不是新工具);**settings.json 以 opus[1m] 為共享 model 基線**(單機偏好不傳播全機隊)。
+
+> **2026-07 及更早的決策已歸檔** → `docs/archive/decisions-2026-07.md`（機制多已固化在 skill／腳本／tests；歸檔保存的是「為什麼這樣決定、否決了什麼」）。
 
 ## 死路(試過但放棄——防重工)
 
@@ -209,25 +134,19 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
-- ✅ 2026-08-05 deep-review 第三方回饋落地 + 輪次隱蔽缺口結案:外部取證判準(唯讀硬約束+授權
-  邊界)、終止報告「根因與前輪重複?」欄(區分收斂失敗與健康收斂)、R5 換視角措辭修正(舊文指向
-  當下到不了的 autocodex);新增 eval d4/F20——fixture 已建、**行為判準 GREEN 待實測**。codex
-  三輪 4/4 true positive 全修、C3 零 findings 通過。教訓見決策節。(tests 564)
-- ✅ 2026-08-05 codex repo-review 移植同批治理(由 codex 撰寫、Claude 代 ship,#39):新增
-  `references/reviewer-brief.md`(判準下沉、要求 reviewer 直讀不改寫)、固定 stage-neutral
-  prompt 模板、pass 位置列為 orchestration-private(**範圍比 deep-review 側更廣:含 task/role
-  names 與 checkpoint messages**,該差距已列已知缺口);evals 補 F19/F20,tests 加兩組契約檢查。
-- ✅ 2026-08-05 deep-review 審查偏誤治理:定位「多輪 autofix 幾乎都跑到 R5 才通過」的根因在
-  **提問端**(主 agent 自行放寬 subagent prompt),修法為判準下沉 `reviewer-brief.md`、提問端
-  改白名單契約、輪次徹底隱蔽、同型掃描、上限後續跑分流。取捨見決策節,驗證三層(已證實／
-  弱證據／失敗記錄)與 codex 三輪九條 findings 見 `claude/skills/deep-review/evals.md`。
-  (tests 547→564)
-- ✅ 2026-08-04 lftp 納入標準工具鏈取代內建 sftp:兩支 setup 加裝+版控 `lftprc`,部署改走新
-  `ensure-lftprc.sh`(接 dotsync 本機/遠端兩段,config 免逐台重跑 setup 即散佈;binary 仍需
-  `brew install`——brewup 只 upgrade 既有 formula);14 台機隊 config+binary 全到位(4.9.3)。
-  選 lftp 而非 mc 的理由見死路節。(#36;tests 526→547)**教訓:lftp `ls <單一檔案>` 走 opendir、
-  對非目錄報 "No such file" 並 exit 1,但檔案其實已傳成功**——極易誤判成傳輸失敗而重試/回滾,
-  列單檔須用 `cls`;已就地寫進 `lftprc` 註解(踩點在使用時,不在讀 dossier 時)。
+- ✅ 2026-08-05 dossier 決策節 2026-07 歸檔至 `docs/archive/decisions-2026-07.md`:23 條原文
+  搬出,24556→16444 bytes(-33%)、268→188 行,低於建議目標 20889;死路與技術債刻意不歸檔。
+- ✅ 2026-08-05 repo-review 移植輪次上限的收斂診斷(codex 撰寫、Claude 代 ship):依根因重複/
+  震盪 vs 各輪不同且前案仍修復來分類,禁止單憑上限推論架構問題;evals F21+tests 契約 gate。(565)
+- ✅ 2026-08-05 deep-review 第三方回饋落地 + 輪次隱蔽缺口結案(#40):終止報告根因重複欄、
+  R5 措辭修正;codex 三輪 4/4 TP 全修。外部取證判準同日撤除,見決策節。(564)
+- ✅ 2026-08-05 codex repo-review 移植同批治理(#39):reviewer-brief 判準下沉、stage-neutral
+  prompt 模板、pass 位置 orchestration-private(範圍比 deep-review 側更廣);evals F19/F20。
+- ✅ 2026-08-05 deep-review 審查偏誤治理(#38):根因在**提問端**(主 agent 自行放寬 prompt),
+  修法為判準下沉+白名單契約+輪次隱蔽;驗證三層與 codex 九條 findings 見其 `evals.md`。(547→564)
+- ✅ 2026-08-04 lftp 納入標準工具鏈取代內建 sftp(#36):setup 加裝+版控 `lftprc`+
+  `ensure-lftprc.sh` 接 dotsync 散佈,14 台全到位(4.9.3);選型見死路節,`ls` 單檔陷阱(報錯但
+  其實已傳成功、須用 `cls`)見 `lftprc` 註解。(526→547)
 
 - ✅ 2026-08-03 codex repo-review 契約補強:autofix 起始 gate 一次化+後續 ownership 檢查(解 C2 F5 死鎖)、tree base 擋 autofix、reviewer `fork_turns=none`、mixed-context manifest;順帶 gitignore_global 收 `**/.claude/settings.local.json`(單機 key 檔全 repo 免誤 commit)。(#34;evals F16–F18,tests 526/0)
 - ✅ 2026-08-03 macOS 大型 notarized binary 路徑快取卡死地雷入庫(#33;syspolicyd 以完整路徑為 key,`killall` 解)
@@ -242,6 +161,16 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - ✅ 2026-07-16 多主機工作流改造(c673844;/project 取代 /uap、SessionStart pull hook、dossier/transfer 模板)
 
 ## 已知缺口
+
+- **證據標註 = backlog,無 RED 不進 brief**:待觀察失效為「finding 建立在未查證推論、fixer 誤信」,
+  至今零觀察;日後出現再加標註版(零風險、可測),而非授權外部存取。全紀錄見 deep-review `evals.md`。
+
+- **deep-review anchor 跨批次會 stale,`squash-cmd` 因而指向錯誤目標**:anchor 只在 autofix 的
+  `record` 寫入,走「codex 第三方審查」觸發詞路徑(非 autofix)時不 record,`squash-cmd` 遂讀到
+  **上一批**的 anchor。2026-08-05 實遇:本批 3 顆 commit,腳本卻給出會壓掉 5 顆(含已 merge 的
+  #38/#39)的 reset 目標。**腳本行為正確**(照 anchor 算並自印 warning),缺的是「anchor 屬於哪
+  一批」;現行防線只有人看 warning。可能解:`squash-cmd` 偵測 anchor 已併入 default 或不在當前
+  branch 歷史時改判 STOP。未實作。
 
 - **同型掃描有文字原則、無產出物(機制不對稱)**:deep-review 對「測試」有機械化 gate
   (`verify-tests.sh` 的 exit code 契約),對「同型掃描」只有 `reviewer-brief.md` 與 SKILL.md
