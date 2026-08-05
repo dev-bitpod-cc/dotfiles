@@ -37,13 +37,27 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 **方案**(共用設定,三台一致):
 
 ```
-Host github.com          # 工作 = 預設 = 標準寫法
-    IdentityFile ~/.ssh/id_github_work
-
-Host github-me           # 個人,少數 repo 明示
+# 工作帳號 (jjshen-eland) = 預設 = 標準寫法
+Host github.com
     HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_github_work
+    AddKeysToAgent yes
+    IdentitiesOnly yes
+
+# 私人帳號,少數 repo 明示
+Host github-me
+    HostName github.com
+    User git
     IdentityFile ~/.ssh/id_github
+    AddKeysToAgent yes
+    IdentitiesOnly yes
 ```
+
+⚠️ **`IdentitiesOnly yes` 一行都不能少**(現行兩個 block 本來就有,照抄即可)。少了它,
+ssh 會把 agent 裡的 key **逐一送給 GitHub**,而 GitHub 接受第一把有效的——於是認到**錯誤
+帳號**。這會直接打掉 AC 1 與 AC 5,且**失敗長相是「連得上但權限不對」**,比連不上更難查
+(連不上至少當場知道)。同理 `User git` 與 `HostName` 也照現行寫法保留,不要只留 IdentityFile。
 
 - **`github-work` 整條刪除**——`github.com` 就是工作,不需要第二條路徑
 - 工作 repo 的 remote 全部改標準 `git@github.com:`(機械替換,見下)
@@ -70,7 +84,9 @@ Host github-me           # 個人,少數 repo 明示
 # 2. 改 dotfiles 的 ssh/config，部署到各機器，驗證身分：
 #    ssh -T git@github.com   → 應認到 jjshen-eland
 #    ssh -T git@github-me    → 應認到 dev-bitpod-cc
-# 3. 身分驗證通過後才改 remote：
+#    ⚠️ 判準是「認到誰」不是「連得上」。認到錯帳號 → 八成是 IdentitiesOnly 沒設，
+#       ssh 把 agent 裡的 key 逐一送出、GitHub 收了第一把有效的。
+# 3. 身分驗證通過後才改 remote（第 2 步沒過就往下做，會把 remote 改成連不對身分的形式）：
 for d in ~/Projects/*/ ~/.dotfiles; do
   url=$(git -C "$d" remote get-url origin 2>/dev/null) || continue
   case "$url" in
@@ -84,9 +100,22 @@ done
 ⚠️ **`.dotfiles` 自己的 remote 也要改**(它是個人 repo)——上面的迴圈已涵蓋,但要記得
 那正是你正在編輯的 repo,改完先 `git remote -v` 確認再 push。
 
-**風險與回退**:動的是憑證設定,改錯會讓所有 repo 存取一起失敗。`ssh/config` 在 git 裡,
-`git checkout ssh/config` 即還原。⚠️ **但部署後才生效**——回退也要重新部署,別以為
-`git checkout` 就完事了。**建議清醒時做,不要在深夜動**。
+**風險與回退**:動的是憑證設定,改錯會讓所有 repo 存取一起失敗。回退指令**依「改動是否已
+commit」分兩種**——`git checkout ssh/config` 只在**尚未 commit** 時有效;遷移一旦 commit
+(而跨機部署的前提就是 commit + push),它從 HEAD 取回的還是新版,等於把壞設定又還原一次:
+
+```bash
+git revert <遷移 commit>                      # 已 commit(跨機部署後的常態)
+git checkout <遷移前 commit> -- ssh/config    # 或只取回單檔
+git checkout ssh/config                       # 僅限尚未 commit
+```
+
+⚠️ **但部署後才生效**——回退也要重新部署,別以為 git 操作完就完事了。
+
+⚠️ **回退路徑本身會被這個變更弄壞**:遠端機器拉 dotfiles 走的正是 GitHub SSH。認證改壞又
+已散佈出去,那些機器就**拉不到修正**——得 `ssh <host>`(內網 CA cert,不受此變更影響)進去
+手動改 `~/.ssh/config`,或臨時加回 `insteadOf` 撐住。**先在一台機器驗過再散佈,不要一次
+`dotsync` 全部。建議清醒時做,不要在深夜動**。
 
 ### handoff skill 優化(2026-08-05 開工)
 
@@ -121,26 +150,36 @@ eval 缺口。
 (無 false positive):續寫偵測盲點(高,見上方決策)、archive glob 無邊界子字串比對、沙盒 ROOT
 未正規化、Red Flags 改動後未重跑 eval、STATUS 下一步 stale。五條全數處理完畢:前四條已修,
 第五條(eval)已實跑——**H5/H6/H7 在 Sonnet(目標樓層)全 GREEN**,逐項實查沙盒檔案系統證實,
-guide:291 要求的 GREEN 重跑紀錄已補齊。修 F1 時另發現第一版修復不閉合(只修「有 slug 時查
-archive」,未給 slug 時 agent 自取新名一樣撈不到),已補成「先列 archive 看既有工作線再定 slug」。
+guide:291 要求的 GREEN 重跑紀錄已補齊。
+
+**codex C2**(增量 range,只審 C1 之後的修復)再抓 5 條,亦全數 true positive:3 條指向本輪
+修復(續寫偵測的 slug 分支迴歸、`tail -20` 瀏覽視窗會被別的工作線刷掉、`setup-sandboxes.sh`
+的 `$INSTANCE` 繞過空白檢查——同型漏掃,前一輪只驗了 `$ROOT`),已修並實測;另 2 條指向
+GitHub 多身分收斂工作項(方案片段漏 `IdentitiesOnly yes`、回退指令在已 commit 後不成立),
+前者由另一 session 修、後者於本輪補齊(見該節「風險與回退」)。
 以下為初次交付的驗證紀錄:AC 1–5 全數完成。`./tests/run.sh` 572 PASS / 0 FAIL(exit 0)。B1/B2 做過**突變測試**
 ——把 anchors 還原成舊行為,4 條斷言變紅,其中「相對輸入 + 含空白 toplevel」舊版是 exit 0 且
 輸出壞錨點,確認漏洞為真而非理論。三個新沙盒實跑建置並驗語意:h6 verify 確為 FRESH+DRIFTED
 混合、h7 確為 DIVERGED。
 
-**下一步**:本工作項已完成(codex C1 findings 全清、evals 全 GREEN),push 待使用者指示。
+**下一步**:C1/C2 findings 全清、evals 全 GREEN。可選 codex C3 收斂(上限 3 輪審查/2 輪修復,
+已用 2 輪修復,C3 跑完即到頂);push 待使用者指示。
 
 ---
 
 ## 關鍵決策(附理由)
 
-- **2026-08-05 handoff 續寫偵測必須查 archive,不能只查 active**:原設計把判準訂為「active 有
-  同 slug **或** 本 session 剛 resume 過」,並刻意不加查 archive 的機制(當時理由:續寫的典型
-  入口是 resume,前一份已在 context)。codex C1 指出這在「新 session 直接 `/handoff <slug>`」
-  路徑上整條失效——前一份已被消費躺在 archive,兩個判準都不成立,第 N 輪被判成首輪,續寫
-  承接規則永遠走不到。**自打臉點:h5 沙盒的 setup 正是該路徑,等於造了自己規則涵蓋不到的
-  反例卻沒察覺。**教訓:規則與 eval fixture 同批寫時,先拿 fixture 對規則逐條走一遍——
-  fixture 是規則的反例產生器,不只是驗收工具。
+- **2026-08-05 handoff 續寫偵測必須查 archive,不能只查 active**:原判準是「active 有同 slug
+  **或** 本 session 剛 resume 過」,刻意不查 archive(當時理由:續寫入口通常是 resume,前一份
+  已在 context)。codex C1 指出「新 session 直接 `/handoff <slug>`」整條失效——前一份已被消費
+  躺在 archive,兩個判準都不成立,第 N 輪判成首輪。**自打臉點:h5 沙盒的 setup 正是該路徑,
+  等於造了自己規則涵蓋不到的反例卻沒察覺。**教訓:**規則與 eval fixture 同批寫時,先拿
+  fixture 對規則走一遍**——fixture 是反例產生器,不只是驗收工具。
+- **2026-08-05 改寫規則的分支條件,比新增規則更容易掉情境**:上條的修法改了三版才收斂——
+  v1「指定 slug 時用它查 archive」→ v2「未指定 slug 時先列 archive 看工作線」(補上 H5 那個
+  沒給 slug 的情境,卻把 v1 覆蓋的情境換成了**互斥**分支)→ v3「不論有無指定都查」。**v2 是
+  修復引入的迴歸,codex C2 抓到**;掉的那塊剛好不在當時盯著的 eval 情境裡。判準:**改寫分支
+  條件前,先確認舊版覆蓋的情境沒被新分支排除**。
 - **2026-08-05 `add -A` 禁令的例外只有 deep-review WIP snapshot,且附前置條件**:新立的全域
   禁令與 `deep-review/SKILL.md` 的 `git add -A && git commit -m "wip: ..."` 直接對撞(第三方
   審查抓到,全 repo 唯一衝突點)。**不改 skill**——WIP snapshot 要的正是「使用者原始變更的
