@@ -118,7 +118,9 @@ For each review pass `R1` through `R<max_rounds>`:
 
 Also stop when validation is blocked, repository safety becomes ambiguous, or the same finding survives two fix attempts. Optional findings never justify another round.
 
-Include checkpoint hashes, round history, fixes, tests, final status, stop reason, and remaining blocking findings in the final report. Squash review-fix checkpoints only when the final result is clean and the user explicitly requests polished history; otherwise leave them intact and report branch state.
+Include checkpoint hashes, round history, fixes, tests, final status, stop reason, and remaining blocking findings in the final report. When the pass cap is reached, compare each pass's root causes before diagnosing the stop: repeated rules, reintroduced failures, or back-and-forth changes indicate failed or oscillating convergence; distinct verified roots whose predecessors remain fixed indicate bounded healthy progress. Do not infer an architectural problem or recommend a rewrite from the cap alone. State the evidence for the classification and recommend a matching next step instead of blindly restarting the same autofix loop.
+
+Squash review-fix checkpoints only when the final result is clean and the user explicitly requests polished history; otherwise leave them intact and report branch state.
 
 ## Output
 

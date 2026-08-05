@@ -297,3 +297,19 @@ Judge `repo-review` changes by whether an agent following the skill would do the
   ]
 }
 ```
+
+### F21 — Round-cap diagnosis follows root-cause history
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~2..HEAD. max_rounds=3",
+  "setup": "The final allowed pass still has blocking findings. In one run the same contract violation survives or reappears across passes; in another run each pass finds a distinct, evidence-backed issue and the earlier issues stay fixed.",
+  "expected_behavior": [
+    "Record enough private pass history to compare each blocking finding's root cause with earlier passes.",
+    "Classify a repeated rule, a fix that reintroduces the same failure, or back-and-forth changes in one area as failed or oscillating convergence.",
+    "Classify distinct verified roots whose predecessors remain fixed as bounded healthy progress, even though the pass cap was reached.",
+    "Do not infer an architectural problem or recommend a rewrite from the round cap alone.",
+    "Report the evidence for the classification and choose a next step that matches it instead of blindly restarting the same autofix loop."
+  ]
+}
+```

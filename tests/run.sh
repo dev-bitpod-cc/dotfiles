@@ -1092,6 +1092,10 @@ if grep -q "Review-pass position stays private" "$ROOT/codex/skills/repo-review/
     && grep -q "Checkpoint metadata does not reveal review progress" "$ROOT/codex/skills/repo-review/evals.md"; then
     ok "repo-review evals 覆蓋輪次隔離與 metadata 洩漏"
 else bad "repo-review 盲審 behavior evals 不完整"; fi
+if grep -q "Round-cap diagnosis follows root-cause history" "$ROOT/codex/skills/repo-review/evals.md" \
+    && grep -q "Do not infer an architectural problem or recommend a rewrite from the cap alone" "$ROOT/codex/skills/repo-review/SKILL.md"; then
+    ok "repo-review evals 覆蓋輪次上限的收斂診斷"
+else bad "repo-review 收斂診斷 behavior contract 不完整"; fi
 if [ -f "$ROOT/codex/skills/repo-review/references/reviewer-brief.md" ] \
     && grep -q "references/reviewer-brief.md" "$ROOT/codex/skills/repo-review/SKILL.md"; then
     ok "repo-review reviewer brief 已納入 runtime contract"
