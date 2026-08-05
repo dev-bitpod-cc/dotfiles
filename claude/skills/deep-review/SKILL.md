@@ -43,7 +43,7 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, Agent
 
 **測試 baseline（record 時一併取得）**：record 前先跑一次 `~/.claude/skills/deep-review/scripts/verify-tests.sh <repo>` 取 baseline（exit 0→`pass`、1→`fail`、3→`skip`），以 `--tests-baseline <值>` 附在 record 引數記入錨點——「修復後驗證」據此分流（見該節）。baseline 為 `fail` → 當下明確告知使用者：repo 測試在審查前已紅，本次 autofix 的 commit 將不經測試驗證。
 
-**WIP snapshot（僅 working-tree 模式）**：record **之後**、R1 審查之前，working tree 有未提交變更 → `git add -A && git commit -m "wip: pre-review snapshot"`（`add -A` 尊重 .gitignore）——使用者原始變更與後續 fix commits 分離，中途 revert 壞修復不誤傷原始工作；anchor base = pre-WIP HEAD，最終 squash 終態與未拆分時相同。此後各輪審查範圍統一用 record 印出的 `diff-cmd:` 行（整行照抄轉交 subagent）。
+**WIP snapshot（僅 working-tree 模式）**：record **之後**、R1 審查之前，working tree 有未提交變更 → `git add -A && git commit -m "wip: pre-review snapshot"`（`add -A` 尊重 .gitignore）。**這是全域 `add -A` 禁令的唯一例外，前置條件：先確認 working tree 全屬本次工作**——混了他人 session 的 in-flight 變更就停下問，別靠 snapshot 之後再拆（squash 終態一樣會把它送進 PR）——使用者原始變更與後續 fix commits 分離，中途 revert 壞修復不誤傷原始工作；anchor base = pre-WIP HEAD，最終 squash 終態與未拆分時相同。此後各輪審查範圍統一用 record 印出的 `diff-cmd:` 行（整行照抄轉交 subagent）。
 
 ```
 R1 review → 未通過 → 主 agent 修復 → commit「fix: address review findings」

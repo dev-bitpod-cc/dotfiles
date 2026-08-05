@@ -15,7 +15,8 @@
 - **NEVER merge on your own** — only when the user explicitly says merge / bypass merge. "push" or "open a PR" alone does NOT include merge.
 - 使用者明說 merge 後的標準收尾：merge PR（預設 squash）→ 清 remote/本地 branch → 同步本地 default（序列見 `~/.claude/skills/project/references/ship-paths.md`「Merge 最後一哩」）。
 - **NEVER push on your own** — after finishing an issue implementation or review fixes, commit and STOP; wait for the user's next instruction.
-- **NEVER `git add -A` / `git add .` / `commit -a`**——顯式路徑 stage，且**顯式路徑仍是整檔**：同一檔混了他人 session 的區段時改用 `add -p` 只 stage 驗過的 hunk（或把他人區段移出、commit 完最後放回），commit 前看 `git diff --cached`。三次誤收皆在磁碟上恆綠，**只有 `git clone --no-local` 看得見**——人工看 staged diff 已實證失敗三次，不能取代它。
+- **NEVER `git add -A` / `git add .` / `commit -a`**——顯式路徑 stage，且**顯式路徑仍是整檔**：同一檔混了他人 session 的區段時改用 `add -p` 只 stage 驗過的 hunk（或把他人區段移出、commit 完最後放回），commit 前看 `git diff --cached`。三次誤收皆在磁碟上恆綠，**只有乾淨 clone 看得見**（`git clone --no-local <repo> <tmpdir>`）——人工看 staged diff 已實證失敗三次，不能取代它。
+  - 唯一例外：`/deep-review` 的 **WIP snapshot**（`deep-review/SKILL.md` 明列，本地暫存、終態會 squash），它要的正是「使用者原始變更的完整快照」。**但執行前須確認 working tree 全屬本次工作**——混了他人 in-flight 變更就停下問，別指望 snapshot 之後再拆（squash 終態一樣會把它送進 PR）。
 - Conventional Commits: `<type>: <short desc>`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
 
 ## Third-party Review Verification
