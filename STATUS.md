@@ -12,7 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(暫無——deep-review 第三方回饋落地與輪次隱蔽缺口結案已 commit 待 ship,見已完成里程碑)
+(暫無)
 
 ---
 
@@ -57,18 +57,21 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   區段**拆、不是只按目錄;(c) 拆完必跑 `git clone --no-local` 實測;(d) 混檔期間他人區段
   先不放回,等自己全部 commit 完才最後放回。
 
+- **2026-08-05 repo-review 只移植收斂診斷,拒絕移植外部取證**(codex 判斷,ship 端蒸餾):移植
+  「輪次上限須依根因重複/震盪 vs 各輪不同且前案仍修復」來診斷收斂,並補了 deep-review 側沒做
+  的 tests gate;**不移植外部 API/DB 實地取證**——F20 自承無 observed RED,且會擴大網路、憑證、
+  計費與 audit-log 邊界,違反 no failing scenario, no instruction。**兩端結論不同是刻意的**:
+  deep-review 由使用者拍板納入並標「GREEN 待實測」。
 - **2026-08-03 codex 的決策發聲採「產原料寫進行中、ship 端蒸餾」,不讓 codex 學 dossier 規範**:
-  #34 暴露 cross-agent 記錄斷點——codex 改 `codex/skills/`、Claude 端 ship,理由只能從 diff 反推。
-  界線是原理性的:**機制(補 gate、加測試)反推無損,但否決的方案與死路在 diff 裡永遠沒有痕跡**
-  ——走過的路才留下 diff。故 `codex/AGENTS.md` 只要求把推不到的那部分追加到 STATUS.md
-  「進行中」(尺寸 flag 刻意不掃該節),不 commit 不管格式,蒸餾與章節語意留 ship 端;並帶
-  「純機制改動免寫」免除條款(always-on context,無免除=每次小改都付儀式成本)。
+  #34 暴露 cross-agent 記錄斷點(codex 改 `codex/skills/`、Claude 端 ship,理由只能從 diff 反推)。
+  界線是原理性的:**機制反推無損,但否決的方案與死路在 diff 裡永遠沒有痕跡**。故 `codex/AGENTS.md`
+  只要求把推不到的那部分追加到「進行中」(不 commit 不管格式),蒸餾與章節語意留 ship 端;並帶
+  「純機制改動免寫」免除條款(無免除=每次小改都付儀式成本)。
 - **2026-08-03 repo-review 多輪 autofix 死鎖以「gate 一次、之後查 ownership」解,不放寬 clean
-  要求**:C2 轉交的 F5 判定為 **true positive**——`--autofix` 要求 clean worktree,而規範要求每輪
-  rerun helper,R1 修完 worktree 必髒 → 第二輪必得 `autofix-safe:no`,契約自我封死。解法是
-  `--autofix` 只當**首次編輯前的一次性起始 gate**,後續回合改跑不帶 flag 的 helper 並逐一比對
-  dirty path 歸屬,遇 pre-existing/concurrent/未記錄即停。**反向解(放寬 clean 要求)會讓「絕不碰
-  使用者變更」整條保證失效**——根因是判定時機錯置,不是判定太嚴。
+  要求**:`--autofix` 要求 clean worktree,而規範要求每輪 rerun helper,R1 修完必髒 → 第二輪必得
+  `autofix-safe:no`,契約自我封死。解法:`--autofix` 只當**首次編輯前的一次性起始 gate**,後續
+  改跑不帶 flag 的 helper 並比對 dirty path 歸屬,遇 pre-existing/concurrent/未記錄即停。
+  **反向解(放寬 clean)會讓「絕不碰使用者變更」整條保證失效**——根因是判定時機錯置,不是太嚴。
 - **2026-08-03 autofix 安全判定補 `base-not-commit`——tree base 的 ancestor 檢查回 `n/a` 不是
   `no`**:`HEAD~1^{tree}..HEAD` 這類 base 先前一路穿過 ancestor gate 拿到 `autofix-safe:yes`,
   等於在無法界定祖先關係的範圍上放行改檔+checkpoint。新判定置於 ancestor gate **之前**,條件
@@ -209,25 +212,17 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
-- ✅ 2026-08-05 deep-review 第三方回饋落地 + 輪次隱蔽缺口結案:外部取證判準(唯讀硬約束+授權
-  邊界)、終止報告「根因與前輪重複?」欄(區分收斂失敗與健康收斂)、R5 換視角措辭修正(舊文指向
-  當下到不了的 autocodex);新增 eval d4/F20——fixture 已建、**行為判準 GREEN 待實測**。codex
-  三輪 4/4 true positive 全修、C3 零 findings 通過。教訓見決策節。(tests 564)
-- ✅ 2026-08-05 codex repo-review 移植同批治理(由 codex 撰寫、Claude 代 ship,#39):新增
-  `references/reviewer-brief.md`(判準下沉、要求 reviewer 直讀不改寫)、固定 stage-neutral
-  prompt 模板、pass 位置列為 orchestration-private(**範圍比 deep-review 側更廣:含 task/role
-  names 與 checkpoint messages**,該差距已列已知缺口);evals 補 F19/F20,tests 加兩組契約檢查。
-- ✅ 2026-08-05 deep-review 審查偏誤治理:定位「多輪 autofix 幾乎都跑到 R5 才通過」的根因在
-  **提問端**(主 agent 自行放寬 subagent prompt),修法為判準下沉 `reviewer-brief.md`、提問端
-  改白名單契約、輪次徹底隱蔽、同型掃描、上限後續跑分流。取捨見決策節,驗證三層(已證實／
-  弱證據／失敗記錄)與 codex 三輪九條 findings 見 `claude/skills/deep-review/evals.md`。
-  (tests 547→564)
-- ✅ 2026-08-04 lftp 納入標準工具鏈取代內建 sftp:兩支 setup 加裝+版控 `lftprc`,部署改走新
-  `ensure-lftprc.sh`(接 dotsync 本機/遠端兩段,config 免逐台重跑 setup 即散佈;binary 仍需
-  `brew install`——brewup 只 upgrade 既有 formula);14 台機隊 config+binary 全到位(4.9.3)。
-  選 lftp 而非 mc 的理由見死路節。(#36;tests 526→547)**教訓:lftp `ls <單一檔案>` 走 opendir、
-  對非目錄報 "No such file" 並 exit 1,但檔案其實已傳成功**——極易誤判成傳輸失敗而重試/回滾,
-  列單檔須用 `cls`;已就地寫進 `lftprc` 註解(踩點在使用時,不在讀 dossier 時)。
+- ✅ 2026-08-05 repo-review 移植輪次上限的收斂診斷(codex 撰寫、Claude 代 ship):依根因重複/
+  震盪 vs 各輪不同且前案仍修復來分類,禁止單憑上限推論架構問題;evals F21+tests 契約 gate。(565)
+- ✅ 2026-08-05 deep-review 第三方回饋落地 + 輪次隱蔽缺口結案(#40):外部取證判準、終止報告
+  根因重複欄、R5 措辭修正、eval d4/F20(**GREEN 待實測**);codex 三輪 4/4 TP 全修。(564)
+- ✅ 2026-08-05 codex repo-review 移植同批治理(#39):reviewer-brief 判準下沉、stage-neutral
+  prompt 模板、pass 位置 orchestration-private(範圍比 deep-review 側更廣);evals F19/F20。
+- ✅ 2026-08-05 deep-review 審查偏誤治理(#38):根因在**提問端**(主 agent 自行放寬 prompt),
+  修法為判準下沉+白名單契約+輪次隱蔽;驗證三層與 codex 九條 findings 見其 `evals.md`。(547→564)
+- ✅ 2026-08-04 lftp 納入標準工具鏈取代內建 sftp(#36):setup 加裝+版控 `lftprc`+
+  `ensure-lftprc.sh` 接 dotsync 散佈,14 台全到位(4.9.3);選型見死路節,`ls` 單檔陷阱(報錯但
+  其實已傳成功、須用 `cls`)見 `lftprc` 註解。(526→547)
 
 - ✅ 2026-08-03 codex repo-review 契約補強:autofix 起始 gate 一次化+後續 ownership 檢查(解 C2 F5 死鎖)、tree base 擋 autofix、reviewer `fork_turns=none`、mixed-context manifest;順帶 gitignore_global 收 `**/.claude/settings.local.json`(單機 key 檔全 repo 免誤 commit)。(#34;evals F16–F18,tests 526/0)
 - ✅ 2026-08-03 macOS 大型 notarized binary 路徑快取卡死地雷入庫(#33;syspolicyd 以完整路徑為 key,`killall` 解)
@@ -242,6 +237,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - ✅ 2026-07-16 多主機工作流改造(c673844;/project 取代 /uap、SessionStart pull hook、dossier/transfer 模板)
 
 ## 已知缺口
+
+- **deep-review anchor 跨批次會 stale,`squash-cmd` 因而指向錯誤目標**:anchor 只在 autofix 的
+  `record` 寫入,走「codex 第三方審查」觸發詞路徑(非 autofix)時不 record,`squash-cmd` 遂讀到
+  **上一批**的 anchor。2026-08-05 實遇:本批 3 顆 commit,腳本卻給出會壓掉 5 顆(含已 merge 的
+  #38/#39)的 reset 目標。**腳本行為正確**(照 anchor 算並自印 warning),缺的是「anchor 屬於哪
+  一批」;現行防線只有人看 warning。可能解:`squash-cmd` 偵測 anchor 已併入 default 或不在當前
+  branch 歷史時改判 STOP。未實作。
 
 - **同型掃描有文字原則、無產出物(機制不對稱)**:deep-review 對「測試」有機械化 gate
   (`verify-tests.sh` 的 exit code 契約),對「同型掃描」只有 `reviewer-brief.md` 與 SKILL.md
