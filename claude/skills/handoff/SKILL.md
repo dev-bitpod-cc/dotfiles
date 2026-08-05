@@ -48,14 +48,16 @@ argument-hint: "[resume] [slug]"
 
 依 session 記憶列出本次工作涉及的 repo（同跨 repo 工作流原則，**不掃 `~/Projects/`**；context 被壓縮就以 pwd 的 repo 為底請使用者補充）。多 repo = 同一份交接檔、多條錨點。
 
-接著**先定 slug**（使用者指定就用，否則依工作線自取），再判定首輪或**續寫**——active 與 archive 兩處都要看：
+接著**定 slug 並判定首輪或續寫**。使用者指定了 slug 就用它；未指定則**先看既有工作線再決定**——active 與 archive 兩處都要看：
 
 ```
-~/.claude/skills/handoff/scripts/handoff-anchor.sh list             # active：尚未消費的前一份
-ls -1 ~/.claude/handoffs/archive/*-<slug>.md 2>/dev/null | tail -1  # archive：已消費的前幾輪
+~/.claude/skills/handoff/scripts/handoff-anchor.sh list      # active：尚未消費的前一份
+ls -1 ~/.claude/handoffs/archive/ | tail -20                 # archive：近期已消費的幾輪
 ```
 
-任一命中、或本 session 稍早 resume 過同一條工作線 → **續寫**，寫檔時走 W3 的「續寫交接」，並把命中那份的路徑帶過去。續寫的前一份**通常在 archive**（resume 時已消費），只查 active 會把第 N 輪誤判成首輪。
+本次工作屬其中一條既有工作線（或本 session 稍早 resume 過它）→ **沿用該 slug、走續寫**，把命中那份的路徑帶進 W3 的「續寫交接」；確定是全新工作線才自取新 slug（首輪）。
+
+續寫的前一份**通常在 archive**（resume 時已消費），只查 active 會把第 N 輪誤判成首輪；而自取新 slug 前不看 archive，等於讓同一條工作線改名重啟——兩者都會讓 W3 的承接規則整條落空。
 
 ### W2：蓋錨點
 

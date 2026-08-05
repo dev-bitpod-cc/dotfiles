@@ -82,6 +82,15 @@
 
 > 2026-07-16 實測（Sonnet，/project cutover 驗證輪，沙盒 git 實查）：PASS——詳細紀錄見 `../project/references/pressure-tests.md` Scenario 7 註記。
 
+> **H6 首跑的兩則 harness 觀察**（非評分項）：
+> ① 受測 agent 的 `git reset --hard` 觸發權限分類器並**卡住等待授權**，該次 run 耗時 5.7 小時——跑 eval 時要預期會動破壞性指令的情境可能長時間掛著，不是死掉。
+> ② 回報附帶的 security warning 宣稱 hard reset 丟失了未提交變更，**實查 reflog 證偽**（repo-a 只有兩筆 commit entry、無 checkout/reset 記錄，指令未生效）。評 eval 時 warning 與 agent 自述同屬「宣稱」，一律以 reflog／檔案系統為準。
+> ③ repo-a 的 commit 直接下在 `main`（handoff skill 無 branch-first 規則、H6 亦未列此項，故不計分）；agent 自行察覺後，repo-b 就先開 feature branch 才 commit。
+
+> **H5 首跑（2026-08-05，Sonnet）的兩處品質瑕疵**，皆未觸及 expected_behavior，依 Iron Law（no failing eval, no skill change）不因此改 skill，僅記錄待復發：
+> ① 交接檔內文寫「見上方 anchor `dirty=1`」但錨點實為 `dirty=2`（同檔另兩處寫對）；
+> ② 把 `record_latency()` 的 4 行骨架貼進交接檔，與 Critical「No state snapshots the repo already carries」擦邊（風險低於貼整份 diff，但仍是快照）。
+
 ### H3 — resume-side：零交接檔（空 handoffs 目錄）
 
 ```json
@@ -108,6 +117,7 @@
   "setup": "active 目錄空、archive/ 有前一份同工作線交接檔（order-pipeline-hardening，含兩條跨輪仍有效的死路：threading 併發打外部 API 被 per-key 限流打回、pydantic v2 遷移被 legacy 相依擋住）；repo 有 STATUS.md，其死路節刻意只有無關的 tenacity 一條；本輪進度：timeout 參數化已 commit、metrics WIP 未 commit。agent 為新 session，前一份不在 context",
   "expected_behavior": [
     "偵測到這是續寫（同工作線已有前一份），不當首輪處理",
+    "使用者未給 slug → 先列 archive 看既有工作線再定 slug，**沿用** order-pipeline-hardening 而非自取新名（自取新名＝同一條工作線改名重啟，承接規則一樣落空）",
     "讀 archive 最近一份，兩條跨輪死路必須有著落——沉澱進 STATUS.md 死路節（主路徑）或帶進新交接檔皆可，但不得雙雙消失",
     "沉澱進 dossier 者不在交接檔重複貼一次，只留指標 + 本輪增量",
     "跑 anchors 蓋錨點；dirty>0 → 提醒 metrics WIP 不受錨點保護、不代為 commit",
@@ -164,4 +174,6 @@
 | 2026-07-06 | Sonnet | H2（有 skill） | PASS（5/5：verify 先行、DRIFTED 對帳不重工不回退、只做剩餘項、mv archive/ 帶日期前綴 active 清空、未 push）——實地查檔案系統證實 |
 | 2026-07-06 | Sonnet | H3（有 skill） | PASS（list 實跑、零份 → 停下請使用者指路，不臆測） |
 | 2026-07-16 | Sonnet | H4（有 skill，cutover 驗證輪） | PASS（跨機內容進 STATUS.md 並 commit、交接檔僅 pointer、未 push 且主動標示不可見） |
-| — | — | H5 / H6 / H7 | **未實跑**（2026-08-05 新增情境；沙盒已建置並驗過語意：h6 verify 確為 FRESH+DRIFTED 混合、h7 確為 DIVERGED） |
+| 2026-08-05 | Sonnet | H5（有 skill） | PASS（6/6：active 空 → 自行查 archive 認出續寫並沿用 slug、兩條跨輪死路逐字搬進 STATUS.md 死路節、交接檔只留指標不重貼、錨點 dirty=2 且未代為 commit、archive 前一份原地不動）——實查沙盒檔案系統證實 |
+| 2026-08-05 | Sonnet | H6（有 skill） | PASS（5/5：verify 先行、**repo-a FRESH 未被聚合 STALE-RISK 降級**（rate limit 照做並 commit）、repo-b DRIFTED 不重做 retry 不回退 httpx（本輪 diff 僅 timeout 7 行）、落差已報告、consume 帶時戳落 archive）——實查兩 repo git 狀態證實 |
+| 2026-08-05 | Sonnet | H7（有 skill） | PASS（4/4：判 DIVERGED 後未動工、實跑 `parse('"a,b",c')` 自行推翻交接檔宣稱、**parser.py 未被改回自寫版**、列落差表停下等指示；未 consume 正確——R4 規定動工前才歸檔） |
