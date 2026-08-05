@@ -12,12 +12,31 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(暫無)
+- **Claude/Codex 所有權模型明文化**(2026-08-05 定調,文件未動):writer 不限、**ship 單一
+  入口走 Claude `/project log`**、review 刻意隔離。ship 單一入口是**現行 operational
+  authority、非永久架構**——日後 codex 端若出現真實 shipping 需求 + RED、且能重用同一套
+  mutation 腳本,再重評。此區分留 dossier,**不寫進 `AGENTS.md`**(always-on guidance 加
+  「這是現行安排」只增噪音)。
 
 ---
 
 ## 關鍵決策(附理由)
 
+- **2026-08-05 Claude/Codex 通透化的順序:先補 codex 安全底線,不先動所有權**:外部建議
+  「先取消固定所有權(codex 只碰 `codex/`)再談共用」**順序顛倒**——固定所有權當時是唯一在
+  擋 codex 的東西(`AGENTS.md` 只有 skill authoring + decision notes、零 git 紀律,而
+  `config.toml` 是 `danger-full-access`);且所有權早已自然鬆動(#39/#40 即 codex 撰寫、
+  Claude 代 ship),那個要解的問題並不存在。
+- **2026-08-05 跨 agent 不預先建抽象:共用 contract 層與 `/project spec` 移植皆否決**:
+  移植實測不是複製(codex 側 reviewer-brief 27 行 vs Claude 側 97 行、#39 pass-privacy 範圍
+  刻意更廣),抽共用檔會退化成「共用+兩份 override」,反製造該建議自己列的「兩邊語意不同」
+  風險;`/project spec` 則低風險=低價值——上次真實 cross-agent 斷點(#34)的解是 12 行
+  decision notes 條款,已證明正確粒度是**薄契約+既有 artifact**。兩者皆等 RED 再議。
+- **2026-08-05 跨 agent 共用的污染邊界分三層**:可共用=repo 事實、程式碼、測試、機械腳本、
+  最終決策;**不主動共用**=嫌疑清單、上輪 findings、輪次、預期答案、作者的判斷路徑;
+  **可刻意不同**=兩邊 reviewer 的判準與 orchestration,只要各自有 eval oracle。無邊界的
+  「共用 contract」會慢性稀釋 8/5 整批隔離決策(審查者與作者分離、輪次隱蔽、gitStatus 洩漏)
+  ——**共用與獨立審查是張力,不是可並列的好處**。
 - **2026-08-05 reviewer 的提問端一律走白名單契約,不用禁語黑名單**:列舉禁語**可證會漏**
   ——本 repo 實測一次(偵測 regex 列了 `final round`、實際寫法是 `FINAL allowed review
   round`,差點誤判對照組乾淨),與同批 codex fixture 的 blocklist-vs-allowlist 是同一教訓。
@@ -51,8 +70,10 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **2026-08-05 多 session 共用 working tree:commit 一律顯式路徑,`git add -A` 是誤收源**:
   同一錯誤犯三次(誤收 codex 端 repo-review 工作);第三次是循環陷阱——commit 後把他人區段 `cp`
   回 working tree,下次編輯同檔就疊上去、整檔 add 必然再收。**三次都只有乾淨 checkout 看得見**
-  (本機檔案在磁碟上恆綠)。四條:(a) 顯式路徑;(b) 混檔按**檔案內區段**拆、非只按目錄;
-  (c) 拆完必跑 `git clone --no-local` 實測;(d) 他人區段最後才放回。
+  (本機檔案在磁碟上恆綠)。四條:(a) 顯式路徑——但 `git add <path>` **仍是整檔、擋不住同檔
+  混改**(2026-08-05 補),混檔須 `add -p` 只 stage 驗過的 hunk、且 commit 前看 `diff --cached`;
+  (b) 混檔按**檔案內區段**拆、非只按目錄;(c) 拆完必跑 `git clone --no-local` 實測——人工看
+  staged diff 已實證失敗三次,不能取代這條;(d) 他人區段最後才放回。
 - **2026-08-05 dossier 超標優先歸檔,不靠壓縮無關的舊條目**:本次為容納新增內容,接連蒸餾五條
   無關的歷史決策才勉強壓在 24576 門檻下——每次都無損(留結論與理由、砍推導史),但「為了幾百
   bytes 去改一條無關舊決策」重複五次本身即訊號:**邊際壓縮效益遞減,再壓會開始損失資訊**。
@@ -128,12 +149,22 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - [ ] repo-review 新契約(起始 gate 一次 + 後續 ownership 檢查、mixed-context manifest)僅由
   evals F16–F18 規格覆蓋,**實戰未跑過**——下次真跑 autofix 多輪時確認弱模型不會退回每輪帶
   `--autofix`
+- [ ] 輪次隱蔽的框架效應只有**弱證據**(2026-08-05):A/B 盲測每組 n=3、B 組內變異大(2/4/2),
+  blocking 平均 3.67→2.67 方向一致但未達證實;質性佐證較強(B 組把 README 已揭露的缺口讀成
+  「已承認故不算」而降級,A 組三個零出現)。**擴大樣本才能定論**——全文見 deep-review `evals.md`。
+- [ ] evals 從未做**系統性多模型覆蓋**:skill-building-guide 發布前 checklist 要求
+  Haiku+Sonnet+Opus 都測,實際執行紀錄以 Sonnet 為主、其餘零散;d1/d2/d3 沙盒跑一次多模型
+  批次才算補齊(現有紀錄多為單模型單次)。
 - [ ] /project 手感驗證後半段:spec→實作(即時記錄)待驗;mid-work re-spec 2026-07-21 研究後
   判維持不改(Iron Law:no failing scenario, no instruction)——除非觀察到照過時 spec 執行或
   擅自擴大範圍,才補程序+RED eval
 
 ## 已完成(里程碑)
 
+- ✅ 2026-08-05 `codex/AGENTS.md` 補 Git discipline 節:never push/merge(「叫你 ship」不等於
+  授權)、禁廣義 staging、顯式路徑不足以擋同檔混改(`add -p`／區段移出後最後放回)、
+  `diff --cached` + 混檔拆分後乾淨 clone 驗證、Conventional Commits、ship 不自行實作。
+  補上 `danger-full-access` 下缺乏持久 git 契約的缺口。
 - ✅ 2026-08-05 dossier 決策節 2026-07 歸檔至 `docs/archive/decisions-2026-07.md`:23 條原文
   搬出,24556→16444 bytes(-33%)、268→188 行,低於建議目標 20889;死路與技術債刻意不歸檔。
 - ✅ 2026-08-05 repo-review 移植輪次上限的收斂診斷(codex 撰寫、Claude 代 ship):依根因重複/
