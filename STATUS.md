@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-05)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-06)
 
 ---
 
@@ -117,58 +117,6 @@ git checkout ssh/config                       # 僅限尚未 commit
 手動改 `~/.ssh/config`,或臨時加回 `insteadOf` 撐住。**先在一台機器驗過再散佈,不要一次
 `dotsync` 全部。建議清醒時做,不要在深夜動**。
 
-### handoff skill 優化(2026-08-05 開工)
-
-**Context**:`handoff` 已是熱路徑(`~/.claude/handoffs/archive/` 52 份實檔)。拿這 52 份做
-統計後發現機制層(`handoff-anchor.sh` + `tests/run.sh` 第 13 節)紮實,但 SKILL.md 漏掉兩個
-高頻使用模式:**同 slug 多輪續寫**(`evint-mvp-sprint` 7/22–7/27 共 14 輪,另 4 個 slug 各
-2–3 輪,合計約 40%)只有「整檔覆寫」一句、未規定內容承接;**多 repo 錨點**(14/52 = 27%)
-在 R3 只有「單一 verdict → 單一處置」映射、無混合判定處置。
-
-**Goal**:把已被實證的正確行為固化成規則(非發明新流程),並補兩項零成本腳本防禦與三個
-eval 缺口。
-
-**AC**:
-1. SKILL.md W3 有續寫承接規則(主路徑沉澱 STATUS.md + 無 dossier 時讀 archive 前一份的
-   fallback)、W1 有續寫偵測、Red Flags 有反制「反正在 archive 裡」的條目。
-2. SKILL.md R3 改逐 repo status → 處置,並註明 `verdict:` 只是全域聚合旗標;W3 模板要求
-   多 repo 時「下一步/涉及檔案」明標 repo。
-3. `anchors` 記錄 `--show-toplevel` 絕對路徑(相對路徑/子目錄輸入皆對齊 repo root),空白
-   檢查後移到 toplevel;`list` 補 `path:` 行與標題。
-4. `./tests/run.sh` 以 exit code 全綠,含新增斷言且既有斷言不破。
-5. evals.md 有 H5(續寫)/H6(多 repo 混合)/H7(DIVERGED)情境 + 沙盒。
-
-**Constraints**:
-- **明確不動**(實證判定不值得改,避免後續 session 翻案):archive 保留期用 mtime(49/52
-  當天消費、偏差 ≤1 天)、`EXPIRE_DAYS`/EXPIRED/UNVERIFIABLE 分支(從未觸發的保險絲,
-  **不刪也不再擴充生命週期機制**)、verify 的 dirty note(僅 10% 檔案 dirty>0)、模板 7 節
-  (52/52 遵循、死路節 49/52 有實質內容 → 不是 ceremony)。
-- `--show-toplevel` 會解析 symlink(`/tmp` → `/private/tmp`),測試 fixture 期望值需 realpath 化。
-- evals 實跑屬弱模型手動 session,不在本次範圍。
-
-**進度**:AC 1–5 完成後跑 codex C1 第三方審查,5 條 findings **全數驗證為 true positive**
-(無 false positive):續寫偵測盲點(高,見上方決策)、archive glob 無邊界子字串比對、沙盒 ROOT
-未正規化、Red Flags 改動後未重跑 eval、STATUS 下一步 stale。五條全數處理完畢:前四條已修,
-第五條(eval)已實跑——**H5/H6/H7 在 Sonnet(目標樓層)全 GREEN**,逐項實查沙盒檔案系統證實,
-guide:291 要求的 GREEN 重跑紀錄已補齊。
-
-**codex C2**(增量 range,只審 C1 之後的修復)再抓 5 條,亦全數 true positive:3 條指向本輪
-修復(續寫偵測的 slug 分支迴歸、`tail -20` 瀏覽視窗會被別的工作線刷掉、`setup-sandboxes.sh`
-的 `$INSTANCE` 繞過空白檢查——同型漏掃,前一輪只驗了 `$ROOT`),已修並實測;另 2 條指向
-GitHub 多身分收斂工作項(方案片段漏 `IdentitiesOnly yes`、回退指令在已 commit 後不成立),
-前者由另一 session 修、後者於本輪補齊(見該節「風險與回退」)。
-以下為初次交付的驗證紀錄:AC 1–5 全數完成。`./tests/run.sh` 572 PASS / 0 FAIL(exit 0)。B1/B2 做過**突變測試**
-——把 anchors 還原成舊行為,4 條斷言變紅,其中「相對輸入 + 含空白 toplevel」舊版是 exit 0 且
-輸出壞錨點,確認漏洞為真而非理論。三個新沙盒實跑建置並驗語意:h6 verify 確為 FRESH+DRIFTED
-混合、h7 確為 DIVERGED。
-
-**codex C3**(輪次上限)2 條:glob 尾錨定仍會誤中後綴同名的工作線(true positive,已實測
-複現)、slug 未驗證即進 shell(安全面判 **false positive**——slug 來自機器擁有者自己的輸入、
-無跨信任邊界;正確性面與前條同根因)。修復額度已滿,經使用者裁示走**架構層解**而非再調
-glob:新增 `find-predecessor` 子指令(見上方決策)。`./tests/run.sh` 583 PASS / 0 FAIL。
-
-**下一步**:C1/C2/C3 findings 全清、evals 全 GREEN、測試全綠。本工作項可 ship;push 待
-使用者指示。C3 後的修復未再經第三方審查(輪次已用盡)——若要再驗,須開新一輪 review cycle。
 
 ---
 
@@ -353,6 +301,11 @@ glob:新增 `find-predecessor` 子指令(見上方決策)。`./tests/run.sh` 583
 
 ## 已完成(里程碑)
 
+- ✅ 2026-08-06 handoff skill 優化:拿 archive 52 份實檔做統計,補上兩個高頻卻無規則的使用
+  模式——同 slug 多輪續寫(約 40%)的死路承接、多 repo 錨點(27%)的逐 repo 對帳;`anchors`
+  改記 toplevel 絕對路徑、`list` 補 path/title、新增 `find-predecessor` 子指令。H5/H6/H7
+  三情境在 Sonnet 全 GREEN,codex C1/C2/C3 共 12 條 findings 全數驗證處理(其中 2 條屬 SSH
+  工作項)。`./tests/run.sh` 583 PASS。
 - ✅ 2026-08-05 上兩批 git 紀律的第三方審查修復(3 blocking + 1 minor,全判 TP):`add -A`
   例外(禁令側與 `deep-review/SKILL.md` 使用點**兩處都寫**前置條件)、codex 自有 branch-first、
   STOP 與混檔技法的順序銜接、`clone --no-local` 補齊參數。
