@@ -48,20 +48,20 @@ argument-hint: "[resume] [slug]"
 
 依 session 記憶列出本次工作涉及的 repo（同跨 repo 工作流原則，**不掃 `~/Projects/`**；context 被壓縮就以 pwd 的 repo 為底請使用者補充）。多 repo = 同一份交接檔、多條錨點。
 
-接著**定 slug 並判定首輪或續寫**。**不論使用者有沒有指定 slug，都要查過 active 與 archive 才決定**：
+接著**定 slug 並判定首輪或續寫**。**不論使用者有沒有指定 slug，slug 定出後都要跑一次 `find-predecessor` 才能斷定是首輪**：
 
 ```
-~/.claude/skills/handoff/scripts/handoff-anchor.sh list                # active：尚未消費的前一份
-ls -1 ~/.claude/handoffs/archive/*-<slug>.md 2>/dev/null | tail -1     # slug 已知：精確定位前一份
-ls -1 ~/.claude/handoffs/archive/ | tail -20                           # slug 未定：瀏覽近期工作線
+~/.claude/skills/handoff/scripts/handoff-anchor.sh find-predecessor <slug>   # 精確定位前一份
+~/.claude/skills/handoff/scripts/handoff-anchor.sh list                      # 有哪些 active（含標題）
+ls -1 ~/.claude/handoffs/archive/ | tail -20                                 # slug 未定時：瀏覽近期工作線
 ```
 
-- **使用者指定了 slug**（含 `/handoff <slug>`）→ 用它，並以第二條指令精確定位前一份。
-- **未指定** → 先用第三條看既有工作線：本次工作屬其中一條就**沿用該 slug**，確定是全新工作線才自取；slug 定出後同樣跑第二條確認。
+- **使用者指定了 slug**（含 `/handoff <slug>`）→ 直接跑 `find-predecessor`。
+- **未指定** → 先用 `list` + archive 瀏覽看既有工作線：本次工作屬其中一條就**沿用該 slug**，確定是全新工作線才自取；**兩種情況都要再跑 `find-predecessor` 確認**。
 
-任一處命中（或本 session 稍早 resume 過同一條工作線）→ **續寫**，把命中那份的路徑帶進 W3 的「續寫交接」。
+`predecessor:` 有值（不是 `NONE`）→ **續寫**，把該路徑帶進 W3 的「續寫交接」；本 session 稍早 resume 過同一條工作線亦然。
 
-兩個誤判方向都要防：只查 active 會把第 N 輪當成首輪（前一份通常已被消費進 archive）；不看 archive 就自取新 slug，等於讓同一條工作線改名重啟。第三條的 20 份只是瀏覽視窗——**slug 一旦確定就以第二條的精確查詢為準**，archive 保留 30 天且無數量上限，別的工作線刷過 20 份就會把你的前一份擠出視窗。
+兩個誤判方向都要防：只查 active 會把第 N 輪當成首輪（前一份通常已被消費進 archive）；不看既有工作線就自取新 slug，等於讓同一條工作線改名重啟。**定位一律用 `find-predecessor`，不要自己拼 glob**——`archive/*-<slug>.md` 看似尾錨定，`*` 卻吃得下中間的工作線名（查 `foo` 會撈到 `bar-foo` 且時戳較新時剛好選中它）；子指令改用「檔名去時戳前綴後完全相等 + 檔內 `slug:` 相符」兩層精確判準。archive 瀏覽的 20 份只是視窗，會被別的工作線刷掉，只服務「還不知道 slug」的階段。
 
 ### W2：蓋錨點
 

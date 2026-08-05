@@ -1234,6 +1234,52 @@ if echo "$out" | grep -q "^  title: 訂單重試強化$"; then ok "list 印 titl
 assert_eq "無標題行的檔不印 title" "1" "$(echo "$out" | grep -c '^  title: ')"
 rm "$TMP/ha-handoffs/titled.md"
 
+# --- find-predecessor（W1 判首輪/續寫：依 slug 精確定位前一份）---
+# 關鍵迴歸：`archive/*-<slug>.md` 的尾錨定擋不住中間的工作線名——查 foo 會命中 bar-foo，
+# 且 tail -1 剛好選它（時戳較新、字典序在後）。同一處定位邏輯被三輪第三方審查逐輪擠，
+# 這節把「精確比對」釘死。DO NOT relax these back into a glob.
+FP="$TMP/ha-fp"; mkdir -p "$FP/archive"
+fp_mk() { printf -- '---\nslug: %s\ncreated: 2026-08-01\n---\n# Handoff: %s\n' "$2" "$2" > "$FP/$1"; }
+# bar-foo 的時戳**必須最新**，否則 glob 實作的 tail -1 也會剛好答對，斷言就沒有鑑別力
+# （同「守門測試的命中點要放在逼得出缺陷的位置」那條教訓）
+fp_mk "archive/20260804-120000-bar-foo.md" "bar-foo"
+fp_mk "archive/20260801-090000-foo.md" "foo"
+fp_mk "archive/20260803-100000-foo.md" "foo"
+
+out="$("$HA_SCRIPT" find-predecessor foo "$FP")"
+assert_rc "find-predecessor 命中 → exit 0" 0 $?
+assert_eq "後綴同名的別條工作線不得誤中（bar-foo vs foo），且取同 slug 最新一份" \
+    "$FP/archive/20260803-100000-foo.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+if echo "$out" | grep -q "^location: archive"; then ok "命中 archive 標 location"; else bad "location 標記錯誤"; fi
+
+out="$("$HA_SCRIPT" find-predecessor bar-foo "$FP")"
+assert_eq "查較長的工作線名照樣精確" \
+    "$FP/archive/20260804-120000-bar-foo.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# active 未消費者優先（它比 archive 任何一輪都新）
+fp_mk "foo.md" "foo"
+out="$("$HA_SCRIPT" find-predecessor foo "$FP")"
+assert_eq "active 未消費的同 slug 優先於 archive" "$FP/foo.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# 檔名對得上但檔內 slug 不符 → 不採用（手改過的殘檔不得被撿）
+printf -- '---\nslug: someone-else\n---\n' > "$FP/archive/20260804-110000-mismatch.md"
+out="$("$HA_SCRIPT" find-predecessor mismatch "$FP")"
+if echo "$out" | grep -q "predecessor: NONE"; then ok "檔內 slug 與檔名不符 → 不採用"; else bad "採用了 slug 不符的檔"; fi
+
+# 無命中＝首輪，是正常結果不是錯誤
+out="$("$HA_SCRIPT" find-predecessor brand-new "$FP")"
+assert_rc "find-predecessor 無命中 → exit 0（首輪是正常結果）" 0 $?
+if echo "$out" | grep -q "predecessor: NONE"; then ok "無命中印 NONE"; else bad "無命中輸出錯誤"; fi
+
+# slug 含 glob 字元 → 不做 pathname expansion（slug 已不進 glob）
+out="$("$HA_SCRIPT" find-predecessor '*' "$FP")"
+if echo "$out" | grep -q "predecessor: NONE"; then ok "slug 含 glob 字元不誤匹配"; else bad "glob 字元被展開"; fi
+
+"$HA_SCRIPT" find-predecessor >/dev/null 2>&1
+assert_rc "find-predecessor 無引數 → exit 2" 2 $?
+"$HA_SCRIPT" find-predecessor foo "$TMP/no-such-dir" >/dev/null
+assert_rc "find-predecessor 目錄不存在 → exit 0" 0 $?
+
 out="$("$HA_SCRIPT" list "$TMP/no-such-dir")"
 assert_rc "list 目錄不存在 → exit 0（回報 NONE）" 0 $?
 if echo "$out" | grep -q "handoffs: NONE"; then ok "list 無目錄 → NONE"; else bad "list 無目錄輸出錯誤"; fi
