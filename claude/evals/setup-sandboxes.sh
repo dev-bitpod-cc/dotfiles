@@ -27,11 +27,13 @@ set -euo pipefail
 ROOT="${1:-$(mktemp -d /tmp/skill-evals.XXXXXX)}"
 INSTANCE="${2:-run}"
 mkdir -p "$ROOT"
-# handoff fixture 會把 $ROOT 寫進 anchor 行，故此處與 handoff-anchor.sh anchors 受同一道約束：
-# 相對路徑會讓後續從別的 cwd 驗證時對到別的 repo（且誤報成 DIVERGED），含空白則破壞欄位解析
+# handoff fixture 會把 `$ROOT/<情境>-$INSTANCE` 寫進 anchor 行，故此處與 handoff-anchor.sh
+# anchors 受同一道約束：相對路徑會讓後續從別的 cwd 驗證時對到別的 repo（且誤報成 DIVERGED），
+# 含空白則破壞欄位解析。**$INSTANCE 一併驗**——它也是寫入路徑的一段，而 README 的執行方式
+# 就是每個受測模型各給一個 instance 名（`sonnet run2` 這種帶空白的寫法很自然）
 ROOT="$(CDPATH='' cd -- "$ROOT" && pwd -P)"
-case "$ROOT" in *[[:space:]]*)
-    echo "error: 輸出目錄含空白，handoff fixture 的 anchor 行以空白分欄：${ROOT}" >&2
+case "$ROOT$INSTANCE" in *[[:space:]]*)
+    echo "error: 輸出目錄或 instance 名含空白，handoff fixture 的 anchor 行以空白分欄：ROOT=${ROOT} INSTANCE=${INSTANCE}" >&2
     exit 1 ;;
 esac
 
