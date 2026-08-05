@@ -42,26 +42,23 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   endpoint 之間無明示綁定,判準卻要 reviewer 據相似性認定 provenance——**等於獎勵無根據歸屬、
   懲罰「我無法確認」這個更嚴謹的答案**(而後者正是 brief 要求的態度)。補 `_source` metadata
   使綁定機械可驗證。與 F18「判準寫成答案導向」同型:**oracle 寫歪會系統性淘汰最該保留的行為**。
-- **2026-08-05 git 收尾序列不得串成一行、更不得吞掉中間錯誤**:merge 最後一哩把
-  `git switch main 2>/dev/null; git pull origin main` 串一行——switch 因 working tree 有他線
-  未 commit 變更而失敗(本地 default 尚落後、切換會覆蓋),錯誤被 `2>/dev/null` 吃掉、又沒檢
-  exit code,於是 **pull 在 feature branch 上跑成 rebase**,把 16 顆往已 squash 的 default 重放
-  炸出滿地衝突。`rebase --abort` 可完整還原(含 autostash),但這是不必要的險。**ship-paths.md
-  的序列本來就是分開的指令**;正確替代是 `git fetch origin <default>:<default>`(更新本地 ref、
-  不碰 working tree)再切。與同日的 `git add -A` 誤收同一根源:**為省事把 git 動作合併,錯誤
-  就藏在中間**。
+- **2026-08-05 git 收尾序列不得串成一行、更不得吞掉中間錯誤**:`git switch main 2>/dev/null;
+  git pull origin main` 串一行——switch 因他線未 commit 變更而失敗,錯誤被 `2>/dev/null` 吃掉
+  又沒檢 exit code,於是 **pull 在 feature branch 上跑成 rebase**,16 顆往已 squash 的 default
+  重放炸出滿地衝突(`rebase --abort` 可完整還原,但屬不必要的險)。正確替代:`git fetch origin
+  <default>:<default>` 更新本地 ref 再切。與 `git add -A` 誤收同根源:**為省事合併 git 動作,
+  錯誤就藏在中間**。
 - **2026-08-05 多 session 共用 working tree:commit 一律顯式路徑,`git add -A` 是誤收源**:
-  同一錯誤犯三次(誤收 codex 端 repo-review 工作)。第三次根因是循環陷阱——每次 commit 後
-  把他人區段 `cp` 回 working tree,下次編輯同檔就疊上去、整檔 add 必然再收。**三次都只有
-  乾淨 checkout 看得見**(本機因檔案在磁碟上恆綠)。四條:(a) 顯式路徑;(b) 混檔按**檔案內
-  區段**拆、不是只按目錄;(c) 拆完必跑 `git clone --no-local` 實測;(d) 混檔期間他人區段
-  先不放回,等自己全部 commit 完才最後放回。
+  同一錯誤犯三次(誤收 codex 端 repo-review 工作);第三次是循環陷阱——commit 後把他人區段 `cp`
+  回 working tree,下次編輯同檔就疊上去、整檔 add 必然再收。**三次都只有乾淨 checkout 看得見**
+  (本機檔案在磁碟上恆綠)。四條:(a) 顯式路徑;(b) 混檔按**檔案內區段**拆、非只按目錄;
+  (c) 拆完必跑 `git clone --no-local` 實測;(d) 他人區段最後才放回。
 
-- **2026-08-05 repo-review 只移植收斂診斷,拒絕移植外部取證**(codex 判斷,ship 端蒸餾):移植
-  「輪次上限須依根因重複/震盪 vs 各輪不同且前案仍修復」來診斷收斂,並補了 deep-review 側沒做
-  的 tests gate;**不移植外部 API/DB 實地取證**——F20 自承無 observed RED,且會擴大網路、憑證、
-  計費與 audit-log 邊界,違反 no failing scenario, no instruction。**兩端結論不同是刻意的**:
-  deep-review 由使用者拍板納入並標「GREEN 待實測」。
+- **2026-08-05 外部取證條款兩端最終都不納入**:codex 端自始拒絕移植;deep-review 側一度納入、
+  同日撤除——**該條的證據(krepo 三條 finding 由 subagent 自發取證找到)恰恰證明規則不必要**,
+  倒果為因;且進 brief 當批即生出第二層規則(授權邊界),而 d4 fixture 測不到那半,留下無 oracle
+  的規則。折衷版(改標註 evidence 為查證/推論)同樣無 RED,降為 backlog。**repo-review 仍移植
+  收斂診斷**(依根因重複/震盪 vs 各輪不同分類)並補了 tests gate。全紀錄見 deep-review `evals.md`。
 - **2026-08-03 codex 的決策發聲採「產原料寫進行中、ship 端蒸餾」,不讓 codex 學 dossier 規範**:
   #34 暴露 cross-agent 記錄斷點(codex 改 `codex/skills/`、Claude 端 ship,理由只能從 diff 反推)。
   界線是原理性的:**機制反推無損,但否決的方案與死路在 diff 裡永遠沒有痕跡**。故 `codex/AGENTS.md`
@@ -214,8 +211,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 - ✅ 2026-08-05 repo-review 移植輪次上限的收斂診斷(codex 撰寫、Claude 代 ship):依根因重複/
   震盪 vs 各輪不同且前案仍修復來分類,禁止單憑上限推論架構問題;evals F21+tests 契約 gate。(565)
-- ✅ 2026-08-05 deep-review 第三方回饋落地 + 輪次隱蔽缺口結案(#40):外部取證判準、終止報告
-  根因重複欄、R5 措辭修正、eval d4/F20(**GREEN 待實測**);codex 三輪 4/4 TP 全修。(564)
+- ✅ 2026-08-05 deep-review 第三方回饋落地 + 輪次隱蔽缺口結案(#40):終止報告根因重複欄、
+  R5 措辭修正;codex 三輪 4/4 TP 全修。外部取證判準同日撤除,見決策節。(564)
 - ✅ 2026-08-05 codex repo-review 移植同批治理(#39):reviewer-brief 判準下沉、stage-neutral
   prompt 模板、pass 位置 orchestration-private(範圍比 deep-review 側更廣);evals F19/F20。
 - ✅ 2026-08-05 deep-review 審查偏誤治理(#38):根因在**提問端**(主 agent 自行放寬 prompt),
@@ -237,6 +234,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - ✅ 2026-07-16 多主機工作流改造(c673844;/project 取代 /uap、SessionStart pull hook、dossier/transfer 模板)
 
 ## 已知缺口
+
+- **證據標註 = backlog,無 RED 不進 brief**:待觀察失效為「finding 建立在未查證推論、fixer 誤信」,
+  至今零觀察;日後出現再加標註版(零風險、可測),而非授權外部存取。全紀錄見 deep-review `evals.md`。
 
 - **deep-review anchor 跨批次會 stale,`squash-cmd` 因而指向錯誤目標**:anchor 只在 autofix 的
   `record` 寫入,走「codex 第三方審查」觸發詞路徑(非 autofix)時不 record,`squash-cmd` 遂讀到
