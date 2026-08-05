@@ -29,6 +29,17 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   新引入的 endpoint、計費或留稽核則歸未取證)。**d4 的取捨**:以 repo 內回應樣本模擬外部來源、
   不起 HTTP server(免 port 與背景進程依賴),代價是憑證/計費/endpoint 可信度那幾條邊界仍無
   oracle——已在 F20 明列覆蓋邊界,勿誇大該 eval 證明了什麼。
+- **codex C2/C3 處置**:C2 一條真陽性——d4 的 fixture 與 `VENDOR_ENDPOINT` 之間**沒有明示
+  綁定**(只有「都用 companies key、檔名與 host 都含 vendor」的相似性),當時的 expected 卻要
+  reviewer 據此判定欄位語意,等於**獎勵無根據的 provenance 歸屬、懲罰「我無法確認」這個更
+  嚴謹的答案**——而後者正是 brief 自己要求的態度。補 `_source` metadata(與 endpoint 字面
+  相同)使綁定機械可驗證。**通用教訓(與 F18「判準寫成答案導向」同型)**:eval 的
+  `expected_behavior` 不得要求 agent 做出證據不支持的推論,否則 oracle 會系統性淘汰最該
+  保留的行為。C3 零 findings(兩位 reviewer 一致)通過。
+- **squash 刻意不執行**:`squash-cmd` 讀到的是**上一批的 stale anchor**(`c4024a7`,2026-08-04
+  記錄),會壓掉 5 顆含已 merge 的 #38/#39——本批實際只有 `5a74e50..HEAD` 三顆。本次非
+  autofix 流程、未 record 本批 anchor,且 ship 走 PR squash merge,故本地不 squash。
+  **後續若跑 autofix,record 會覆寫 anchor,屆時 squash-cmd 才恢復可信。**
 
 (上一批:deep-review 審查偏誤治理已 merge(#38);codex repo-review 移植已 commit 待 ship,見已完成里程碑)
 
