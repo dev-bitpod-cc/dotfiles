@@ -15,6 +15,7 @@
 - **NEVER merge on your own** — only when the user explicitly says merge / bypass merge. "push" or "open a PR" alone does NOT include merge.
 - 使用者明說 merge 後的標準收尾：merge PR（預設 squash）→ 清 remote/本地 branch → 同步本地 default（序列見 `~/.claude/skills/project/references/ship-paths.md`「Merge 最後一哩」）。
 - **NEVER push on your own** — after finishing an issue implementation or review fixes, commit and STOP; wait for the user's next instruction.
+- **NEVER `git add -A` / `git add .` / `commit -a`**——顯式路徑 stage，且**顯式路徑仍是整檔**：同一檔混了他人 session 的區段時改用 `add -p` 只 stage 驗過的 hunk（或把他人區段移出、commit 完最後放回），commit 前看 `git diff --cached`。三次誤收皆在磁碟上恆綠，**只有 `git clone --no-local` 看得見**——人工看 staged diff 已實證失敗三次，不能取代它。
 - Conventional Commits: `<type>: <short desc>`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
 
 ## Third-party Review Verification
@@ -60,6 +61,13 @@ When the user pastes third-party review findings, read the source code and verif
 ## 跨 Repo 工作流
 
 主 agent 是唯一擁有跨 repo 全局 context 的角色。觸發跨 repo skill（`/deep-review`、`/project log`）時，依 session 記憶列出 `(repo, 檔案數)` 清單讓使用者確認（ok / 只看 X / 還有 Y），**不掃描** `~/Projects/`。確認流程細節見各 skill 的 Step 0。context 被壓縮就以 pwd 的 repo 為底讓使用者補充；使用者指定的 repo 即使無 diff 也納入（檢查一致性）。
+
+## 跨 Agent 工作分配（Claude Code / Codex 並用）
+
+- **writer 不限**：一般實作、測試、除錯兩邊都可做，依當下工具與模型選，**不按目錄分**（「codex 只碰 `codex/`」向來只是慣例、非規則）。
+- **ship 單一入口**：只有 Claude 的 `/project log` 是 pressure-tested 的送出路徑（branch-first／protection／dossier 蒸餾）。Codex 寫完 commit 並停，由 Claude 收尾。這是**現行 operational authority、非永久架構**——codex 端出現真實 shipping 需求 + RED 且能重用同一套 mutation 腳本時再重評。
+- **review 刻意隔離**：同一變更的作者與 reviewer 用不同 agent。可共用＝repo 事實／程式碼／測試／機械腳本／最終決策；**不主動共用**＝嫌疑清單、上輪 findings、輪次、預期答案、作者的判斷路徑；可刻意不同＝兩邊 reviewer 的判準與 orchestration（各自有 eval oracle 即可）。**共用與獨立審查是張力**——共用越多判準，blind review 的價值越低。
+- **One writer per work item.** Two agent sessions must NEVER edit the same working tree concurrently — use a separate worktree or clone. 這與上方 staging 紀律同源：並行編輯製造混檔，混檔製造誤收。
 
 ## 跨主機工作流（多主機開發；主機清單見 `~/.dotfiles/scripts/inventory.conf`，勿在此硬編清單——會漂移）
 

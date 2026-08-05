@@ -12,11 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-- **Claude/Codex 所有權模型明文化**(2026-08-05 定調,文件未動):writer 不限、**ship 單一
-  入口走 Claude `/project log`**、review 刻意隔離。ship 單一入口是**現行 operational
-  authority、非永久架構**——日後 codex 端若出現真實 shipping 需求 + RED、且能重用同一套
-  mutation 腳本,再重評。此區分留 dossier,**不寫進 `AGENTS.md`**(always-on guidance 加
-  「這是現行安排」只增噪音)。
+(暫無)
 
 ---
 
@@ -161,6 +157,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
+- ✅ 2026-08-05 跨 agent 所有權模型明文化(全域 `CLAUDE.md` 新增「跨 Agent 工作分配」節):
+  writer 不限／ship 單一入口(現行 authority、非永久)／review 三層污染邊界／one writer per
+  work item。查證發現「codex 只碰 `codex/`」**任何檔案皆無明文**——是慣例非規則,故本次寫的
+  是**正面授權而非解除限制**;順帶補上 Claude 側缺失的 staging 紀律(三次 `git add -A` 誤收
+  正是 Claude 在 ship 時犯的,規矩卻先前只立在 codex 端)。
 - ✅ 2026-08-05 `codex/AGENTS.md` 補 Git discipline 節:never push/merge(「叫你 ship」不等於
   授權)、禁廣義 staging、顯式路徑不足以擋同檔混改(`add -p`／區段移出後最後放回)、
   `diff --cached` + 混檔拆分後乾淨 clone 驗證、Conventional Commits、ship 不自行實作。
