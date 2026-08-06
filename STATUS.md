@@ -123,19 +123,15 @@ git checkout ssh/config                       # 僅限尚未 commit
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。
 
-- **2026-08-06 修復本身會製造下一輪的 finding**:codex C2 三條全指向 C1 的修復、C3 兩條全指向
-  C2 的修復;主審側也有一次(R4 修「hash 過期」引進的重算規則,被 R5 實測打掉)。每次修法都對,
-  錯在只想到一半——quote 了路徑沒 quote ref、把判準從 SHA 相等改成 ancestry 卻沒想到那個 ref
-  會過期。**判準:修完問「這個修法自己引進了什麼新前提」,那個前提就是下一輪的 finding。**
-- **2026-08-06 「測試看似在測、實際不可能失敗」有三種形狀**:fixture 排序讓錯誤實作也答對
-  (`bar-foo` 時戳若比 `foo` 舊,退回 glob 也剛好選對)、突變未生效卻誤判成斷言無鑑別力
-  (見下條)、**vacuous expectation**(eval 寫「有 EXPIRED 就列出」但 fixture 不會產生
-  EXPIRED,忽略 `list` 輸出照樣過關)。共通點:**斷言為真的方式與實作正確性無關**。
-  判準:答不出「什麼具體情境會讓它紅」就是虛設。
-- **2026-08-06 突變測試要先驗「突變已生效」,且雙層防禦須一次全破**:本輪兩次假綠——
-  第一次 `str.replace` 沒命中(靜默無效),第二次只突變第一層、被第二層 frontmatter 驗證
-  擋下,兩次都看似「斷言無鑑別力」實則突變未達成。修法:replace 前 `assert old in s`、
-  寫入後 grep 確認,且要**一次破壞所有防線**才算模擬回退。
+- **2026-08-07 Step 4 從「逐批出題」改「說法即授權」,拆掉的守衛另補一道**:使用者實地回報「說了
+  ship 還被問四次」是摩擦。改為送出說法(merge／bypass merge／只推 branch…)出現在本輪訊息裡就
+  印完摘要做到底、零提問;沒說法才問一題。**但這拆掉的是「push 前你一定會看到摘要並有機會攔」**,
+  故補上 `review-terminal:`——上一場審查若是 R5 終止收場(且 ancestry 涵蓋當前 HEAD)一律 STOP,
+  說法覆蓋不了。**判準:移除一道 gate 時,先問它順帶接住了什麼,那些東西要各自有主。**
+- **2026-08-07 merge 預設改「保留語意 commit」,推翻昨天「≥2 顆就出選項問」**:昨天那條的理由是
+  「壓不壓沒有預設值,不能猜」;使用者給了預設(不同目的的 commit 預設保留)之後,歧義本身消失,
+  詢問的理由跟著消失。**那條規則從未實測就被推翻**,故無實測結論被推翻。review 痕跡則相反——
+  **壓得掉的一律壓、不問**,它不是偏好而是不變式;唯一的自由度是「壓不壓得掉」(buried 壓不掉)。
 - **2026-08-07 skill-authoring 變更走一次診斷,切的是 autofix loop、不是 correctness bar**:
   可觀察的 RED 只有一個——同一批 skill 變更被對抗式重審失控(12 小時、兩場完整 deep-review
   加三輪 codex 未收斂),且第一場 R5 終止後又開新一場、外層重置了輪次上限。**初稿寫成
@@ -229,7 +225,25 @@ git checkout ssh/config                       # 僅限尚未 commit
   唯一 escape hatch;`terminate`/`resume-after-terminal` 兩個子指令讓 R5 終止跨 session 可見。
   eval 沙盒補 d4–d7,四條行為 eval 在 Sonnet 實跑至 GREEN。665 PASS。
 
+- ✅ 2026-08-07 ship 說法語法(說法即授權):Step 4 由逐批出題改為「說法出現即執行到底、零提問」,
+  merge 預設保留語意 commit、review 痕跡壓得掉的一律壓;新增 `review-terminal:` 事實前提 STOP
+  (說法覆蓋不了)與 merge 受阻的 `mergeStateStatus` 分流(`--admin` 只給「bypass merge」+`BLOCKED`)。
+  沙盒補 u4/u5,三條行為 eval 在 Sonnet 實跑首輪全 PASS。672 PASS。
+
 ## 已知缺口
+
+- **buried 的 review 痕跡壓不掉,不變式只做到「壓得掉的一律壓」**:`fix: address review findings`
+  夾在語意 commit 中間時 `reset --soft` 碰不到。**做得到但沒做**:`rebase -i` 配
+  `GIT_SEQUENCE_EDITOR` 指腳本是完全非互動的,把每顆 buried 標 `fixup` 折進前一顆語意 commit 即可
+  (前一顆本就是它的父節點,故 diff 必然套得上、後續 tree 不變,**衝突為零是結構保證**)。
+  **代價才是沒做的理由**:語意 commit 的 hash 與內容都會變(不再是 reviewer 看過的 tree)、
+  「squash 絕不動語意 commit」從結構保證退成測試保證、多一條 rebase 回滾路徑、branch 首顆是
+  buried 時無 fixup 目標;而實測多為 none/top-contiguous,頻率低。現況＝照送 + 摘要標明。
+
+- **`ship-state.sh` 不檢查 feature branch 對「自己的 remote tracking ref」是否分岔**(只比對
+  default)。分岔時 push 會被拒,prose 端有防線(`ship-paths.md` squash 步驟 0 的 fetch +
+  `--is-ancestor`)但**無訊號**——2026-08-07 跑 eval 時由受測 agent 自行 `branch -vv` 才發現。
+  補法＝一行 ancestry 檢查,形狀同 `review-terminal`;暫不補,無實地失敗案例。
 
 - **`stale-branches` 對 squash-merge 結構性盲視(已用 fixture 證實,批次 B 待做)**:偵測靠
   `git branch --merged`,那是**祖先關係**判定;squash-merge 後內容已完全在 default 上但無祖先
@@ -244,13 +258,11 @@ git checkout ssh/config                       # 僅限尚未 commit
 
 - **deep-review anchor 跨批次會 stale,`squash-cmd` 因而指向錯誤目標**:anchor 只在 autofix 的
   `record` 寫入,走「codex 第三方審查」觸發詞路徑(非 autofix)時不 record,`squash-cmd` 遂讀到
-  **上一批**的 anchor。2026-08-05 實遇:本批 3 顆 commit,腳本卻給出會壓掉 5 顆(含已 merge 的
-  #38/#39)的 reset 目標。**腳本行為正確**(照 anchor 算),缺的是「anchor 屬於哪一批」。
-  2026-08-06 更新:原本的 `warning:` 行已隨 squash 改算法移除,但**防線反而變強**——subject 掃描
-  會停在第一顆語意 commit,跨批次的舊語意 commit 不再被壓;殘餘風險縮小為「上一批的 review fix
-  commit 也一併被收進本批 squash」。可能解:`squash-cmd` 偵測 anchor 已併入 default 或不在當前
-  branch 歷史時改判 STOP——**`codex-next` 已有這道檢查**(8/06 補審已 squash 的那批時兩次正確判
-  「anchor 已非 HEAD 祖先」拒發 range),剩下的是移植;處置＝`record --mode branch-diff --base main`。
+  **上一批**的 anchor(2026-08-05 實遇:本批 3 顆 commit,腳本卻給出會壓掉 5 顆的 reset 目標)。
+  腳本行為正確,缺的是「anchor 屬於哪一批」。2026-08-06 squash 改 subject 掃描後**風險已大幅
+  縮小**——會停在第一顆語意 commit,跨批次的舊語意 commit 不再被壓;殘餘只剩「上一批的 review
+  fix commit 被收進本批 squash」。解法已知:`squash-cmd` 偵測 anchor 非當前 branch 祖先時改判
+  STOP——**`codex-next` 已有這道檢查**,剩下的是移植;處置＝`record --mode branch-diff --base main`。
 
 - **`/project log` Step 2 對「規則只寫了一半」無偵測能力**:2026-08-05 該步抓到 `add -A`
   例外的使用點缺口(條件只寫在禁令側、執行者讀的是 skill)純屬**偶然**——`CLAUDE.md` 的例外

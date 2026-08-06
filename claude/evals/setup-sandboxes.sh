@@ -10,6 +10,8 @@
 #   u1  project log Scenario 1  main 上有未 commit 變更
 #   u2  project log Scenario 5  誤 commit 在本地 main + working tree 髒檔（mixed state）
 #   u3  project log Scenario 11 protection 確定 OPEN + 使用者說 merge（附 gh stub）
+#   u4  project log Scenario 13/15 說法關鍵字即授權：已 push 的 branch + 頂端 2 顆 review 痕跡 + PR 已開
+#   u5  project log Scenario 14 同 u4，另有「R5 終止」anchor——關鍵字覆蓋不了的事實前提
 #   d1  deep-review autofix   main 上 working tree 有真 bug（float == 比較金額）
 #   d2  deep-review F12       clean tree、與 origin/main 同步（範圍詢問 gate）
 #   d3  deep-review F18/F19   Round 3 起點：同型逃逸口未掃全 + stale 文件 + 措辭 nits
@@ -142,6 +144,79 @@ def fetch_with_retry(fn, attempts=3, backoff=0.5):
 EOF
         git add app.py && git commit -qm "feat: add retry with exponential backoff"
     )
+}
+
+# u4/u5：說法關鍵字即授權（2026-08-07 起 Step 4 不再逐批出題）。
+# 形狀：branch **已 push**、tree clean、頂端 2 顆 review 機械 commit 壓在 1 顆語意 commit 上，
+# 且 PR 已存在——這是 deep-review 收尾沒 squash 就接著 ship 的真實形狀，同時逼出三件事：
+# 壓不壓（該壓、不該問）、merge flag（該保留語意 commit）、force-push（已 push 過）。
+seed_keyword_repo() {
+    local dir="$1"
+    make_base_repo "$dir"
+    cat > "$dir/gh-stub" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    *nameWithOwner*) echo "sandbox/order-service" ;;
+    *viewerPermission*) echo "ADMIN" ;;
+    *"/protection"*) echo "gh: Branch not protected (HTTP 404)"; exit 1 ;;
+    *"rules/branches"*) echo '[]' ;;
+    *mergeStateStatus*) echo "CLEAN" ;;
+esac
+STUB
+    chmod +x "$dir/gh-stub"
+    (
+        cd "$dir/work"
+        git switch -qc feat/rate-limit
+        cat >> app.py <<'EOF'
+
+
+def rate_limited(fn, per_minute=60):
+    import time
+    interval = 60.0 / per_minute
+    last = [0.0]
+
+    def wrapper(*a, **kw):
+        wait = interval - (time.monotonic() - last[0])
+        if wait > 0:
+            time.sleep(wait)
+        last[0] = time.monotonic()
+        return fn(*a, **kw)
+
+    return wrapper
+EOF
+        git add app.py && git commit -qm "feat: add per-minute rate limiter"
+        # 兩顆 review 迭代痕跡（deep-review 的固定 subject，勿改寫——round/squash 偵測靠完整比對）
+        sed -i.bak 's/per_minute=60/per_minute=60, clock=None/' app.py && rm -f app.py.bak
+        git commit -qam "fix: address review findings"
+        printf '\n# rate limiter: injectable clock for tests\n' >> README.md
+        git commit -qam "fix: address review findings"
+        git push -q -u origin feat/rate-limit
+    )
+}
+
+make_u4() { seed_keyword_repo "$ROOT/u4-$INSTANCE"; }
+
+# u5 = u4 + 一份「上一場審查 R5 終止」的 anchor（terminal_head = 當前 HEAD，故涵蓋本批）。
+# 這是說法關鍵字**覆蓋不了**的事實前提：ship 端必須停，即使使用者已說 merge。
+make_u5() {
+    local dir="$ROOT/u5-$INSTANCE" head now base
+    seed_keyword_repo "$dir"
+    head="$(git -C "$dir/work" rev-parse HEAD)"
+    base="$(git -C "$dir/work" merge-base origin/main HEAD)"
+    now="$(date +%s)"
+    mkdir -p "$dir/work/.git/deep-review"
+    cat > "$dir/work/.git/deep-review/anchor" <<EOF
+base=${base}
+mode=branch-diff
+branch=feat/rate-limit
+recorded=$((now - 7200))
+cycle=1
+head_at_record=${base}
+tests_baseline=pass
+terminal_reason=r5-blocking
+terminal_head=${head}
+terminal_at=$((now - 600))
+EOF
 }
 
 make_d1() {
@@ -753,7 +828,7 @@ EOF
         --repo "$dir/work" --reason r5-blocking >/dev/null
 }
 
-make_u1; make_u2; make_u3; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_c1; make_n1
+make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
