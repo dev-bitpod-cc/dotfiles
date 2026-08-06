@@ -246,10 +246,16 @@ cmd_consume() {
 # 為何不是一行 glob：`archive/*-<slug>.md` 看似尾錨定，但 `*` 一樣吃得下中間的工作線名——
 # 查 `foo` 會命中 `20260802-120000-bar-foo.md`，`tail -1` 還剛好選它（時戳較新，字典序在後）。
 # 同一處的定位邏輯被三輪第三方審查逐輪擠（只查 active → 分支迴歸 → glob 誤中），根因就是
-# 拿 glob 做精確比對。本子指令改用兩層精確判準：
-#   (1) 檔名去掉 YYYYMMDD[-HHMMSS]- 歸檔前綴後，須**完全等於** <slug>
-#   (2) 檔內若有 slug: frontmatter，也須完全相等（不符即跳過——檔名與內容對不上的檔不採用）
-# slug 不再進 glob，含 glob 字元或空白也不會誤匹配。
+# 拿 glob 做精確比對。本子指令改用精確判準（slug 不再進 glob，含 glob 字元或空白也不誤匹配）：
+#   (1) 檔名比對——**active 與 archive 規則不同**：active 檔名就是 <slug>.md，一個字元都不剝
+#       （剝了會讓「以日期開頭的合法 slug」比對失敗：W3 只禁 YYYYMMDD-HHMMSS- 開頭，
+#       日期-only 的 slug 是合法的）；archive 才剝 YYYYMMDD[-HHMMSS]- 歸檔前綴。
+#   (2) 檔內 slug: frontmatter **存在時**須完全相等（不符即跳過）；沒有該欄位的檔仍採用
+#       ——舊的手寫交接檔沒有 frontmatter，這是刻意的向後相容，不是漏驗。
+#
+# archive 取「最新一輪」用**解析出的時戳數值**比大小，不靠 glob 字典序：legacy 的
+# `YYYYMMDD-` 在字典序上排在同日 `YYYYMMDD-HHMMSS-` 之後（第 10 字元 'f' > '1'），
+# 靠字典序會選到較舊的那份。legacy 補零視為當日最早。
 #
 # 找不到是正常結果（＝首輪，不是錯誤），故一律 exit 0；用法錯誤才 exit 2。
 cmd_find_predecessor() {
@@ -261,28 +267,43 @@ cmd_find_predecessor() {
         exit 0
     fi
 
-    local hit_active="" hit_archive="" f base name content_slug
-    # active 與 archive 一起掃；glob 依字典序展開，archive 檔名帶時戳前綴，
-    # 故「最後一個命中的 archive 檔」即最新一輪
-    for f in "$dir"/*.md "$dir"/archive/*.md; do
+    local hit_active="" hit_archive="" hit_key="" f base name key
+
+    # 檔內 slug: 存在時須相符；沒有該欄位者放行（向後相容）
+    slug_matches() {
+        local cs
+        cs="$(sed -n 's/^slug:[[:space:]]*//p' "$1" | head -1)"
+        [ -z "$cs" ] || [ "$cs" = "$2" ]
+    }
+
+    # -- active：檔名即 <slug>.md，不剝任何前綴 --
+    for f in "$dir"/*.md; do
+        [ -f "$f" ] || continue
+        base="$(basename -- "$f")"
+        [ "${base%.md}" = "$slug" ] || continue
+        slug_matches "$f" "$slug" || continue
+        hit_active="$f"
+    done
+
+    # -- archive：剝歸檔前綴後比對，取時戳數值最大者 --
+    for f in "$dir"/archive/*.md; do
         [ -f "$f" ] || continue
         base="$(basename -- "$f")"
         name="${base%.md}"
         case "$name" in
             [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*)
+                key="${name:0:8}${name:9:6}"
                 name="${name#????????-??????-}" ;;
             [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-*)
+                key="${name:0:8}000000"          # legacy：同日視為最早
                 name="${name#????????-}" ;;
+            *)  key="00000000000000" ;;          # 無歸檔前綴（手工放入）：視為最舊
         esac
         [ "$name" = "$slug" ] || continue
-        content_slug="$(sed -n 's/^slug:[[:space:]]*//p' "$f" | head -1)"
-        if [ -n "$content_slug" ] && [ "$content_slug" != "$slug" ]; then
-            continue
+        slug_matches "$f" "$slug" || continue
+        if [ -z "$hit_key" ] || [ "$key" -gt "$hit_key" ]; then
+            hit_archive="$f"; hit_key="$key"
         fi
-        case "$f" in
-            "$dir"/archive/*) hit_archive="$f" ;;
-            *)                hit_active="$f" ;;
-        esac
     done
 
     if [ -n "$hit_active" ]; then

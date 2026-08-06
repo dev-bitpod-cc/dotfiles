@@ -1275,6 +1275,28 @@ if echo "$out" | grep -q "predecessor: NONE"; then ok "無命中印 NONE"; else 
 out="$("$HA_SCRIPT" find-predecessor '*' "$FP")"
 if echo "$out" | grep -q "predecessor: NONE"; then ok "slug 含 glob 字元不誤匹配"; else bad "glob 字元被展開"; fi
 
+# active 檔名就是 <slug>.md，**不得**剝任何前綴——W3 只禁 YYYYMMDD-HHMMSS- 開頭，
+# 日期-only 的 slug 合法；剝了會把它比成 `foo`、判成首輪，接著整檔覆寫、前一輪內容無聲蒸發
+fp_mk "20260804-dated-slug.md" "20260804-dated-slug"
+out="$("$HA_SCRIPT" find-predecessor "20260804-dated-slug" "$FP")"
+assert_eq "以日期開頭的合法 slug（active）不被前綴剝除誤判為首輪" \
+    "$FP/20260804-dated-slug.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+rm "$FP/20260804-dated-slug.md"
+
+# archive 取最新用**時戳數值**而非 glob 字典序：legacy 的 `YYYYMMDD-` 第 10 字元是 slug 首字，
+# 字典序上排在同日 `YYYYMMDD-HHMMSS-` 之後（'l' > '1'），靠字典序會選到較舊那份
+fp_mk "archive/20260807-120000-legacy-mix.md" "legacy-mix"   # 新格式，當日 12:00
+fp_mk "archive/20260807-legacy-mix.md" "legacy-mix"          # legacy 無時分秒，視為當日最早
+out="$("$HA_SCRIPT" find-predecessor legacy-mix "$FP")"
+assert_eq "legacy 與新格式同日並存 → 取真正較新的那份（非字典序末筆）" \
+    "$FP/archive/20260807-120000-legacy-mix.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# 無 slug: frontmatter 的檔仍採用——舊手寫交接檔沒有該欄位，這是刻意的向後相容、不是漏驗
+printf -- '---\ncreated: 2026-08-01\n---\n' > "$FP/archive/20260808-100000-nofm.md"
+out="$("$HA_SCRIPT" find-predecessor nofm "$FP")"
+assert_eq "無 slug: frontmatter 的檔仍採用（向後相容，契約如此）" \
+    "$FP/archive/20260808-100000-nofm.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
 "$HA_SCRIPT" find-predecessor >/dev/null 2>&1
 assert_rc "find-predecessor 無引數 → exit 2" 2 $?
 "$HA_SCRIPT" find-predecessor foo "$TMP/no-such-dir" >/dev/null
