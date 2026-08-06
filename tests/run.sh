@@ -33,8 +33,22 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1   # 相對路徑的 source 解析與 git 操作以 repo 根為基準（從外部目錄執行時避免 SC1091 誤報）
+# gate 的 glob（含 skills 的 lib/）在無匹配時預設會以**字面值**傳給 shellcheck / bash -n，
+# 讓 gate 以「檔案不存在」失敗而非跳過——某個 skill 沒有 lib/ 就會誤報。
+shopt -s nullglob
+# nullglob 是 process-wide 的，代價是**其他** glob 若哪天失效會靜默窄化（gate 照樣全綠、
+# 實際少掃一批檔）。用下界斷言把那個代價擋回來：數字取保守下界，新增腳本只會讓它更寬鬆。
+_gate_files=("$ROOT"/scripts/*.sh "$ROOT"/claude/skills/*/scripts/*.sh)   # nullglob 下無匹配即空陣列
+if [ "${#_gate_files[@]}" -lt 15 ]; then
+    echo "❌ gate 檔案數異常少（${#_gate_files[@]}）——glob 可能已靜默窄化，先修再跑" >&2
+    exit 1
+fi
 FIX="$ROOT/tests/fixtures"
-TMP="$(mktemp -d)"
+# mktemp 失敗必須當場中止：本腳本沒有 set -e，而下面的 `cd "$TMP"` 在 TMP 為空時**回傳 0
+# 且不改目錄**，pwd -P 於是交出當下 cwd（第 35 行剛切到 repo 根）——EXIT trap 就會
+# `rm -rf` 掉整個 repo。空值 fallback 到 cwd + 破壞性指令，是這裡唯一不能省的檢查。
+TMP="$(mktemp -d)" || { echo "mktemp -d 失敗（TMPDIR 不存在或不可寫？）" >&2; exit 1; }
+[ -n "$TMP" ] && [ -d "$TMP" ] || { echo "mktemp -d 未產生可用目錄：'${TMP}'" >&2; exit 1; }
 # macOS 的 mktemp 給 /var/...（symlink），而腳本的照抄行印 git --show-toplevel 的 realpath
 # （/private/var/...）——不正規化，所有「整行照抄」斷言都會因路徑前綴不同而假紅。
 TMP="$(cd "$TMP" && pwd -P)"
@@ -483,7 +497,7 @@ if grep -q "^protection:" <<< "$out"; then ok "lib 缺席不影響其餘偵測�
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
 if ! echo "$out" | grep -qE "^  remote: origin$"; then ok "origin/HEAD 不被當成殘留 branch"; else bad "裸 remote 名混入殘留清單（${out}）"; fi
 if echo "$out" | grep -q -- "--delete origin/" ; then bad "cleanup-cmd 的 remote branch 名未剝 remote 前綴"; else ok "cleanup-cmd 剝除 remote 前綴"; fi
-if echo "$out" | grep -qE -- "--delete [a-z]" ; then ok "cleanup-cmd 的 --delete 與 branch 名有空白分隔"; else bad "cleanup-cmd 拼接缺空白（如 --deleteorigin）"; fi
+if echo "$out" | grep -qF -- "--delete -- '" ; then ok "cleanup-cmd 的 --delete 後接 terminator 與 quoted branch 名（防 --deleteorigin 黏連）"; else bad "cleanup-cmd 拼接缺空白（如 --deleteorigin）"; fi
 
 # 未併入 default 的 branch（有獨立 commit）→ 不得列入（那是還沒 ship 的工作）
 (cd "$TMP/sb-work" \
@@ -514,7 +528,7 @@ out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bs-work")"
 assert_rc "空 remote → exit 0（verdict 即成功）" 0 $?
 if echo "$out" | grep -q "verdict: BOOTSTRAP"; then ok "遠端零 branch → BOOTSTRAP verdict"; else bad "遠端零 branch 未判 BOOTSTRAP（${out}）"; fi
 if echo "$out" | grep -q "remote-heads: 0"; then ok "BOOTSTRAP 附遠端 branch 數證據"; else bad "BOOTSTRAP 缺 remote-heads 證據"; fi
-if echo "$out" | grep -q "bootstrap-cmd: .*push -u origin main"; then ok "BOOTSTRAP 附可照抄 push 指令（推本地 default 名）"; else bad "BOOTSTRAP 缺 bootstrap-cmd"; fi
+if echo "$out" | grep -qF "push -u 'origin' 'main'"; then ok "BOOTSTRAP 附可照抄 push 指令（remote/branch 均已 quote）"; else bad "BOOTSTRAP 缺 bootstrap-cmd"; fi
 if echo "$out" | grep -q "bootstrap-note:.*default branch"; then ok "BOOTSTRAP 標明首推將決定遠端 default"; else bad "BOOTSTRAP 未標明 default 後果"; fi
 if echo "$out" | grep -q "bootstrap-scope:"; then ok "BOOTSTRAP 標明豁免作用域（防授權蔓延）"; else bad "BOOTSTRAP 缺 scope 行（授權會蔓延到後續 commit）"; fi
 
@@ -2361,6 +2375,102 @@ out="$("$TMP/ra-nolib/scripts/review-anchor.sh" squash-cmd --repo "$TMP/ra-work"
 rc=$?
 assert_rc "lib 缺席 → squash-cmd STOP（不用空 regex 硬跑）" 1 $rc
 if grep -q "verdict: STOP" <<< "$out"; then ok "lib 缺席的 squash-cmd 印 STOP verdict"; else bad "缺 STOP verdict（會被當成正常結果）"; fi
+
+# merge-base 解析失敗 → 同樣走 UNKNOWN 出口（不靜默 return，Step 4 判定表才有得對）
+git clone -q "$TMP/sb-origin.git" "$TMP/rr-nomb"
+(cd "$TMP/rr-nomb" && git checkout -q --orphan orphan-line \
+    && git rm -rqf . 2>/dev/null; cd "$TMP/rr-nomb" && echo o > o.txt && "${GITC[@]}" add o.txt && "${GITC[@]}" commit -qm "feat: 無共同祖先")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-nomb" 2>&1)"
+if grep -q "^review-residue: UNKNOWN" <<< "$out"; then ok "merge-base 失敗 → review-residue 走 UNKNOWN 出口"; else bad "merge-base 失敗時靜默漏印（Step 4 判定表無列可對）"; fi
+
+# --- option-like ref 名：quoting 擋不住，要靠 `--` terminator ---
+# `git branch -- '--all'` 前端會拒，但 `git update-ref refs/heads/--all` 建得起來且
+# `check-ref-format` 判合法（實測 rc=0）；quote 完 git 仍把 `--all` 當選項（codex C3）。
+git init --bare -q "$TMP/opt-origin.git"
+git clone -q "$TMP/opt-origin.git" "$TMP/rr-opt"
+(cd "$TMP/rr-opt" && echo o > o.txt && "${GITC[@]}" add o.txt && "${GITC[@]}" commit -qm init && git push -qu origin main)
+git -C "$TMP/rr-opt" update-ref 'refs/heads/--all' HEAD
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-opt" 2>/dev/null)"
+opt_cmd="$(grep '^cleanup-cmd: ' <<< "$out" | sed 's/^cleanup-cmd: //')"
+if [ -n "$opt_cmd" ]; then
+    if grep -qF -- "branch -d --" <<< "$opt_cmd"; then ok "cleanup-cmd 帶 -- option terminator"; else bad "cleanup-cmd 缺 --，option-like ref 會被當選項"; fi
+    ( eval "$opt_cmd" ) >/dev/null 2>&1 || true
+    if git -C "$TMP/rr-opt" show-ref --verify --quiet 'refs/heads/--all'; then bad "照抄 cleanup-cmd 後 option-like branch 仍在（指令實際失敗）"; else ok "照抄 cleanup-cmd 可實際刪除 option-like branch"; fi
+else
+    bad "未取得 cleanup-cmd（fixture 前提失效）"
+fi
+
+# --- 照抄行的 ref 名也必須 quote：git 接受 `feat/$(id)` / `feat/a;id` 這種合法 branch 名，
+# 照抄含未 quote ref 的指令等於執行任意 shell（codex C2 實證 git 三種都收）---
+git clone -q "$TMP/sb-origin.git" "$TMP/rr-ref"
+# shellcheck disable=SC2016  # 刻意不展開：這是 fixture 要用的字面 branch 名
+sq_ref_name='feat/$(id);x'   # git 接受（ref 名不可含空白，但 $ ( ) ; 皆合法）
+# 不加 commit：stale-branches 只列「已完全併入 default」者（同 sb-work fixture 的做法）
+(cd "$TMP/rr-ref" && git switch -qc "$sq_ref_name" \
+    && git push -qu origin "$sq_ref_name" >/dev/null 2>&1 && git switch -q main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-ref" 2>/dev/null)"
+ref_cmd="$(grep '^cleanup-cmd: ' <<< "$out" | sed 's/^cleanup-cmd: //')"
+if [ -n "$ref_cmd" ]; then
+    if bash -n <<< "$ref_cmd" 2>/dev/null; then ok "含 shell 元字元的 branch 名 → cleanup-cmd 仍可解析"; else bad "cleanup-cmd 因 ref 名破裂"; fi
+    # 真正的判準：ref 取回來要與原名相同（未 quote 的話 $(…) 會被展開成別的東西或空字串）
+    # 逐一比對而非「有出現就算」：cleanup-cmd 會列多個 ref（local + remote 兩處），
+    # 只要有一處漏 quote 就是漏洞——出現次數必須全等於 quoted 出現次數
+    n_ref_all="$(grep -oF -- "$sq_ref_name" <<< "$ref_cmd" | wc -l | tr -d ' ')"
+    n_ref_q="$(grep -oF -- "'${sq_ref_name}'" <<< "$ref_cmd" | wc -l | tr -d ' ')"
+    if [ "${n_ref_all:-0}" -gt 0 ] && [ "$n_ref_all" = "$n_ref_q" ]; then ok "cleanup-cmd 內每一處 ref 名都被 quote（${n_ref_q}/${n_ref_all}）"; else bad "有 ${n_ref_all} 處 ref、僅 ${n_ref_q} 處 quoted——照抄即執行任意指令"; fi
+else
+    bad "未取得 cleanup-cmd（fixture 前提失效）"
+fi
+
+# --- 照抄行對特殊字元路徑必須可執行（含單引號、空白、$(...)）---
+# 直接把路徑插進單引號在 `/tmp/alice's-repo` 這種合法路徑上會讓 quoting 破裂，照抄行
+# 送進 bash 直接 syntax error（codex C1 實證）。三支腳本共用同形的 shq helper。
+sq_dir="$TMP/we'ird \$(echo x) dir"
+mkdir -p "$sq_dir"
+git init -q --bare "$TMP/sq-origin.git"
+git clone -q "$TMP/sq-origin.git" "$sq_dir/repo" 2>/dev/null
+(cd "$sq_dir/repo" && echo s > s.txt && "${GITC[@]}" add s.txt && "${GITC[@]}" commit -qm init \
+    && git push -qu origin main && git switch -qc feat/sq \
+    && echo s2 > s.txt && "${GITC[@]}" commit -qam "feat: 語意" \
+    && echo s3 > s.txt && "${GITC[@]}" commit -qam "fix: address review findings")
+"$RA_SCRIPT" record --repo "$sq_dir/repo" --mode branch-diff --base origin/main >/dev/null 2>&1
+sq_bad=0
+for sq_line in "$("$RA_SCRIPT" record --repo "$sq_dir/repo" --mode branch-diff --base origin/main 2>/dev/null | grep '^diff-cmd: ' | sed 's/^diff-cmd: //')" \
+               "$("$RA_SCRIPT" squash-cmd --repo "$sq_dir/repo" 2>/dev/null | grep '^squash-cmd: ' | sed 's/^squash-cmd: //')" \
+               "$("$RA_SCRIPT" codex-next --repo "$sq_dir/repo" 2>/dev/null | grep '^codex-cmd: ' | sed 's/^codex-cmd: //')" \
+               "$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$sq_dir/repo" 2>/dev/null | grep '^  squash-cmd: ' | sed 's/^  squash-cmd: //')" \
+               "$("$RS_SCRIPT" "$sq_dir/repo" 2>/dev/null | grep '^branch-cmd: ' | sed 's/^branch-cmd: //')"; do
+    [ -n "$sq_line" ] || continue
+    bash -n <<< "$sq_line" 2>/dev/null || { sq_bad=$((sq_bad + 1)); echo "     不可解析: ${sq_line}"; }
+done
+if [ "$sq_bad" -eq 0 ]; then ok "特殊字元路徑下所有照抄行皆可被 shell 解析"; else bad "${sq_bad} 條照抄行 quoting 破裂"; fi
+# round-trip：eval 後取回的路徑必須與原路徑相同（不是「能解析」就算數）
+sq_cmd="$("$RA_SCRIPT" squash-cmd --repo "$sq_dir/repo" 2>/dev/null | grep '^squash-cmd: ' | sed 's/^squash-cmd: //')"
+sq_got="$(eval "set -- ${sq_cmd#git -C }"; echo "$1")"
+if [ "$sq_got" = "$(cd "$sq_dir/repo" && pwd -P)" ]; then ok "照抄行的路徑 round-trip 相符（非僅可解析）"; else bad "round-trip 不符：${sq_got}"; fi
+
+# --- 本腳本自身的防護：mktemp 失敗不得讓 TMP 退化成 cwd ---
+# 為何測這個：`cd ""` 回傳 0 且不改目錄，pwd -P 會交出 cwd（本腳本第 35 行已切到 repo 根），
+# 而 EXIT trap 是 `rm -rf "$TMP"`——空值 fallback 直接通向「刪掉整個 repo」。
+# 用 stub 逼 mktemp 失敗——macOS 的 mktemp 會忽略無效 TMPDIR 改用預設值，設環境變數擋不住
+mkdir -p "$TMP/mt-bin"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP/mt-bin/mktemp"
+chmod +x "$TMP/mt-bin/mktemp"
+out="$(PATH="$TMP/mt-bin:$PATH" bash -c '
+    cd /tmp || exit 9
+    TMP="$(mktemp -d)" || { echo GUARDED; exit 1; }
+    [ -n "$TMP" ] && [ -d "$TMP" ] || { echo GUARDED; exit 1; }
+    TMP="$(cd "$TMP" && pwd -P)"
+    echo "UNGUARDED:$TMP"' 2>/dev/null)"
+if grep -q "^GUARDED$" <<< "$out"; then ok "mktemp 失敗 → 當場中止（不讓 TMP 退化成 cwd）"; else bad "mktemp 失敗未被擋下（${out}）——EXIT trap 會 rm -rf 該目錄"; fi
+
+# --- review-state.sh 的 lib 缺席降級（三個消費者的最後一個守門）---
+mkdir -p "$TMP/rs-nolib"
+cp "$RS_SCRIPT" "$TMP/rs-nolib/review-state.sh"   # 不複製 lib/
+out="$("$TMP/rs-nolib/review-state.sh" "$TMP/ra-work" 2>&1)"
+assert_rc "lib 缺席 → review-state 照常完成（round 以外的偵測不該被拖垮）" 0 $?
+if grep -q "^round: 1（review-subjects.sh 不可用" <<< "$out"; then ok "lib 缺席 → round 降級並說明原因"; else bad "缺 round 降級（會在 set -u 下中途 unbound variable）"; fi
+if grep -q "^branch-first:" <<< "$out"; then ok "lib 缺席不影響其餘偵測輸出"; else bad "lib 缺席拖垮了其他輸出"; fi
 
 # 用法錯誤 / 非 git repo
 "$RA_SCRIPT" bogus --repo "$TMP/ra-work" >/dev/null 2>&1

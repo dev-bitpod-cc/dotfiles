@@ -2,14 +2,19 @@
 #
 # review-subjects.sh — deep-review 循環機械產生的 commit subject（單一來源）
 #
-# 誰用：
+# 誰用（三個消費者，跨兩個 skill——改這裡務必三個都驗）：
 #   review-anchor.sh  squash base 掃描（跳過這些 subject，停在第一顆語意 commit）
 #   review-state.sh   round 偵測（只數修復輪，使用者自己的 fix: 不算）
+#   ../../../project/scripts/ship-state.sh   review-residue 偵測（/project log Step 4 的
+#                     squash 出題依據；跨 skill source，缺席時降級 UNKNOWN）
 #
-# 為何必須單一來源：兩處各留一份必然漂移，而漂移的後果不對稱且都難察覺——
+# 為何必須單一來源：三處各留一份必然漂移，而漂移的後果不對稱且都難察覺——
 #   squash 端漏認 → 掃描被舊格式 commit 擋下、只壓到一半；
 #   round 端多認 → 每個 review 週期白吃一輪 R5 預算（branch 現在會保留語意 commit，
-#     使用者自己的 fix: 會長期留著，計入就是持續灌水）。
+#     使用者自己的 fix: 會長期留著，計入就是持續灌水）；
+#   **review-residue 端多認 → 唯一不可回復的方向**：使用者手寫的 `fix: …` 被當成 review
+#     痕跡出成 squash 選項，使用者一句「好」就 reset 掉自己的 commit，Step 5 接著
+#     `--force-with-lease` 覆寫 remote。放寬 pattern 前先想清楚這條。
 #
 # 格式為 ERE 的 alternation（無錨點），呼叫端自行加 `^(...)$`——各家取的字串來源不同
 # （%s 全行 vs 其他），錨點留給呼叫端決定才不會綁死。

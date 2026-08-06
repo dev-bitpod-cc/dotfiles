@@ -38,6 +38,11 @@ fi
 
 overall=0
 
+# 照抄行裡的路徑一律過這個 helper——直接插進單引號會在路徑含單引號時讓 quoting 破裂
+# （實測 `/tmp/alice's-repo` 產出的行 `bash -n` 直接 syntax error）。三支腳本各留一份 3 行
+# 純函式：它是標準演算法、不是會漂移的事實，比為它多開一個跨 skill lib 依賴划算。
+shq() { local q="'"; printf "%s%s%s" "$q" "${1//$q/$q\\$q$q}" "$q"; }
+
 print_list() {
     local total="$1"
     head -n "$MAX_LIST" | sed 's/^/  /'
@@ -219,7 +224,7 @@ check_repo() {
         echo "branch-first: UNKNOWN（無 default 可判）— autofix 前先與使用者確認"
     elif [ "$branch" = "$default_name" ] || [ "$branch" = "DETACHED" ]; then
         echo "branch-first: REQUIRED（HEAD 在 ${branch} —— autofix 第一個 commit 之前先開 feature branch，無條件）"
-        echo "branch-cmd: git -C '${toplevel}' switch -c <type>/<slug>   # <type>/<slug> 由 model 依變更語意取（type ∈ feat/fix/refactor/docs/chore/test）"
+        echo "branch-cmd: git -C $(shq "$toplevel") switch -c <type>/<slug>   # <type>/<slug> 由 model 依變更語意取（type ∈ feat/fix/refactor/docs/chore/test）"
     else
         echo "branch-first: 已在 feature branch（${branch}）"
     fi
