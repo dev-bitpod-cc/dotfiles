@@ -69,8 +69,11 @@ run_with_timeout() {   # <秒> <指令...>
     local secs="$1"; shift
     "$@" &
     local cmd_pid=$!
+    # >/dev/null 2>&1 是關鍵：watchdog 的 sleep 會繼承呼叫端的 stdout。指令提早跑完時
+    # 我們 kill 的是 subshell，它的 sleep child 會變孤兒繼續持有那個 pipe，於是
+    # $( ) 要等滿整個 timeout 才收到 EOF——實測每個 repo 固定耗掉上限秒數。
     ( sleep "$secs"; kill -TERM "$cmd_pid" 2>/dev/null
-      sleep "$KILL_GRACE_SECS"; kill -KILL "$cmd_pid" 2>/dev/null ) &
+      sleep "$KILL_GRACE_SECS"; kill -KILL "$cmd_pid" 2>/dev/null ) >/dev/null 2>&1 &
     local watch_pid=$! rc=0
     wait "$cmd_pid" 2>/dev/null || rc=$?
     kill -TERM "$watch_pid" 2>/dev/null   # 指令先跑完就收掉 watchdog，別讓它空等
@@ -234,12 +237,13 @@ check_repo() {
         # 吞掉 stderr 會把後者誤報成 MISSING → 使用者被導去開一個可能已存在的 PR
         # 只讀 url 不夠：CLOSED（未合併就關掉）與 draft 都會回 url，卻都不代表變更送得出去
         local pr_info pr_rc=0 pr_err pr_state pr_draft pr_url
-        pr_info="$(cd "$toplevel" && "$GH_BIN" pr view --json url,state,isDraft \
-            -q '[.state,(.isDraft|tostring),.url]|@tsv' 2>"$ERR_FILE")" || pr_rc=$?
+        pr_info="$(cd "$toplevel" && "$GH_BIN" pr view --json url,state,isDraft,headRefOid \
+            -q '[.state,(.isDraft|tostring),.url,(.headRefOid//"")]|@tsv' 2>"$ERR_FILE")" || pr_rc=$?
         if [ "$pr_rc" -eq 0 ] && [ -n "$pr_info" ]; then
             pr_state="$(printf '%s' "$pr_info" | cut -f1)"
             pr_draft="$(printf '%s' "$pr_info" | cut -f2)"
             pr_url="$(printf '%s' "$pr_info" | cut -f3)"
+            pr_head="$(printf '%s' "$pr_info" | cut -f4)"
             case "$pr_state" in
                 OPEN)
                     if [ "$pr_draft" = "true" ]; then
@@ -251,11 +255,27 @@ check_repo() {
                 MERGED)
                     echo "pr: MERGED ${pr_url}（已合併，branch 可清理）"
                     # remote branch 被刪掉後 baseline 退回 default，squash 前的原始 commit
-                    # 會被算成「未 push」——PR 既然已合併，那些內容早就進去了，撤銷該筆殘留。
-                    # baseline 是同名 remote branch 時不撤銷：那時的 unpushed 是真的沒 push。
+                    # 會被算成「未 push」——那些內容已隨 PR 進去了，可以撤銷。
+                    # 但**只能撤銷到 PR 合併當下的 head 為止**：之後才寫的 commit 是真殘留，
+                    # 整批清掉會產生假 CLEAN。判準是 headRefOid，不是 state=MERGED。
+                    # baseline 是同名 remote branch 時完全不撤：那時的 unpushed 是真的沒 push。
                     if [ "$residue_unpushed" -eq 1 ] && [ "$baseline_kind" = "default" ]; then
-                        echo "  ↳ 上方 unpushed 為 squash 前的原始 commit（remote branch 已刪），不計入殘留"
-                        residue_unpushed=0
+                        if [ -z "$pr_head" ] \
+                            || ! git -C "$repo" rev-parse --verify --quiet "$pr_head" >/dev/null; then
+                            # 拿不到（舊 gh／object 未 fetch）→ 保守不撤銷：寧可誤報殘留，不可誤報乾淨
+                            echo "  ↳ 無法取得 PR 合併當下的 head，上方 unpushed 保留為殘留（無法區分合併前後）"
+                            unknown=1
+                        else
+                            local after_merge
+                            after_merge="$(git -C "$repo" log --oneline "${pr_head}..HEAD" 2>/dev/null)"
+                            if [ -n "$after_merge" ]; then
+                                echo "  ↳ 其中 $(printf '%s\n' "$after_merge" | wc -l | tr -d ' ') 顆是合併後才寫的，仍算殘留："
+                                printf '%s\n' "$after_merge" | head -n "$MAX_LIST" | sed 's/^/     /'
+                            else
+                                echo "  ↳ 上方 unpushed 全為 squash 前的原始 commit（remote branch 已刪），不計入殘留"
+                                residue_unpushed=0
+                            fi
+                        fi
                     fi ;;
                 CLOSED)
                     echo "pr: CLOSED ${pr_url}（未合併就關閉，變更沒進去）"

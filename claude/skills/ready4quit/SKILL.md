@@ -72,7 +72,7 @@ Ready4Quit 進度：
 - Reading `TaskList` as the background-task check. It lists `TaskCreate` to-dos, not background shells or subagents — an empty result proves nothing about what is still running.
 - About to `git push` / `gh pr` / kill a task / delete a wakeup/cron/memory file from inside this skill without listing it and getting an explicit yes.
 - Offering to `git commit` for the user — even "just say yes and I'll commit". Git residue has exactly ONE recommendation: run `/project log`. "The user would approve it anyway" does not move commit/ship into this skill.
-- Routing a repo's decision or dead-end into machine-local memory "so it won't be lost". That is exactly how it gets lost — memory does not travel between hosts. Route it to that repo's STATUS.md.
+- Routing a decision or dead-end into machine-local memory **when that repo has a STATUS.md**. That is exactly how it gets lost — memory does not travel between hosts. Route it to the dossier. (No dossier at all? Then memory is the stated fallback — but say so in the report and point at `/project spec`; see the routing table.)
 - Tidying the dossier during a pre-quit flush — moving 進行中 items into 里程碑, rewriting entries, compacting sections. Additive only; distillation belongs to `/project log`.
 
 > 此 skill 的核心不是「對抗合理化」（baseline 顯示 agent 天生會查 git、不擅自動手），而是**覆蓋度**——提醒別只顧 git，還要 flush memory、盤點 async 狀態、掃 loose ends，這些是 fresh agent 想不到要查的。
@@ -113,7 +113,7 @@ Do not re-run the underlying git commands one by one — the script IS the check
 |------|------|
 | **user** / **feedback** 型 | memory —— machine-local 正是對的層 |
 | **project** 型：本 session 的關鍵決策 / 死路 / 新增技術債，且屬某個**有 STATUS.md 的 repo** | 該 repo 的 **STATUS.md** 對應章節，不進 memory |
-| **project** 型：該 repo 無 STATUS.md | 回落 memory，報告標示「該 repo 無 dossier」 |
+| **project** 型：該 repo **無** STATUS.md | 暫存 memory，**且報告必須明說「此 repo 無 dossier，這筆跨不了主機」**並建議跑 `/project spec` 建檔後搬過去。**不在這裡建 STATUS.md** |
 | **reference** 型 | 綁專案 → STATUS.md；綁使用者工作流 → memory |
 
 檢查對象＝Step 1 已列出的那組 repo 中有 `STATUS.md` 者（**不掃 `~/Projects/`**）。
@@ -135,7 +135,7 @@ Do not re-run the underlying git commands one by one — the script IS the check
 寫入該 repo `STATUS.md` 的對應章節（章節語意與條目格式的單一來源：`~/.claude/skills/project/references/dossier.md`），**寫 working tree、不 commit**——全域規則本就要求決策當下就地寫入，這裡是補做遲到的動作。
 
 - **Additive only. NEVER rewrite or delete an existing entry, NEVER move 進行中 items into 里程碑, NEVER compact or distill the dossier here** —— 那是 `/project log` Step 2 的職責，pre-quit 不做整理；dossier 尺寸治理同樣不在本 skill 範圍。
-- **NEVER create a STATUS.md that does not exist** —— 建 dossier 是 `/project spec` 的事。
+- **NEVER create a STATUS.md that does not exist** —— 建 dossier 是 `/project spec` 的事；該 repo 的 project 型事實依路由表走 memory 回落並在報告標示，不是在這裡開檔。
 - 寫入會**新增 git 殘留**：Step 5 的 Git 衛生行須反映，並提示需 `/project log` 送出。
 
 兩個出口都要在報告列出**寫了哪些、跳過哪些**；候選為空 → **明說「本 session 無新增 memory／dossier」**，不要靜默跳過。

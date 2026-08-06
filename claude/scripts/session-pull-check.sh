@@ -86,7 +86,8 @@ fi
 
 # --- fetch(帶新鮮度快取與 timeout)---------------------------------------------
 # linked worktree / submodule 下 $repo_root/.git 是檔案,須用 git-dir 解析真實路徑
-fetch_ok=0
+fetch_ok=0        # 落後偵測用:ref 已刷新(含新鮮度快取命中)
+baseline_fresh=0  # base 建議用:本次真的成功 fetch 了要比較的那個 remote
 git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) || git_dir=""
 fetch_head="$git_dir/FETCH_HEAD"
 need_fetch=1
@@ -103,6 +104,8 @@ if [ -z "$git_dir" ]; then
     need_fetch=0          # 解析不到 git-dir 就別 fetch,後續一律當 ref 不新鮮
 elif [ "$need_fetch" -eq 0 ]; then
     fetch_ok=1            # 新鮮度快取命中,視同剛 fetch 過
+    # 但 FETCH_HEAD 是 repo-global 的——多 remote repo 只要剛 fetch 過任何一個就會命中,
+    # 我們無從得知上次抓的是不是 base 建議要比的那個。故 baseline_fresh 維持 0。
 fi
 
 if [ "$need_fetch" -eq 1 ]; then
@@ -123,6 +126,7 @@ if [ "$need_fetch" -eq 1 ]; then
        GIT_SSH_COMMAND="ssh -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -o BatchMode=yes" \
        $TIMEOUT_CMD git fetch --quiet "$remote" 2>/dev/null; then
         fetch_ok=1
+        [ "$remote" = "origin" ] && baseline_fresh=1   # base 建議固定比 origin/<default>
     fi
 fi
 
@@ -151,9 +155,14 @@ if [ "$in_linked_worktree" -eq 0 ] && [ -n "$branch" ]; then
         && [ "$branch" != "$default_branch" ]; then
         ahead=$(git rev-list --count "origin/${default_branch}..HEAD" 2>/dev/null)
         if [ -n "$ahead" ] && [ "$ahead" -gt 0 ]; then
+            # squash merge 不保留 commit id,已併入的線在這裡仍會顯示「未併」。
+            # hook 沒有 PR 狀態可查(要 gh、要網路),只能給保守提示,不可斷言它還沒併。
+            squash_note="若這條線其實已被 squash merge 併入,commit id 不會進 default、這裡一樣顯示未併——那種情況該用 fresh 從新的 default 起新線。"
             stale_note=""
-            [ "$fetch_ok" -eq 0 ] && stale_note="(注意:fetch 未成功,origin/${default_branch} 可能已過期)"
-            echo "ℹ 當前分支 ${branch} 相對 origin/${default_branch} 有 ${ahead} 顆未併 commit——若要開 worktree 延續這條線,base 用 head(全域預設 fresh 會從 origin/${default_branch} 分出去,變成平行線)。${stale_note}"
+            if [ "$baseline_fresh" -eq 0 ]; then
+                stale_note="(未實際 fetch origin,origin/${default_branch} 可能已過期——本數字僅供參考)"
+            fi
+            echo "ℹ 當前分支 ${branch} 相對 origin/${default_branch} 有 ${ahead} 顆未併 commit——若要開 worktree 延續這條線,base 用 head(全域預設 fresh 會從 origin/${default_branch} 分出去,變成平行線)。${squash_note}${stale_note}"
         fi
     fi
 fi

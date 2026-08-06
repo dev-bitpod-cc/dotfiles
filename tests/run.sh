@@ -277,7 +277,7 @@ rm -rf "$TMP/gh-work/newdir"
 
 # git-hygiene 的 gh stub：只回應 `pr view`。腳本取 url,state,isDraft 三欄（tsv），
 # 因為只讀 url 會把 CLOSED（未合併就關掉）與 draft 都當成「已有 PR、無殘留」
-make_hyg_gh_stub() {  # <path> <nopr|authfail|open|draft|closed|merged>
+make_hyg_gh_stub() {  # <path> <nopr|authfail|open|draft|closed|merged> [headRefOid]
     case "$2" in
         nopr)
             cat > "$1" <<'STUB'
@@ -312,9 +312,12 @@ printf 'CLOSED\tfalse\thttps://github.com/acme/widget/pull/9\n'
 STUB
             ;;
         merged)
-            cat > "$1" <<'STUB'
+            # 第 4 欄 headRefOid = PR 合併當下的 head；用它區分「squash 前的原始 commit」
+            # 與「合併之後才寫的 commit」——後者是真殘留。
+            # sha 由外部檔案供給，同一支 stub 才能服務多個情境（各自寫入不同的 head）
+            cat > "$1" <<STUB
 #!/usr/bin/env bash
-printf 'MERGED\tfalse\thttps://github.com/acme/widget/pull/10\n'
+printf 'MERGED\tfalse\thttps://github.com/acme/widget/pull/10\t%s\n' "\$(cat '${3:-/dev/null}' 2>/dev/null)"
 STUB
             ;;
     esac
@@ -325,7 +328,8 @@ make_hyg_gh_stub "$TMP/hyg-gh-authfail" authfail
 make_hyg_gh_stub "$TMP/hyg-gh-open" open
 make_hyg_gh_stub "$TMP/hyg-gh-draft" draft
 make_hyg_gh_stub "$TMP/hyg-gh-closed" closed
-make_hyg_gh_stub "$TMP/hyg-gh-merged" merged
+: > "$TMP/hyg-head-oid"        # merged stub 讀這個檔取得 headRefOid
+make_hyg_gh_stub "$TMP/hyg-gh-merged" merged "$TMP/hyg-head-oid"
 
 # fixture：feature branch 已 push 到 origin/feat/y 但**未設 upstream**（tree clean）
 git init --bare -q "$TMP/gh-b4-origin.git"
@@ -370,6 +374,7 @@ else bad "CLOSED PR 被當成已送出：$out"; fi
 
 # MERGED 反過來不算殘留——squash merge 後 branch 的 commit 不在 default 歷史裡，
 # 相對 default 仍「未併」但東西已經進去了，只是 branch 可以清掉
+git -C "$TMP/gh-b4" rev-parse HEAD > "$TMP/hyg-head-oid"   # 合併後沒有新 commit
 out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/gh-b4")"
 if grep -q "MERGED" <<< "$out"; then ok "MERGED PR → 標 MERGED"; else bad "MERGED PR 未標示：$out"; fi
 if grep -q "verdict: RESIDUE" <<< "$out"; then bad "MERGED PR 誤判 RESIDUE：$out"; else ok "MERGED PR → 不算殘留"; fi
@@ -430,10 +435,28 @@ git init -q -b main "$TMP/sq-work"
     && git switch -qc feat/sq && echo b > g && "${GITC[@]}" add g && "${GITC[@]}" commit -qm "feat: sq" \
     && git push -q origin feat/sq)
 git -C "$TMP/sq-origin.git" update-ref -d refs/heads/feat/sq   # merge 後刪 remote branch
+git -C "$TMP/sq-work" rev-parse HEAD > "$TMP/hyg-head-oid"     # PR 合併當下的 head = 現在的 HEAD
 out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/sq-work")"
 if grep -q "verdict: RESIDUE" <<< "$out"; then
     bad "MERGED + remote branch 已刪仍判 RESIDUE（與『MERGED 不算殘留』矛盾）：$out"
 else ok "MERGED + remote branch 已刪 → 不判 RESIDUE"; fi
+
+# (f) MERGED 不可掩蓋「合併之後才寫的 commit」——那些是真殘留。
+#     撤銷的依據必須是 PR 的 headRefOid，不能因為 state=MERGED 就整批清掉
+(cd "$TMP/sq-work" && echo after > after.txt && "${GITC[@]}" add after.txt \
+    && "${GITC[@]}" commit -qm "feat: 合併後才寫的")
+# headRefOid 仍停在 PR 合併當下那顆（上一行的新 commit 不在其中）
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/sq-work")"
+if grep -q "verdict: RESIDUE" <<< "$out"; then
+    ok "MERGED 後新增的 commit → 仍判 RESIDUE"
+else bad "MERGED 掩蓋了合併後新增的 commit（假 CLEAN）：$out"; fi
+
+# headRefOid 拿不到時必須保守：不可撤銷（寧可誤報殘留，不可誤報乾淨）
+: > "$TMP/hyg-head-oid"
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/sq-work")"
+if grep -q "verdict: CLEAN" <<< "$out"; then
+    bad "headRefOid 不可得時仍撤銷 unpushed（假 CLEAN）：$out"
+else ok "headRefOid 不可得 → 保守不撤銷"; fi
 
 # (e) fetch 必須有硬上限：本機可能沒有 timeout/gtimeout，不能靠外部指令
 #     ext:: transport 直接執行指令當 transport，是純本地製造「fetch 卡住」的可靠方法
@@ -451,6 +474,15 @@ else bad "fetch 卡住未被中斷（${slow_elapsed}s，宣告的上限不存在
 if grep -q "remote: UNKNOWN" <<< "$out"; then
     ok "fetch 逾時 → remote 標 UNKNOWN"
 else bad "fetch 逾時未標 remote UNKNOWN：$out"; fi
+
+# (g) fetch 成功時不可還等滿 timeout：watchdog 的 sleep 若持有輸出 pipe，
+#     command substitution 會等到它結束才收到 EOF——每個 repo 都固定耗掉整個上限
+fast_start="$(date +%s)"
+out="$(GIT_HYGIENE_FETCH_TIMEOUT=6 "$GH_SCRIPT" "$TMP/gh-work" 2>/dev/null)"
+fast_elapsed=$(( $(date +%s) - fast_start ))
+if [ "$fast_elapsed" -lt 4 ]; then
+    ok "本地 remote fetch 成功 → 立刻返回（實測 ${fast_elapsed}s，上限 6s）"
+else bad "fetch 成功仍等滿 watchdog timeout（${fast_elapsed}s）"; fi
 
 echo "▶ 9. ship-state.sh 偵測與 protection 判定"
 SS_SCRIPT="$ROOT/claude/skills/project/scripts/ship-state.sh"
@@ -2173,6 +2205,11 @@ assert_rc "feature branch 有未併 commit → exit 0" 0 $?
 if grep -q "未併 commit" <<< "$spc_out" && grep -q "base 用 head" <<< "$spc_out"; then
     ok "feature branch 有未併 commit → 報 base 建議"
 else bad "feature branch 未報 base 建議：$spc_out"; fi
+# squash merge 不保留 commit id，origin/<default>..HEAD 在已合併的線上仍非空；
+# hook 沒有 PR 狀態可查，只能給保守提示，不可斷言「這條線還沒併」
+if grep -q "squash" <<< "$spc_out"; then
+    ok "base 建議帶 squash-merge 的保守提示"
+else bad "base 建議未提示 squash merge 可能已併入：$spc_out"; fi
 
 # (8) feature branch 無未併 commit（剛開的分支）→ 完全靜默
 (cd "$spc/b" && git switch -q main && git switch -qc feat/empty)
@@ -2242,6 +2279,28 @@ spc_out="$(cd "$spc/c" && bash "$SPC")"
 if grep -q "base 用 head" <<< "$spc_out"; then
     bad "base 建議未用 fetch 後的 ref 重算（stale origin/<default> 造成誤報）：$spc_out"
 else ok "base 建議在 fetch 後重算 → 已併入 default 時不再誤報"; fi
+
+# (14) 多 remote：fetch 別的 remote 讓 FETCH_HEAD 變新鮮，但 origin/<default> 仍是舊的。
+#      base 建議固定比較 origin/<default>，不能把「剛 fetch 過某個 remote」當成它新鮮
+git init --bare -q -b main "$spc/mr-other.git"
+git clone -q "$spc/origin.git" "$spc/d" 2>/dev/null
+(cd "$spc/d" && git config user.name t && git config user.email t@t.local \
+  && git remote add other "$spc/mr-other.git" && git push -q other main \
+  && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main \
+  && git switch -qc feat/mr && echo mr > mr.txt && git add mr.txt && git commit -qm "feat: mr")
+spc_d_sha="$(git -C "$spc/d" rev-parse HEAD)"
+if ! git -C "$spc/d" push -q origin "HEAD:refs/heads/tmp-mr" \
+    || ! git -C "$spc/origin.git" update-ref refs/heads/main "$spc_d_sha"; then
+    bad "fixture 建立失敗：無法在 origin 端快轉 main（下一條斷言將失去意義）"
+fi
+git -C "$spc/origin.git" update-ref -d refs/heads/tmp-mr
+git -C "$spc/d" fetch -q other        # 只碰 other，卻讓 repo-global FETCH_HEAD 變新鮮
+assert_eq "fixture 前置：origin/<default> 仍 stale（ahead=1）" \
+    "1" "$(git -C "$spc/d" rev-list --count origin/main..HEAD 2>/dev/null)"
+spc_out="$(cd "$spc/d" && bash "$SPC")"
+if grep -q "base 用 head" <<< "$spc_out" && ! grep -q "可能已過期" <<< "$spc_out"; then
+    bad "fetch 別的 remote 後仍給無警告的 base 建議（stale origin/<default>）：$spc_out"
+else ok "多 remote：未實際 fetch baseline remote → base 建議不出現或帶過期警告"; fi
 
 echo "▶ 17. codex-exec-review.sh（deep-review skill script）exit 契約與 job 產物"
 CER="$ROOT/claude/skills/deep-review/scripts/codex-exec-review.sh"
