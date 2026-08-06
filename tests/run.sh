@@ -275,8 +275,9 @@ assert_eq "untracked 計數為展開後檔數" "uncommitted: 2 檔" \
     "$(grep -o 'uncommitted: [0-9]* 檔' <<< "$out")"
 rm -rf "$TMP/gh-work/newdir"
 
-# git-hygiene 的 gh stub：只需回應 `pr view`。三態＝真無 PR／認證失敗／已有 PR
-make_hyg_gh_stub() {  # <path> <nopr|authfail|haspr>
+# git-hygiene 的 gh stub：只回應 `pr view`。腳本取 url,state,isDraft 三欄（tsv），
+# 因為只讀 url 會把 CLOSED（未合併就關掉）與 draft 都當成「已有 PR、無殘留」
+make_hyg_gh_stub() {  # <path> <nopr|authfail|open|draft|closed|merged>
     case "$2" in
         nopr)
             cat > "$1" <<'STUB'
@@ -292,10 +293,28 @@ echo 'HTTP 401: Bad credentials (https://api.github.com/graphql)' >&2
 exit 1
 STUB
             ;;
-        haspr)
+        open)
             cat > "$1" <<'STUB'
 #!/usr/bin/env bash
-echo https://github.com/acme/widget/pull/7
+printf 'OPEN\tfalse\thttps://github.com/acme/widget/pull/7\n'
+STUB
+            ;;
+        draft)
+            cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+printf 'OPEN\ttrue\thttps://github.com/acme/widget/pull/8\n'
+STUB
+            ;;
+        closed)
+            cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+printf 'CLOSED\tfalse\thttps://github.com/acme/widget/pull/9\n'
+STUB
+            ;;
+        merged)
+            cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+printf 'MERGED\tfalse\thttps://github.com/acme/widget/pull/10\n'
 STUB
             ;;
     esac
@@ -303,7 +322,10 @@ STUB
 }
 make_hyg_gh_stub "$TMP/hyg-gh-nopr" nopr
 make_hyg_gh_stub "$TMP/hyg-gh-authfail" authfail
-make_hyg_gh_stub "$TMP/hyg-gh-haspr" haspr
+make_hyg_gh_stub "$TMP/hyg-gh-open" open
+make_hyg_gh_stub "$TMP/hyg-gh-draft" draft
+make_hyg_gh_stub "$TMP/hyg-gh-closed" closed
+make_hyg_gh_stub "$TMP/hyg-gh-merged" merged
 
 # fixture：feature branch 已 push 到 origin/feat/y 但**未設 upstream**（tree clean）
 git init --bare -q "$TMP/gh-b4-origin.git"
@@ -331,9 +353,50 @@ else bad "gh 認證失敗被誤判成無 PR"; fi
 if grep -q "401" <<< "$out"; then ok "UNKNOWN 附 gh 失敗原因"; else bad "UNKNOWN 未印失敗原因"; fi
 if grep -q "verdict: UNKNOWN" <<< "$out"; then ok "gh 失敗 → verdict UNKNOWN"; else bad "gh 失敗 verdict 錯誤"; fi
 
-out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-haspr" "$GH_SCRIPT" "$TMP/gh-b4")"
-if grep -q "pull/7" <<< "$out"; then ok "已有 PR → 印出 URL"; else bad "已有 PR 未印 URL"; fi
-if grep -q "verdict: CLEAN" <<< "$out"; then ok "已 push + 有 PR → CLEAN"; else bad "已 push + 有 PR 未判 CLEAN"; fi
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-open" "$GH_SCRIPT" "$TMP/gh-b4")"
+if grep -q "pull/7" <<< "$out"; then ok "OPEN PR → 印出 URL"; else bad "OPEN PR 未印 URL"; fi
+if grep -q "verdict: CLEAN" <<< "$out"; then ok "已 push + OPEN PR → CLEAN"; else bad "已 push + OPEN PR 未判 CLEAN"; fi
+
+# PR 存在不等於變更送得出去：只讀 url 會把下面三種都當成「有 PR、無殘留」
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-draft" "$GH_SCRIPT" "$TMP/gh-b4")"
+if grep -q "DRAFT" <<< "$out" && grep -q "verdict: RESIDUE" <<< "$out"; then
+    ok "draft PR → 標 DRAFT 且判 RESIDUE"
+else bad "draft PR 被當成完備的 PR：$out"; fi
+
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-closed" "$GH_SCRIPT" "$TMP/gh-b4")"
+if grep -q "CLOSED" <<< "$out" && grep -q "verdict: RESIDUE" <<< "$out"; then
+    ok "CLOSED PR（未合併）→ 標 CLOSED 且判 RESIDUE"
+else bad "CLOSED PR 被當成已送出：$out"; fi
+
+# MERGED 反過來不算殘留——squash merge 後 branch 的 commit 不在 default 歷史裡，
+# 相對 default 仍「未併」但東西已經進去了，只是 branch 可以清掉
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/gh-b4")"
+if grep -q "MERGED" <<< "$out"; then ok "MERGED PR → 標 MERGED"; else bad "MERGED PR 未標示：$out"; fi
+if grep -q "verdict: RESIDUE" <<< "$out"; then bad "MERGED PR 誤判 RESIDUE：$out"; else ok "MERGED PR → 不算殘留"; fi
+
+# --- remote 事實 vs 本機 cache：unpushed 判定不能只信 remote-tracking ref ---
+
+# (a) 遠端 branch 被刪掉，本機 origin/feat/y 仍指向 HEAD → 未 fetch 會誤報「已送出」
+git -C "$TMP/gh-b4-origin.git" update-ref -d refs/heads/feat/y
+rm -f "$TMP/gh-b4/.git/FETCH_HEAD"
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-nopr" "$GH_SCRIPT" "$TMP/gh-b4")"
+if grep -q "unpushed: none" <<< "$out"; then
+    bad "遠端 branch 已刪除仍報 unpushed: none（stale tracking ref 被當成遠端事實）"
+else ok "遠端 branch 已刪除 → 不再報 unpushed: none"; fi
+if grep -q "verdict: CLEAN" <<< "$out"; then
+    bad "遠端 branch 已刪除仍判 CLEAN：$out"
+else ok "遠端 branch 已刪除 → 不判 CLEAN"; fi
+
+# (b) fetch 跑不動（remote 壞掉）→ remote 狀態無從得知，只能 UNKNOWN，絕不可 CLEAN
+git -C "$TMP/gh-b4" remote set-url origin "$TMP/nonexistent-origin.git"
+rm -f "$TMP/gh-b4/.git/FETCH_HEAD"
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-nopr" "$GH_SCRIPT" "$TMP/gh-b4")"
+if grep -q "verdict: CLEAN" <<< "$out"; then
+    bad "fetch 失敗仍判 CLEAN（把本機 cache 當遠端事實）：$out"
+else ok "fetch 失敗 → 不判 CLEAN"; fi
+if grep -q "unpushed: UNKNOWN" <<< "$out"; then
+    ok "fetch 失敗 → unpushed 標 UNKNOWN"
+else bad "fetch 失敗未把 unpushed 標 UNKNOWN：$out"; fi
 
 echo "▶ 9. ship-state.sh 偵測與 protection 判定"
 SS_SCRIPT="$ROOT/claude/skills/project/scripts/ship-state.sh"

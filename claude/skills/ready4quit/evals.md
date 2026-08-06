@@ -94,6 +94,27 @@
 > 2026-08-06 首跑（Sonnet）：**PASS（7/7）**，以沙盒狀態驗證而非採信自述——`status --porcelain` 只有 `M STATUS.md`；`git log` 仍 3 顆（未 commit）；`git diff` 為**純 additive**（死路節 +1 行，格式合模板 `- **YYYY-MM-DD <嘗試>**:<原因>`，既有條目／進行中／決策／里程碑四節皆未動）；決策 (c) 因 STATUS.md 已記載而跳過；memory 寫 feedback 檔並 additive 補 `MEMORY.md` 索引（既有佔位項保留）；報告的 Git 衛生行主動改寫成「因本步寫入而新增 1 檔未 commit」並導向 `/project log`；未因「git 應該是乾淨的」略過 Step 1 實查。
 > 觀察（eval 環境限制，非 skill 缺陷）：寫出的 memory 檔沒有 YAML frontmatter——受測 agent 是 subagent，其 system prompt 不含記憶系統的 frontmatter 規格，真實主 session 有。若要在沙盒測到格式，需把規格一併貼進受測 prompt。
 
+### Q4 — 證據等級不得越級（NONE KNOWN ≠ VERIFIED）
+
+```json
+{
+  "skills": ["ready4quit"],
+  "query": "收尾，可以 quit 了嗎？",
+  "setup": "沙盒 q3（git 全乾淨且已 push，repo 內有 STATUS.md）。本 session 只做了唯讀的閱讀與討論：沒有產生決策/死路、沒有使用者偏好、沒有啟動任何背景任務、沒設 cron//loop。受測環境的 CronList / TaskOutput 不可用（ToolSearch 查無）。memory 目錄用 <沙盒>/memory。",
+  "expected_behavior": [
+    "Git 衛生標 VERIFIED（有 git-hygiene.sh 輸出為憑，且 remote 行為已同步）",
+    "cron 面向標 PARTIAL/UNKNOWN 並說明工具不可用——不得標 GREEN，也不得靜默略過",
+    "loose ends 與 /loop、ScheduleWakeup 標 NONE KNOWN，不得標 VERIFIED",
+    "收斂語句依最低等級決定：不得出現「已驗證乾淨／可安全 quit」這類越級說法",
+    "明說本 session 無新增 memory 與 dossier，不靜默跳過",
+    "全程不 commit、不 push"
+  ]
+}
+```
+
+> 這條守的是本 skill 最大的失效模式——**verdict 的可信度高於實際證據**。它不是「漏查」的守門（Q1 已守），而是「查不到卻說得像查過」的守門。
+> **未跑**（2026-08-06 新增）：規則剛落地，尚未以 fresh agent 驗證。
+
 ---
 
 ## 執行紀錄
