@@ -9,7 +9,8 @@
 # 逐 repo 輸出：branch / remotes / default / 變更集（files-vs-default 三點、
 # commits-ahead 兩點、working-tree porcelain）/ misplaced（誤 commit 在本地
 # default，附 branch-first-cmd 供照抄）/ dossier 偵測（STATUS.md 衛生，門檻
-# 單一來源在本腳本）/ protection verdict / ship-path / branch-first。default 定位
+# 單一來源在本腳本）/ review-residue（review 迭代痕跡與可照抄的 squash 指令，Step 4 出題依據）/
+# protection verdict / ship-path / branch-first。default 定位
 # 不到時改印 bootstrap 判定（遠端零 branch → BOOTSTRAP + 可照抄 push 指令；遠端有
 # branch → STOP，見 detect_bootstrap）。
 #
@@ -353,6 +354,53 @@ detect_dossier() {
 # prune 的殘影**，故 cleanup-cmd 前置 `fetch --prune`（先對齊再刪，殘影會自己消失）。
 # 排除當前 branch 與 default 本身；未併入 default 的 branch 是「還沒 ship 的工作」，
 # 不在此列（誤報會誘導刪掉未送出的成果）。
+# review 痕跡的權威 subject 清單在 deep-review——那些 commit 是它產生的，清單跟著產生者走。
+# 跨 skill source；缺席時降級印 UNKNOWN 而**不猜**：讓 model 憑印象比對 subject，漂一個字
+# 就會把使用者自己的 `fix: 修正某某` 當成迭代痕跡建議壓掉，而使用者一句「好」就 force-push 了。
+REVIEW_LIB="$(dirname "${BASH_SOURCE[0]}")/../../deep-review/scripts/lib/review-subjects.sh"
+HAVE_REVIEW_LIB=0
+if [ -f "$REVIEW_LIB" ]; then
+    # shellcheck source=../../deep-review/scripts/lib/review-subjects.sh
+    . "$REVIEW_LIB" && HAVE_REVIEW_LIB=1
+fi
+
+# Step 4 squash 選項的判定依據：branch 上有無 review 迭代痕跡、能不能安全壓、reset 目標是誰。
+# 三者都是 model 憑印象會漂的 git 事實，故一律由腳本解析、印成可照抄的指令。
+detect_review_residue() {
+    local repo="$1" remote="$2" default="$3" toplevel="$4"
+    local base_ref mb n_all n_top n_buried top_hash h subj
+    if [ "$HAVE_REVIEW_LIB" -ne 1 ]; then
+        echo "review-residue: UNKNOWN（deep-review 的 lib/review-subjects.sh 不可用——勿憑印象比對 subject，改在 Step 4 詢問使用者）"
+        return
+    fi
+    base_ref="${remote:+${remote}/}${default}"
+    mb="$(git -C "$repo" merge-base "$base_ref" HEAD 2>/dev/null)" || return
+    n_all="$(grep -cE "^(${REVIEW_SUBJECT_ALT})\$" <<< "$(git -C "$repo" log --format=%s "${mb}..HEAD" 2>/dev/null)")" || n_all=0
+    if [ "${n_all:-0}" -eq 0 ]; then
+        echo "review-residue: none（無 review 機械 commit，Step 4 不出 squash 題）"
+        return
+    fi
+    # 頂端連續段＝可安全 reset --soft 的範圍（不跨越語意 commit），與 deep-review 的 squash
+    # 掃描同形狀；被語意 commit 隔在下層的壓不到，reset 只能整支來（後果不同，分開印）。
+    n_top=0
+    top_hash="$mb"
+    while IFS=$'\t' read -r h subj; do
+        [ -n "$h" ] || continue
+        if ! grep -Eq "^(${REVIEW_SUBJECT_ALT})\$" <<< "$subj"; then top_hash="$h"; break; fi
+        n_top=$((n_top + 1))
+    done <<< "$(git -C "$repo" log --topo-order --format='%H%x09%s' "${mb}..HEAD")"
+    n_buried=$(( n_all - n_top ))
+    echo "review-residue: ${n_all} 顆（${base_ref}..HEAD 內 review 機械 commit；Step 4 squash 選項依此出題）"
+    if [ "$n_top" -gt 0 ]; then
+        echo "  top-contiguous: ${n_top} 顆（可安全壓，語意 commit 原樣保留）"
+        echo "  squash-cmd: git -C ${toplevel} reset --soft ${top_hash}"
+    fi
+    if [ "$n_buried" -gt 0 ]; then
+        echo "  buried: ${n_buried} 顆（被非 review commit 隔開，reset --soft 壓不到——要單獨壓需 rebase -i，本 skill 不走互動式）"
+        echo "  squash-all-cmd: git -C ${toplevel} reset --soft ${mb}   # 整支壓成一顆：**會連語意 commit 一起收**，選項文案須講明後果"
+    fi
+}
+
 detect_stale_branches() {
     local repo="$1" remote="$2" default="$3" branch="$4" toplevel="$5"
     local locals remotes_merged n_local n_remote cmd b
@@ -469,6 +517,7 @@ check_repo() {
 
     # -- 殘留 branch 衛生（已併入 default 的 local/remote branch；無殘留則靜默）--
     detect_stale_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
+    detect_review_residue "$repo" "$remote" "$default" "$toplevel"
 
     # -- 無變更 → docs-only gate（判定需要 session 記憶，交回 model）--
     # 不在此早退：docs-only mode 隨後會產生 docs commit 走 Step 4/5，

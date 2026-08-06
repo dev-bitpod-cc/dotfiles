@@ -12,7 +12,7 @@
 
 ## PR / Git
 
-- **NEVER merge on your own** — only when the user explicitly says merge / bypass merge. "push" or "open a PR" alone does NOT include merge.
+- **NEVER merge on your own** — only when the user explicitly says merge / bypass merge, **or picks「開完直接 merge」in `/project log` Step 4 的確認選項**（同一個 gate 收掉的預先授權，效力相同）。"push" or "open a PR" alone does NOT include merge.
 - 使用者明說 merge 後的標準收尾：merge PR → 清 remote/本地 branch → 同步本地 default。**壓不壓由關鍵字決定**（「merge 壓成一顆」→ `--squash`；「merge 不壓／保留 commit」→ `--rebase`），裸「merge」且 PR ≥2 顆 commit → 給選項問，**a bare "merge" is never an answer to that question**。關鍵字表與完整序列見 `~/.claude/skills/project/references/ship-paths.md`「Merge 最後一哩」（唯一權威，勿在此重述）。
 - **Solo repo is not a lighter process** — "It's just me" / "no protection anyway" is never a reason to relax branch-first, the PR default, or explicit merge（理由與完整條文見 `ship-paths.md` 檔首，勿在此重述）。
 - **NEVER push on your own** — after finishing an issue implementation or review fixes, commit and STOP; wait for the user's next instruction.
