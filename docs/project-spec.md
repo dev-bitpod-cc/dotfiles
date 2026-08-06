@@ -2,7 +2,7 @@
 
 > **快照基準**：project skill @ commit 25aca11（2026-07-21）。
 > **定位**：clean-room 重寫實驗產出的需求層蒸餾——描述**目標、硬需求、環境事實**，
-> 不描述實作機制。**Non-normative**：skill 演進不回寫本檔（避免 double-source；
+> 不描述實作機制。**Non-normative**：skill 演進不回寫本檔（避免 double-source；**唯一例外＝『本條已被推翻，見 X』的失效標記**——不回寫等於讓被推翻的條文以現況之姿被讀，比 double-source 更危險；
 > 實作的單一權威恆為 `claude/skills/project/`）。
 > **用途**：skill 的第一份需求層文件；重大重構或移交時的規格參照；附錄記錄「只活在實作裡」的知識缺口。
 
@@ -67,8 +67,8 @@
   不逐項中斷流程
 - PR 路徑：push feature branch → 偵測既有 PR → 無則開新 PR（title/body 由 commits 組）
 - 直接 push 路徑（僅確定無保護）：仍推 feature branch，附帶提示可開 PR
-- 使用者後續明說 merge → 執行標準收尾（squash merge → 清 branch → 同步本地 default），
-  不得因通篇「絕不 merge」而拒絕明確授權
+- 使用者後續明說 merge → 執行標準收尾（merge → 清 branch → 同步本地 default），不得因通篇「絕不 merge」而拒絕明確授權
+  > **2026-08-06 更新**：預設 `--squash` 已被推翻——壓不壓改關鍵字分流／選項式詢問，且 merge 授權可在 Step 4 第 1 題預先給。現況見 `claude/skills/project/references/ship-paths.md`「壓或不壓」與 STATUS.md 關鍵決策。
 
 ### F7 Spec 模式
 - 無 dossier → 從模板建立；已存在但**不是** dossier（撞名的領域產物）→ 停下告知，不覆寫
