@@ -415,6 +415,52 @@ if echo "$out" | grep -q "feat/old-merged"; then ok "stale-branches 列出 branc
 if echo "$out" | grep -q "cleanup-cmd:"; then ok "stale-branches 附清掃指令（供照抄，不代刪）"; else bad "stale-branches 缺 cleanup-cmd"; fi
 if echo "$out" | grep -q "fetch --prune"; then ok "清掃指令前置 fetch --prune（防 remote-tracking 殘影誤刪）"; else bad "清掃指令未前置 fetch --prune"; fi
 
+# --- dossier 章節完整性：整節被刪必須被抓到 ---
+# 簽章只要求「任一」專屬章節在，尺寸 flag 只管上限——兩者都攔不住「刪掉整節」。
+# 2026-08-06 實地踩過：兩整節被誤刪、行數反而變少、一路 merge 進 main 才發現。
+mkdir -p "$TMP/ds-full"
+cat > "$TMP/ds-full/STATUS.md" <<'DOSSIER'
+# STATUS.md
+專案一句話定位(更新日期:2026-08-06)
+
+## 進行中
+- 一個工作項
+
+## 關鍵決策(附理由)
+- 一條決策
+
+## 死路(試過但放棄——防重工)
+- 一條死路
+
+## 技術債
+- 一條技術債
+
+## 已完成(里程碑)
+- ✅ 一個里程碑
+
+## 已知缺口
+- 一條缺口
+
+## 移交準備度
+(暫無)
+DOSSIER
+# 需有 remote：無 remote 時 ship-state 在 verdict: STOP 就返回，dossier 檢查根本跑不到
+# （前一版漏了這點，「七節齊全→不報」那條是假綠——輸出裡沒有該字串只是因為沒執行）
+git init --bare -q "$TMP/ds-full-origin.git"
+(cd "$TMP/ds-full" && git init -q -b main . && "${GITC[@]}" add STATUS.md && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/ds-full-origin.git" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-full" 2>/dev/null)"
+if grep -q "缺少規範章節" <<< "$out"; then bad "完整的 dossier 誤報缺章節"; else ok "七節齊全 → 不報缺章節"; fi
+
+# 刪掉兩節（模擬邊界判斷吃掉尾段）→ 必須抓到
+python3 - "$TMP/ds-full/STATUS.md" <<'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+p.write_text(s[:s.index("## 已知缺口")])
+PYEOF
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-full" 2>/dev/null)"
+if grep -q "缺少規範章節" <<< "$out" && grep -q "已知缺口" <<< "$out" && grep -q "移交準備" <<< "$out"; then ok "整節被刪 → 印缺少規範章節並列出是哪幾節"; else bad "整節被刪未被抓到（尺寸 flag 抓不到、簽章也放行）"; fi
+
 # --- review 痕跡偵測（Step 4 squash 選項的判定依據；prose 下沉）---
 # 為何下沉：判「哪些 commit 算 review 迭代痕跡」需要 deep-review 的權威 subject 清單，
 # model 憑印象比對會把使用者自己的 `fix: 修正某某` 當痕跡建議壓掉，而使用者一句「好」
@@ -587,6 +633,18 @@ cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
 
 ## 已完成（里程碑）
 - ✅ 2026-07-01 已完成項（合法 ✅，不應觸發 flag）
+
+## 死路（試過但放棄）
+- 試過 Z，放棄
+
+## 技術債
+- 一條債
+
+## 已知缺口
+- 一條缺口
+
+## 移交準備度
+（暫無）
 DOSSIER
 (cd "$TMP/ds-work" && "${GITC[@]}" add STATUS.md && "${GITC[@]}" commit -qm "docs: dossier")
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
