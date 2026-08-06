@@ -40,7 +40,8 @@ Ready4Quit 進度：
 
 ### Red Flags — STOP and re-read Critical
 
-- Declaring any dimension GREEN you never actually inspected (no `git-hygiene.sh` output, no `TaskList`/`CronList` check, no scan).
+- Declaring any dimension GREEN you never actually inspected (no `git-hygiene.sh` output, no `tasks/` listing, no `CronList` check, no scan).
+- Reading `TaskList` as the background-task check. It lists `TaskCreate` to-dos, not background shells or subagents — an empty result proves nothing about what is still running.
 - About to `git push` / `gh pr` / kill a task / delete a wakeup/cron/memory file from inside this skill without listing it and getting an explicit yes.
 - Offering to `git commit` for the user — even "just say yes and I'll commit". Git residue has exactly ONE recommendation: run `/project log`. "The user would approve it anyway" does not move commit/ship into this skill.
 
@@ -90,16 +91,29 @@ flush 方式：在總結列出候選（type + 一句摘要）；新增 memory �
 
 列出仍綁在本 session、會隨 `/quit` 一起死掉，或會在你離開後繼續跑的非同步狀態：
 
-- **background Bash**：本 session 用 `run_in_background` 啟動、還沒結束的指令。
-- **Task / subagent**：用 `TaskList` 查仍在 running 的 agent。
+- **background Bash / subagent**：本 session 用 `run_in_background` 或 Agent 啟動、可能還沒結束的。
 - **/loop**：本 session 設過的循環任務。
 - **ScheduleWakeup**：已排定的 wakeup（會在未來再叫醒這條 session——若 session 已 quit 行為需提醒）。
-- **cron / routine**：用 `CronList` 查本 session 建立、預期持續的排程（這類**本應**在 session 外存活，重點是區分「該留」vs「忘了清的臨時排程」）。
+- **cron / routine**：本 session 建立、預期持續的排程（這類**本應**在 session 外存活，重點是區分「該留」vs「忘了清的臨時排程」）。
 
-可查詢 vs 靠記憶——兩類不同，標 GREEN 的根據也不同：
+證據來源分三類，標 GREEN 的根據各不相同：
 
-- `TaskList` / `CronList` 是 **deferred tool**，直接呼叫會失敗——**一輪 `ToolSearch`（`select:TaskList,CronList`）載入兩個 schema，下一輪在同一則訊息並行呼叫 TaskList + CronList**（兩者獨立，勿拆成兩輪）；有實際輸出才算查過。
-- **background Bash / /loop / ScheduleWakeup 沒有對應的列表工具**——只能靠 session 對話記憶回溯。context 一旦被壓縮就可能漏列；此時在報告**明說「依記憶回溯，可能不完整」**，不要當成已查過而標 GREEN。
+**① background Bash / subagent —— 列 session 的 tasks 目錄**
+
+harness 把本 session 每個背景任務的 output 檔放在 **scratchpad 目錄的同層 `tasks/`**（scratchpad 路徑見 system prompt；勿硬編 session id）：`ls -la <scratchpad 同層>/tasks/`，每個 `<task-id>.output` 即一個背景任務。
+
+- **`TaskList` 查不到背景任務**——它列的是 `TaskCreate` 的待辦清單。**Never treat an empty `TaskList` as evidence that no background task is running.**
+- output 檔在任務結束後仍留著，**存在 ≠ 仍在跑**：拿 ID 用 `TaskOutput`（deferred，需 `ToolSearch`）帶 `block=false` 查狀態；一般 bash task 也可直接 `Read` 該 `.output`。
+- **`ls -la` 顯示為 symlink（`->`）的 `.output` 是 subagent 的完整 transcript — NEVER Read it; it will overflow the context window.** 一律改用 `TaskOutput`。
+- 目錄不存在（harness 版本差異）→ 併入 ③ 處理，**不可**當成「沒有背景任務」。
+
+**② cron / routine —— `CronList`**
+
+deferred tool，先一輪 `ToolSearch`（`select:CronList`）載入 schema 再呼叫；有實際輸出才算查過。
+
+**③ /loop 與 ScheduleWakeup —— 無列表工具**
+
+只能靠 session 對話記憶回溯。context 一旦被壓縮就可能漏列；此時在報告**明說「依記憶回溯，可能不完整」**，不要當成已查過而標 GREEN。
 
 報告每一項的狀態與建議（留著 / 等它跑完 / 該清掉）。**Kill 任何一項都要先確認**——尤其別誤殺使用者刻意留的長期 cron。
 

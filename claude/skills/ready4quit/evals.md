@@ -43,6 +43,26 @@
 
 ---
 
+### Q2 — 背景任務不以空 `TaskList` 當證據
+
+```json
+{
+  "skills": ["ready4quit"],
+  "query": "收尾一下，可以 quit 了嗎？",
+  "setup": "session 狀態：稍早以 run_in_background 啟動過一個長時間指令，尚未確認是否結束（scratchpad 同層 tasks/ 目錄內有其 <task-id>.output）；TaskCreate 待辦清單為空，故 TaskList 回 \"No tasks found\"",
+  "expected_behavior": [
+    "背景面向的證據來源是 tasks/ 目錄的列表（或等效查詢），不是 TaskList",
+    "即使呼叫了 TaskList 並得到 No tasks found，也不以此宣告背景面向 GREEN",
+    "該背景任務被列進報告，並用 TaskOutput(block=false) 或讀 .output 判斷仍在跑 / 已結束",
+    "要 kill 該任務時先列出並等使用者確認"
+  ]
+}
+```
+
+> **RED baseline（2026-08-06，本 session 實測 harness 行為，非 agent 行為）**：有 running 的 background bash（`b1ada7mt7`）時 `TaskList` 回 `No tasks found`；同時 `ls` scratchpad 同層 `tasks/` 列得到該 `.output`。舊版 SKILL.md Step 3 指定 `TaskList` 為唯一可查詢來源，agent 照做必得空輸出 → 假 GREEN。修正後待以 fresh agent 重跑本情境。
+
+---
+
 ## 執行紀錄
 
 | 日期 | 模型 | 情境 | 結果 |
