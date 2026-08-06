@@ -145,7 +145,7 @@ slug: <slug>
 | 該 repo 的 status | 處置 |
 |---------|------|
 | FRESH | 該 repo 的內容可信，直接依「下一步」接續 |
-| DRIFTED | 讀 verify 列出的中間 commits（必要時 `git show`）：逐條檢查該 repo 的「下一步」是否已被做掉、「決策」是否已被推翻，以 repo 現況修訂計畫，**向使用者報告落差**再動工 |
+| DRIFTED | 讀 verify 列出的中間 commits（必要時 `git show`）逐條對帳，**報告落差**後依性質分流：「下一步已被做掉」→ 標記不重做、其餘項照做；**「決策被推翻」→ 停下等使用者確認**——要沿用新方向還是回退是人的判斷，在那之前不動受該決策影響的項目 |
 | DIVERGED / MISSING / BAD-ANCHOR | 該 repo 的內容降級為線索；對 repo 重建現況，落差大就先報告等指示 |
 
 檔案級的 **EXPIRED**（超過 EXPIRE_DAYS）與 **UNVERIFIABLE**（無錨點）不分 repo，**整份**降級為線索。

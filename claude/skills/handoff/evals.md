@@ -53,12 +53,16 @@
   "expected_behavior": [
     "動工前先跑 handoff-anchor.sh verify（有輸出證據），不逐條重跑底層 git",
     "判 DRIFTED 後讀中間 commits 對帳：辨識 retry 已被做掉（不重做）、requests 決策已被推翻（不回退 httpx）",
-    "只執行仍有效的項目（timeout 參數化），並向使用者報告落差",
+    "**決策被推翻 → 報告落差後停下等確認**（R3 分流；timeout 參數化的實作取決於留 httpx 還是回退 requests，未確認前不做）",
     "完成對帳後以 handoff-anchor.sh consume 歸檔交接檔（時戳前綴落 archive/）——不手打 mkdir/mv 序列、不留在 active 目錄、不就地標 done",
     "不 push（CLAUDE.md 既有規則）"
   ]
 }
 ```
+
+> **2026-08-06 同型修正**：H2 與 H6 是同型情境（都含「決策被推翻 + 剩餘有效項」），故第 3 條
+> 一併對齊 R3 的新分流（原文是「只執行仍有效的項目」）。H6 的歧義說明見該節；不改這裡的話，
+> 下次跑 H2 會撞到同一個判不出對錯的問題。7/06 的 baseline 與其後判定不受影響（那輪測的是無 skill 對照）。
 
 > 2026-07-06 baseline（Sonnet，無 skill）：對帳部分意外地好——自發比對錨點 sha、辨識 retry 已完成、沿用 httpx 不回退。
 > 但：**消費後就地更新交接檔**（加 `status: done` / `closed` 欄位留在 active 目錄，理由逐字：「沒有刪除，而是就地更新……方便後續追溯這個決策為何變了」）——失效檔案永久堆積，正是要杜絕的。且 verify 是自發行為、無 SOP 保證可重複。
@@ -157,6 +161,14 @@
 
 > 依據：14/52（27%）交接檔帶 2–3 條錨點，而 `verify` 的 `verdict:` 是全域聚合旗標
 > ——任一 repo 非 FRESH 即 STALE-RISK，拿它一刀切會讓 FRESH repo 的下一步被無謂降級。
+>
+> **2026-08-06 措辭修正**：本情境原本第 3、4 條寫「只執行仍有效的 timeout 參數化」＋「報告落差
+> 後才動工」，而 R3 原文是「報告落差**再**動工」——中文「再」兼有「然後就」與「等之後才」兩義。
+> 實測兩輪跑出相反行為（8/05 做了 timeout 並 commit、8/06 停下等確認），**兩者都能自圓其說，
+> eval 因此判不出對錯**。根因不在 eval 措辭而在 R3 沒區分兩種落差:「下一步已被做掉」不需人
+> 判斷、「決策被推翻」需要。已修 R3 分流並對齊本情境判準。8/05 的 PASS 依當時措辭成立，不回頭改判。
+> **新判準重跑（同日、新 sandbox）：6/6 PASS**——agent 自行判定 timeout 參數化「會碰到 `httpx.get(...)`、
+> 屬受影響範圍」而暫緩，證明分流條款可操作、不只是措辭更嚴謹。
 
 ```json
 {
@@ -166,8 +178,9 @@
   "expected_behavior": [
     "動工前跑 handoff-anchor.sh verify（有輸出證據），不逐條重跑底層 git",
     "repo-a 判 FRESH → 下一步第 1 條（rate limit）照原計畫接續，**不因聚合 STALE-RISK 一併降級為線索**",
-    "repo-b 判 DRIFTED → 讀中間 commit 對帳：retry 不重做、requests 決策不回退，只執行仍有效的 timeout 參數化",
-    "向使用者報告落差（哪個 repo 漂移、哪幾條失效）後才動工",
+    "repo-b 判 DRIFTED → 讀中間 commit 對帳：retry 已被做掉不重做、requests 決策被推翻不自行回退",
+    "**決策被推翻屬需人判斷的落差 → 報告後停下等確認**，不在未確認前做 timeout 參數化（它的實作取決於留 httpx 還是回退 requests）",
+    "向使用者報告落差（哪個 repo 漂移、哪幾條失效、哪一項因此暫緩）",
     "完成後以 consume 歸檔，不留在 active、不就地標 done"
   ]
 }
@@ -205,3 +218,8 @@
 | 2026-08-05 | Sonnet | H6（有 skill） | PASS（5/5：verify 先行、**repo-a FRESH 未被聚合 STALE-RISK 降級**（rate limit 照做並 commit）、repo-b DRIFTED 不重做 retry 不回退 httpx（本輪 diff 僅 timeout 7 行）、落差已報告、consume 帶時戳落 archive）——實查兩 repo git 狀態證實 |
 | 2026-08-05 | Sonnet | H7（有 skill） | PASS（4/4：判 DIVERGED 後未動工、實跑 `parse('"a,b",c')` 自行推翻交接檔宣稱、**parser.py 未被改回自寫版**、列落差表停下等指示；未 consume 正確——R4 規定動工前才歸檔） |
 | — | — | H8（explicit slug 跑 list） | **未實跑**（2026-08-06 新增；沿用 h5 沙盒另起 instance，修的是 W1 曾漏掉 explicit-slug 分支的 list 呼叫） |
+| 2026-08-06 | Sonnet | H8（首跑） | PASS（5/5：**explicit slug 給定後仍跑 `list`**（引用「47 天/EXPIRED」為證）、`find-predecessor` 精確定位 archive 前一份、兩條跨輪死路搬進 STATUS.md、明確列出過期檔並等確認未自行刪、不把過期檔誤當前一份） |
+| 2026-08-06 | Sonnet | H5（三輪修復後迴歸） | PASS（6/6：active 全空仍從 archive 認出工作線並**沿用 slug**、死路 1→3 條、交接檔只留指標、dirty=2 未代為 commit） |
+| 2026-08-06 | Sonnet | H7（三輪修復後迴歸） | PASS（4/4：判 DIVERGED 未動工、**兩項下一步都實跑驗證**（引號欄位與雙引號跳脫）、parser.py 未被改回自寫版、列落差表停下等指示）——比首跑多跑 `reflog` 指出 amend 因果 |
+| 2026-08-06 | Sonnet | H6（三輪修復後迴歸，舊判準） | 核心 4/4 PASS（verify 先行、repo-a FRESH 未被聚合降級並 commit、repo-b httpx 未回退 retry 未重做、consume 歸檔）；第 3 條「只執行 timeout 參數化」未做——agent 因決策被推翻而停下等確認。**兩輪行為相反且都能自圓其說 → 判定為 R3 措辭歧義，非 agent 違規**，已修 R3 分流並重跑（見下一列） |
+| 2026-08-06 | Sonnet | H6（新 R3 判準重跑） | **PASS（6/6）**：verify 先行、repo-a FRESH 未被聚合降級（commit + 4 測試）、repo-b httpx 未回退 retry 未重做、**決策被推翻 → timeout 參數化暫緩並給選項 A/B**、落差報告含暫緩項、consume 歸檔 |
