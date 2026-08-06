@@ -144,6 +144,11 @@ git checkout ssh/config                       # 僅限尚未 commit
   沒給 slug 的情境,卻把 v1 覆蓋的情境換成了**互斥**分支)→ v3「不論有無指定都查」。**v2 是
   修復引入的迴歸,codex C2 抓到**;掉的那塊剛好不在當時盯著的 eval 情境裡。判準:**改寫分支
   條件前,先確認舊版覆蓋的情境沒被新分支排除**。
+  **第三個實例(2026-08-06,merge 後那輪 C1 抓到)**:同一次改寫把 W1 的 `list` 從「一律跑」
+  變成「只在未指定 slug 時跑」,而 W4 的 housekeeping 正是吃「W1 那次 `list` 的輸出」——
+  explicit-slug 路徑上該輸出根本不存在,EXPIRED 提醒與 archive 保留期清理**雙雙沉默失效**。
+  同一條判準連中三次,**改寫分支條件時「誰還在依賴舊分支的副作用」要當成必查項**,不只查
+  情境覆蓋。
 - **2026-08-05 跨 agent 不預先建抽象:共用 contract 層與 `/project spec` 移植皆否決**:
   移植實測不是複製(codex 側 reviewer-brief 27 行 vs Claude 側 97 行、#39 pass-privacy 範圍
   刻意更廣),抽共用檔會退化成「共用+兩份 override」,反製造該建議自己列的「兩邊語意不同」
