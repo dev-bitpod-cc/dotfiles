@@ -15,10 +15,17 @@
 # 設計原則：取代 SKILL.md 舊版讓 model 逐條跑指令的做法——「執行失敗」與
 # 「成功但無輸出」在此以 exit code 精確分辨，不再依賴 2>/dev/null 吞 stderr
 # 後的人工判讀（Solve, don't punt）。
+#
+# GIT_HYGIENE_GH 僅供測試 stub gh（tests/run.sh）；正常使用不需設定。
 
 set -uo pipefail
 
 MAX_LIST=20  # 每類殘留最多列出的行數；只影響顯示，計數仍為完整值
+GH_BIN="${GIT_HYGIENE_GH:-gh}"
+
+# gh 的 stderr 落這裡——「查不到 PR」與「gh 執行失敗」都是 exit 1，只有訊息分得出來
+ERR_FILE="$(mktemp)" || { echo "error: mktemp 失敗，無法建立暫存檔" >&2; exit 2; }
+trap 'rm -f "$ERR_FILE"' EXIT
 
 if [ $# -eq 0 ]; then
     echo "用法：$0 <repo-path>..." >&2
@@ -67,8 +74,9 @@ check_repo() {
     echo "branch: $branch"
 
     # -- 未 commit（含 untracked）--
+    # -uall：預設會把整個未追蹤目錄折疊成 "?? dir/"，殘留檔數被低估、檔名也看不到
     local porcelain n_uncommitted
-    porcelain="$(git -C "$repo" status --porcelain)"
+    porcelain="$(git -C "$repo" status --porcelain -uall)"
     if [ -n "$porcelain" ]; then
         n_uncommitted="$(printf '%s\n' "$porcelain" | wc -l | tr -d ' ')"
         echo "uncommitted: $n_uncommitted 檔"
@@ -84,6 +92,12 @@ check_repo() {
     if upstream="$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)"; then
         baseline="$upstream"
         echo "baseline: upstream $upstream"
+    elif [ "$branch" != "DETACHED" ] \
+        && git -C "$repo" rev-parse --verify --quiet "origin/$branch" >/dev/null; then
+        # 已 push 但沒設 upstream（push 不帶 -u）：拿 origin/<default> 當基準會把
+        # 早已在 remote 的 commit 全報成「未 push」——同名 remote branch 才是正確基準
+        baseline="origin/$branch"
+        echo "baseline: ${baseline}（無 upstream，退用同名 remote branch）"
     else
         default_branch="$(detect_default_branch "$repo")"
         if [ -n "$default_branch" ]; then
@@ -128,16 +142,23 @@ check_repo() {
         echo "pr: n/a（在 default branch 上）"
     elif [ -z "$(git -C "$repo" log --oneline "origin/$default_branch..HEAD" 2>/dev/null)" ]; then
         echo "pr: n/a（相對 origin/$default_branch 無 commit）"
-    elif ! command -v gh >/dev/null 2>&1; then
+    elif ! command -v "$GH_BIN" >/dev/null 2>&1; then
         echo "pr: UNKNOWN（gh 不可用，無法查 PR 狀態）"
         unknown=1
     else
-        local pr_url
-        if pr_url="$(cd "$toplevel" && gh pr view --json url -q .url 2>/dev/null)" && [ -n "$pr_url" ]; then
+        # 「真的沒 PR」與「gh 跑不動」（未登入 / 帳號切錯 / 網路 / 權限）都是 exit 1。
+        # 吞掉 stderr 會把後者誤報成 MISSING → 使用者被導去開一個可能已存在的 PR
+        local pr_url pr_rc=0 pr_err
+        pr_url="$(cd "$toplevel" && "$GH_BIN" pr view --json url -q .url 2>"$ERR_FILE")" || pr_rc=$?
+        if [ "$pr_rc" -eq 0 ] && [ -n "$pr_url" ]; then
             echo "pr: $pr_url"
-        else
+        elif grep -qi 'no pull requests found' "$ERR_FILE"; then
             echo "pr: MISSING（feature branch 有 commit 但無 PR）"
             residue=1
+        else
+            pr_err="$(head -n 1 "$ERR_FILE")"
+            echo "pr: UNKNOWN（gh 查詢失敗：${pr_err:-無錯誤訊息}）"
+            unknown=1
         fi
     fi
 

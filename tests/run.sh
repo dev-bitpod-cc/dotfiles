@@ -262,6 +262,79 @@ if echo "$out" | grep -q "verdict: UNKNOWN"; then ok "非 repo → UNKNOWN"; els
 "$GH_SCRIPT" >/dev/null 2>&1
 assert_rc "無引數 → exit 2" 2 $?
 
+# untracked 目錄須展開到檔案層級：porcelain 預設折疊成 "?? dir/"，殘留規模被低估、
+# 檔名看不到（review-state.sh 同源前例）。命中點放輸入前段以免斷言被截斷路徑架空。
+mkdir -p "$TMP/gh-work/newdir/sub"
+: > "$TMP/gh-work/newdir/a.txt"
+: > "$TMP/gh-work/newdir/sub/b.txt"
+out="$("$GH_SCRIPT" "$TMP/gh-work")"
+if grep -q "newdir/a.txt" <<< "$out" && grep -q "newdir/sub/b.txt" <<< "$out"; then
+    ok "untracked 目錄展開到檔案層級"
+else bad "untracked 目錄未展開（porcelain 折疊成 ?? dir/）"; fi
+assert_eq "untracked 計數為展開後檔數" "uncommitted: 2 檔" \
+    "$(grep -o 'uncommitted: [0-9]* 檔' <<< "$out")"
+rm -rf "$TMP/gh-work/newdir"
+
+# git-hygiene 的 gh stub：只需回應 `pr view`。三態＝真無 PR／認證失敗／已有 PR
+make_hyg_gh_stub() {  # <path> <nopr|authfail|haspr>
+    case "$2" in
+        nopr)
+            cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+echo 'no pull requests found for branch "feat/y"' >&2
+exit 1
+STUB
+            ;;
+        authfail)
+            cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+echo 'HTTP 401: Bad credentials (https://api.github.com/graphql)' >&2
+exit 1
+STUB
+            ;;
+        haspr)
+            cat > "$1" <<'STUB'
+#!/usr/bin/env bash
+echo https://github.com/acme/widget/pull/7
+STUB
+            ;;
+    esac
+    chmod +x "$1"
+}
+make_hyg_gh_stub "$TMP/hyg-gh-nopr" nopr
+make_hyg_gh_stub "$TMP/hyg-gh-authfail" authfail
+make_hyg_gh_stub "$TMP/hyg-gh-haspr" haspr
+
+# fixture：feature branch 已 push 到 origin/feat/y 但**未設 upstream**（tree clean）
+git init --bare -q "$TMP/gh-b4-origin.git"
+git init -q -b main "$TMP/gh-b4"
+(cd "$TMP/gh-b4" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/gh-b4-origin.git" && git push -qu origin main \
+    && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main \
+    && git switch -qc feat/y && echo v2 > f.txt && "${GITC[@]}" commit -qam "feat: y" \
+    && git push -q origin feat/y)
+
+# commit 已在 remote，退用 origin/<default> 當 baseline 會誤報「未 push」
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-nopr" "$GH_SCRIPT" "$TMP/gh-b4")"
+if grep -q "unpushed: none" <<< "$out"; then
+    ok "已 push 到 origin/<branch> 但無 upstream → 不誤報 unpushed"
+else bad "無 upstream 的已 push branch 被誤報 unpushed"; fi
+
+# gh 執行失敗 ≠ 沒有 PR：兩者都 exit 1，吞掉 stderr 就分不出來（腳本檔頭設計原則）
+if grep -q "pr: MISSING" <<< "$out"; then ok "gh 明示無 PR → MISSING"; else bad "真無 PR 未判 MISSING"; fi
+
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-authfail" "$GH_SCRIPT" "$TMP/gh-b4")"
+if grep -q "pr: UNKNOWN" <<< "$out" && ! grep -q "pr: MISSING" <<< "$out"; then
+    ok "gh 認證失敗 → UNKNOWN（不誤報 MISSING）"
+else bad "gh 認證失敗被誤判成無 PR"; fi
+if grep -q "401" <<< "$out"; then ok "UNKNOWN 附 gh 失敗原因"; else bad "UNKNOWN 未印失敗原因"; fi
+if grep -q "verdict: UNKNOWN" <<< "$out"; then ok "gh 失敗 → verdict UNKNOWN"; else bad "gh 失敗 verdict 錯誤"; fi
+
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-haspr" "$GH_SCRIPT" "$TMP/gh-b4")"
+if grep -q "pull/7" <<< "$out"; then ok "已有 PR → 印出 URL"; else bad "已有 PR 未印 URL"; fi
+if grep -q "verdict: CLEAN" <<< "$out"; then ok "已 push + 有 PR → CLEAN"; else bad "已 push + 有 PR 未判 CLEAN"; fi
+
 echo "▶ 9. ship-state.sh 偵測與 protection 判定"
 SS_SCRIPT="$ROOT/claude/skills/project/scripts/ship-state.sh"
 
