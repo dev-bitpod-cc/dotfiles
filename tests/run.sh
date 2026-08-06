@@ -398,6 +398,60 @@ if grep -q "unpushed: UNKNOWN" <<< "$out"; then
     ok "fetch 失敗 → unpushed 標 UNKNOWN"
 else bad "fetch 失敗未把 unpushed 標 UNKNOWN：$out"; fi
 
+# (c) 多 remote：fetch 別的 remote 不算「baseline 那個 remote 已同步」。
+#     FETCH_HEAD 是 repo-global 的，拿它的 mtime 當新鮮度會讓 origin 的 stale ref
+#     從側門被當成新鮮——正是本節其餘測試想擋的失效模式
+git init --bare -q -b main "$TMP/mr-origin.git"
+git init --bare -q -b main "$TMP/mr-other.git"
+git init -q -b main "$TMP/mr-work"
+(cd "$TMP/mr-work" \
+    && echo a > f && "${GITC[@]}" add f && "${GITC[@]}" commit -qm c1 \
+    && git remote add origin "$TMP/mr-origin.git" && git remote add other "$TMP/mr-other.git" \
+    && git push -q origin main && git push -q other main \
+    && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main \
+    && echo b >> f && "${GITC[@]}" commit -qam c2 && git push -q origin main)
+# origin 端 rewind 掉 c2（force-push 情境），本機 origin/main 仍指向 c2
+mr_first="$(git -C "$TMP/mr-work" rev-parse HEAD~1)"
+git -C "$TMP/mr-origin.git" update-ref refs/heads/main "$mr_first"
+git -C "$TMP/mr-work" fetch -q other      # 只碰 other，卻會更新 repo-global FETCH_HEAD
+out="$("$GH_SCRIPT" "$TMP/mr-work")"
+if grep -q "verdict: CLEAN" <<< "$out"; then
+    bad "fetch 別的 remote 後仍判 CLEAN（freshness 未綁 remote）：$out"
+else ok "多 remote：fetch other 不會讓 origin 的 stale ref 過關"; fi
+
+# (d) squash merge 後 remote branch 被刪：commit 已經以 squash 形式進了 default，
+#     baseline 退回 default 會把它們算成「未 push」——PR 是 MERGED 時不該計入殘留
+git init --bare -q -b main "$TMP/sq-origin.git"
+git init -q -b main "$TMP/sq-work"
+(cd "$TMP/sq-work" \
+    && echo a > f && "${GITC[@]}" add f && "${GITC[@]}" commit -qm c1 \
+    && git remote add origin "$TMP/sq-origin.git" && git push -q origin main \
+    && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main \
+    && git switch -qc feat/sq && echo b > g && "${GITC[@]}" add g && "${GITC[@]}" commit -qm "feat: sq" \
+    && git push -q origin feat/sq)
+git -C "$TMP/sq-origin.git" update-ref -d refs/heads/feat/sq   # merge 後刪 remote branch
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/sq-work")"
+if grep -q "verdict: RESIDUE" <<< "$out"; then
+    bad "MERGED + remote branch 已刪仍判 RESIDUE（與『MERGED 不算殘留』矛盾）：$out"
+else ok "MERGED + remote branch 已刪 → 不判 RESIDUE"; fi
+
+# (e) fetch 必須有硬上限：本機可能沒有 timeout/gtimeout，不能靠外部指令
+#     ext:: transport 直接執行指令當 transport，是純本地製造「fetch 卡住」的可靠方法
+git init -q -b main "$TMP/slow-work"
+(cd "$TMP/slow-work" \
+    && git config protocol.ext.allow always \
+    && echo a > f && "${GITC[@]}" add f && "${GITC[@]}" commit -qm c1 \
+    && git remote add origin "ext::sleep 30")
+slow_start="$(date +%s)"
+out="$(GIT_HYGIENE_FETCH_TIMEOUT=2 "$GH_SCRIPT" "$TMP/slow-work" 2>/dev/null)"
+slow_elapsed=$(( $(date +%s) - slow_start ))
+if [ "$slow_elapsed" -lt 15 ]; then
+    ok "fetch 卡住 → 在上限內放棄（實測 ${slow_elapsed}s）"
+else bad "fetch 卡住未被中斷（${slow_elapsed}s，宣告的上限不存在）"; fi
+if grep -q "remote: UNKNOWN" <<< "$out"; then
+    ok "fetch 逾時 → remote 標 UNKNOWN"
+else bad "fetch 逾時未標 remote UNKNOWN：$out"; fi
+
 echo "▶ 9. ship-state.sh 偵測與 protection 判定"
 SS_SCRIPT="$ROOT/claude/skills/project/scripts/ship-state.sh"
 
@@ -2161,6 +2215,33 @@ else bad "linked worktree 內未報 worktree：$spc_out"; fi
 if grep -q "base 用 head" <<< "$spc_out"; then
     bad "linked worktree 內誤報 base 建議：$spc_out"
 else ok "linked worktree 內 → 不報 base 建議"; fi
+
+# (13) base 建議必須用 fetch 之後的 ref 重算：別台已把這些 commit 併進 default 時，
+#      stale 的 origin/<default> 會讓 hook 建議「base 用 head」，而正確答案是沒有未併 commit
+git clone -q "$spc/origin.git" "$spc/c" 2>/dev/null
+(cd "$spc/c" && git config user.name t && git config user.email t@t.local \
+  && git switch -qc feat/merged && echo m > m.txt && git add m.txt && git commit -qm "feat: m")
+# 在 origin 端快轉 main（模擬別台 merge 後 push）。兩個坑：
+#   1. 直接 update-ref 會失敗——那顆 commit 的 object 只在本機 clone 裡，bare repo 沒有
+#      （fatal: trying to write ref with nonexistent object），main 根本不會動
+#   2. 但不能用 `push origin HEAD:main` 送 object，那會順手更新本機的 origin/main，
+#      stale 情境就沒了
+# 故：先推到別名 ref 把 object 送過去，再 update-ref 快轉 main，最後清掉別名。
+spc_c_sha="$(git -C "$spc/c" rev-parse HEAD)"
+if ! git -C "$spc/c" push -q origin "HEAD:refs/heads/tmp-import" \
+    || ! git -C "$spc/origin.git" update-ref refs/heads/main "$spc_c_sha"; then
+    bad "fixture 建立失敗：無法在 origin 端快轉 main（下一條斷言將失去意義）"
+fi
+git -C "$spc/origin.git" update-ref -d refs/heads/tmp-import
+rm -f "$spc/c/.git/FETCH_HEAD"
+# 前置條件：此刻本機 ref 仍是 stale 的（ahead=1），fetch 之後才會變 0。
+# 這條斷言在守 fixture 本身——沒有它，fixture 一壞就會偽裝成「實作有問題」
+assert_eq "fixture 前置：fetch 前 ahead=1（stale ref 情境成立）" \
+    "1" "$(git -C "$spc/c" rev-list --count origin/main..HEAD 2>/dev/null)"
+spc_out="$(cd "$spc/c" && bash "$SPC")"
+if grep -q "base 用 head" <<< "$spc_out"; then
+    bad "base 建議未用 fetch 後的 ref 重算（stale origin/<default> 造成誤報）：$spc_out"
+else ok "base 建議在 fetch 後重算 → 已併入 default 時不再誤報"; fi
 
 echo "▶ 17. codex-exec-review.sh（deep-review skill script）exit 契約與 job 產物"
 CER="$ROOT/claude/skills/deep-review/scripts/codex-exec-review.sh"
