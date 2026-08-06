@@ -265,7 +265,8 @@ git checkout ssh/config                       # 僅限尚未 commit
   **上一批**的 anchor。2026-08-05 實遇:本批 3 顆 commit,腳本卻給出會壓掉 5 顆(含已 merge 的
   #38/#39)的 reset 目標。**腳本行為正確**(照 anchor 算並自印 warning),缺的是「anchor 屬於哪
   一批」;現行防線只有人看 warning。可能解:`squash-cmd` 偵測 anchor 已併入 default 或不在當前
-  branch 歷史時改判 STOP。未實作。
+  branch 歷史時改判 STOP——**`codex-next` 已有這道檢查**(8/06 補審已 squash 的那批時兩次正確判
+  「anchor 已非 HEAD 祖先」拒發 range),剩下的是移植;處置＝`record --mode branch-diff --base main`。
 
 - **`/project log` Step 2 對「規則只寫了一半」無偵測能力**:2026-08-05 該步抓到 `add -A`
   例外的使用點缺口(條件只寫在禁令側、執行者讀的是 skill)純屬**偶然**——`CLAUDE.md` 的例外
