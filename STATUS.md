@@ -123,6 +123,30 @@ git checkout ssh/config                       # 僅限尚未 commit
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。
 
+- **2026-08-06 squash 範圍與審查範圍解耦,推翻 2026-07-21「兩者恆等」的拍板**:舊 base =
+  anchor base,branch-diff 下等於整條 branch 全壓,使用者的 `feat:` 連同 review fix 壓平、
+  只印 warning 不中斷。改為由 HEAD 往回掃 subject、停在第一顆語意 commit。**恆等沒被破壞
+  的那一半才是重點**:squash 後內容總和仍等於審查範圍,變的只是 commit 邊界。撞名(手寫
+  commit 恰撞機械字串)接受——後果等同舊行為,故不加 `head_at_record` 補償(分岔歷史下它自身
+  會誤判,codex C3 F2 已證)。
+- **2026-08-06 round 偵測改「頂端連續段」,與 squash 刻意用不同集合**:branch 保留語意 commit
+  後,舊的「數全範圍 `fix|refactor` 前綴」會被使用者自己的 fix: 與上一場殘留雙重灌水,**直接
+  吃掉 R5 預算**(極端情況第一次審查就判已達上限、零修復輪)。改為自 HEAD 往回數連續的 review
+  機械 subject。**兩者邊界不同且刻意如此**:`wip:` 中斷 round(不是一輪修復)、卻會被 squash
+  收攏。pattern 抽到 `scripts/lib/review-subjects.sh` 單一來源——漏認→squash 只壓一半、
+  多認→輪次灌水,兩個方向都難察覺。
+- **2026-08-06 merge 的「壓不壓」改關鍵字分流 + 選項式詢問,預設不再是 `--squash`**:GitHub
+  squash-merge 全有全無,故是整個 PR 的一次決定;舊規則預設全壓、保留要靠 agent 主動察覺,
+  方向與「語意 commit 有參照價值」相反。裸「merge」在 PR ≥2 顆 commit 時給三選項,**且再答
+  一次「merge」不算回答**——該詞同時是動作與 `--merge` flag,自行挑解讀正是
+  `disambiguate-overloaded-terms` 記的失效形狀。同時 Step 4 的「確認送出?」改
+  `AskUserQuestion`(待決一項一題、選項寫具體處置);**merge 授權絕不進 Step 4 選項**。
+- **2026-08-06 「同型掃描」的完備度由 pattern 選擇決定,不由「有掃」決定**:本批 R1–R5 每輪
+  都做了 grep 同型掃描、每輪也都掃乾淨了,但下一輪 reviewer 換一種措辭又找到新殘留(5 輪都是
+  同一根因「語意反轉的下游未同步」的不同實例)。更尖銳的是 codex C2/C3:同一個事實(round 與
+  squash 的關係)**連續兩輪講錯**,C2 糾正「顆數恆等」後我改成「同一邊界」,C3 用實證打掉——
+  兩者 matcher 本就不同。**判準:改動語意時,先列出「誰消費這個語意」的清單再逐一驗,別靠當下
+  想得到的措辭去 grep;宣稱兩個機制「相同」之前,先跑一次反例。**
 - **2026-08-06 predecessor 定位改用腳本子指令,推翻「一行 `ls` 足夠」的原判斷**:計畫階段
   刻意不加子指令(理由:續寫入口通常是 resume、前一份已在 context)。結果同一處被 codex
   **C1/C2/C3 三輪逐輪擠**:只查 active → 分支迴歸 → glob 尾錨定仍誤中(`*` 吃得下中間的
@@ -145,27 +169,11 @@ git checkout ssh/config                       # 僅限尚未 commit
   第一次 `str.replace` 沒命中(靜默無效),第二次只突變第一層、被第二層 frontmatter 驗證
   擋下,兩次都看似「斷言無鑑別力」實則突變未達成。修法:replace 前 `assert old in s`、
   寫入後 grep 確認,且要**一次破壞所有防線**才算模擬回退。
-- **2026-08-05 改寫規則的分支條件,比新增規則更容易掉情境**:同一條判準**連中三次**——修法
-  改了三版才收斂(v2 把 v1 覆蓋的情境換成互斥分支,codex C2 抓到);之後又一次把 W1 的 `list`
-  從「一律跑」改成「只在未指定 slug 時跑」,而 W4 的 housekeeping 正吃它的輸出,explicit-slug
-  路徑上 EXPIRED 提醒與 archive 清理**雙雙沉默失效**。判準兩層:改寫分支條件前先確認
-  **① 舊版覆蓋的情境沒被新分支排除 ② 誰還在依賴舊分支的副作用**。
-- **2026-08-05 跨 agent 不預先建抽象:共用 contract 層與 `/project spec` 移植皆否決**:
-  移植實測不是複製(codex 側 reviewer-brief 27 行 vs Claude 側 97 行、#39 pass-privacy 範圍
-  刻意更廣),抽共用檔會退化成「共用+兩份 override」,反製造該建議自己列的「兩邊語意不同」
-  風險;`/project spec` 則低風險=低價值——上次真實 cross-agent 斷點(#34)的解是 12 行
-  decision notes 條款,已證明正確粒度是**薄契約+既有 artifact**。兩者皆等 RED 再議。
 - **2026-08-05 dossier 超標優先歸檔,不靠壓縮無關的舊條目**:本次為容納新增內容,接連蒸餾五條
   無關的歷史決策才勉強壓在 24576 門檻下——每次都無損(留結論與理由、砍推導史),但「為了幾百
   bytes 去改一條無關舊決策」重複五次本身即訊號:**邊際壓縮效益遞減,再壓會開始損失資訊**。
   改採歸檔後一次降 33%(24556→16444)。**判準**:條目已固化在 skill/腳本/tests 且不再影響現行
   方向 → 歸檔;仍在生效的一律不歸檔(死路=防重工、技術債=未解決,移出 always-on 即失效)。
-- **2026-08-05 外部取證條款兩端最終都不納入**:codex 端自始拒絕移植;deep-review 側一度納入、
-  同日撤除——**該條的證據(krepo 三條 finding 由 subagent 自發取證找到)恰恰證明規則不必要**,
-  倒果為因;且進 brief 當批即生出第二層規則(授權邊界),而 d4 fixture 測不到那半,留下無 oracle
-  的規則。折衷版(改標註 evidence 為查證/推論)同樣無 RED,降為 backlog。**repo-review 仍移植
-  收斂診斷**(依根因重複/震盪 vs 各輪不同分類)並補了 tests gate。全紀錄見 deep-review `evals.md`。
-
 ## 死路(試過但放棄——防重工)
 
 - **mc(Midnight Commander)當遠端檔案管理器**:評估後放棄,理由是**協定層而非偏好**——
@@ -226,35 +234,15 @@ git checkout ssh/config                       # 僅限尚未 commit
 
 ## 已完成(里程碑)
 
-> 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`。
+> 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
+> 2026-08-05 該批已歸檔至 `docs/archive/milestones-2026-08.md`。
 
-- ✅ 2026-08-06 handoff skill 優化:拿 archive 52 份實檔做統計,補上兩個高頻卻無規則的使用
-  模式——同 slug 多輪續寫(約 40%)的死路承接、多 repo 錨點(27%)的逐 repo 對帳;`anchors`
-  改記 toplevel 絕對路徑、`list` 補 path/title、新增 `find-predecessor` 子指令。H5/H6/H7
-  三情境在 Sonnet 全 GREEN。第三方審查共兩個 cycle:merge 前 C1/C2/C3 抓 12 條(2 條屬 SSH
-  工作項)、merge 後補審 `find-predecessor` 那批又抓 5 條(active 誤剝前綴、字典序選到 legacy
-  舊檔、契約與實作不符、缺 eval、frontmatter 誤讀正文),末輪 No findings。`./tests/run.sh`
-  592 PASS。
-- ✅ 2026-08-05 上兩批 git 紀律的第三方審查修復(3 blocking + 1 minor,全判 TP):`add -A`
-  例外(禁令側與 `deep-review/SKILL.md` 使用點**兩處都寫**前置條件)、codex 自有 branch-first、
-  STOP 與混檔技法的順序銜接、`clone --no-local` 補齊參數。
-- ✅ 2026-08-05 跨 agent 所有權模型明文化(全域 `CLAUDE.md` 新增「跨 Agent 工作分配」節):
-  writer 不限／ship 單一入口(現行 authority、非永久)／review 三層污染邊界／one writer per
-  work item。查證發現「codex 只碰 `codex/`」**任何檔案皆無明文**——是慣例非規則,故本次寫的
-  是**正面授權而非解除限制**;順帶補上 Claude 側缺失的 staging 紀律(三次 `git add -A` 誤收
-  正是 Claude 在 ship 時犯的,規矩卻先前只立在 codex 端)。
-- ✅ 2026-08-05 `codex/AGENTS.md` 補 Git discipline 節(never push/merge、禁廣義 staging、
-  混檔拆分後乾淨 clone 驗證、ship 不自行實作)——補上 `danger-full-access` 下的持久 git 契約缺口。
-- ✅ 2026-08-05 dossier 決策節 2026-07 歸檔至 `docs/archive/decisions-2026-07.md`:23 條原文
-  搬出,24556→16444 bytes(-33%)、268→188 行,低於建議目標 20889;死路與技術債刻意不歸檔。
-- ✅ 2026-08-05 repo-review 移植輪次上限的收斂診斷(codex 撰寫、Claude 代 ship):依根因重複/
-  震盪 vs 各輪不同且前案仍修復來分類,禁止單憑上限推論架構問題;evals F21+tests 契約 gate。(565)
-- ✅ 2026-08-05 deep-review 第三方回饋落地 + 輪次隱蔽缺口結案(#40):終止報告根因重複欄、
-  R5 措辭修正;codex 三輪 4/4 TP 全修。外部取證判準同日撤除,見決策節。(564)
-- ✅ 2026-08-05 codex repo-review 移植同批治理(#39):reviewer-brief 判準下沉、stage-neutral
-  prompt 模板、pass 位置 orchestration-private(範圍比 deep-review 側更廣);evals F19/F20。
-- ✅ 2026-08-05 deep-review 審查偏誤治理(#38):根因在**提問端**(主 agent 自行放寬 prompt),
-  修法為判準下沉+白名單契約+輪次隱蔽;驗證三層與 codex 九條 findings 見其 `evals.md`。(547→564)
+- ✅ 2026-08-06 squash/merge 決策改造:deep-review 收尾只壓 review 機械 commit(語意 commit
+  保留並以 `squash-preserve:`/`squash-note:` 攤開)、round 改頂端連續段、merge 壓不壓改關鍵字
+  分流+選項式詢問、`/project log` Step 4 確認改 `AskUserQuestion`。主審 R1–R5 終止(全為
+  「語意反轉下游未同步」的不同實例)、修一條後重跑 PASS;codex C1/C2/C3 共 11 條 TP、修 9 條,
+  終止時剩 2 條(1 條措辭已修、1 條缺 eval 情境已列待補)。`./tests/run.sh` 609 PASS。
+
 ## 已知缺口
 
 - **證據標註 = backlog,無 RED 不進 brief**:待觀察失效為「finding 建立在未查證推論、fixer 誤信」,
@@ -263,8 +251,10 @@ git checkout ssh/config                       # 僅限尚未 commit
 - **deep-review anchor 跨批次會 stale,`squash-cmd` 因而指向錯誤目標**:anchor 只在 autofix 的
   `record` 寫入,走「codex 第三方審查」觸發詞路徑(非 autofix)時不 record,`squash-cmd` 遂讀到
   **上一批**的 anchor。2026-08-05 實遇:本批 3 顆 commit,腳本卻給出會壓掉 5 顆(含已 merge 的
-  #38/#39)的 reset 目標。**腳本行為正確**(照 anchor 算並自印 warning),缺的是「anchor 屬於哪
-  一批」;現行防線只有人看 warning。可能解:`squash-cmd` 偵測 anchor 已併入 default 或不在當前
+  #38/#39)的 reset 目標。**腳本行為正確**(照 anchor 算),缺的是「anchor 屬於哪一批」。
+  2026-08-06 更新:原本的 `warning:` 行已隨 squash 改算法移除,但**防線反而變強**——subject 掃描
+  會停在第一顆語意 commit,跨批次的舊語意 commit 不再被壓;殘餘風險縮小為「上一批的 review fix
+  commit 也一併被收進本批 squash」。可能解:`squash-cmd` 偵測 anchor 已併入 default 或不在當前
   branch 歷史時改判 STOP——**`codex-next` 已有這道檢查**(8/06 補審已 squash 的那批時兩次正確判
   「anchor 已非 HEAD 祖先」拒發 range),剩下的是移植;處置＝`record --mode branch-diff --base main`。
 

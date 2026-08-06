@@ -4,7 +4,7 @@ description: "Project dossier & ship — 三模式：spec（開工：把 Context
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[spec|log|transfer] [repo|.] [module...]"
-allowed-tools: Bash, Read, Glob, Grep, Edit, Write
+allowed-tools: Bash, Read, Glob, Grep, Edit, Write, AskUserQuestion
 ---
 
 # Project — Dossier 維護與 Ship
@@ -61,7 +61,7 @@ Project Log 進度：
 
 **Light path relaxes ceremony only, NEVER Critical.** Branch-first, never-push-default, the Step 4 confirmation gate, and Unknown=protected all apply unchanged — "it's just a small change" is never a reason to skip a guardrail.
 
-**詢問收斂（單一 gate）**：除 Step 4 硬 gate 與 agent 無法自行安全決定的情境（身分分離、fork、push 失敗、spec 撞名）外，其餘待決事項（squash 建議、STATUS.md 建立/過期、是否開 PR）一律彙整進 Step 4 摘要的「附註」**一次問**，不逐項中斷流程。
+**詢問收斂（單一 gate）**：除 Step 4 硬 gate 與 agent 無法自行安全決定的情境（身分分離、fork、push 失敗、spec 撞名）外，其餘待決事項一律收進 Step 4 的**確認選項**（`AskUserQuestion`）**一次問**（清單與出題規則以 Step 4 為準，此處不重列），不逐項中斷流程；純告知（已依 flag 處置完的結果）走摘要的「附註」行，不佔選項。
 
 ### Critical — Guardrails
 
@@ -146,7 +146,7 @@ These are hard constraints. Read them before touching git.
 
    （ship-state 有印 `branch-first-cmd:` 時整行照抄、填上 type/slug；type 取自變更語意 feat/fix/docs…，slug kebab-case。）情況 A（default/detached 上無誤 commit → `switch -c`，working-tree 變更與 detached commit 跟隨）與情況 B（誤 commit 在本地 default → 救援序列 + porcelain 前後快照驗證）由腳本自動判定；任何 ambiguous（分岔、branch 撞名、無 remote）→ `verdict: STOP` 交回處理，零 mutation。在 default branch 上務必 **commit 之前**先跑。**Do not hand-type the rescue sequence — the script IS the mutation path**（手動 fallback 僅供除錯，見 `references/ship-paths.md`）。
    > 做完此步，**Step 5 一律推 feature branch，絕不直推 default branch**——即使確定無保護（branch-first 無條件，「無保護→直接 push」推的也是 feature branch，不是 default）。
-6. **Squash 提醒**：branch 上若有連續 `fix:`/`refactor:`（review 迭代痕跡）→ 列入 Step 4 摘要附註提醒可先 squash，**不在此單獨停下**（deep-review 正常已 squash，通常無需；已 push 的 commit squash 後 push 需 `--force-with-lease`）。
+6. **Squash 提醒**：branch 上若有**連續**的 review 機械 commit（`fix: address review findings` / `fix: address external review findings` / `fix: R<N> review fixes` / `fix: codex [RC]<N> fixes`——權威清單見 `~/.claude/skills/deep-review/scripts/lib/review-subjects.sh`）→ 列入 Step 4 確認選項讓使用者選壓或不壓（選了要壓 → 照 `references/ship-paths.md`「送出前的 branch 內 squash」執行，勿自行湊 reset 目標），**不在此單獨停下**（deep-review 正常已只壓 review fix、保留語意 commit，通常無需；已 push 的 commit squash 後 push 需 `--force-with-lease`）。**只提議壓上列固定 subject**——`fix: correct parser` 這種使用者自己寫的語意 commit 前綴雖同為 `fix:`，**不算迭代痕跡、不列入建議**（誤列會讓使用者一句「好」就 force-push 壓掉自己的歷史）。
 
 ### Step 2：同步 dossier（STATUS.md）與受影響文檔
 
@@ -156,8 +156,8 @@ These are hard constraints. Read them before touching git.
   - 本次工作的**關鍵決策（附理由）／死路／新增技術債** → 寫入對應章節。若工作過程已依全域規則**事件當下就地記錄**，本步為**核對補漏**而非重建；未記錄的部分此刻 session 記憶還在，是最後時機。只記 git 推不出來的（為什麼、放棄了什麼、還欠什麼），進度細節留給 commit。
   - 里程碑達成 → 「進行中」項收斂或移入「已完成」；「下一步」隨進度改寫（跨主機接續的交接點就在這裡）。
   - 衛生檢查（總量治理）：偵測訊號取 Step 1 同一份腳本輸出的 `dossier:` / `dossier-flag:` / `dossier-sections:` 行——**門檻常數與逐 flag 處置的單一來源都是 ship-state.sh**：每則 flag 自帶處置，條目 flag 另附**行號**、全檔 flag 另附**建議收斂目標**；全檔超標時另印 `dossier-sections:` 各節佔比，**動手前先看它決定收哪一節、別憑印象挑**。references 若提及數字僅為說明性引用、以腳本為準；章節語意與收斂規則見 `references/dossier.md`。**照 flag 訊息處置，結果一律列入 Step 4 附註告知**。唯一的例外是 `簽章不符`（撞名領域產物）→ **停下告知、勿當 dossier 改**。
-  - `dossier: NONE` 且 repo 非 trivial（有持續開發跡象）→ 列入 Step 4 摘要附註**建議**從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，經同意才建、不硬塞（不提前單獨詢問）。
-- **殘留 branch 衛生**：腳本印 `stale-branches:`（已完全併入 default，內容零損失）→ 列入 Step 4 附註**建議**清掃、附上 `cleanup-cmd:`，**經同意才刪、絕不自動刪**（同 dossier 衛生的處置形狀）。merge 最後一哩只清它自己 merge 的那支，老殘留靠這個訊號才會被看見。
+  - `dossier: NONE` 且 repo 非 trivial（有持續開發跡象）→ 列入 Step 4 確認選項**建議**從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，經同意才建、不硬塞（不提前單獨詢問）。
+- **殘留 branch 衛生**：腳本印 `stale-branches:`（已完全併入 default，內容零損失）→ 列入 Step 4 確認選項**建議**清掃、附上 `cleanup-cmd:`，**經同意才刪、絕不自動刪**（同 dossier 衛生的處置形狀）。merge 最後一哩只清它自己 merge 的那支，老殘留靠這個訊號才會被看見。
 - 涉及模組的 `**/CLAUDE.md`（只動受影響的）。
 - 相關 `docs/plans/*.md`（存在時）。
 - 所有更動文檔頂部的 `updated` 日期改為今天（YYYY-MM-DD；STATUS.md 的對應欄位名為「更新日期」）。
@@ -185,19 +185,27 @@ Ship 摘要：
     branch commit（相對 default，= PR 內容）: 2 feat + 1 docs（push 為冪等，已 push 則 no-op）
     變更檔: src/..., scripts/..., STATUS.md
     PR: feat/... → main（將開，不 merge）
-    附註: branch 有 3 個 fix: commit，要先 squash 嗎？／此 repo 無 STATUS.md，要一併建立嗎？
-確認送出？
+    附註: dossier 決策節超標，已收斂 3 條目至「已完成」
 ```
 
-「附註」列詢問收斂來的待決事項（squash／STATUS.md 建立／過期／是否開 PR），無則省略。輕量路徑摘要縮為 3 行（路徑＋branch＋變更檔），確認語意不變。
+「附註」列兩類：**純告知**（已依 flag 處置完的結果）、以及**超出出題上限而未出成選項的待決項**（後者一律標明「未處理」，不得因出不了題就靜默丟掉）。無則省略。輕量路徑摘要縮為 3 行（路徑＋branch＋變更檔），確認語意不變。
 
-**無確認 → STOP。** 這是硬 gate（見 Critical）。
+摘要之後**不要**用自由問句收尾（「確認送出？」這類會讓一句「merge」同時像確認、像指令、也像對建議的回答）——改用 **`AskUserQuestion`** 收確認：
+
+- **第 1 題固定**「確認送出？」：`送出` / `取消`。
+- **其餘題目 = 詢問收斂來的待決事項**，一項一題，選項寫成**具體處置**而非 yes/no（例：branch 有 3 個 `fix:` commit → `先 squash 成一顆再送出` / `原樣送出（PR 逐 commit 可讀）`）。來源：squash 提醒／STATUS.md 建立／dossier 衛生待決／stale-branches 清掃／是否開 PR。
+- **上限**（工具限制：≤4 題、每題 ≤4 選項）：待決超過 3 項（多 repo 合計）→ 依 **改動 git 歷史 > 刪除東西 > 文檔類** 取前 3 出題，其餘寫進「附註」並在送出後回報「未處理」。
+- 多 repo：第 1 題涵蓋全部 repo（摘要已逐 repo 列出），待決題在題目文字標明所屬 repo。
+- `AskUserQuestion` 不可用（背景 turn／工具被停用）→ 退回文字編號選項並 **STOP**。
+- **處置先於送出**：使用者若同時選了「送出」與任一**會改變待送內容**的處置（squash／建立 STATUS.md／dossier 收斂），順序一律是**先套用處置 → 重新 commit → 重印一次摘要給使用者過目 → 才進 Step 5**。**Never push a commit set that differs from the one the gate displayed** —— 那等於 critical-op gate 顯示的東西和實際送出的不是同一份。
+
+**No confirmation → STOP.** 這是硬 gate（見 Critical）。**Never offer merge as an option here** —— 送出確認不含 merge 授權，merge 只在使用者事後明說時才做（見 `references/ship-paths.md`「Merge 最後一哩」）。
 
 ### Step 5：依路徑送出
 
 確認後逐 repo 執行（完整指令序列見 `references/ship-paths.md`）：
 
-- **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`，多 repo 須 `-R <owner/repo>` 綁定）：有則指向、無則 `gh pr create`（同樣 `-R` 綁定；title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。完整綁定指令見 `references/ship-paths.md`。輸出 PR URL，並附一句提示：「說『merge』即可由我接手最後一哩（squash-merge + 清 branch + 同步本地 default）」——序列見 `references/ship-paths.md`「Merge 最後一哩」。**不 push default branch；未獲明說 merge 前不 merge。**
+- **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`，多 repo 須 `-R <owner/repo>` 綁定）：有則指向、無則 `gh pr create`（同樣 `-R` 綁定；title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。完整綁定指令見 `references/ship-paths.md`。輸出 PR URL，並附一句提示：「說『merge』即可由我接手最後一哩（merge + 清 branch + 同步本地 default）；要指定壓不壓就說『merge 壓成一顆』或『merge 保留 commit』，否則我會就 PR 內容給你選」——**不要**在此承諾特定 merge 方式，壓不壓一律依 `references/ship-paths.md`「壓或不壓」判定，序列見同檔「Merge 最後一哩」。**不 push default branch；未獲明說 merge 前不 merge。**
 - **直接 push 路徑**（escape hatch：確定無保護**且**使用者明說不用 PR）：push **當前 branch**（branch-first 無條件，故此處一定是 feature branch、非 default）：`git -C <repo> push -u origin <feature-branch>`（**顯式 remote + branch**，不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref；`origin` 為 stand-in）。**本路徑不是無保護 repo 的預設**——預設仍是 PR（見 Step 1 第 4 項），走到這裡代表使用者已明說不用 PR，故不再回頭勸開 PR。
 - **Bootstrap 路徑**（`verdict: BOOTSTRAP`）：照抄腳本的 `bootstrap-cmd:`（推本地 default 建立 baseline），完成後**重跑 `ship-state.sh` 確認 BOOTSTRAP 已消失**——此後回到正常路徑，後續 commit 一律 feature branch。
 - 多 repo：逐 repo 送出，最後彙總（各 repo 的 PR URL / push 結果）。
