@@ -21,6 +21,7 @@
 #   h5  handoff H5            續寫交接：archive 有前一份（帶死路）+ repo 有 STATUS.md
 #   h6  handoff H6            多 repo 混合 verdict：repo-a FRESH、repo-b DRIFTED
 #   h7  handoff H7            DIVERGED：錨點的 HEAD 被 amend 掉，不在現行歷史上
+#   h8  handoff H8            同 h5 + active 有一份確實過期的交接檔（explicit slug / EXPIRED 回報）
 #
 set -euo pipefail
 
@@ -346,8 +347,9 @@ EOF
 # h5：續寫交接（同 slug 第 2 輪）。前一份已消費落在 archive/、active 目錄空——模擬新 session
 # 未經 resume 直接寫交接，前一份不在 context。repo 有 STATUS.md（死路節刻意不含前一份那兩條，
 # 讓「沉澱進 dossier」有落點）。
-make_h5() {
-    local dir="$ROOT/h5-$INSTANCE"
+# h5/h8 共用的 pipeline 續寫 fixture（目錄由呼叫端給）
+make_pipeline_sandbox() {
+    local dir="$1"
     mkdir -p "$dir" "$dir/handoffs/archive"
     git init --bare -q -b main "$dir/origin.git"
     git clone -q "$dir/origin.git" "$dir/work" 2>/dev/null
@@ -447,6 +449,46 @@ anchor: $dir/work main $prev_sha dirty=0
 
 ## 涉及檔案
 - pipeline.py
+EOF
+}
+
+make_h5() { make_pipeline_sandbox "$ROOT/h5-$INSTANCE"; }
+
+# h8：同 h5 的續寫 fixture，但 query 會明確給 slug；**額外在 active 放一份確實過期的交接檔**
+# ——否則 `list` 不會產生任何 EXPIRED 項目，「有 EXPIRED 就列出」變成空條件，agent 完全
+# 忽略 list 輸出照樣過關（vacuous expectation，第三方審查抓到）。這份用另一條工作線的
+# slug，不干擾 find-predecessor 的定位判定。
+make_h8() {
+    local dir="$ROOT/h8-$INSTANCE"
+    make_pipeline_sandbox "$dir"
+    local sha
+    sha="$(git -C "$dir/work" rev-parse HEAD)"
+    cat > "$dir/handoffs/stale-tej-export.md" <<EOF
+---
+slug: stale-tej-export
+created: 2026-06-20
+anchor: $dir/work main $sha dirty=0
+---
+
+# Handoff: TEJ 匯出格式調查（擱置已久）
+
+## 目標
+釐清 TEJ 匯出檔的欄位對應，供下游 ingest 使用。
+
+## 已完成
+- 取得樣本檔、確認分隔符為 tab
+
+## 關鍵決策（附理由）
+- 先不寫 parser——欄位定義還沒跟對方確認，寫了會白工
+
+## 死路（試過但放棄——防重工）
+-（無）
+
+## 下一步（逐條可執行）
+1. 跟對方要正式的欄位定義文件
+
+## 涉及檔案
+- （尚未新建）
 EOF
 }
 
@@ -579,7 +621,7 @@ EOF
 }
 
 make_u1; make_u2; make_u3; make_d1; make_d2; make_d3; make_q1; make_c1; make_n1
-make_h1; make_h2; make_h5; make_h6; make_h7
+make_h1; make_h2; make_h5; make_h6; make_h7; make_h8
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
 ls "$ROOT"

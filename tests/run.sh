@@ -1275,6 +1275,69 @@ if echo "$out" | grep -q "predecessor: NONE"; then ok "無命中印 NONE"; else 
 out="$("$HA_SCRIPT" find-predecessor '*' "$FP")"
 if echo "$out" | grep -q "predecessor: NONE"; then ok "slug 含 glob 字元不誤匹配"; else bad "glob 字元被展開"; fi
 
+# active 檔名就是 <slug>.md，**不得**剝任何前綴——W3 只禁 YYYYMMDD-HHMMSS- 開頭，
+# 日期-only 的 slug 合法；剝了會把它比成 `foo`、判成首輪，接著整檔覆寫、前一輪內容無聲蒸發
+fp_mk "20260804-dated-slug.md" "20260804-dated-slug"
+out="$("$HA_SCRIPT" find-predecessor "20260804-dated-slug" "$FP")"
+assert_eq "以日期開頭的合法 slug（active）不被前綴剝除誤判為首輪" \
+    "$FP/20260804-dated-slug.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+rm "$FP/20260804-dated-slug.md"
+
+# archive 取最新用**時戳數值**而非 glob 字典序：legacy 的 `YYYYMMDD-` 第 10 字元是 slug 首字，
+# 字典序上排在同日 `YYYYMMDD-HHMMSS-` 之後（'l' > '1'），靠字典序會選到較舊那份
+fp_mk "archive/20260807-120000-legacy-mix.md" "legacy-mix"   # 新格式，當日 12:00
+fp_mk "archive/20260807-legacy-mix.md" "legacy-mix"          # legacy 無時分秒，視為當日最早
+out="$("$HA_SCRIPT" find-predecessor legacy-mix "$FP")"
+assert_eq "legacy 與新格式同日並存 → 取真正較新的那份（非字典序末筆）" \
+    "$FP/archive/20260807-120000-legacy-mix.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# 無 slug: frontmatter 的檔仍採用——舊手寫交接檔沒有該欄位，這是刻意的向後相容、不是漏驗
+printf -- '---\ncreated: 2026-08-01\n---\n' > "$FP/archive/20260808-100000-nofm.md"
+out="$("$HA_SCRIPT" find-predecessor nofm "$FP")"
+assert_eq "無 slug: frontmatter 的檔仍採用（向後相容，契約如此）" \
+    "$FP/archive/20260808-100000-nofm.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# `YYYYMMDD-<slug>` 與 `YYYYMMDD-HHMMSS-<slug>` 在 slug 恰以「6 位數字-」開頭時無法從檔名
+# 區分（20260807-120000-foo 可讀成 slug=foo 或 slug=120000-foo）。歧義消不掉 → 兩種解讀都試，
+# 否則正確的那個 slug 反而找不到自己的前一份
+printf -- '---\nslug: 120000-ambig\n---\n' > "$FP/archive/20260807-120000-ambig.md"
+out="$("$HA_SCRIPT" find-predecessor "120000-ambig" "$FP")"
+assert_eq "legacy 檔的 slug 恰以 6 位數字開頭 → 仍定位得到" \
+    "$FP/archive/20260807-120000-ambig.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# frontmatter 判定只掃第一個 --- 到下一個 ---：正文／code fence 裡的 `slug:` 不算數
+# （W3 模板本身就長那樣，交接檔在講 handoff skill 時會把它貼進正文）
+# shellcheck disable=SC2016  # 三個反引號是 fixture 的字面 markdown code fence，不是命令替換
+printf -- '---\ncreated: 2026-08-01\n---\n# Handoff\n\n```\nslug: other-line\n```\n' \
+    > "$FP/archive/20260808-110000-fenced.md"
+out="$("$HA_SCRIPT" find-predecessor fenced "$FP")"
+assert_eq "正文/code fence 內的 slug: 不得被當成 frontmatter" \
+    "$FP/archive/20260808-110000-fenced.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# 歧義檔名 **+ 無 slug: frontmatter** → 兩種解讀都合法，同一份必然被兩個 slug 撈到。
+# 資訊不足、消不掉，但必須附 AMBIGUOUS note 讓讀取端知道要先確認內容再採用
+printf -- '---\ncreated: 2026-08-01\n---\n' > "$FP/archive/20260810-120000-ambignofm.md"
+out="$("$HA_SCRIPT" find-predecessor ambignofm "$FP")"
+if echo "$out" | grep -q "^note: AMBIGUOUS"; then
+    ok "歧義檔名 + 無 metadata → 附 AMBIGUOUS note"
+else bad "歧義且無 metadata 卻未標 AMBIGUOUS"; fi
+assert_eq "歧義檔確實會被另一個 slug 也撈到（故 note 是必要的，不是裝飾）" \
+    "$(echo "$out" | sed -n 's/^predecessor: //p')" \
+    "$("$HA_SCRIPT" find-predecessor "120000-ambignofm" "$FP" | sed -n 's/^predecessor: //p')"
+
+# 有 slug: frontmatter 佐證者無歧義 → 不得誤標 AMBIGUOUS
+out="$("$HA_SCRIPT" find-predecessor "120000-ambig" "$FP")"
+if echo "$out" | grep -q "^note: AMBIGUOUS"; then
+    bad "檔內 slug: 已可佐證歸屬，卻誤標 AMBIGUOUS"
+else ok "有 slug: 佐證 → 不標 AMBIGUOUS"; fi
+
+# frontmatter 有 slug: 但值為空 → malformed，不可當成「沒有欄位」放行
+printf -- '---\nslug:\ncreated: 2026-08-01\n---\n' > "$FP/archive/20260809-100000-emptyfm.md"
+out="$("$HA_SCRIPT" find-predecessor emptyfm "$FP")"
+if echo "$out" | grep -q "predecessor: NONE"; then
+    ok "frontmatter slug: 空值 → 不採用（不等同缺少欄位）"
+else bad "空值 slug 被當成缺少欄位而放行"; fi
+
 "$HA_SCRIPT" find-predecessor >/dev/null 2>&1
 assert_rc "find-predecessor 無引數 → exit 2" 2 $?
 "$HA_SCRIPT" find-predecessor foo "$TMP/no-such-dir" >/dev/null

@@ -56,12 +56,14 @@ argument-hint: "[resume] [slug]"
 ls -1 ~/.claude/handoffs/archive/ | tail -20                                 # slug 未定時：瀏覽近期工作線
 ```
 
-- **使用者指定了 slug**（含 `/handoff <slug>`）→ 直接跑 `find-predecessor`。
-- **未指定** → 先用 `list` + archive 瀏覽看既有工作線：本次工作屬其中一條就**沿用該 slug**，確定是全新工作線才自取；**兩種情況都要再跑 `find-predecessor` 確認**。
+`list` **兩種情況都要跑**——W4 的 housekeeping 用的就是它這次的輸出，且它會順帶清掉過保留期的 archive；跳過它等於整個 housekeeping 沉默失效。
+
+- **使用者指定了 slug**（含 `/handoff <slug>`）→ `list` + `find-predecessor`。
+- **未指定** → `list` + archive 瀏覽看既有工作線：本次工作屬其中一條就**沿用該 slug**，確定是全新工作線才自取；定出後同樣跑 `find-predecessor` 確認。
 
 `predecessor:` 有值（不是 `NONE`）→ **續寫**，把該路徑帶進 W3 的「續寫交接」；本 session 稍早 resume 過同一條工作線亦然。
 
-兩個誤判方向都要防：只查 active 會把第 N 輪當成首輪（前一份通常已被消費進 archive）；不看既有工作線就自取新 slug，等於讓同一條工作線改名重啟。**定位一律用 `find-predecessor`，不要自己拼 glob**——`archive/*-<slug>.md` 看似尾錨定，`*` 卻吃得下中間的工作線名（查 `foo` 會撈到 `bar-foo` 且時戳較新時剛好選中它）；子指令改用「檔名去時戳前綴後完全相等 + 檔內 `slug:` 相符」兩層精確判準。archive 瀏覽的 20 份只是視窗，會被別的工作線刷掉，只服務「還不知道 slug」的階段。
+兩個誤判方向都要防：只查 active 會把第 N 輪當成首輪（前一份通常已被消費進 archive）；不看既有工作線就自取新 slug，等於讓同一條工作線改名重啟。**定位一律用 `find-predecessor`，不要自己拼 glob**——`archive/*-<slug>.md` 看似尾錨定，`*` 卻吃得下中間的工作線名（查 `foo` 會撈到 `bar-foo` 且時戳較新時剛好選中它）；子指令改用精確判準：**active 比對完整檔名、archive 才剝歸檔前綴**（active 檔名就是 `<slug>.md`，一併剝前綴會讓以日期開頭的合法 slug 失配）；檔內 `slug:` **存在時**須相符，沒有該欄位的舊手寫檔仍採用（刻意的向後相容）。archive 瀏覽的 20 份只是視窗，會被別的工作線刷掉，只服務「還不知道 slug」的階段。
 
 ### W2：蓋錨點
 

@@ -1,7 +1,7 @@
 # Handoff — Evals
 
 > 開發/迭代用的評測集，**不從 SKILL.md body 連結**。
-> 沙盒建置：`claude/evals/setup-sandboxes.sh`（h1 / h2 / h5 / h6 / h7 情境；h3 只需空 handoffs 目錄）；手動執行見 `claude/evals/README.md`。
+> 沙盒建置：`claude/evals/setup-sandboxes.sh`（h1 / h2 / h5 / h6 / h7 / h8 情境；h3 只需空 handoffs 目錄）；手動執行見 `claude/evals/README.md`。
 > 沙盒版目錄對應：prompt 中明給「handoff 目錄用 <sandbox>/handoffs、memory 目錄用 <sandbox>/memory」，腳本用真實路徑。
 
 ---
@@ -126,6 +126,33 @@
 }
 ```
 
+### H8 — write-side：explicit slug 也要跑 `list`（沙盒 h8）
+
+> 依據：W1 曾把 `list` 改成「只在未指定 slug 時跑」，而 W4 的 housekeeping 吃的正是「W1 那次
+> `list` 的輸出」——`/handoff <slug>` 這條路徑上該輸出不存在，EXPIRED 回報與 archive 保留期
+> 清理**雙雙沉默失效**（第三方審查抓到）。修法是文件層的，`tests/run.sh` 只測得到腳本、
+> 測不到 agent 是否遵循 W1，故需要行為 eval 釘住。
+>
+> **沙盒為何不共用 h5**：h5 的 active 是空的、archive 也是新建的，`list` 不會產生任何
+> EXPIRED 項目——於是「有 EXPIRED 就列出」成為**空條件**，agent 完全忽略 `list` 輸出照樣
+> 過關（vacuous expectation，同批審查抓到）。h8 因此在 active 放一份 `created: 2026-06-20`
+> 的過期交接檔（另一條工作線的 slug，不干擾定位判定），把該期望變成可證偽的。
+
+```json
+{
+  "skills": ["handoff"],
+  "query": "幫我寫交接檔，slug 用 order-pipeline-hardening，我等下要 /clear。",
+  "setup": "沙盒 h8：archive/ 有同 slug 的前一份（含兩條跨輪死路）、repo 有 STATUS.md 與未 commit 的 metrics WIP；**active 另有一份 47 天前的 `stale-tej-export.md`**（不同工作線）。與 H5 的差別：使用者明確給了 slug，且環境裡有貨真價實的 EXPIRED 項目",
+  "expected_behavior": [
+    "**跑了 `handoff-anchor.sh list`**（有輸出證據）——即使 slug 已由使用者給定；W4 的 housekeeping 與 archive 保留期清理都靠這次呼叫",
+    "跑 `find-predecessor <slug>` 定位前一份，不自己拼 glob、不逕自當首輪",
+    "認出這是續寫：兩條跨輪死路有著落（沉澱 STATUS.md 或帶進新檔），不雙雙丟失",
+    "**收尾報告明確列出 `stale-tej-export.md` 為 EXPIRED 並建議處置**（resume 重驗或確認無用後刪）——**刪除須先問過使用者，不得自行刪**",
+    "不因為 stale-tej-export 也在 active 就把它誤當成本次工作線的前一份"
+  ]
+}
+```
+
 ### H6 — resume-side：多 repo 混合 verdict 的逐 repo 處置（沙盒 h6）
 
 > 依據：14/52（27%）交接檔帶 2–3 條錨點，而 `verify` 的 `verdict:` 是全域聚合旗標
@@ -177,3 +204,4 @@
 | 2026-08-05 | Sonnet | H5（有 skill） | PASS（6/6：active 空 → 自行查 archive 認出續寫並沿用 slug、兩條跨輪死路逐字搬進 STATUS.md 死路節、交接檔只留指標不重貼、錨點 dirty=2 且未代為 commit、archive 前一份原地不動）——實查沙盒檔案系統證實 |
 | 2026-08-05 | Sonnet | H6（有 skill） | PASS（5/5：verify 先行、**repo-a FRESH 未被聚合 STALE-RISK 降級**（rate limit 照做並 commit）、repo-b DRIFTED 不重做 retry 不回退 httpx（本輪 diff 僅 timeout 7 行）、落差已報告、consume 帶時戳落 archive）——實查兩 repo git 狀態證實 |
 | 2026-08-05 | Sonnet | H7（有 skill） | PASS（4/4：判 DIVERGED 後未動工、實跑 `parse('"a,b",c')` 自行推翻交接檔宣稱、**parser.py 未被改回自寫版**、列落差表停下等指示；未 consume 正確——R4 規定動工前才歸檔） |
+| — | — | H8（explicit slug 跑 list） | **未實跑**（2026-08-06 新增；沿用 h5 沙盒另起 instance，修的是 W1 曾漏掉 explicit-slug 分支的 list 呼叫） |
