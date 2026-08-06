@@ -272,7 +272,14 @@ eval 結構（JSON）：`{skills, query, files, expected_behavior[]}`。platform
 
 ### 拿 `/deep-review` 審 skill/doc 的正確姿勢
 
-能用，但限縮：**只跑一次、當 prose-quality pass、findings 全視為 non-blocking 建議**——明顯對的順手收，深井丟掉。**絕不**對 prose skill 跑 `autofix` loop 期待全綠。deep-review 自身對 prose artifact 有「照做會不會錯」的 blocking 判準（見其「Completeness 深井」節），但最終 oracle 仍是 evals。
+能用，但限縮：**只跑一次診斷**。deep-review 偵測到 skill-authoring batch 時會自動這樣做（見其 Step 1 分流），帶 `autofix` 也不生效——唯一的推翻方式是字面 token `force-skill-loop`。
+
+**「只跑一次」不等於「findings 全是建議」**——severity 照 F10 分級（`deep-review/evals.md`）：
+
+- 措辭清晰度、「還能更完整」→ non-blocking，順手收或丟掉；
+- **prose 裡「夾帶指令會 misbehave」「步驟自相矛盾」→ 仍是 blocking**。skill 文件裡的錯誤 git 指令會被 agent 照做，那是真 bug，不因為它寫在 `.md` 裡就降級（2026-08-06 一批四條高風險 finding 全在 `.md` 裡）。
+
+blocking finding **不觸發 autofix loop**，改依可驗證性分流：能建會紅的可執行測試 → 進 tests；屬 agent 行為 → 建 behavior eval；暫時無法建立可靠 oracle → 標 unverified、停手交回判斷；確認是措辭/完整度 → 降 backlog。最終 oracle 仍是 evals，不是「再 review 一次找不找得到東西」。
 
 ## 常見問題排解
 
@@ -288,7 +295,7 @@ eval 結構（JSON）：`{skills, query, files, expected_behavior[]}`。platform
 
 **核心品質**：description 具體含觸發詞且第三人稱 ／ body < 500 行 ／ 細節在獨立檔 ／ 無 time-sensitive 資訊 ／ 術語一致 ／ 範例具體 ／ 引用一層深 ／ workflow 步驟清楚
 **程式與腳本**：腳本自己解決不 punt ／ 顯式錯誤處理 ／ 無 voodoo constants ／ 列依賴 ／ forward slash ／ critical 操作有驗證 ／ 含 feedback loop
-**測試**：≥ 3 個 eval ／ Haiku+Sonnet+Opus 都測 ／ 真實情境測過 ／ 納入團隊回饋 ／ **改動紀律型 skill 的 Critical・rationalization table・red flags 區塊後，重跑受影響的 eval 情境**（Iron Law 的顯性化：防護區塊的修改沒有 GREEN 重跑紀錄就不算完成）
+**測試**：≥ 3 個 eval ／ **Sonnet 為 PASS 門檻、Haiku PASS 加分、Opus 用來檢查是否過度解釋**（樓層政策的單一來源是 `claude/evals/README.md`；本行 2026-08-07 由「三模型都測」改為與它一致，避免兩處打架）／ 真實情境測過 ／ 納入團隊回饋 ／ **改動紀律型 skill 的 Critical・rationalization table・red flags 區塊後，重跑受影響的 eval 情境**（Iron Law 的顯性化：防護區塊的修改沒有 GREEN 重跑紀錄就不算完成）
 
 ## 撰寫語言政策（定向英文）★ 維護本檔與所有 skill 時一律遵循
 

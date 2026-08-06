@@ -212,6 +212,36 @@ Deep Review 進度：
 
 **引數判斷**：符合 `HEAD~N`、`X..Y`、或 7+ 字元 hex → commit 範圍模式；其餘視為檔案/目錄路徑。
 
+#### skill-authoring batch：一次診斷，不進修復循環
+
+變更集**觸及以下任一** → 判為 **skill-authoring batch**（按工作類型，不按副檔名）：
+
+- `claude/skills/**`、`codex/skills/**`（含其 `scripts/` `references/` `evals.md`）
+- `claude/CLAUDE.md`、`codex/AGENTS.md`、repo 根的 `CLAUDE.md`（agent／test 行為契約層）
+- `claude/skill-building-guide.md`、`claude/evals/**`
+
+其餘一律維持現行行為——**一般 product code 即使附帶 `README.md` 也照跑 autofix**。混合的 skill + scripts + tests 仍屬 skill-authoring batch。
+
+**RED 來源**：2026-08-06 一批 skill 變更被對抗式重審失控（兩場 review、八輪主審 + 六輪 codex 仍未收斂），而 `evals.md` 開頭早已寫明「對 prose 重跑對抗式 review 永遠會 R1–R5」。**每輪 fresh reviewer + 全量重審 = 對同一搜尋空間無偏重抽樣**，R1 沒找到不代表不存在；修復又會新增假設，下一輪才觀察得到它的破口。這個 loop 結構上不收斂。
+
+判為 skill-authoring batch 時：
+
+- **只跑一次診斷 review**，不進修復循環（`autofix` 引數在此不生效）。
+- **severity 判準完全不變**——照 `reviewer-brief.md` 既有的 F10 分級：prose 裡「夾帶指令 misbehave」「步驟自相矛盾」**仍是 blocking**；只有措辭與完整度是 non-blocking。**切斷的是 loop，不是 correctness bar。**（2026-08-06 那批四條高風險 finding 全在 `.md` 裡、全屬「照做會錯」類——降級它們等於放行真 bug。）
+- **eval 檔絕不進 subagent prompt**（`evals.md` 明寫「不從 SKILL.md body 連結」，它是開發期 oracle）。報告可告訴使用者下一步走 eval workflow，但不把 eval 內容交給 reviewer。
+- blocking finding 的處置**依可驗證性分流**（測試難寫 ≠ finding 不真）：
+
+  | 情況 | 處置 |
+  |---|---|
+  | 能建立會紅的可執行測試 | 進 `tests/run.sh`，走既有 TDD |
+  | 屬 agent 行為 | 建 behavior eval（該 skill 的 `evals.md`） |
+  | 暫時無法建立可靠 oracle | 標 **unverified**，**停止自動修改、交回使用者判斷** |
+  | 確認是措辭／完整度 | 降 backlog |
+
+- **完成判定看 evals + `tests/run.sh` + 必要 forward test，不看第二輪 review 是否零 finding。**
+
+**Escape hatch 只有一個字面 token**：`/deep-review autofix force-skill-loop`。`autofix` 本身**不構成**推翻（那是它預設就會帶的字），**NEVER infer an equivalent from natural language**——使用者說「就是要跑」「照跑」都不算。帶了 `force-skill-loop` 才進 loop，且報告開頭必須標明「已知此 loop 結構上不收斂」。
+
 #### Codex 範圍模式判定（僅 autocodex 需要）
 
 base 與 range 確定後，**逐 repo** 判一次 `codex_base_mode`，決定 autocodex 階段每輪的 commit range 行為（判定樹，命中即停）。**判 base 的語意，不判 diff 大小**——大型 feature branch 仍是 diff 模式，不因大而切增量。
@@ -332,7 +362,9 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 **Autofix 模式下的流程**：
 1. subagent 回傳審查結果
 2. 若通過 → 輸出通過報告（含第三方審查資訊）→ 若有 autocodex → 進入 Step 6；否則結束
-3. 若未通過且已達 R5 → 輸出 autofix 終止報告，結束（不進入 codex 階段）
+3. 若未通過且已達 R5 → **先執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh terminate --repo <r> --reason r5-blocking`（成功後）再輸出 autofix 終止報告**，結束（不進入 codex 階段）。
+   **順序不可顛倒**——final response 之後沒有保證還能執行工具，寫成「報告後再 terminate」等於它可能永遠不會落盤。報告中標明 terminal 已落盤。
+   > 這道 state 讓「終止」成為 terminal：下一次 `record` 會 STOP，不會靜默重開新 cycle（2026-08-06 實地發生過，外層重置了輪次上限）。續審同一批變更用 `resume-after-terminal`（base 不變、cycle +1）；要重建全新審查範圍才用 `clear` + `record`。
 4. 若未通過且未達上限 → 主 agent 依修復計畫執行修復 → 驗證（見「修復後驗證」）→ 測試通過才 commit → 回到 Step 4 發起下一輪審查；若驗證無法通過（反覆修仍紅或環境擋住）→ 依「修復後驗證」停止，輸出終止/blocked 報告（沿用 Autofix 終止模板，於收斂失敗分析註明是測試卡關），不進下一輪
    - **context 處理**：Step 3 的專案 context（CLAUDE.md、設定檔）沿用，不重新收集；diff 由**每輪全新的 subagent 自行收集**（傳同一條 range 指令即可——修復 commit 後 HEAD 前進，subagent 跑 `git diff <base>...HEAD` 拿到的自然是涵蓋最新修復的完整 diff），主 agent 不搬運 diff 內容、也不讓 subagent 沿用任何舊輪產物
    - **baseline 模式的收斂（autofix 與 autocodex 機制不同）**：autofix 的 range **不縮**（fixer 需看完整狀態確認沒改壞），改縮 **blocking 判準**——baseline 模式時，契約模板加上那個 baseline 條件行（見 Step 4 模板；它描述的是 artifact 狀態「此 diff 含既有基線」，**不提輪次、不提已審過幾次**）。此 range 機制 diff 模式不套用、照常全審；但 diff 內若含 prose artifact，其措辭/完整度 nits 仍套 Completeness 深井判準（見 `references/reviewer-brief.md`，不分模式）。

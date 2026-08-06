@@ -2530,6 +2530,62 @@ assert_rc "lib 缺席 → review-state 照常完成（round 以外的偵測不�
 if grep -q "^round: 1（review-subjects.sh 不可用" <<< "$out"; then ok "lib 缺席 → round 降級並說明原因"; else bad "缺 round 降級（會在 set -u 下中途 unbound variable）"; fi
 if grep -q "^branch-first:" <<< "$out"; then ok "lib 缺席不影響其餘偵測輸出"; else bad "lib 缺席拖垮了其他輸出"; fi
 
+# --- terminal state：R5 終止後不得靜默重開新 cycle ---
+# RED 來源（2026-08-06 實地）：第一場 R5 終止 → 人工修一條 → 又開一場（R1–R4 + C1–C3），
+# 外層 orchestration 重置了輪次上限。cycle 計數判別不了成因（終止/中途停止/crash/刻意續跑），
+# 故改為顯式狀態。terminate 與 resume 語意不重疊：resume 保留 base，record 是無條件覆寫。
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-term"
+(cd "$TMP/ra-term" && git switch -qc feat/t \
+    && echo t1 > t.txt && "${GITC[@]}" add t.txt && "${GITC[@]}" commit -qm "feat: 語意")
+ra_term_anchor="$(git -C "$TMP/ra-term" rev-parse --absolute-git-dir)/deep-review/anchor"
+"$RA_SCRIPT" record --repo "$TMP/ra-term" --mode branch-diff --base origin/main --tests-baseline pass >/dev/null
+ra_term_before="$(cat "$ra_term_anchor")"
+
+# terminate：新增三個 key，既有欄位逐一不變
+"$RA_SCRIPT" terminate --repo "$TMP/ra-term" --reason r5-blocking >/dev/null
+assert_rc "terminate → exit 0" 0 $?
+if grep -qxF "terminal_reason=r5-blocking" "$ra_term_anchor" && grep -q "^terminal_head=" "$ra_term_anchor" && grep -q "^terminal_at=" "$ra_term_anchor"; then
+    ok "terminate 寫入 terminal_reason/head/at"
+else bad "terminate 未寫入三個 key"; fi
+ra_term_kept=1
+while IFS= read -r kv; do grep -qxF "$kv" "$ra_term_anchor" || { ra_term_kept=0; echo "     遺失: $kv"; }; done <<< "$ra_term_before"
+if [ "$ra_term_kept" -eq 1 ]; then ok "terminate 逐一保留既有欄位（不覆寫 base/mode/range）"; else bad "terminate 動到既有欄位"; fi
+
+# terminate 冪等 / 換 reason 拒絕 / 無 anchor 拒絕
+"$RA_SCRIPT" terminate --repo "$TMP/ra-term" --reason r5-blocking >/dev/null 2>&1
+assert_rc "terminate 同 reason 重複 → 冪等成功" 0 $?
+# 本批只有一個合法 reason，故「換 reason」只可能是傳非法值 → 用法錯誤(2)，不是 STOP(1)。
+# 引數合法性先於狀態檢查，是標準順序；等未來真支援多個 reason，才會有「同 anchor 換 reason」的 STOP。
+"$RA_SCRIPT" terminate --repo "$TMP/ra-term" --reason codex-c3 >/dev/null 2>&1
+assert_rc "terminate 非法 reason → 用法錯誤（codex-c3 無 RED，本批不支援）" 2 $?
+if grep -qxF "terminal_reason=r5-blocking" "$ra_term_anchor"; then ok "非法 reason 未污染既有 terminal 狀態"; else bad "既有 terminal 被覆蓋"; fi
+git clone -q "$TMP/ra-origin.git" "$TMP/ra-noanchor"
+"$RA_SCRIPT" terminate --repo "$TMP/ra-noanchor" --reason r5-blocking >/dev/null 2>&1
+assert_rc "terminate 無 anchor → STOP" 1 $?
+
+# record 撞上 terminal：STOP 且**不得覆寫** anchor（寫檔前先檢查）
+out="$("$RA_SCRIPT" record --repo "$TMP/ra-term" --mode working-tree 2>&1)"
+rc=$?
+assert_rc "terminal 狀態下 record → STOP" 1 $rc
+if grep -q "verdict: STOP" <<< "$out"; then ok "record 撞 terminal 印 STOP verdict"; else bad "缺 STOP verdict"; fi
+if grep -qxF "mode=branch-diff" "$ra_term_anchor"; then ok "record 撞 terminal 未覆寫 anchor（mode 仍為原值）"; else bad "record 先重算再覆蓋了 anchor"; fi
+
+# resume-after-terminal：清 terminal、cycle +1、其餘欄位全留
+ra_term_cycle_before="$(sed -n 's/^cycle=//p' "$ra_term_anchor")"
+"$RA_SCRIPT" resume-after-terminal --repo "$TMP/ra-term" >/dev/null
+assert_rc "resume-after-terminal → exit 0" 0 $?
+if grep -q "^terminal_" "$ra_term_anchor"; then bad "resume 未清 terminal_*"; else ok "resume 清掉 terminal_*"; fi
+if [ "$(sed -n 's/^cycle=//p' "$ra_term_anchor")" = "$((ra_term_cycle_before + 1))" ]; then ok "resume 使 cycle +1"; else bad "resume 未遞增 cycle"; fi
+if grep -qxF "base=$(git -C "$TMP/ra-term" merge-base origin/main HEAD)" "$ra_term_anchor" && grep -qxF "tests_baseline=pass" "$ra_term_anchor"; then
+    ok "resume 保留 base 與其餘欄位（與 record 的無條件覆寫語意不同）"
+else bad "resume 動到 base 或其他欄位"; fi
+"$RA_SCRIPT" resume-after-terminal --repo "$TMP/ra-term" >/dev/null 2>&1
+assert_rc "resume 重複呼叫（已無 terminal）→ STOP" 1 $?
+
+# 回歸鎖：非 terminal 狀態下 record 行為不變
+"$RA_SCRIPT" record --repo "$TMP/ra-term" --mode working-tree >/dev/null 2>&1
+assert_rc "非 terminal 狀態 → record 照常覆寫（行為不變）" 0 $?
+
 # 用法錯誤 / 非 git repo
 "$RA_SCRIPT" bogus --repo "$TMP/ra-work" >/dev/null 2>&1
 assert_rc "未知子指令 → exit 2" 2 $?
