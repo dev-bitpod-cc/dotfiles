@@ -23,6 +23,12 @@ set -uo pipefail
 MAX_LIST=20  # 每類殘留最多列出的行數；只影響顯示，計數仍為完整值
 GH_BIN="${GIT_HYGIENE_GH:-gh}"
 
+# fetch 參數（沿用 session-pull-check.sh 的形狀：新鮮度快取 + timeout + 不互動）
+FETCH_FRESH_SECS=300      # FETCH_HEAD 這麼久內更新過就不重抓；pre-quit 是一次性檢查，
+                          # 取比 hook（1h）短得多的值——這裡要的是「此刻」的遠端事實
+FETCH_TIMEOUT_SECS=8      # 單一 repo 的 fetch 上限；寧可判 UNKNOWN 也不拖住收尾
+SSH_CONNECT_TIMEOUT=4     # ssh remote 的連線上限，須小於整體上限
+
 # gh 的 stderr 落這裡——「查不到 PR」與「gh 執行失敗」都是 exit 1，只有訊息分得出來
 ERR_FILE="$(mktemp)" || { echo "error: mktemp 失敗，無法建立暫存檔" >&2; exit 2; }
 trap 'rm -f "$ERR_FILE"' EXIT
@@ -52,6 +58,42 @@ detect_default_branch() {
         fi
     done
     echo ""
+}
+
+# 讓 remote-tracking ref 反映此刻的遠端。不 fetch 就只是在讀本機 cache——遠端 branch
+# 被刪掉或 force-push 之後 cache 仍指向舊 commit，unpushed 會報 none，而東西其實沒送出去。
+# --prune 是必要的：已刪除的遠端 branch 不 prune 就永遠留著 stale tracking ref。
+# 回傳 0 = ref 可信；1 = 不可信（無 remote / 失敗 / 逾時）——呼叫端據此把 unpushed 降為 UNKNOWN。
+refresh_remote() {
+    local repo="$1" git_dir fetch_head now mtime timeout_bin="" rc=0
+    [ -n "$(git -C "$repo" remote)" ] || return 1
+    git_dir="$(git -C "$repo" rev-parse --absolute-git-dir 2>/dev/null)" || return 1
+    fetch_head="$git_dir/FETCH_HEAD"
+    if [ -f "$fetch_head" ]; then
+        now="$(date +%s)"
+        # mtime：GNU stat(Linux) 與 BSD stat(macOS) 參數不同，兩種都試
+        mtime="$(stat -c %Y "$fetch_head" 2>/dev/null || stat -f %m "$fetch_head" 2>/dev/null)"
+        if [ -n "$mtime" ] && [ "$((now - mtime))" -lt "$FETCH_FRESH_SECS" ]; then
+            return 0
+        fi
+    fi
+    if command -v timeout >/dev/null 2>&1; then
+        timeout_bin="timeout"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        timeout_bin="gtimeout"
+    fi
+    # GIT_TERMINAL_PROMPT=0：https remote 要求互動認證時直接失敗，不掛住收尾流程
+    if [ -n "$timeout_bin" ]; then
+        GIT_TERMINAL_PROMPT=0 \
+        GIT_SSH_COMMAND="ssh -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -o BatchMode=yes" \
+            "$timeout_bin" "${FETCH_TIMEOUT_SECS}s" \
+            git -C "$repo" fetch --prune --quiet 2>/dev/null || rc=1
+    else
+        GIT_TERMINAL_PROMPT=0 \
+        GIT_SSH_COMMAND="ssh -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -o BatchMode=yes" \
+            git -C "$repo" fetch --prune --quiet 2>/dev/null || rc=1
+    fi
+    return "$rc"
 }
 
 check_repo() {
@@ -87,6 +129,18 @@ check_repo() {
         echo "uncommitted: none"
     fi
 
+    # -- remote 新鮮度：unpushed 的可信度完全建立在 tracking ref 是否反映此刻遠端 --
+    local has_remote=0 remote_fresh=0
+    [ -n "$(git -C "$repo" remote)" ] && has_remote=1
+    if [ "$has_remote" -eq 1 ]; then
+        if refresh_remote "$repo"; then
+            remote_fresh=1
+            echo "remote: 已同步"
+        else
+            echo "remote: UNKNOWN（fetch 失敗/逾時——tracking ref 可能過期，unpushed 不可信）"
+        fi
+    fi
+
     # -- baseline（未 push 比較基準）：upstream → origin/<default> → 無 --
     local baseline="" upstream default_branch=""
     if upstream="$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)"; then
@@ -111,7 +165,11 @@ check_repo() {
     fi
 
     # -- 未 push commit --
-    if [ -n "$baseline" ]; then
+    if [ -n "$baseline" ] && [ "$remote_fresh" -eq 0 ]; then
+        # 有 baseline 但 ref 不新鮮：拿本機 cache 比出來的 none 不能當「已送出」
+        echo "unpushed: UNKNOWN（remote 狀態無從確認，見上方 remote 行）"
+        unknown=1
+    elif [ -n "$baseline" ]; then
         local unpushed n_unpushed
         if unpushed="$(git -C "$repo" log --oneline "$baseline..HEAD" 2>/dev/null)"; then
             if [ -n "$unpushed" ]; then
@@ -148,10 +206,33 @@ check_repo() {
     else
         # 「真的沒 PR」與「gh 跑不動」（未登入 / 帳號切錯 / 網路 / 權限）都是 exit 1。
         # 吞掉 stderr 會把後者誤報成 MISSING → 使用者被導去開一個可能已存在的 PR
-        local pr_url pr_rc=0 pr_err
-        pr_url="$(cd "$toplevel" && "$GH_BIN" pr view --json url -q .url 2>"$ERR_FILE")" || pr_rc=$?
-        if [ "$pr_rc" -eq 0 ] && [ -n "$pr_url" ]; then
-            echo "pr: $pr_url"
+        # 只讀 url 不夠：CLOSED（未合併就關掉）與 draft 都會回 url，卻都不代表變更送得出去
+        local pr_info pr_rc=0 pr_err pr_state pr_draft pr_url
+        pr_info="$(cd "$toplevel" && "$GH_BIN" pr view --json url,state,isDraft \
+            -q '[.state,(.isDraft|tostring),.url]|@tsv' 2>"$ERR_FILE")" || pr_rc=$?
+        if [ "$pr_rc" -eq 0 ] && [ -n "$pr_info" ]; then
+            pr_state="$(printf '%s' "$pr_info" | cut -f1)"
+            pr_draft="$(printf '%s' "$pr_info" | cut -f2)"
+            pr_url="$(printf '%s' "$pr_info" | cut -f3)"
+            case "$pr_state" in
+                OPEN)
+                    if [ "$pr_draft" = "true" ]; then
+                        echo "pr: DRAFT ${pr_url}（草稿，尚未真正送審）"
+                        residue=1
+                    else
+                        echo "pr: ${pr_url}"
+                    fi ;;
+                MERGED)
+                    # squash merge 後 branch 的 commit 不在 default 歷史裡，相對 default 仍算
+                    # 「未併」但東西已經進去了——不是殘留，只是 branch 可以清掉
+                    echo "pr: MERGED ${pr_url}（已合併，branch 可清理）" ;;
+                CLOSED)
+                    echo "pr: CLOSED ${pr_url}（未合併就關閉，變更沒進去）"
+                    residue=1 ;;
+                *)
+                    echo "pr: UNKNOWN（未預期的 PR state：${pr_state}）"
+                    unknown=1 ;;
+            esac
         elif grep -qi 'no pull requests found' "$ERR_FILE"; then
             echo "pr: MISSING（feature branch 有 commit 但無 PR）"
             residue=1

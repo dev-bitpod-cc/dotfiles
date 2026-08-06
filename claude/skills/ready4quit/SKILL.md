@@ -3,17 +3,30 @@ name: ready4quit
 description: "End-of-session pre-quit flush — 結束 Claude Code session 前的收尾總檢查：驗證 git 殘留（未 commit/未 push/待開 PR）、flush 本 session 學到但未落到持久層的事實（memory 與 repo dossier 分流）、盤點還在跑的背景/排程任務、列出未了結的 TODO，產出『可否 /quit』的總結與待辦 gate。Use before quitting or ending a session — Chinese triggers 「ready4quit」「收尾」「準備結束」「可以 quit 了嗎」「sync 一下」「結束前檢查」「退出前」. Report-first; outward or destructive flush (push, kill task, delete memory) needs explicit confirmation; recommends /project log for git residue rather than shipping itself."
 user-invocable: true
 disable-model-invocation: true
-argument-hint: "[--flush]"
 ---
 
 # Ready4Quit — 結束 Session 前的收尾 Flush
 
 心智模型：reboot 前的 `sync;sync;sync`。把這個 session 裡**易失（volatile）、一旦 `/quit` 就永久消失**的狀態 flush 到持久層，並把「還沒收乾淨」的殘留攤在檯面上，讓你能安心退出。本 skill **不**自己 ship、不自己 kill、不自己 push——它先驗證、再報告、危險動作等你點頭。
 
-## 引數
+## 證據等級（verdict 的語彙）
 
-- **預設 `/ready4quit`** — report-first：先驗證、給報告，收尾動作多數列給你挑（新增 memory 這類可逆附加動作會在報告後直接寫，並列出寫了/跳過什麼）。
-- **`--flush`** — 對**安全且可逆**的收尾更積極、少問你幾次（寫 memory、收無爭議的小 loose end 直接做掉）。**對外/破壞性動作（push、kill task、刪 wakeup/cron、覆寫既有 memory）不受 `--flush` 影響，一律照常先確認**（見 Critical）。整體仍走 report-first，只是 Step 5 的安全項執行強度更高。
+每個面向的結論只能是這三種之一。**本 skill 最大的失效模式不是漏查，而是把「沒看到殘留」說成「已驗證乾淨」**——verdict 的可信度不可以高於實際證據。
+
+| 等級 | 意思 | 典型情況 |
+|------|------|----------|
+| **VERIFIED** | 有指令／工具的實際輸出為憑 | `git-hygiene.sh` 印出 CLEAN、`tasks/` 列表、`CronList` 有回應 |
+| **NONE KNOWN** | 掃過了、沒有已知殘留，但這個面向**本質上不可枚舉** | 只能靠 session 記憶回溯者：loose ends、`/loop`、ScheduleWakeup、涉及哪些 repo |
+| **PARTIAL / UNKNOWN** | 該查的查不到 | 工具不可用、fetch 失敗、context 被壓縮過、`git-hygiene.sh` 判 UNKNOWN |
+
+**Only VERIFIED may be reported as GREEN.** NONE KNOWN 足以支持「沒有已知 blocker，可以 quit」，但**不可**說成「已驗證乾淨」；PARTIAL/UNKNOWN 一律進待辦。
+
+## 動作邊界（什麼可以直接做）
+
+- **Additive 且可逆** → 可直接做，但**必須在報告中逐筆列出做了什麼、跳過什麼**：新增 memory 檔、補 STATUS.md 漏記的決策／死路條目。
+- **對外 / 破壞性** → **一律先列出、等明確同意**：push、開 PR、commit、kill 背景任務、刪 ScheduleWakeup/cron、刪除或覆寫既有 memory、改寫既有 dossier 條目。
+
+`report-first` 約束的是後者：**不在使用者看到報告前做任何對外或破壞性動作**。前者可以先做——單一份報告即為完整交代，不需要兩階段往返。
 
 **Violating the letter of the rules below is violating their spirit.** Do not rationalize a green verdict you did not actually verify.
 
@@ -25,23 +38,25 @@ Ready4Quit 進度：
 - [ ] Step 2：持久化 flush（session 學到的事實 → memory / dossier 路由）
 - [ ] Step 3：背景/排程任務（background Bash / Task / loop / ScheduleWakeup / cron）
 - [ ] Step 4：未了結 loose ends（答應要做卻沒做的 TODO / half-done / 待你決定的開放問題）
-- [ ] Step 5：總結 verdict（逐面向 GREEN/待辦）→ flush gate（安全項確認後執行，對外項先確認）
+- [ ] Step 5：總結 verdict（逐面向標證據等級）→ 對外/破壞性項列選項等確認
 ```
 
 ## Critical — Guardrails
 
 硬約束，做任何 flush 動作前先讀。
 
-- **Report-first.** 預設只驗證與報告。產出總結後才提出 flush 動作，不在使用者沒看到報告前就動手收尾。
+- **Report-first for outward / destructive actions.** 那些動作一律先出現在報告裡等你點頭；additive 寫入可先做，但必須逐筆列出（範圍見〈動作邊界〉，單一來源）。
 - **NEVER push / open PR here.** Git 殘留只**建議** `/project log`，本 skill 不 commit、不 push、不開 PR、不 merge。Ship 是 `/project log` 的事。
 - **Outward / destructive flush needs explicit confirmation.** Kill 背景任務、刪 ScheduleWakeup/cron、刪除既有 memory 檔——一律先列出、等明確同意，沒同意 → 不做。
-- **Memory writes are additive but still surface them.** 新增 memory 檔是可逆的附加動作，可在報告後直接寫，但**必須在報告中列出寫了什麼、跳過什麼**，不靜默塞。
+- **Memory writes are additive but still surface them.** 新增 memory 檔是可逆的附加動作，可直接寫，但**必須在報告中列出寫了什麼、跳過什麼**，不靜默塞。
 - **Dossier writes are additive and stop at the working tree.** 補寫 STATUS.md 漏記的決策/死路同屬可逆附加動作，可直接寫；但 **writing the working tree is NOT shipping** —— 本 skill 仍不 commit、不 push，且不改寫既有條目、不整理 dossier。
 - **Don't rubber-stamp.** 每個面向都要**實際跑指令/掃描**才能標 GREEN。沒查就說「應該沒問題」= 違規。
 
 ### Red Flags — STOP and re-read Critical
 
 - Declaring any dimension GREEN you never actually inspected (no `git-hygiene.sh` output, no `tasks/` listing, no `CronList` check, no scan).
+- Reporting NONE KNOWN as GREEN. "I didn't see any" is not "I verified there are none" — name which one it is, every time.
+- Treating a `git-hygiene.sh` CLEAN as proof the remote agrees when the same output says `remote: UNKNOWN`. A stale tracking ref makes `unpushed: none` meaningless.
 - Reading `TaskList` as the background-task check. It lists `TaskCreate` to-dos, not background shells or subagents — an empty result proves nothing about what is still running.
 - About to `git push` / `gh pr` / kill a task / delete a wakeup/cron/memory file from inside this skill without listing it and getting an explicit yes.
 - Offering to `git commit` for the user — even "just say yes and I'll commit". Git residue has exactly ONE recommendation: run `/project log`. "The user would approve it anyway" does not move commit/ship into this skill.
@@ -62,13 +77,19 @@ Ready4Quit 進度：
 ~/.claude/skills/ready4quit/scripts/git-hygiene.sh <repo1> <repo2> ...
 ```
 
-腳本逐 repo 輸出 `uncommitted` / `baseline` / `unpushed` / `pr` 與 verdict，判讀：
+腳本逐 repo 輸出 `remote` / `uncommitted` / `baseline` / `unpushed` / `pr` 與 verdict，判讀：
 
-- **RESIDUE** → 有殘留（未 commit / 未 push / feature branch 有 commit 但無 PR），細項見各欄位。
-- **UNKNOWN**（`NO-REMOTE`、`NONE` baseline、gh 不可用等）→ 該項**無法驗證**。**UNKNOWN is NOT clean** — report it as unverifiable, never GREEN.
-- **CLEAN** → 每一項都實查為空，可標 GREEN（腳本輸出就是證據）。
+- **RESIDUE** → 有殘留（未 commit / 未 push / 無 PR / PR 是 DRAFT 或 CLOSED），細項見各欄位。
+- **UNKNOWN**（`remote: UNKNOWN`、`NO-REMOTE`、`NONE` baseline、gh 查詢失敗等）→ 該項**無法驗證**。**UNKNOWN is NOT clean** — report it as unverifiable, never GREEN.
+- **CLEAN** → 每一項都實查為空，可標 VERIFIED / GREEN（腳本輸出就是證據）。
+
+兩個欄位特別要看懂：
+
+- **`remote:`** —— 腳本會先 `fetch --prune` 讓 tracking ref 反映此刻遠端。印 `UNKNOWN` 代表 fetch 失敗／逾時，此時 `unpushed` 一律降為 UNKNOWN：**遠端 branch 被刪掉或 force-push 後，本機 cache 仍會讓 `unpushed: none` 看起來很乾淨**。
+- **`pr:`** —— `DRAFT`（草稿未真正送審）與 `CLOSED`（未合併就關掉，變更沒進去）都算殘留；`MERGED` 不算殘留（squash merge 後 branch 的 commit 不在 default 歷史裡是正常的），只是 branch 可以清掉。
 
 Do not re-run the underlying git commands one by one — the script IS the check; one call covers all repos.
+（腳本會逐 repo `fetch`，每個上限 8 秒、5 分鐘內抓過就跳過，所以多 repo 時可能要等幾秒——這是拿「遠端事實」換的，別因為慢就改用本機比對。）
 
 **只報告，不收尾。** 任一項有殘留 → 在總結建議：「git 有殘留，結束前先跑 `/project log` ship 掉」。git 細節（branch-first、protection、PR）全交給 `/project log`，本 skill 不重做。
 
@@ -133,7 +154,7 @@ deferred tool，先一輪 `ToolSearch`（`select:CronList`）載入 schema 再�
 
 **③ /loop 與 ScheduleWakeup —— 無列表工具**
 
-只能靠 session 對話記憶回溯。context 一旦被壓縮就可能漏列；此時在報告**明說「依記憶回溯，可能不完整」**，不要當成已查過而標 GREEN。
+只能靠 session 對話記憶回溯，本質不可枚舉 → 最高只能是 **NONE KNOWN**，永遠不是 VERIFIED。context 若被壓縮過，降為 **PARTIAL** 並明說「依記憶回溯，可能不完整」。
 
 報告每一項的狀態與建議（留著 / 等它跑完 / 該清掉）。**Kill 任何一項都要先確認**——尤其別誤殺使用者刻意留的長期 cron。
 
@@ -148,30 +169,33 @@ deferred tool，先一輪 `ToolSearch`（`select:CronList`）載入 schema 再�
 
 列成清單，每項標「未做 / 半成品 / 待你決定」。**只盤點不自動補做**——是否在 quit 前收掉由使用者決定（小事可順手做，但大改不要在收尾階段擅自展開）。
 
-## Step 5：總結 verdict → flush gate
+本面向靠對話記憶，**最高只能是 NONE KNOWN**；context 被壓縮過就是 PARTIAL。
 
-印出一份「可否 `/quit`」總結，逐面向標狀態：
+## Step 5：總結 verdict → 對外項 gate
+
+印出一份「可否 `/quit`」總結。**每一面向都要標證據等級**（見開頭〈證據等級〉，單一來源）：
 
 ```
 Ready4Quit 收尾報告：
-  Git 衛生        ⚠ repo-a 有 3 檔未 commit、repo-b 有 1 未 push commit → 建議先 /project log
-  持久化 flush    ✓ memory 寫 2 筆（feedback: …／user: …）
-                  ✓ dossier 寫 1 筆（repo-a 死路節：試過 X 因 Y 放棄）
-                    ↳ STATUS.md 未 commit，需 /project log 送出
-                  ✓ 跳過 1 筆（STATUS.md 決策節已記）
-  背景/排程       ⚠ 1 個 background crawler 仍在跑（task#3）；cron <你的排程> 為刻意保留
-  Loose ends      ⚠ 待你決定：API schema 用 v2 還是 v3（Step 4 問過未回）
+  Git 衛生      [VERIFIED] ⚠ repo-a 3 檔未 commit、repo-b 1 未 push → 建議先 /project log
+  持久化 flush  [VERIFIED] ✓ memory 寫 2 筆（feedback: …／user: …）
+                           ✓ dossier 寫 1 筆（repo-a 死路節：試過 X 因 Y 放棄）
+                             ↳ STATUS.md 未 commit，需 /project log 送出
+                           ✓ 跳過 1 筆（STATUS.md 決策節已記）
+  背景/排程     [PARTIAL]  ⚠ tasks/ 列到 1 個仍在跑（b1ada7mt7）；CronList 不可用 → cron 未能查證
+  Loose ends    [NONE KNOWN] ⚠ 待你決定：API schema 用 v2 還是 v3（Step 4 問過未回）
   ────────────────────────────────────────
-  Verdict：尚有待辦。處理完即可安全 /quit。
+  Verdict：尚有待辦。無已知 blocker，但 cron 未能查證——處理完即可 /quit。
 ```
 
 接著：
 
-- **安全項**（已寫的 memory 檔、已補的 dossier 條目）→ 已執行，報告中明列；dossier 寫入須同時更新 Git 衛生行的殘留敘述。
+- **已做的 additive 項**（寫入的 memory 檔、補上的 dossier 條目）→ 逐筆列出；dossier 寫入須同時更新 Git 衛生行的殘留敘述。
 - **對外 / 破壞性項**（建議的 `/project log`、要 kill 的背景任務、要刪的 wakeup/cron）→ **列出選項等使用者點頭**，不自動做。
-- 全面向皆 GREEN → 明確說「volatile 狀態已 flush，可安全 `/quit`」。
-
-`--flush` 引數的行為見開頭〈引數〉節（單一來源）——本步是它生效的地方：帶 `--flush` 時，Step 5 對安全可逆項的執行強度更高，對外/破壞性項仍照常先確認。
+- 收斂語句依最低等級決定，不可越級：
+  - 全部 VERIFIED 且無殘留 → 「volatile 狀態已 flush，**可安全** `/quit`」。
+  - 最低是 NONE KNOWN → 「**沒有已知** blocker，可以 `/quit`」——不可說成已驗證乾淨。
+  - 有 PARTIAL/UNKNOWN → 明說**哪一項查不到、為什麼**，由使用者決定要不要帶著它退出。
 
 ---
 
