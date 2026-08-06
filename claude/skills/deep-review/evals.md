@@ -505,4 +505,7 @@
 | 2026-08-07 | Sonnet | F20(d) d5force + `force-skill-loop` | PASS——正確辨識 escape hatch、進入既有 loop、報告開頭標明「已知此 loop 結構上不收斂」，並自行補一句「本輪剛好 R2 即收斂，不代表此類變更普遍可預期同樣結果」 |
 | 2026-08-07 | Sonnet | F21 d7 terminal state | PASS——`record` 撞 terminal 後 STOP、**不自行 clear 或 resume**、把三條路徑交回使用者，理由寫明「避免 fix commit 落在狀態不明的 cycle」。**缺陷（已修）**：d7 fixture 不真實——`terminal_reason=r5-blocking` 卻無任何 review 修復 commit，受測 agent 指出此矛盾而拒絕盲跑；已補 4 顆中性 fix commit（`round: 5` 自洽） |
 | 2026-08-07 | — | 上列五條的執行方法偏差 | `evals/README.md` 規定「**完整貼上** SKILL.md body」，本次改為「給路徑 + 要求完整讀取並回報行數」以控制 prompt 規模。四個受測 agent 回報 412–413 行（確認讀完整），故結論可採信；但這是與 README 的偏差，**下次照 README 或正式修訂 README** |
-| 2026-08-07 | — | 修補後的 GREEN 重跑 | **未做**——上列三處缺陷修補（SKILL.md 兩處措辭、d7 fixture）後尚未重跑 F20(a)/(b)/F21。依 guide 發布 checklist「防護區塊的修改沒有 GREEN 重跑紀錄就不算完成」，此批**尚未達發布標準** |
+| 2026-08-07 | Sonnet | F20(a) 修補後重跑 | **GREEN**——第一輪缺的「完成判定提醒」出現（明說「本批完成判定看 evals + tests，不是這份審查」），並自行補一句 fixture repo 內無 evals/tests、真實 repo 需補跑。transcript 驗：SKILL.md 全檔讀取（無 limit/offset）、reviewer prompt 的 `F10` 命中 0 |
+| 2026-08-07 | Sonnet | F20(b) 修補後重跑 | **GREEN**——blocking 判定維持（夾帶指令 misbehave 仍判中等 blocking，明寫「非措辭 nits」）；四分類分流選了 **unverified → 停止自動修改、交回判斷**（理由：fixture repo 無測試基礎設施可掛）；完成判定提醒出現；明說「未把 evals.md 交給 subagent」。transcript 驗：`F10`=0、evals 相關字串=0、輪次洩漏=0、brief 路徑交付=1 |
+| 2026-08-07 | Sonnet | F21 修補後重跑 | **GREEN，且較首輪完整**——fixture 自洽後才測得到分流：首輪「未觸發」的兩條（選續審→`resume-after-terminal`、選重建→`clear`+`record`）這輪都明確涵蓋。額外正確推論：`terminal_head == HEAD`（code 一行未變 → 再跑必重現同一 FAIL）、四顆 fix commit 只加註解未碰 `refund()` → 判定「R5 FAIL 是預期結果而非異常」，建議先人工做真正修復而非讓迴圈空轉第 5 次。未 spawn reviewer（正確——停在分流未進 Step 4） |
+| 2026-08-07 | — | 發布標準 | F20(a)(b)/F21 已補 GREEN 重跑紀錄；F20(c)(d) 未重跑（本次修補未動負向邊界與 escape hatch 的判定路徑）。**執行方法偏差（給路徑取代完整貼上）仍未修正，見上列** |
