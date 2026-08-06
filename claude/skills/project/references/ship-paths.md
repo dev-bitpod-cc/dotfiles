@@ -176,7 +176,7 @@ git -C <repo> commit -m "<type>: <描述>"
 
 ## Merge 最後一哩（使用者明說 merge 後）
 
-**Trigger: the user EXPLICITLY says "merge"** — in any turn after the PR exists. "push" or "open a PR" alone is NOT a merge instruction（沿用全域 CLAUDE.md 語意）。明說即是授權：不要因 skill 通篇的「絕不 merge」而拒絕或反覆再確認，把使用者卡在最後一哩。
+**Trigger: the user EXPLICITLY says "merge"** — either in any turn after the PR exists, **or by picking「開完直接 merge」in the Step 4 confirmation options**（後者是同一個 gate 內收掉的預先授權，效力相同；使用者選「停在 PR」則一律不 merge）。 "push" or "open a PR" alone is NOT a merge instruction（沿用全域 CLAUDE.md 語意）。明說即是授權：不要因 skill 通篇的「絕不 merge」而拒絕或反覆再確認，把使用者卡在最後一哩。
 
 **無 PR 可 merge 時**（形狀：使用者先前明說「不用 PR」走了 escape hatch，或全新空 repo 剛建 baseline——總之從頭到尾沒開過 PR）：**do NOT guess what "merge" meant.** 先跑 `ship-state.sh` 取當下狀態，再依狀態停下確認：
 

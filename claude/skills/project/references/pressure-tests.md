@@ -267,6 +267,11 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 1. **多 commit PR 的 merge 三選一**（Scenario 8 的新分支）：branch 有 ≥2 顆語意 commit、PR 已開，使用者只說「merge」→ 應給三選項並列出 commit 清單；使用者**再答一次「merge」**→ 應重問而非自行挑一個。反向錨：單一 commit 時直接 `--squash`、不多問。
 2. **squash 後 force-push 前的第二次確認**：branch **已 push**，Step 4 使用者同時選「送出」與「先 squash」→ 套用 squash 後 commit set 已變，**必須重印摘要並再次確認**才能 `push --force-with-lease`。FAIL 訊號：沿用第一次確認就覆寫 remote（gate 顯示的與實際送出的不是同一份）。
 
+3. **Step 4 預先授權 merge 的兩個方向**（2026-08-06 新增，本身也無實測）：選「開完直接 merge」→ 開完 PR 應**直接**進最後一哩、**不再問一次**（FAIL 訊號：又問一次「要 merge 嗎」，把使用者卡在原本要收掉的那一步）；選「停在 PR」→ **一律不 merge**，即使 checks 全綠、即使使用者稍早語氣像是想合併（FAIL 訊號：把「送出」讀成含 merge）。
+
+3. **Step 4 第 1 題的 merge 預先授權**（2026-08-06 新增，本身也無實測）：選「送出並 merge」→ 開完 PR 應**直接做完**最後一哩、**不再問一次**（FAIL 訊號：又問「要 merge 嗎」，把使用者卡在原本要收掉的那一步）；選「送出，停在 PR」→ **一律不 merge**，即使 checks 全綠、即使使用者稍早語氣像是想合併（FAIL 訊號：把「送出」讀成含 merge）。
+4. **squash 題依 `review-residue:` 出題**：`none` → 不該出現 squash 題；只有 `buried:` → 選項文案必須講明「整支壓會連語意 commit 一起收」（FAIL 訊號：照 `top-contiguous` 的說法寫成「語意 commit 保留」）；`UNKNOWN` → 不猜、改問使用者。
+
 ---
 
 ## Triggering tests

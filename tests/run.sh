@@ -398,6 +398,36 @@ if echo "$out" | grep -q "feat/old-merged"; then ok "stale-branches 列出 branc
 if echo "$out" | grep -q "cleanup-cmd:"; then ok "stale-branches 附清掃指令（供照抄，不代刪）"; else bad "stale-branches 缺 cleanup-cmd"; fi
 if echo "$out" | grep -q "fetch --prune"; then ok "清掃指令前置 fetch --prune（防 remote-tracking 殘影誤刪）"; else bad "清掃指令未前置 fetch --prune"; fi
 
+# --- review 痕跡偵測（Step 4 squash 選項的判定依據；prose 下沉）---
+# 為何下沉：判「哪些 commit 算 review 迭代痕跡」需要 deep-review 的權威 subject 清單，
+# model 憑印象比對會把使用者自己的 `fix: 修正某某` 當痕跡建議壓掉，而使用者一句「好」
+# 就 force-push 了。reset 目標 hash 同理，不讓 model 湊。
+git clone -q "$TMP/sb-origin.git" "$TMP/rr-work" 2>/dev/null || git clone -q "$TMP/ss-origin.git" "$TMP/rr-work"
+(cd "$TMP/rr-work" && git switch -qc feat/rr \
+    && echo r1 > r.txt && "${GITC[@]}" add r.txt && "${GITC[@]}" commit -qm "feat: 使用者的語意實作")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-work")"
+if grep -q "^review-residue: none" <<< "$out"; then ok "無 review 痕跡 → review-residue: none"; else bad "無痕跡卻未印 none（${out}）"; fi
+
+# 頂端連續段 → 可安全 reset（目標 = 第一顆語意 commit，不動它以下）
+rr_feat="$(git -C "$TMP/rr-work" rev-parse HEAD)"
+(cd "$TMP/rr-work" && echo r2 > r.txt && "${GITC[@]}" commit -qam "fix: address review findings" \
+    && echo r3 > r.txt && "${GITC[@]}" commit -qam "fix: address external review findings")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-work")"
+if grep -q "^review-residue: 2 顆" <<< "$out"; then ok "review-residue 計數正確"; else bad "review-residue 計數錯誤（${out}）"; fi
+if grep -q "top-contiguous: 2 顆" <<< "$out"; then ok "頂端連續段顆數正確"; else bad "頂端連續段錯誤"; fi
+if grep -qE "^  squash-cmd: git -C .* reset --soft ${rr_feat}\$" <<< "$out"; then ok "squash-cmd 指向第一顆語意 commit（腳本解析，model 不湊 hash）"; else bad "squash-cmd 目標錯誤"; fi   # 路徑取 toplevel（realpath），只驗 hash
+if grep -q "buried:" <<< "$out"; then bad "無 buried 卻誤印"; else ok "無 buried 時不印該行"; fi
+
+# 被非 review commit 隔開（Step 3 的 docs commit 壓在最上）→ reset --soft 壓不到，
+# 須改印整支全壓指令，且明示會連語意 commit 一起收
+(cd "$TMP/rr-work" && echo r4 > r.txt && "${GITC[@]}" commit -qam "docs: 同步 dossier")
+rr_mb="$(git -C "$TMP/rr-work" merge-base origin/main HEAD)"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-work")"
+if grep -q "top-contiguous:" <<< "$out"; then bad "頂端非 review commit 卻報 top-contiguous"; else ok "頂端被隔開 → 不報可安全壓的連續段"; fi
+if grep -q "buried: 2 顆" <<< "$out"; then ok "被隔開的痕跡計為 buried"; else bad "buried 計數錯誤（${out}）"; fi
+if grep -qE "^  squash-all-cmd: git -C .* reset --soft ${rr_mb} " <<< "$out"; then ok "buried 時改印整支全壓指令"; else bad "缺 squash-all-cmd"; fi
+if grep -q "會連語意 commit 一起收" <<< "$out"; then ok "全壓指令附後果警語"; else bad "全壓指令缺警語"; fi
+
 # origin/HEAD 存在時（真實 clone 的常態）：其 short form 是**裸 remote 名**（"origin"），
 # 不是 branch——列進去會污染清單並讓 cleanup-cmd 拼出 `--deleteorigin`（實地跑真 repo 才
 # 抓到，原 fixture 無 origin/HEAD 故漏測）
