@@ -1,6 +1,6 @@
 ---
 name: ready4quit
-description: "End-of-session pre-quit flush — 結束 Claude Code session 前的收尾總檢查：驗證 git 殘留（未 commit/未 push/待開 PR）、flush 本 session 學到但未落到持久層的事實（memory 與 repo dossier 分流）、盤點還在跑的背景/排程任務、列出未了結的 TODO，產出『可否 /quit』的總結與待辦 gate。Use before quitting or ending a session — Chinese triggers 「ready4quit」「收尾」「準備結束」「可以 quit 了嗎」「sync 一下」「結束前檢查」「退出前」. Report-first; outward or destructive flush (push, kill task, delete memory) needs explicit confirmation; recommends /project log for git residue rather than shipping itself."
+description: "End-of-session pre-quit flush — 結束 Claude Code session 前的收尾總檢查：驗證 git 殘留（未 commit/未 push/待開 PR）、flush 本 session 學到但未落到持久層的事實（memory 與 repo dossier 分流）、盤點還在跑的背景/排程任務、列出未了結的 TODO，產出『可否 /quit』的總結與待辦 gate。Use before quitting or ending a session — Chinese triggers 「ready4quit」「收尾」「準備結束」「可以 quit 了嗎」「sync 一下」「結束前檢查」「退出前」. Never commits, pushes, or opens PRs — git residue always routes to /project log; destructive flush (kill task, delete cron/memory) needs explicit confirmation; additive writes are done up front and itemised in the report. Verdict carries an evidence level, never claiming more certainty than the checks produced."
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -9,24 +9,34 @@ disable-model-invocation: true
 
 心智模型：reboot 前的 `sync;sync;sync`。把這個 session 裡**易失（volatile）、一旦 `/quit` 就永久消失**的狀態 flush 到持久層，並把「還沒收乾淨」的殘留攤在檯面上，讓你能安心退出。本 skill **不**自己 ship、不自己 kill、不自己 push——它先驗證、再報告、危險動作等你點頭。
 
-## 證據等級（verdict 的語彙）
+## 證據強度 × 殘留狀態（verdict 的語彙）
 
-每個面向的結論只能是這三種之一。**本 skill 最大的失效模式不是漏查，而是把「沒看到殘留」說成「已驗證乾淨」**——verdict 的可信度不可以高於實際證據。
+**兩個獨立維度，必須分開標。** 把它們壓成一個標籤，就會產出「已知的 loose end 被標成沒有已知殘留、然後宣告無 blocker」這種自相矛盾的報告。本 skill 最大的失效模式不是漏查，而是**讓 verdict 的可信度高於實際證據**。
+
+**證據強度**——這個面向查得多完整：
 
 | 等級 | 意思 | 典型情況 |
 |------|------|----------|
-| **VERIFIED** | 有指令／工具的實際輸出為憑 | `git-hygiene.sh` 印出 CLEAN、`tasks/` 列表、`CronList` 有回應 |
-| **NONE KNOWN** | 掃過了、沒有已知殘留，但這個面向**本質上不可枚舉** | 只能靠 session 記憶回溯者：loose ends、`/loop`、ScheduleWakeup、涉及哪些 repo |
-| **PARTIAL / UNKNOWN** | 該查的查不到 | 工具不可用、fetch 失敗、context 被壓縮過、`git-hygiene.sh` 判 UNKNOWN |
+| **VERIFIED** | 有指令／工具的實際輸出為憑 | `git-hygiene.sh` 輸出、`tasks/` 列表、`CronList` 有回應 |
+| **RECALLED** | 只能靠 session 記憶回溯，**本質不可枚舉** | loose ends、`/loop`、ScheduleWakeup、涉及哪些 repo |
+| **PARTIAL** | 該查的查不到 | 工具不可用、fetch 失敗、context 被壓縮過、腳本判 UNKNOWN |
 
-**Only VERIFIED may be reported as GREEN.** NONE KNOWN 足以支持「沒有已知 blocker，可以 quit」，但**不可**說成「已驗證乾淨」；PARTIAL/UNKNOWN 一律進待辦。
+**殘留狀態**——實際找到了什麼：`✓` 無殘留／`⚠` 有殘留（後面接具體項目）。
+
+- **Only `VERIFIED + ✓` may be reported as GREEN.**
+- `RECALLED + ✓` → 只能說「沒有已知殘留」，**不可**說成「已驗證乾淨」。
+- **任何 `⚠` → 有殘留，verdict 一律 NOT READY**，與證據強度無關（RECALLED 找到的殘留一樣是殘留）。
+- 任何 `PARTIAL` → 明說哪一項查不到、為什麼，由使用者決定要不要帶著它退出。
 
 ## 動作邊界（什麼可以直接做）
 
-- **Additive 且可逆** → 可直接做，但**必須在報告中逐筆列出做了什麼、跳過什麼**：新增 memory 檔、補 STATUS.md 漏記的決策／死路條目。
-- **對外 / 破壞性** → **一律先列出、等明確同意**：push、開 PR、commit、kill 背景任務、刪 ScheduleWakeup/cron、刪除或覆寫既有 memory、改寫既有 dossier 條目。
+三類，界線**不可互相滲透**：
 
-`report-first` 約束的是後者：**不在使用者看到報告前做任何對外或破壞性動作**。前者可以先做——單一份報告即為完整交代，不需要兩階段往返。
+- **NEVER — 無論是否同意都不在這裡做**：`commit`、`push`、開 PR、merge。Git 殘留永遠只有一個建議：跑 `/project log`。**使用者說「你直接 commit 吧」也不做**——那是 `/project log` 的權責，不是一句同意就能移轉過來的。
+- **需明確同意才做**：kill 背景任務、刪 ScheduleWakeup/cron、刪除或覆寫既有 memory 檔、改寫既有 dossier 條目。一律先列出、等點頭。
+- **Additive 且可逆 → 可直接做**：新增 memory 檔、補 STATUS.md 漏記的決策／死路條目。但**必須在報告中逐筆列出做了什麼、跳過什麼**。
+
+`report-first` 約束的是前兩類：**不在使用者看到報告前做任何對外或破壞性動作**。第三類可以先做——單一份報告即為完整交代，不需要兩階段往返。
 
 **Violating the letter of the rules below is violating their spirit.** Do not rationalize a green verdict you did not actually verify.
 
@@ -38,7 +48,7 @@ Ready4Quit 進度：
 - [ ] Step 2：持久化 flush（session 學到的事實 → memory / dossier 路由）
 - [ ] Step 3：背景/排程任務（background Bash / Task / loop / ScheduleWakeup / cron）
 - [ ] Step 4：未了結 loose ends（答應要做卻沒做的 TODO / half-done / 待你決定的開放問題）
-- [ ] Step 5：總結 verdict（逐面向標證據等級）→ 對外/破壞性項列選項等確認
+- [ ] Step 5：總結 verdict（逐面向標證據強度 + 殘留狀態）→ 對外/破壞性項列選項等確認
 ```
 
 ## Critical — Guardrails
@@ -55,7 +65,9 @@ Ready4Quit 進度：
 ### Red Flags — STOP and re-read Critical
 
 - Declaring any dimension GREEN you never actually inspected (no `git-hygiene.sh` output, no `tasks/` listing, no `CronList` check, no scan).
-- Reporting NONE KNOWN as GREEN. "I didn't see any" is not "I verified there are none" — name which one it is, every time.
+- Reporting RECALLED as GREEN. "I didn't see any" is not "I verified there are none" — name which one it is, every time.
+- Marking a dimension `✓` while listing an actual open item under it. Evidence strength and residue are separate axes: RECALLED still takes `⚠` the moment you find something.
+- Inferring a background task's liveness from its `.output` size or contents. A silent command leaves an empty file too.
 - Treating a `git-hygiene.sh` CLEAN as proof the remote agrees when the same output says `remote: UNKNOWN`. A stale tracking ref makes `unpushed: none` meaningless.
 - Reading `TaskList` as the background-task check. It lists `TaskCreate` to-dos, not background shells or subagents — an empty result proves nothing about what is still running.
 - About to `git push` / `gh pr` / kill a task / delete a wakeup/cron/memory file from inside this skill without listing it and getting an explicit yes.
@@ -89,7 +101,7 @@ Ready4Quit 進度：
 - **`pr:`** —— `DRAFT`（草稿未真正送審）與 `CLOSED`（未合併就關掉，變更沒進去）都算殘留；`MERGED` 不算殘留（squash merge 後 branch 的 commit 不在 default 歷史裡是正常的），只是 branch 可以清掉。
 
 Do not re-run the underlying git commands one by one — the script IS the check; one call covers all repos.
-（腳本會逐 repo `fetch`，每個上限 8 秒、5 分鐘內抓過就跳過，所以多 repo 時可能要等幾秒——這是拿「遠端事實」換的，別因為慢就改用本機比對。）
+（腳本會逐 repo `fetch --prune` 該 repo 的 remote，每個硬上限 8 秒——多 repo 時要等幾秒。這是拿「遠端事實」換的，別因為慢就改回本機比對。）
 
 **只報告，不收尾。** 任一項有殘留 → 在總結建議：「git 有殘留，結束前先跑 `/project log` ship 掉」。git 細節（branch-first、protection、PR）全交給 `/project log`，本 skill 不重做。
 
@@ -144,7 +156,8 @@ Do not re-run the underlying git commands one by one — the script IS the check
 harness 把本 session 每個背景任務的 output 檔放在 **scratchpad 目錄的同層 `tasks/`**（scratchpad 路徑見 system prompt；勿硬編 session id）：`ls -la <scratchpad 同層>/tasks/`，每個 `<task-id>.output` 即一個背景任務。
 
 - **`TaskList` 查不到背景任務**——它列的是 `TaskCreate` 的待辦清單。**Never treat an empty `TaskList` as evidence that no background task is running.**
-- output 檔在任務結束後仍留著，**存在 ≠ 仍在跑**：拿 ID 用 `TaskOutput`（deferred，需 `ToolSearch`）帶 `block=false` 查狀態；一般 bash task 也可直接 `Read` 該 `.output`。
+- **`tasks/` 只能拿來枚舉「有哪些背景任務」，判不了死活。** output 檔在任務結束後仍留著；**空檔可能是靜默完成、也可能是還沒輸出；有內容一樣可能還在跑**——`.output` is NOT a liveness oracle，不可用它的大小或內容推斷狀態。
+- 死活只有兩個來源：`TaskOutput`（deferred，需 `ToolSearch`）帶 `block=false` 的狀態，或 harness 送達的完成通知。**兩者都拿不到 → 該任務標 PARTIAL**，照實說「列得出來、但確認不了還在不在跑」。
 - **`ls -la` 顯示為 symlink（`->`）的 `.output` 是 subagent 的完整 transcript — NEVER Read it; it will overflow the context window.** 一律改用 `TaskOutput`。
 - 目錄不存在（harness 版本差異）→ 併入 ③ 處理，**不可**當成「沒有背景任務」。
 
@@ -154,7 +167,7 @@ deferred tool，先一輪 `ToolSearch`（`select:CronList`）載入 schema 再�
 
 **③ /loop 與 ScheduleWakeup —— 無列表工具**
 
-只能靠 session 對話記憶回溯，本質不可枚舉 → 最高只能是 **NONE KNOWN**，永遠不是 VERIFIED。context 若被壓縮過，降為 **PARTIAL** 並明說「依記憶回溯，可能不完整」。
+只能靠 session 對話記憶回溯，本質不可枚舉 → 證據強度最高只到 **RECALLED**，永遠不是 VERIFIED。context 若被壓縮過，降為 **PARTIAL** 並明說「依記憶回溯，可能不完整」。**找到殘留就標 `⚠`**——RECALLED 說的是「查得多完整」，不是「有沒有東西」。
 
 報告每一項的狀態與建議（留著 / 等它跑完 / 該清掉）。**Kill 任何一項都要先確認**——尤其別誤殺使用者刻意留的長期 cron。
 
@@ -169,7 +182,7 @@ deferred tool，先一輪 `ToolSearch`（`select:CronList`）載入 schema 再�
 
 列成清單，每項標「未做 / 半成品 / 待你決定」。**只盤點不自動補做**——是否在 quit 前收掉由使用者決定（小事可順手做，但大改不要在收尾階段擅自展開）。
 
-本面向靠對話記憶，**最高只能是 NONE KNOWN**；context 被壓縮過就是 PARTIAL。
+本面向靠對話記憶，證據強度**最高只到 RECALLED**；context 被壓縮過就是 PARTIAL。列出的每一項都是殘留 → 該面向標 `⚠`，verdict 一律 NOT READY。
 
 ## Step 5：總結 verdict → 對外項 gate
 
@@ -182,20 +195,22 @@ Ready4Quit 收尾報告：
                            ✓ dossier 寫 1 筆（repo-a 死路節：試過 X 因 Y 放棄）
                              ↳ STATUS.md 未 commit，需 /project log 送出
                            ✓ 跳過 1 筆（STATUS.md 決策節已記）
-  背景/排程     [PARTIAL]  ⚠ tasks/ 列到 1 個仍在跑（b1ada7mt7）；CronList 不可用 → cron 未能查證
-  Loose ends    [NONE KNOWN] ⚠ 待你決定：API schema 用 v2 還是 v3（Step 4 問過未回）
+  背景/排程     [PARTIAL]  ⚠ tasks/ 列到 1 個（b1ada7mt7）；TaskOutput 與 CronList 皆不可用
+                             ↳ 該任務死活確認不了、cron 完全沒查到
+  Loose ends    [RECALLED] ⚠ 待你決定：API schema 用 v2 還是 v3（Step 4 問過未回）
   ────────────────────────────────────────
-  Verdict：尚有待辦。無已知 blocker，但 cron 未能查證——處理完即可 /quit。
+  Verdict：NOT READY（有殘留）。另有一項背景狀態只到 PARTIAL，查不到死活。
 ```
 
 接著：
 
 - **已做的 additive 項**（寫入的 memory 檔、補上的 dossier 條目）→ 逐筆列出；dossier 寫入須同時更新 Git 衛生行的殘留敘述。
 - **對外 / 破壞性項**（建議的 `/project log`、要 kill 的背景任務、要刪的 wakeup/cron）→ **列出選項等使用者點頭**，不自動做。
-- 收斂語句依最低等級決定，不可越級：
-  - 全部 VERIFIED 且無殘留 → 「volatile 狀態已 flush，**可安全** `/quit`」。
-  - 最低是 NONE KNOWN → 「**沒有已知** blocker，可以 `/quit`」——不可說成已驗證乾淨。
-  - 有 PARTIAL/UNKNOWN → 明說**哪一項查不到、為什麼**，由使用者決定要不要帶著它退出。
+- 收斂語句由兩個維度共同決定，不可越級：
+  - **任何面向是 `⚠` → NOT READY**，先講殘留，證據強度不能拿來淡化它。
+  - 全部 `✓` 且全部 VERIFIED → 「volatile 狀態已 flush，**可安全** `/quit`」。
+  - 全部 `✓` 但最低只到 RECALLED → 「**沒有已知**殘留，可以 `/quit`」——不可說成已驗證乾淨。
+  - 任何 PARTIAL → 額外點名**哪一項查不到、為什麼**，由使用者決定要不要帶著它退出。
 
 ---
 

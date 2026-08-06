@@ -70,37 +70,24 @@ if [ "$n_others" -gt 0 ]; then
     fi
 fi
 
-# base 建議只在「主 checkout + feature branch + 相對 default 有 commit」三者皆成立時出聲。
-# 已在 linked worktree 裡就不報——base 是開 worktree 當下才要選的。
-# 刻意不報「default branch 上有未 push commit」:那是 ship 側的事,git-hygiene.sh /
-# /project log 已覆蓋,hook 不重複出聲。
-if [ "$in_linked_worktree" -eq 0 ]; then
-    cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-    default_branch=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null)
-    default_branch=${default_branch#origin/}
-    if [ -n "$cur_branch" ] && [ "$cur_branch" != "HEAD" ] \
-        && [ -n "$default_branch" ] && [ "$default_branch" != "HEAD" ] \
-        && [ "$cur_branch" != "$default_branch" ]; then
-        ahead=$(git rev-list --count "origin/${default_branch}..HEAD" 2>/dev/null)
-        if [ -n "$ahead" ] && [ "$ahead" -gt 0 ]; then
-            echo "ℹ 當前分支 ${cur_branch} 相對 origin/${default_branch} 有 ${ahead} 顆未併 commit——若要開 worktree 延續這條線,base 用 head(全域預設 fresh 會從 origin/${default_branch} 分出去,變成平行線)。"
-        fi
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || branch=""
+# detached HEAD 無 upstream 概念——落後與 base 建議都跳過,但上面的 worktree 訊號已經報過
+[ "$branch" = "HEAD" ] && branch=""
+
+# upstream:優先當前 branch 的 @{u},否則試 origin/<branch>。沒有也不早退——
+# base 建議只需要 origin/<default>,純本地 branch 一樣要能拿到它
+upstream=""
+if [ -n "$branch" ]; then
+    upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
+    if [ -z "$upstream" ]; then
+        git rev-parse --verify "origin/$branch" >/dev/null 2>&1 && upstream="origin/$branch"
     fi
 fi
 
-branch=$(git rev-parse --abbrev-ref HEAD) || exit 0
-[ "$branch" != "HEAD" ] || exit 0   # detached HEAD 無 upstream 概念,不偵測
-
-# upstream:優先當前 branch 的 @{u},否則試 origin/<branch>
-upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
-if [ -z "$upstream" ]; then
-    git rev-parse --verify "origin/$branch" >/dev/null 2>&1 && upstream="origin/$branch"
-fi
-[ -n "$upstream" ] || exit 0   # 無 remote 對應(純本地 repo)→ 無落後可言
-
 # --- fetch(帶新鮮度快取與 timeout)---------------------------------------------
 # linked worktree / submodule 下 $repo_root/.git 是檔案,須用 git-dir 解析真實路徑
-git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) || exit 0
+fetch_ok=0
+git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) || git_dir=""
 fetch_head="$git_dir/FETCH_HEAD"
 need_fetch=1
 if [ -f "$fetch_head" ]; then
@@ -112,6 +99,12 @@ if [ -f "$fetch_head" ]; then
     fi
 fi
 
+if [ -z "$git_dir" ]; then
+    need_fetch=0          # 解析不到 git-dir 就別 fetch,後續一律當 ref 不新鮮
+elif [ "$need_fetch" -eq 0 ]; then
+    fetch_ok=1            # 新鮮度快取命中,視同剛 fetch 過
+fi
+
 if [ "$need_fetch" -eq 1 ]; then
     # timeout 指令:Linux 內建 timeout、macOS 可能只有 gtimeout(coreutils)、都沒有就裸跑
     if command -v timeout >/dev/null 2>&1; then
@@ -121,18 +114,48 @@ if [ "$need_fetch" -eq 1 ]; then
     else
         TIMEOUT_CMD=""   # 仍有 ssh ConnectTimeout 護底(本環境 remote 皆為 ssh)
     fi
+    # 無 upstream 時仍要 fetch origin——base 建議依賴 origin/<default> 的新鮮度
     remote=${upstream%%/*}
+    [ -n "$remote" ] || remote=origin
     # GIT_TERMINAL_PROMPT=0:https remote 要求互動認證時直接失敗,不掛住 hook
-    GIT_TERMINAL_PROMPT=0 \
-    GIT_SSH_COMMAND="ssh -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -o BatchMode=yes" \
-        $TIMEOUT_CMD git fetch --quiet "$remote" || exit 0   # 離線/逾時/認證失敗 → 靜默放棄
+    # 失敗不早退:落後偵測會跳過,但 base 建議仍可在標明 ref 可能過期後輸出
+    if GIT_TERMINAL_PROMPT=0 \
+       GIT_SSH_COMMAND="ssh -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -o BatchMode=yes" \
+       $TIMEOUT_CMD git fetch --quiet "$remote" 2>/dev/null; then
+        fetch_ok=1
+    fi
 fi
 
-# --- 落後偵測 --------------------------------------------------------------------
-behind=$(git rev-list --count "HEAD..$upstream" 2>/dev/null) || exit 0
+# --- 落後偵測(需 upstream 且 ref 已刷新)-----------------------------------------
+behind=""
+if [ -n "$upstream" ] && [ "$fetch_ok" -eq 1 ]; then
+    behind=$(git rev-list --count "HEAD..$upstream" 2>/dev/null) || behind=""
+fi
 if [ -n "$behind" ] && [ "$behind" -gt 0 ]; then
     remote_date=$(git log -1 --format=%cs "$upstream" 2>/dev/null)
     echo "⚠ $(basename "$repo_root") 落後 ${upstream} ${behind} 個 commit(remote 最後 commit ${remote_date:-?})——建議先 git pull 再開工。"
+fi
+
+# --- base 建議(必須在 fetch 之後算)-----------------------------------------------
+# 只在「主 checkout + feature branch + 相對 default 有 commit」三者皆成立時出聲。
+# 已在 linked worktree 裡就不報——base 是開 worktree 當下才要選的。
+# 刻意不報「default branch 上有未 push commit」:那是 ship 側的事,git-hygiene.sh /
+# /project log 已覆蓋,hook 不重複出聲。
+#
+# 位置關鍵:用 fetch 前的 origin/<default> 算 ahead,會在「別台已把這些 commit 併進
+# default」時建議一個錯誤的 base,而且事後不會自我更正。
+if [ "$in_linked_worktree" -eq 0 ] && [ -n "$branch" ]; then
+    default_branch=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null)
+    default_branch=${default_branch#origin/}
+    if [ -n "$default_branch" ] && [ "$default_branch" != "HEAD" ] \
+        && [ "$branch" != "$default_branch" ]; then
+        ahead=$(git rev-list --count "origin/${default_branch}..HEAD" 2>/dev/null)
+        if [ -n "$ahead" ] && [ "$ahead" -gt 0 ]; then
+            stale_note=""
+            [ "$fetch_ok" -eq 0 ] && stale_note="(注意:fetch 未成功,origin/${default_branch} 可能已過期)"
+            echo "ℹ 當前分支 ${branch} 相對 origin/${default_branch} 有 ${ahead} 顆未併 commit——若要開 worktree 延續這條線,base 用 head(全域預設 fresh 會從 origin/${default_branch} 分出去,變成平行線)。${stale_note}"
+        fi
+    fi
 fi
 
 # --- STATUS.md(dossier)過期偵測 -------------------------------------------------
