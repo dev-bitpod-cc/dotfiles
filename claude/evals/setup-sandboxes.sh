@@ -13,6 +13,10 @@
 #   d1  deep-review autofix   main 上 working tree 有真 bug（float == 比較金額）
 #   d2  deep-review F12       clean tree、與 origin/main 同步（範圍詢問 gate）
 #   d3  deep-review F18/F19   Round 3 起點：同型逃逸口未掃全 + stale 文件 + 措辭 nits
+#   d4  deep-review F20(a)     skill-authoring batch，只有措辭/完整度問題
+#   d5  deep-review F20(b)     同 d4 + 夾帶 git 指令語意錯誤（兩點 range 用在整條 branch）
+#   d6  deep-review F20(c)     負向邊界：product code + README，不得觸發 gate
+#   d7  deep-review F21        anchor 已標記 terminal_reason=r5-blocking
 #   q1  ready4quit Q1         repo 有未 commit 殘留
 #   c1  check-crawl-quality C1  120 筆 JSON、3 來源、其一 80% boilerplate
 #   n1  nc-notify N1          空白專案目錄
@@ -620,7 +624,136 @@ EOF
     )
 }
 
-make_u1; make_u2; make_u3; make_d1; make_d2; make_d3; make_q1; make_c1; make_n1
+
+# --- d4/d5/d6：skill-authoring one-shot gate（F20）---
+# 共用：在 base repo 上補一個 skill 目錄結構，並把它 commit 進去（變更集才是「改動 skill」）
+seed_skill_repo() {
+    local dir="$1"
+    make_base_repo "$dir"
+    mkdir -p "$dir/work/claude/skills/demo"
+    cat > "$dir/work/claude/skills/demo/SKILL.md" <<'EOF'
+---
+name: demo
+description: "Demo skill for eval fixtures."
+---
+
+# Demo
+
+## 步驟
+
+1. 取得變更範圍：`git diff main...HEAD`
+2. 逐檔檢視
+3. 回報結果
+EOF
+    (cd "$dir/work" && git add -A && git commit -qm "feat: add demo skill" && git push -q origin main)
+}
+
+make_d4() {   # skill-authoring batch，只有措辭／完整度問題（無 operational defect）
+    local dir="$ROOT/d4-$INSTANCE"
+    seed_skill_repo "$dir"
+    cat > "$dir/work/claude/skills/demo/SKILL.md" <<'EOF'
+---
+name: demo
+description: "Demo skill for eval fixtures."
+---
+
+# Demo
+
+## 步驟
+
+1. 取得變更範圍：`git diff main...HEAD`
+2. 逐檔檢視。這一步要仔細一點，把每個檔案都看過，不要漏掉任何一個檔案，
+   因為漏掉檔案會讓後面的判斷不準確，所以請務必仔細。
+3. 回報結果
+
+## 注意
+
+回報時請把結果寫清楚。
+EOF
+}
+
+make_d5() {   # 同 d4，但夾帶一處 git 指令語意錯誤（兩點 range 用在「整個 branch」語境）
+    local dir="$ROOT/d5-$INSTANCE"
+    seed_skill_repo "$dir"
+    cat > "$dir/work/claude/skills/demo/SKILL.md" <<'EOF'
+---
+name: demo
+description: "Demo skill for eval fixtures."
+---
+
+# Demo
+
+## 步驟
+
+1. 取得變更範圍（審查整個 branch 相對主線的變更）：`git diff main..HEAD`
+2. 逐檔檢視。這一步要仔細一點，把每個檔案都看過。
+3. 回報結果
+
+## 注意
+
+回報時請把結果寫清楚。
+EOF
+}
+
+make_d6() {   # 負向邊界：一般 product code + README，**不得**觸發 skill-authoring gate
+    local dir="$ROOT/d6-$INSTANCE"
+    make_base_repo "$dir"
+    mkdir -p "$dir/work/tests"
+    cat > "$dir/work/app.py" <<'EOF'
+def calc_total(items):
+    total = 0.0
+    for it in items:
+        total += it["price"] * it["qty"]
+    return total
+
+
+def apply_discount(total, rate):
+    # 浮點相等比較：0.1+0.2 這類輸入會判錯（真 bug，供 reviewer 抓）
+    if rate == 1.0:
+        return 0
+    return total * (1 - rate)
+EOF
+    cat > "$dir/work/tests/test_app.py" <<'EOF'
+from app import calc_total
+
+
+def test_calc_total():
+    assert calc_total([{"price": 2.0, "qty": 3}]) == 6.0
+EOF
+    printf '# Order Service\n\nSmall order calculation service.\n\n## Usage\n\n    python app.py\n' > "$dir/work/README.md"
+}
+
+# --- d7：R5 終止後不得靜默重開（F21）---
+make_d7() {
+    local dir="$ROOT/d7-$INSTANCE"
+    make_base_repo "$dir"
+    (
+        cd "$dir/work"
+        git switch -qc fix/demo
+        cat >> app.py <<'EOF'
+
+
+def refund(total, rate):
+    return total * rate
+EOF
+        git add -A && git commit -qm "feat: refund helper"
+        # R5 終止的真實形狀：4 輪修復各留一顆中性 message 的 commit。
+        # 少了這段，anchor 說「跑滿五輪」但 git log 只有一顆 feat——受測 agent 會（正確地）
+        # 指出狀態自相矛盾而拒絕往下走，那時測到的是 fixture 缺陷、不是 skill 行為。
+        # （2026-08-07 eval 首次實跑抓到，回頭補上。）
+        for i in 1 2 3 4; do
+            printf '# review fix %s\n' "$i" >> app.py
+            git add -A && git commit -qm "fix: address review findings"
+        done
+    )
+    # 造出「前一場審查已 R5 終止」的 anchor 狀態
+    "$HOME/.claude/skills/deep-review/scripts/review-anchor.sh" record \
+        --repo "$dir/work" --mode branch-diff --base origin/main --tests-baseline skip >/dev/null
+    "$HOME/.claude/skills/deep-review/scripts/review-anchor.sh" terminate \
+        --repo "$dir/work" --reason r5-blocking >/dev/null
+}
+
+make_u1; make_u2; make_u3; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="

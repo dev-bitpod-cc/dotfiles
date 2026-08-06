@@ -73,6 +73,13 @@ fmt_epoch() {
     date -r "$1" +'%Y-%m-%d %H:%M' 2>/dev/null || date -d "@$1" +'%Y-%m-%d %H:%M' 2>/dev/null || echo "$1"
 }
 
+# 原子寫 anchor（stdin → 同目錄 tmp → mv）：terminate/resume 是在既有檔上做增刪，
+# 中途中斷留下半份檔比不寫更糟——後續 aget 會讀到殘缺 state 卻無從察覺。
+atomic_write_anchor() {
+    local tmp="${ANCHOR}.tmp.$$"
+    cat > "$tmp" && mv -f "$tmp" "$ANCHOR"
+}
+
 # 自 anchor 檔取 key（檔不存在回空）
 aget() { sed -n "s/^$1=//p" "$ANCHOR" 2>/dev/null | head -1; }
 
@@ -90,7 +97,7 @@ REVIEW_SUBJECT_RE="^(${REVIEW_SUBJECT_ALT:-})\$"
 [ $# -ge 1 ] || die_usage "缺少子指令（record|show|squash-cmd|codex-next|clear）"
 SUB="$1"; shift
 
-REPO="" MODE_VAL="" BASE_REF="" RANGE_VAL="" TB_VAL="" FULL=0
+REPO="" MODE_VAL="" BASE_REF="" RANGE_VAL="" TB_VAL="" REASON_VAL="" FULL=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo)  REPO="${2:-}";      shift 2 || die_usage "--repo 缺少值" ;;
@@ -98,6 +105,7 @@ while [ $# -gt 0 ]; do
         --base)  BASE_REF="${2:-}";  shift 2 || die_usage "--base 缺少值" ;;
         --range) RANGE_VAL="${2:-}"; shift 2 || die_usage "--range 缺少值" ;;
         --tests-baseline) TB_VAL="${2:-}"; shift 2 || die_usage "--tests-baseline 缺少值" ;;
+        --reason) REASON_VAL="${2:-}"; shift 2 || die_usage "--reason 缺少值" ;;
         --full)  FULL=1; shift ;;
         *) die_usage "未知引數：$1" ;;
     esac
@@ -109,8 +117,8 @@ esac
 [ -n "$REPO" ] || die_usage "缺少 --repo"
 
 case "$SUB" in
-    record|show|squash-cmd|codex-next|clear) : ;;
-    *) die_usage "未知子指令：${SUB}（record|show|squash-cmd|codex-next|clear）" ;;
+    record|show|squash-cmd|codex-next|clear|terminate|resume-after-terminal) : ;;
+    *) die_usage "未知子指令：${SUB}（record|show|squash-cmd|codex-next|clear|terminate|resume-after-terminal）" ;;
 esac
 
 if ! git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -127,6 +135,15 @@ ANCHOR="$GITDIR/deep-review/anchor"
 echo "=== $REPO ==="
 
 cmd_record() {
+    # terminal 檢查放在最前面：先重算再覆蓋，等於讓終止狀態靜默消失（2026-08-06 的 RED
+    # 正是「R5 終止 → 又開一場」，外層 orchestration 重置了輪次上限）。
+    if [ -f "$ANCHOR" ]; then
+        local t_reason
+        t_reason="$(aget terminal_reason)"
+        if [ -n "$t_reason" ]; then
+            die_stop "前一場審查已終止（terminal_reason=${t_reason}）——不得靜默重開新 cycle。續審同一批變更：\`resume-after-terminal\`；重建全新審查範圍：\`clear\` 再 \`record\`。先照終止報告的續跑分流判斷走哪條。"
+        fi
+    fi
     local base_hash
     case "$MODE_VAL" in
         branch-diff)
@@ -341,6 +358,45 @@ cmd_codex_next() {
     echo "codex-cmd: ~/.claude/skills/deep-review/scripts/codex-exec-review.sh run --repo $(shq "$REPO_ABS") --range ${range} --round C${round}"
 }
 
+# 把「這場審查已終止」寫成可觀察狀態。cycle 判別不了成因（終止/中途停止/crash/刻意續跑），
+# 靠它猜等於再寫一條 agent 規則。**只支援 r5-blocking**：codex-c3 會引入不同的 resume 語意
+# （anchor 已有 codex_round=3，清 terminal 後 codex-next 直接 C4 STOP 或重印 C3），
+# user-abort 則不可靠（真 interrupt 時未必還能執行工具）——兩者都等真的出現 RED 再設計。
+cmd_terminate() {
+    [ -f "$ANCHOR" ] || die_stop "無 anchor（沒有進行中的審查可終止）"
+    [ "$REASON_VAL" = "r5-blocking" ] || die_usage "--reason 目前只支援 r5-blocking（收到：${REASON_VAL:-空}）"
+    local existing
+    existing="$(aget terminal_reason)"
+    if [ -n "$existing" ]; then
+        [ "$existing" = "$REASON_VAL" ] || die_stop "已標記 terminal_reason=${existing}，拒絕改成 ${REASON_VAL}（換 reason 須先 clear）"
+        echo "terminal: ${existing}（已標記，冪等）"
+        return 0
+    fi
+    {
+        cat "$ANCHOR"
+        printf 'terminal_reason=%s\n' "$REASON_VAL"
+        printf 'terminal_head=%s\n'   "$(git -C "$REPO" rev-parse HEAD)"
+        printf 'terminal_at=%s\n'     "$(date +%s)"
+    } | atomic_write_anchor
+    echo "terminal: r5-blocking 已落盤——下一次 record 會 STOP。續審用 resume-after-terminal；重建範圍用 clear + record。"
+}
+
+# 與 record 語意刻意不同：record 是「重新解析範圍、無條件覆寫、codex state 歸零」，
+# 本指令是「同一批變更再審一場」——base 與其餘欄位全部保留，只清 terminal 並推進 cycle。
+cmd_resume_after_terminal() {
+    [ -f "$ANCHOR" ] || die_stop "無 anchor"
+    local reason cycle_v next
+    reason="$(aget terminal_reason)"
+    [ -n "$reason" ] || die_stop "anchor 未標記 terminal（沒有可 resume 的終止狀態；要開新一場請用 record）"
+    [ "$reason" = "r5-blocking" ] || die_stop "terminal_reason=${reason} 不在本指令支援範圍"
+    cycle_v="$(aget cycle)"
+    next=$(( ${cycle_v:-1} + 1 ))
+    # sed 刪除 terminal_* 並就地推進 cycle——用 sed 不用 grep -v：後者無匹配時 exit 1，
+    # pipefail 下會讓整條管線判偽（本檔已有同型地雷的紀錄）
+    sed -e '/^terminal_/d' -e "s/^cycle=.*/cycle=${next}/" "$ANCHOR" | atomic_write_anchor
+    echo "resumed: terminal 已清、cycle → ${next}（base 不變。要重建審查範圍請改用 clear + record）"
+}
+
 cmd_clear() {
     if [ -f "$ANCHOR" ]; then
         echo "cleared（原內容，供追溯）:"
@@ -357,4 +413,6 @@ case "$SUB" in
     squash-cmd) cmd_squash_cmd ;;
     codex-next) cmd_codex_next ;;
     clear)      cmd_clear ;;
+    terminate)              cmd_terminate ;;
+    resume-after-terminal)  cmd_resume_after_terminal ;;
 esac

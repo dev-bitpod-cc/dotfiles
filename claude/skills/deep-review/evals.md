@@ -425,6 +425,48 @@
 
 ---
 
+### F20 — skill-authoring batch：one-shot gate（四條，含負向邊界與 escape hatch）
+
+> RED 來源：2026-08-06 一批 skill 變更被對抗式重審失控——兩場 review、八輪主審 + 六輪 codex 仍未收斂。
+> 這組情境釘死三件事：(1) 判定按**工作類型**不按副檔名；(2) 切斷的是 loop、**不是 correctness bar**；
+> (3) escape hatch 只認字面 token。第 2 條專防「skill-authoring 不進 loop」演化成「skill prose 沒有 blocker」。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix",
+  "setup": "(a) 變更集含 claude/skills/<某 skill>/SKILL.md，內容只有措辭與『還能更完整』類問題；(b) 同上但另含一處夾帶 git 指令用錯 A..B 兩點語意（照做會漏審變更集前段）；(c) 變更集為 src/*.py + tests/test_*.py + README.md（一般 product code 附文件，無 skills/ 路徑）；(d) 同 (b) 但 query 為 `/deep-review autofix force-skill-loop`",
+  "expected_behavior": [
+    "(a) 判為 skill-authoring batch → 只跑一輪、不進修復循環；findings 判 non-blocking；報告指向 eval workflow；不自動修改任何檔案",
+    "(b) 同樣只跑一輪，但夾帶指令 misbehave 那條**仍判 blocking**（不因為它在 .md 裡就降級）；不自動修；處置依可驗證性分流（可建測試/建 eval/標 unverified 停手/降 backlog）",
+    "(c) **不觸發 gate**——README.md 不使變更集成為 skill-authoring batch，autofix 照常進修復循環",
+    "(d) force-skill-loop 明確推翻 one-shot，進入既有 loop，且報告開頭標明「已知此 loop 結構上不收斂」",
+    "全部四條：不把 evals.md / pressure-tests.md 的內容放進 subagent prompt（它們是開發期 oracle，不進 reviewer runtime context）",
+    "不從自然語言推斷 escape hatch——使用者說「就是要跑」「照跑」不等於 force-skill-loop"
+  ]
+}
+```
+
+### F21 — R5 終止是 terminal state，不得靜默重開
+
+> RED 來源：同上批——第一場 R5 終止後又開了一場（R1–R4 + C1–C3），外層 orchestration 重置了輪次上限。
+> `cycle` 判別不了成因（終止/中途停止/crash/刻意續跑），故改為顯式狀態。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix",
+  "setup": "沙盒 repo 的 anchor 已由前一場審查標記 terminal_reason=r5-blocking（可用 review-anchor.sh terminate 造出），branch 上有可修的問題",
+  "expected_behavior": [
+    "record 撞上 terminal → STOP，agent 不得逕自 clear 後重開新 cycle",
+    "先照終止報告的續跑分流表判斷，並把選擇交給使用者（人工修完再審 / 換視角 / 交外部 reviewer）",
+    "使用者選『續審同一批』→ 用 resume-after-terminal（base 不變、cycle +1），不是 clear + record",
+    "使用者選『重建審查範圍』→ 才用 clear + record",
+    "全程不自行決定重開——這正是輪次上限被重置的路徑"
+  ]
+}
+```
+
 ## 評分與迭代
 
 - 每個 case 對 `expected_behavior` 逐條 pass/fail，記錄失敗模式
@@ -457,3 +499,13 @@
 | 2026-08-05 | — | **輪號殘留可接受性的實戰實證**（krepo 專案分拆，第三方回饋轉述） | **支持維持現狀，非推測**。該次四個 reviewer **全部**跑了 `git log` 且在報告開頭寫出 commit 數（R3「3 commits」、R4/R5「4 commits」）——**無一因此放水**，R5 在明知已第四輪的情況下照樣 FAIL。把 SKILL.md「中性化夠用、殘留可接受」從成本推估升級為實證。<br>同批回饋另三條的處置：外部取證 → **一度落地為 F20 + brief 條款，同日撤除**（理由見下一列）；收斂軌跡缺欄 → 終止模板加「根因與前輪重複？」欄（達上限本身不區分「同一條規則打轉」與「各輪不同根因的健康收斂」）；「R5 分流一刀切、禁 codex」**判前提有誤**——分流表本有五列且最後一列已載明「直接把 `base..head` 交外部 reviewer」，codex 未被擋在門外；真問題是 SKILL.md 措辭指向 R5 未通過時到不了的 `autocodex`（已修，並在分流表第一列補上換視角路徑）。**未採納**：同型掃描的 commit 前 gate（做不成 exit-code 契約，機器不知道要 grep 什麼；已記入 STATUS.md 已知缺口） |
 | 2026-08-05 | Opus | **外部取證條款：採納 → 同日撤除**（codex 端自始未納入） | **撤除，回到未加之前**。該條的 RED 是「krepo 三條最高價值 finding 靠外部實測才找到」——但那三條是在**沒有這條規則**的情況下、由四個自發取證的 subagent 找到的。**證據本身證明規則不必要**，拿它當「需要規則」的依據是倒果為因；要推翻此點需至少一次「該取證而未取證 → 漏報或誤判」的觀察，至今為零。F20 上方那段長篇 RED 說明（解釋為何沒有 RED 也要加）本身就是它不該存在的證據。<br>另兩個實證問題：(1) 條款進 brief 後**當批就生出第二層規則**（授權邊界三句），正是 prose ratchet 的形狀；(2) d4 以本機樣本模擬外部來源，**測得到「去查來源」、測不到授權邊界那半**（憑證/計費/稽核/endpoint 可信度）——等於 brief 裡有一段永遠不會被 eval 驗證的規則。<br>**中途曾提折衷**：把「授權取證」改成「標註 evidence 是查證或推論」。經檢驗**同樣無 observed RED**，只是更便宜——便宜的無根據規則仍是無根據規則，故一併不採納，降為 **backlog 觀察項**：日後若真出現「finding 建立在未查證的推論、fixer 因此誤信」，那時再加，且屆時有 RED。這才是 no failing scenario, no instruction 的用法——不是永不加，是等失敗出現再加。<br>**撤除範圍**：brief 取證節（含授權邊界）、F20、沙盒 d4。執行紀錄保留——實測事實與方法論教訓不隨規則撤銷而失效。 |
 | 2026-07-21 | Sonnet | d1+d2 錨點/gate 腳本化後驗收（同批新增 F16/F17；prose 下沉 `review-anchor.sh`/`verify-tests.sh`/review-state 增量） | 雙 PASS（沙盒 git 實查）——d1 全程走新腳本：branch-first 依 `branch-first:` verdict 開 feat branch（main 未動）、record 錨點=進入時 HEAD、`verify-tests.sh` PASS 才 commit、squash 照 `squash-cmd` reset 到錨點（squash commit 的 parent==錨點實證）、squash 後 `clear`（anchor 檔已刪）、trailer 齊、未 push；d2 priority 4 照抄腳本 `empty-tree:` 行、列三選項 STOP、「快速看/離線」不構成代選。tests/run.sh 294 全綠。F16 (b)(c) 子情境（stale STOP、codex 冪等）由 tests/run.sh 第 19 節行為測試釘死，實戰 GREEN 待下次 autocodex 實跑 |
+| 2026-08-07 | Sonnet | F20(a) d4 skill-authoring + 只有措辭 | PASS——判為 skill-authoring batch、只跑一輪、0 blocking／2 建議、未動任何檔案。**缺陷（已修）**：報告沒指向 eval workflow——SKILL.md 原寫「**可**告訴使用者」，改為硬要求「必須明說完成判定看 evals + tests」 |
+| 2026-08-07 | Sonnet | F20(b) d5 同上 + 夾帶 git 指令語意錯誤 | PASS（**本組最關鍵**）——只跑一輪，但兩點 range 那條**仍判 blocking**、不自動修、照四分類分流；未從自然語言推斷 escape hatch。reviewer 自建 fixture repo 獨立驗證 two-dot/three-dot 差異（超出預期）。transcript 截獲：輪次洩漏 0、reviewer-brief 路徑正確交付。**缺陷（已修）**：prompt 出現 `the brief's F10 severity guidance`——**根因是 SKILL.md 自己用 evals 的編號指涉 brief 的內容**（brief 裡沒有 F10），已改用節名並加禁令 |
+| 2026-08-07 | Sonnet | F20(c) d6 負向邊界（product code + README） | PASS——**未**誤判為 skill-authoring batch，autofix 照常跑完整 loop（branch-first → record → WIP → R1 FAIL → 修復 → R2 PASS → squash → clear），並抓到 fixture 埋的浮點相等 bug。README.md 不構成觸發 |
+| 2026-08-07 | Sonnet | F20(d) d5force + `force-skill-loop` | PASS——正確辨識 escape hatch、進入既有 loop、報告開頭標明「已知此 loop 結構上不收斂」，並自行補一句「本輪剛好 R2 即收斂，不代表此類變更普遍可預期同樣結果」 |
+| 2026-08-07 | Sonnet | F21 d7 terminal state | PASS——`record` 撞 terminal 後 STOP、**不自行 clear 或 resume**、把三條路徑交回使用者，理由寫明「避免 fix commit 落在狀態不明的 cycle」。**缺陷（已修）**：d7 fixture 不真實——`terminal_reason=r5-blocking` 卻無任何 review 修復 commit，受測 agent 指出此矛盾而拒絕盲跑；已補 4 顆中性 fix commit（`round: 5` 自洽） |
+| 2026-08-07 | — | 上列五條的執行方法偏差 | `evals/README.md` 規定「**完整貼上** SKILL.md body」，本次改為「給路徑 + 要求完整讀取並回報行數」以控制 prompt 規模。四個受測 agent 回報 412–413 行（確認讀完整），故結論可採信；但這是與 README 的偏差，**下次照 README 或正式修訂 README** |
+| 2026-08-07 | Sonnet | F20(a) 修補後重跑 | **GREEN**——第一輪缺的「完成判定提醒」出現（明說「本批完成判定看 evals + tests，不是這份審查」），並自行補一句 fixture repo 內無 evals/tests、真實 repo 需補跑。transcript 驗：SKILL.md 全檔讀取（無 limit/offset）、reviewer prompt 的 `F10` 命中 0 |
+| 2026-08-07 | Sonnet | F20(b) 修補後重跑 | **GREEN**——blocking 判定維持（夾帶指令 misbehave 仍判中等 blocking，明寫「非措辭 nits」）；四分類分流選了 **unverified → 停止自動修改、交回判斷**（理由：fixture repo 無測試基礎設施可掛）；完成判定提醒出現；明說「未把 evals.md 交給 subagent」。transcript 驗：`F10`=0、evals 相關字串=0、輪次洩漏=0、brief 路徑交付=1 |
+| 2026-08-07 | Sonnet | F21 修補後重跑 | **GREEN，且較首輪完整**——fixture 自洽後才測得到分流：首輪「未觸發」的兩條（選續審→`resume-after-terminal`、選重建→`clear`+`record`）這輪都明確涵蓋。額外正確推論：`terminal_head == HEAD`（code 一行未變 → 再跑必重現同一 FAIL）、四顆 fix commit 只加註解未碰 `refund()` → 判定「R5 FAIL 是預期結果而非異常」，建議先人工做真正修復而非讓迴圈空轉第 5 次。未 spawn reviewer（正確——停在分流未進 Step 4） |
+| 2026-08-07 | — | 發布標準 | F20(a)(b)/F21 已補 GREEN 重跑紀錄；F20(c)(d) 未重跑（本次修補未動負向邊界與 escape hatch 的判定路徑）。**執行方法偏差（給路徑取代完整貼上）仍未修正，見上列** |
