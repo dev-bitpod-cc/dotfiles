@@ -213,7 +213,7 @@ Ship 摘要：
 - **上限**（工具限制：≤4 題、每題 ≤4 選項）：待決超過 3 項（多 repo 合計）→ 依 **改動 git 歷史 > 刪除東西 > 文檔類** 取前 3 出題，其餘寫進「附註」並在送出後回報「未處理」。
 - 多 repo：第 1 題涵蓋全部 repo（摘要已逐 repo 列出），待決題在題目文字標明所屬 repo。
 - `AskUserQuestion` 不可用（背景 turn／工具被停用）→ 退回文字編號選項並 **STOP**。
-- **處置先於送出**：使用者若同時選了「送出」與任一**會改變待送內容**的處置（squash／建立 STATUS.md／dossier 收斂），順序一律是**用 Step 1 記下的 hash 套用處置（NEVER recompute——理由見 Step 1 第 6 項）→ 重新 commit → 重印一次摘要並取得再次確認 → 才進 Step 5**。多個處置同時選中時，**含 `fetch` 的處置（stale-branches 清掃）一律排在 push 之後**——先跑會污染 `--force-with-lease` 的比較基準。**Never push a commit set that differs from the one the gate displayed** —— 那等於 critical-op gate 顯示的東西和實際送出的不是同一份。
+- **處置先於送出**：使用者若同時選了「送出」與任一**會改變待送內容**的處置（squash／建立 STATUS.md／dossier 收斂），順序一律是**用 Step 1 記下的 hash 套用處置（NEVER recompute——理由見 Step 1 第 6 項）→ 重新 commit → 重印一次摘要並取得再次確認 → 才進 Step 5**。多個處置同時選中時，含 `fetch` 的處置（stale-branches 清掃）**建議**排在 push 之後（順序清楚）；lease 帶了錨定 SHA 之後它已不是安全前提，見 `references/ship-paths.md`。**Never push a commit set that differs from the one the gate displayed** —— 那等於 critical-op gate 顯示的東西和實際送出的不是同一份。
 
 **No confirmation → STOP.** 這是硬 gate（見 Critical）。**A "merge" chosen here IS the explicit instruction** —— 它不是把 merge 變成預設，而是把「送出後還要再問一次」收進同一個 gate；使用者選了「停在 PR」就一律不 merge，事後仍可另外明說。
 

@@ -164,13 +164,20 @@ git -C <repo> push -u origin <branch>   # 顯式 remote+branch+設 upstream（�
 | 整支壓成一顆（僅在使用者明確要求時） | `squash-all-cmd:` | **連語意 commit 一起收**，選項文案須已講明。**該行只在有 `buried:` 時才印**——沒有 buried 卻臨時要全壓，現場無行可抄 → 照本節末條「目標拿不準就不要壓」，回報現況讓使用者定奪 |
 
 ```bash
-# 0. branch 已 push 過才需要：先錨定遠端當下的 SHA（Step 5 的 lease 要用）
+# 0. branch 已 push 過才需要。**先 fetch 那支 branch**——下面兩步都讀 remote-tracking ref，
+#    而它不會自己更新：不 fetch 就是拿舊資料做安全判斷，協作者剛推的 commit 看不見，
+#    ancestry 檢查會放行、reset 照跑，一路到 push 才被 lease 擋下——那時本地歷史已經重寫。
+git -C <toplevel> fetch origin <feature-branch>
+
+# 錨定遠端當下的 SHA（Step 5 的 lease 要用）。**錨定之後值就固定了**，此後流程再怎麼
+# fetch（commit 計數、cleanup 的 --prune）都不影響它——這正是帶 expected SHA 的用意。
 git -C <toplevel> rev-parse origin/<feature-branch>    # ← 記下這個值
 
-# 再確認遠端沒有你沒有的東西。判準是**祖先關係、不是 SHA 相等**——push 之後又加了
+# 確認遠端沒有你沒有的東西。判準是**祖先關係、不是 SHA 相等**——push 之後又加了
 # review fix / docs commit 是正常狀態，本地領先本來就會讓 SHA 不同。
 git -C <toplevel> merge-base --is-ancestor origin/<feature-branch> HEAD
 # 非 0 → **停下**：遠端 tip 不在本地歷史裡（協作者推過），squash + force-push 會覆蓋掉它們。
+# **這一步的價值全靠上面那次 fetch**——沒 fetch 的話它檢查的是本地舊快照，等於沒檢查。
 
 # 1. reset 到腳本給的 hash（整行照抄，勿自行改寫路徑或 hash）
 git -C <toplevel> reset --soft <腳本給的 hash>
@@ -189,7 +196,7 @@ git -C <toplevel> commit -m "<type>: <描述>
 
 - **`--force-with-lease`, NEVER `--force`** —— 前者在 remote 有他人新 commit 時會拒絕，後者直接蓋掉。
 - **一律帶 expected SHA：`--force-with-lease=<feature-branch>:<步驟 0 記下的 SHA>`**。裸的 `--force-with-lease` 比對的是本地 remote-tracking ref，而**本流程自己就會 fetch**（「壓或不壓」的 commit 計數、`cleanup-cmd` 的 `fetch --prune`）——fetch 一跑，tracking ref 就更新成遠端的新狀態，lease 檢查形同虛設，協作者剛推的 commit 會被靜默覆蓋。**「別在中間 fetch」不是有效的防護**（流程自己會跑），錨定 SHA 才是。
-- **`cleanup-cmd`（stale branch 清掃）一律排在 force-push 之後**——它前置 `fetch --prune`，先跑就會污染 lease 的比較基準。
+- **`cleanup-cmd`（stale branch 清掃）仍建議排在 force-push 之後**——順序清楚、少一件要想的事。但**它已不是安全前提**：lease 帶了步驟 0 錨定的 SHA，中間再怎麼 fetch 都不影響比較基準。（此條在錨定 SHA 之前確實是硬要求，別讀成現在還是。）
 - **NEVER reset past anything already on the default branch** —— 目標最遠只到 `merge-base(<default>, HEAD)`（`squash-all-cmd:` 用的就是它），絕不越過它往 default 上已有的 commit 去。
 - 目標拿不準就**不要壓**：回報現況讓使用者定奪。壓錯要救比不壓貴得多。
 
