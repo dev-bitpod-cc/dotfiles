@@ -17,11 +17,76 @@ FETCH_FRESH_SECS=3600   # FETCH_HEAD 一小時內更新過就跳過 fetch(頻繁
 FETCH_TIMEOUT_SECS=6    # fetch 整體上限;離線/慢網寧可放棄偵測也不拖慢啟動
 SSH_CONNECT_TIMEOUT=4   # ssh remote(github-work 等)的連線上限,小於整體上限
 STALE_STATUS_DAYS=30    # STATUS.md 最後 commit 落後 repo 活動超過此天數 → 提醒 dossier 過期
+MAX_WORKTREE_LIST=3     # 其他 worktree 最多列幾個;超過只報數量——開工提醒列滿螢幕等於沒人看
 
 # --- 前置:不在 git repo 內就靜默離開 -------------------------------------------
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$repo_root" ] || exit 0
 cd "$repo_root" || exit 0
+
+# --- worktree 雙寫入者 + base 建議(純本地判斷,零網路)------------------------------
+# 位置關鍵:必須在下方 upstream/fetch 早退之前跑完。那兩處在「無 upstream」與「fetch
+# 失敗」時都 exit 0,而本段完全不需要網路——放後面等於離線或純本地 branch 上整組失效。
+#
+# `git worktree list --porcelain` 的第一筆永遠是主 checkout,用它同時判定「當前是否在
+# linked worktree」。不用 --git-common-dir 比對:它在普通 repo 回相對路徑 .git、在 linked
+# worktree 回絕對路徑,直接比字串會誤判。
+wt_list=$(git worktree list --porcelain 2>/dev/null | awk '
+    /^worktree /  { path = substr($0, 10); branch = ""; prunable = 0 }
+    /^branch /    { branch = substr($0, 8); sub(/^refs\/heads\//, "", branch) }
+    /^detached$/  { branch = "(detached)" }
+    /^prunable/   { prunable = 1 }
+    /^$/          { if (path != "" && !prunable) print path "\t" branch; path = "" }
+    END           { if (path != "" && !prunable) print path "\t" branch }
+')
+
+in_linked_worktree=0
+main_wt=$(printf '%s\n' "$wt_list" | head -1 | cut -f1)
+if [ -n "$main_wt" ] && [ "$repo_root" != "$main_wt" ]; then
+    in_linked_worktree=1
+fi
+
+others=$(printf '%s\n' "$wt_list" | awk -F'\t' -v self="$repo_root" 'NF && $1 != self')
+n_others=$(printf '%s\n' "$others" | grep -c .)
+if [ "$n_others" -gt 0 ]; then
+    wt_desc=""
+    shown=0
+    while IFS="$(printf '\t')" read -r wt_path wt_branch; do
+        [ -n "$wt_path" ] || continue
+        [ "$shown" -lt "$MAX_WORKTREE_LIST" ] || break
+        # 路徑已消失(尚未 prune)→ 跳過該筆即可,不放棄整條訊號
+        [ -d "$wt_path" ] || continue
+        wt_dirty=""
+        if [ -n "$(git -C "$wt_path" status --porcelain 2>/dev/null | head -1)" ]; then
+            wt_dirty="(有未 commit 變更)"   # dirty 才是「有人正在寫」的實證
+        fi
+        wt_desc="${wt_desc}${wt_desc:+、}$(basename "$wt_path") [${wt_branch:-?}]${wt_dirty}"
+        shown=$((shown + 1))
+    done <<< "$others"
+    if [ -n "$wt_desc" ]; then
+        wt_more=""
+        [ "$n_others" -gt "$shown" ] && wt_more="(另有 $((n_others - shown)) 個未列出)"
+        echo "ℹ 另有 ${n_others} 個 worktree 使用中:${wt_desc}${wt_more}——留意雙寫入者,勿同時編輯同一份 tree。"
+    fi
+fi
+
+# base 建議只在「主 checkout + feature branch + 相對 default 有 commit」三者皆成立時出聲。
+# 已在 linked worktree 裡就不報——base 是開 worktree 當下才要選的。
+# 刻意不報「default branch 上有未 push commit」:那是 ship 側的事,git-hygiene.sh /
+# /project log 已覆蓋,hook 不重複出聲。
+if [ "$in_linked_worktree" -eq 0 ]; then
+    cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    default_branch=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null)
+    default_branch=${default_branch#origin/}
+    if [ -n "$cur_branch" ] && [ "$cur_branch" != "HEAD" ] \
+        && [ -n "$default_branch" ] && [ "$default_branch" != "HEAD" ] \
+        && [ "$cur_branch" != "$default_branch" ]; then
+        ahead=$(git rev-list --count "origin/${default_branch}..HEAD" 2>/dev/null)
+        if [ -n "$ahead" ] && [ "$ahead" -gt 0 ]; then
+            echo "ℹ 當前分支 ${cur_branch} 相對 origin/${default_branch} 有 ${ahead} 顆未併 commit——若要開 worktree 延續這條線,base 用 head(全域預設 fresh 會從 origin/${default_branch} 分出去,變成平行線)。"
+        fi
+    fi
+fi
 
 branch=$(git rev-parse --abbrev-ref HEAD) || exit 0
 [ "$branch" != "HEAD" ] || exit 0   # detached HEAD 無 upstream 概念,不偵測

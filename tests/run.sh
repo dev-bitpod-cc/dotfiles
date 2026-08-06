@@ -2046,6 +2046,59 @@ spc_out="$(cd "$spc/b" && bash "$SPC")"
 assert_rc "同步 clone → exit 0" 0 $?
 assert_eq "同步 clone → 完全靜默" "" "$spc_out"
 
+# --- worktree 雙寫入者與 base 建議（純本地判斷：必須在 fetch/upstream 早退之前就跑完，
+#     否則離線或無 upstream 的 branch 上整組訊號失效）---
+
+# (7) feature branch 相對 origin/<default> 有未併 commit → base 建議
+(cd "$spc/b" && git switch -qc feat/base && echo x > g && git add g && git commit -qm "feat: g")
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+assert_rc "feature branch 有未併 commit → exit 0" 0 $?
+if grep -q "未併 commit" <<< "$spc_out" && grep -q "base 用 head" <<< "$spc_out"; then
+    ok "feature branch 有未併 commit → 報 base 建議"
+else bad "feature branch 未報 base 建議：$spc_out"; fi
+
+# (8) feature branch 無未併 commit（剛開的分支）→ 完全靜默
+(cd "$spc/b" && git switch -q main && git switch -qc feat/empty)
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+assert_eq "feature branch 無未併 commit → 完全靜默" "" "$spc_out"
+
+# (9) default branch 上有未 push commit → 不報 base 建議（刻意收斂：那是 ship 側的事，
+#     git-hygiene.sh / /project log 已覆蓋，hook 不重複出聲）
+(cd "$spc/b" && git switch -q main && echo y > h && git add h && git commit -qm "chore: h")
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+if grep -q "base 用 head" <<< "$spc_out"; then
+    bad "default branch 誤報 base 建議：$spc_out"
+else ok "default branch 有未 push commit → 不報 base 建議"; fi
+
+# (10) 有 linked worktree（clean）→ 報其存在與 branch，不標 dirty
+git -C "$spc/b" worktree add -q "$spc/b-wt" -b feat/wt
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+if grep -q "worktree 使用中" <<< "$spc_out" && grep -q "feat/wt" <<< "$spc_out"; then
+    ok "linked worktree → 報 worktree 名與 branch"
+else bad "未報 linked worktree：$spc_out"; fi
+if grep -q "未 commit 變更" <<< "$spc_out"; then
+    bad "clean worktree 誤標 dirty：$spc_out"
+else ok "clean worktree → 不標 dirty"; fi
+
+# (11) worktree 的 working tree 髒了 → 標示（dirty 才是「有人正在寫」的實證）
+echo dirty > "$spc/b-wt/dirtyfile"
+spc_out="$(cd "$spc/b" && bash "$SPC")"
+if grep -q "未 commit 變更" <<< "$spc_out"; then
+    ok "dirty worktree → 標示有未 commit 變更"
+else bad "dirty worktree 未標示：$spc_out"; fi
+
+# (12) 在 linked worktree 內執行 → 仍報另一個 worktree，但**不報 base 建議**
+#      （base 是開 worktree 當下才要選的；feat/wt 相對 origin/main 有 commit，
+#        少了這道條件就會誤報——故本斷言是條件 1 的守門）
+spc_out="$(cd "$spc/b-wt" && bash "$SPC")"
+assert_rc "linked worktree 內 → exit 0" 0 $?
+if grep -q "worktree 使用中" <<< "$spc_out"; then
+    ok "linked worktree 內 → 仍報另一個 worktree"
+else bad "linked worktree 內未報 worktree：$spc_out"; fi
+if grep -q "base 用 head" <<< "$spc_out"; then
+    bad "linked worktree 內誤報 base 建議：$spc_out"
+else ok "linked worktree 內 → 不報 base 建議"; fi
+
 echo "▶ 17. codex-exec-review.sh（deep-review skill script）exit 契約與 job 產物"
 CER="$ROOT/claude/skills/deep-review/scripts/codex-exec-review.sh"
 cer_base="$TMP/cer"
