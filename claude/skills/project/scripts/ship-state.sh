@@ -274,6 +274,18 @@ detect_dossier() {
     if ! grep -qE '^##[[:space:]].*進行中[[:space:]]*$' <<< "$unfenced" \
         || ! grep -qE '^##[[:space:]].*(決策|死路|技術債|里程碑|已完成|已知缺口|移交準備度?)[[:space:]]*([（(][^（()）]*[）)])?[[:space:]]*$' <<< "$unfenced"; then
         echo "dossier-flag: 簽章不符（缺「進行中」或 dossier 專屬章節——撞名領域產物？勿當 dossier 改；spec 模式遇之停下告知）"
+    else
+        # 章節完整性：簽章只要求「任一」專屬章節在，故**整節被刪它抓不到**。
+        # 2026-08-06 實地：一次 lines 操作的邊界只檢查下一個條目、沒檢查 `## `，把
+        # 「已知缺口」「移交準備度」兩整節吃掉；行數變少不觸發任何尺寸 flag（那些只管上限），
+        # 一路 merge 進 main 才發現。**內容遺失是 dossier 最貴的失效，靜默是最糟的形式。**
+        local sec missing=""
+        for sec in 進行中 決策 死路 技術債 里程碑 已知缺口 移交準備; do
+            grep -qE "^##[[:space:]].*${sec}" <<< "$unfenced" || missing="${missing}${sec} "
+        done
+        if [ -n "$missing" ]; then
+            echo "dossier-flag: 缺少規範章節：${missing}（模板七節見 references/dossier.md）——**先確認是不是被誤刪**（尺寸 flag 只管上限、抓不到整節消失），確認是刻意留空則在該節寫一行說明"
+        fi
     fi
     # 收斂建議目標：不是「壓到剛好低於門檻」（見 DOSSIER_TARGET_PCT 註解）
     local target_lines target_bytes oversize=0
