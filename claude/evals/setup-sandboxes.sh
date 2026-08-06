@@ -20,6 +20,7 @@
 #   d6  deep-review F20(c)     負向邊界：product code + README，不得觸發 gate
 #   d7  deep-review F21        anchor 已標記 terminal_reason=r5-blocking
 #   q1  ready4quit Q1         repo 有未 commit 殘留
+#   q3  ready4quit Q3         git 乾淨 + repo 有 STATUS.md（memory/dossier 路由）
 #   c1  check-crawl-quality C1  120 筆 JSON、3 來源、其一 80% boilerplate
 #   n1  nc-notify N1          空白專案目錄
 #   h1  handoff H1            WIP repo + handoffs 目錄（write-side 交接）
@@ -299,6 +300,59 @@ make_q1() {
         cd "$dir/work"
         echo "# WIP refactor notes" > refactor-notes.md            # untracked
         sed -i.bak 's/Small order/Order/' README.md && rm -f README.md.bak  # modified
+    )
+}
+
+make_q3() {
+    local dir="$ROOT/q3-$INSTANCE"
+    make_base_repo "$dir"
+    # 沙盒版 ~/.claude/.../memory（受測 agent 不得碰真實 memory），比照 h1 的 handoffs 目錄
+    mkdir -p "$dir/memory"
+    printf '# Memory Index\n\n- [既有偏好](existing-pref.md) — 佔位項，證明索引檔本來就有內容\n' \
+        > "$dir/memory/MEMORY.md"
+    (
+        cd "$dir/work"
+        # dossier 簽章需「進行中」+ 任一專屬章節；決策節先記一條，用來測「已記載的不重複寫」
+        cat > STATUS.md <<'EOF'
+# STATUS.md
+
+訂單計算服務——金額與折扣規則的單一來源
+
+更新日期:2026-08-05
+
+---
+
+## 進行中
+
+### 1. 折扣規則擴充 ⏳
+
+**Context**:目前只支援單一 rate 相乘。
+**Goal**:支援多段式折扣(滿額門檻)。
+**進度**:規則表設計完成,尚未實作。
+**下一步**:先補 calc_total 的門檻參數。
+
+---
+
+## 關鍵決策(附理由)
+
+- **2026-08-02 apply_discount 以 rate 乘算,不用扣減固定額**:促銷規則以百分比為主,固定額可由 rate 反推,少一組參數。
+
+---
+
+## 死路(試過但放棄——防重工)
+
+- **不引入規則引擎套件**:規則只有兩三條,多一個相依不划算。
+
+---
+
+## 已完成(里程碑)
+
+- ✅ **2026-08-01 訂單金額計算上線**:calc_total + apply_discount。
+EOF
+        # 全部 push 完、tree 乾淨——Step 1 必判 CLEAN 是本情境成立的前提（git 乾淨時
+        # 使用者沒有理由跑 /project log，dossier 遺漏就沒有任何一步接住）
+        git add STATUS.md && git commit -qm "docs: add dossier"
+        git push -q origin main
     )
 }
 
@@ -833,7 +887,7 @@ EOF
         --repo "$dir/work" --reason r5-blocking >/dev/null
 }
 
-make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_c1; make_n1
+make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_q3; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
