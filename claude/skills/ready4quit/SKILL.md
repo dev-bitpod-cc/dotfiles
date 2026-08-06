@@ -1,6 +1,6 @@
 ---
 name: ready4quit
-description: "End-of-session pre-quit flush — 結束 Claude Code session 前的收尾總檢查：驗證 git 殘留（未 commit/未 push/待開 PR）、flush 本 session 學到但未寫進 memory 的事實、盤點還在跑的背景/排程任務、列出未了結的 TODO，產出『可否 /quit』的總結與待辦 gate。Use before quitting or ending a session — Chinese triggers 「ready4quit」「收尾」「準備結束」「可以 quit 了嗎」「sync 一下」「結束前檢查」「退出前」. Report-first; outward or destructive flush (push, kill task, delete memory) needs explicit confirmation; recommends /project log for git residue rather than shipping itself."
+description: "End-of-session pre-quit flush — 結束 Claude Code session 前的收尾總檢查：驗證 git 殘留（未 commit/未 push/待開 PR）、flush 本 session 學到但未落到持久層的事實（memory 與 repo dossier 分流）、盤點還在跑的背景/排程任務、列出未了結的 TODO，產出『可否 /quit』的總結與待辦 gate。Use before quitting or ending a session — Chinese triggers 「ready4quit」「收尾」「準備結束」「可以 quit 了嗎」「sync 一下」「結束前檢查」「退出前」. Report-first; outward or destructive flush (push, kill task, delete memory) needs explicit confirmation; recommends /project log for git residue rather than shipping itself."
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[--flush]"
@@ -22,7 +22,7 @@ argument-hint: "[--flush]"
 ```
 Ready4Quit 進度：
 - [ ] Step 1：Git 衛生（逐 session repo 驗證未 commit / 未 push / 待開 PR）
-- [ ] Step 2：記憶 flush（盤點 session 學到但未寫進 memory/ 的事實）
+- [ ] Step 2：持久化 flush（session 學到的事實 → memory / dossier 路由）
 - [ ] Step 3：背景/排程任務（background Bash / Task / loop / ScheduleWakeup / cron）
 - [ ] Step 4：未了結 loose ends（答應要做卻沒做的 TODO / half-done / 待你決定的開放問題）
 - [ ] Step 5：總結 verdict（逐面向 GREEN/待辦）→ flush gate（安全項確認後執行，對外項先確認）
@@ -36,6 +36,7 @@ Ready4Quit 進度：
 - **NEVER push / open PR here.** Git 殘留只**建議** `/project log`，本 skill 不 commit、不 push、不開 PR、不 merge。Ship 是 `/project log` 的事。
 - **Outward / destructive flush needs explicit confirmation.** Kill 背景任務、刪 ScheduleWakeup/cron、刪除既有 memory 檔——一律先列出、等明確同意，沒同意 → 不做。
 - **Memory writes are additive but still surface them.** 新增 memory 檔是可逆的附加動作，可在報告後直接寫，但**必須在報告中列出寫了什麼、跳過什麼**，不靜默塞。
+- **Dossier writes are additive and stop at the working tree.** 補寫 STATUS.md 漏記的決策/死路同屬可逆附加動作，可直接寫；但 **writing the working tree is NOT shipping** —— 本 skill 仍不 commit、不 push，且不改寫既有條目、不整理 dossier。
 - **Don't rubber-stamp.** 每個面向都要**實際跑指令/掃描**才能標 GREEN。沒查就說「應該沒問題」= 違規。
 
 ### Red Flags — STOP and re-read Critical
@@ -44,6 +45,8 @@ Ready4Quit 進度：
 - Reading `TaskList` as the background-task check. It lists `TaskCreate` to-dos, not background shells or subagents — an empty result proves nothing about what is still running.
 - About to `git push` / `gh pr` / kill a task / delete a wakeup/cron/memory file from inside this skill without listing it and getting an explicit yes.
 - Offering to `git commit` for the user — even "just say yes and I'll commit". Git residue has exactly ONE recommendation: run `/project log`. "The user would approve it anyway" does not move commit/ship into this skill.
+- Routing a repo's decision or dead-end into machine-local memory "so it won't be lost". That is exactly how it gets lost — memory does not travel between hosts. Route it to that repo's STATUS.md.
+- Tidying the dossier during a pre-quit flush — moving 進行中 items into 里程碑, rewriting entries, compacting sections. Additive only; distillation belongs to `/project log`.
 
 > 此 skill 的核心不是「對抗合理化」（baseline 顯示 agent 天生會查 git、不擅自動手），而是**覆蓋度**——提醒別只顧 git，還要 flush memory、盤點 async 狀態、掃 loose ends，這些是 fresh agent 想不到要查的。
 
@@ -69,23 +72,40 @@ Do not re-run the underlying git commands one by one — the script IS the check
 
 **只報告，不收尾。** 任一項有殘留 → 在總結建議：「git 有殘留，結束前先跑 `/project log` ship 掉」。git 細節（branch-first、protection、PR）全交給 `/project log`，本 skill 不重做。
 
-## Step 2：記憶 flush（持久化易失知識）
+## Step 2：持久化 flush（memory / dossier 路由）
 
-掃過本 session，盤點「對未來 session 有價值、但還沒寫進 memory/」的事實。對照記憶系統四型：
+掃過本 session，盤點「對未來有價值、但還沒落到持久層」的事實。**先判去哪，再判存不存**——兩個出口的存活範圍不同（memory 不跨主機、repo 跟著 git 走；判準與理由的單一來源是全域 CLAUDE.md「跨主機工作流」節）：
 
-- **user**：使用者身分/偏好/專長中本 session 才揭露的。
-- **feedback**：使用者這次給的工作方式糾正或確認（附 **Why** / **How to apply**）。
-- **project**：進行中工作的目標/約束，**且 code、git history、CLAUDE.md 都查不到**的。
-- **reference**：本 session 出現、值得留存的外部資源（URL / dashboard / ticket）。
+| 事實 | 出口 |
+|------|------|
+| **user** / **feedback** 型 | memory —— machine-local 正是對的層 |
+| **project** 型：本 session 的關鍵決策 / 死路 / 新增技術債，且屬某個**有 STATUS.md 的 repo** | 該 repo 的 **STATUS.md** 對應章節，不進 memory |
+| **project** 型：該 repo 無 STATUS.md | 回落 memory，報告標示「該 repo 無 dossier」 |
+| **reference** 型 | 綁專案 → STATUS.md；綁使用者工作流 → memory |
+
+檢查對象＝Step 1 已列出的那組 repo 中有 `STATUS.md` 者（**不掃 `~/Projects/`**）。
+
+### memory 出口
+
+四型定義：**user**（身分/偏好/專長中本 session 才揭露的）、**feedback**（工作方式的糾正或確認，附 **Why** / **How to apply**）、**project**（工作目標/約束，**且 code、git history、CLAUDE.md、STATUS.md 都查不到**的）、**reference**（值得留存的外部資源：URL / dashboard / ticket）。
 
 判讀規則（避免噪音）：
 
-- repo 結構、過往修法、git history、CLAUDE.md 已記錄的 → **不存**。
+- repo 結構、過往修法、git history、CLAUDE.md／STATUS.md 已記錄的 → **不存**。
 - 只對本次對話有意義的 → **不存**。
 - 存之前先比對既有 memory 檔，覆蓋同一主題就**更新該檔**，不要建重複檔。
-- 候選為空 → 在報告**明說「本 session 無新增 memory」**，不要靜默跳過。
 
-flush 方式：在總結列出候選（type + 一句摘要）；新增 memory 檔是可逆附加動作，可直接寫（依記憶系統 frontmatter 格式 + 在 `MEMORY.md` 補一行索引），但報告須列出**寫了哪些、跳過哪些**。**刪除/覆寫既有 memory 屬破壞性** → 先確認。
+新增 memory 檔是可逆附加動作，可直接寫（依記憶系統 frontmatter 格式 + 在 `MEMORY.md` 補一行索引）。**刪除/覆寫既有 memory 屬破壞性** → 先確認。
+
+### dossier 出口
+
+寫入該 repo `STATUS.md` 的對應章節（章節語意與條目格式的單一來源：`~/.claude/skills/project/references/dossier.md`），**寫 working tree、不 commit**——全域規則本就要求決策當下就地寫入，這裡是補做遲到的動作。
+
+- **Additive only. NEVER rewrite or delete an existing entry, NEVER move 進行中 items into 里程碑, NEVER compact or distill the dossier here** —— 那是 `/project log` Step 2 的職責，pre-quit 不做整理；dossier 尺寸治理同樣不在本 skill 範圍。
+- **NEVER create a STATUS.md that does not exist** —— 建 dossier 是 `/project spec` 的事。
+- 寫入會**新增 git 殘留**：Step 5 的 Git 衛生行須反映，並提示需 `/project log` 送出。
+
+兩個出口都要在報告列出**寫了哪些、跳過哪些**；候選為空 → **明說「本 session 無新增 memory／dossier」**，不要靜默跳過。
 
 ## Step 3：背景 / 排程任務盤點
 
@@ -135,7 +155,10 @@ deferred tool，先一輪 `ToolSearch`（`select:CronList`）載入 schema 再�
 ```
 Ready4Quit 收尾報告：
   Git 衛生        ⚠ repo-a 有 3 檔未 commit、repo-b 有 1 未 push commit → 建議先 /project log
-  記憶 flush      ✓ 已寫 2 筆（feedback: …／project: …）；跳過 1 筆（CLAUDE.md 已記）
+  持久化 flush    ✓ memory 寫 2 筆（feedback: …／user: …）
+                  ✓ dossier 寫 1 筆（repo-a 死路節：試過 X 因 Y 放棄）
+                    ↳ STATUS.md 未 commit，需 /project log 送出
+                  ✓ 跳過 1 筆（STATUS.md 決策節已記）
   背景/排程       ⚠ 1 個 background crawler 仍在跑（task#3）；cron <你的排程> 為刻意保留
   Loose ends      ⚠ 待你決定：API schema 用 v2 還是 v3（Step 4 問過未回）
   ────────────────────────────────────────
@@ -144,7 +167,7 @@ Ready4Quit 收尾報告：
 
 接著：
 
-- **安全項**（已寫的 memory）→ 已執行，報告中明列。
+- **安全項**（已寫的 memory 檔、已補的 dossier 條目）→ 已執行，報告中明列；dossier 寫入須同時更新 Git 衛生行的殘留敘述。
 - **對外 / 破壞性項**（建議的 `/project log`、要 kill 的背景任務、要刪的 wakeup/cron）→ **列出選項等使用者點頭**，不自動做。
 - 全面向皆 GREEN → 明確說「volatile 狀態已 flush，可安全 `/quit`」。
 
@@ -155,5 +178,6 @@ Ready4Quit 收尾報告：
 ## 設計備忘
 
 - 本 skill 是 **pre-quit 驗證 + flush 階段**，不是 ship、不是 review。git 殘留交 `/project log`，需要 review 交 `/deep-review`。
-- 與 `/project log` 銜接：典型流程 `/deep-review` → `/project log`（ship）→ `/ready4quit`（最後收尾確認）。`/project log` 已處理 git，本 skill 多半在 Step 1 只做驗證、其餘力氣放在 memory / 背景 / loose ends。
+- 與 `/project log` 銜接：典型流程 `/deep-review` → `/project log`（ship）→ `/ready4quit`（最後收尾確認）。`/project log` 已處理 git，本 skill 多半在 Step 1 只做驗證、其餘力氣放在 memory / dossier / 背景 / loose ends。
+- Step 2 的 dossier 出口針對的是 **`/project log` 沒被觸發**的情況：它的 Step 2 本就會核對補漏 dossier，但 git 乾淨時使用者沒有理由 ship——本 session 產生的決策/死路就沒有任何一步接住。有殘留時仍是導向 `/project log`，本 skill 不重做蒸餾。
 - 核心鐵則：**不在沒實際檢查的情況下宣告「可以退出」**——每個 GREEN 都要有對應的指令輸出或掃描根據。
