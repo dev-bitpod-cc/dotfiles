@@ -16,6 +16,8 @@ SKILL.md Step 1/5 的展開。涵蓋 repo 解析、protection 偵測、branch-fi
 - [直接 push 路徑](#直接-push-路徑)
 - [送出前的 branch 內 squash](#送出前的-branch-內-squashstep-4-選了先-squash-再送出時)
 - [Merge 最後一哩（使用者明說 merge 後）](#merge-最後一哩使用者明說-merge-後)
+  - [說法表（唯一權威）](#說法表唯一權威skill-step-4-照此分派)
+  - [merge 受阻時的分流](#merge-受阻時的分流先看狀態不做失敗就-retry)
 - [PR title / body 模板](#pr-title--body-模板)
 - [push 失敗處理](#push-失敗處理)
 
@@ -195,7 +197,7 @@ git -C <toplevel> commit -m "<type>: <描述>
 **本節到 commit 為止，不含任何 push。** branch 已 push 過時，覆寫 remote 需要 `--force-with-lease`——**那是 Step 5 的送出動作**，必須等重印摘要、使用者再次確認後才做（`git -C <repo> push --force-with-lease=<feature-branch>:<步驟 0 記下的 SHA> origin <feature-branch>`——**帶 expected SHA，理由見下**）。在這裡順手推掉，等於用 gate 沒顯示過的 commit set 重寫 remote，正是 Step 4 硬 gate 要防的事。
 
 - **`--force-with-lease`, NEVER `--force`** —— 前者在 remote 有他人新 commit 時會拒絕，後者直接蓋掉。
-- **一律帶 expected SHA：`--force-with-lease=<feature-branch>:<步驟 0 記下的 SHA>`**。裸的 `--force-with-lease` 比對的是本地 remote-tracking ref，而**本流程自己就會 fetch**（「壓或不壓」的 commit 計數、`cleanup-cmd` 的 `fetch --prune`）——fetch 一跑，tracking ref 就更新成遠端的新狀態，lease 檢查形同虛設，協作者剛推的 commit 會被靜默覆蓋。**「別在中間 fetch」不是有效的防護**（流程自己會跑），錨定 SHA 才是。
+- **一律帶 expected SHA：`--force-with-lease=<feature-branch>:<步驟 0 記下的 SHA>`**。裸的 `--force-with-lease` 比對的是本地 remote-tracking ref，而**本流程自己就會 fetch**（本節步驟 0 的 `fetch origin <feature-branch>`、`cleanup-cmd` 的 `fetch --prune`）——fetch 一跑，tracking ref 就更新成遠端的新狀態，lease 檢查形同虛設，協作者剛推的 commit 會被靜默覆蓋。**「別在中間 fetch」不是有效的防護**（流程自己會跑），錨定 SHA 才是。
 - **`cleanup-cmd`（stale branch 清掃）仍建議排在 force-push 之後**——順序清楚、少一件要想的事。但**它已不是安全前提**：lease 帶了步驟 0 錨定的 SHA，中間再怎麼 fetch 都不影響比較基準。（此條在錨定 SHA 之前確實是硬要求，別讀成現在還是。）
 - **NEVER reset past anything already on the default branch** —— 目標最遠只到 `merge-base(<default>, HEAD)`（`squash-all-cmd:` 用的就是它），絕不越過它往 default 上已有的 commit 去。
 - 目標拿不準就**不要壓**：回報現況讓使用者定奪。壓錯要救比不壓貴得多。
@@ -222,33 +224,47 @@ git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash/re
                                         # 故先確認 PR 已 MERGED（gh pr view --json state）再 -D
 ```
 
-### 壓或不壓（`<merge-flag>` 的決定）
+### 說法表（唯一權威；SKILL Step 4 照此分派）
 
-review 迭代痕跡（`fix: address review findings` 這類）該壓，**使用者的語意 commit 不該壓**——它們在 PR 裡逐 commit 可讀、日後可追。GitHub 的 squash-merge 是全有全無、做不到只壓部分，故這是**整個 PR 的一次決定**。
+| 使用者說 | 送到哪 | `<merge-flag>` |
+|---|---|---|
+| （無送出詞） | push branch + 開 PR，**停在 PR** | — |
+| 「merge」／「合併」 | 全程走完 | `--rebase` |
+| 「merge 壓成一顆」／「squash merge」／「merge squash」 | 全程走完 | `--squash` |
+| 「merge 不壓」／「merge 保留 commit」／「merge 別壓」 | 全程走完 | `--rebase` |
+| 「merge commit」／「merge 留分支圖」 | 全程走完 | `--merge` |
+| 「bypass merge」 | 全程走完；僅 `BLOCKED` 時 `--admin`（見下） | `--rebase`（可再疊壓的說法） |
+| 「merge 照送」／「merge 未審完」 | 全程走完；預先放行 `review-terminal` 攔截 | `--rebase` |
+| 「只推 branch」／「不用 PR」 | 只 push feature branch，不開 PR | — |
 
-明確關鍵字 → 直接執行，不再問：
+**預設保留、不預設壓**：語意 commit 在 PR 裡逐顆可讀、日後可追，那是它們存在的理由。GitHub 的 squash-merge 全有全無、做不到只壓部分，故「壓」必須是使用者說出口的意圖，**不是流程的預設**。
 
-| 使用者說 | `<merge-flag>` |
-|---|---|
-| 「merge 壓成一顆」／「squash merge」／「merge squash」 | `--squash` |
-| 「merge 不壓」／「merge 保留 commit」／「merge 別壓」 | `--rebase` |
-| 「merge commit」／「merge 留分支圖」 | `--merge` |
+**Do NOT ask which flag to use.** 表上每一列都已經是答案，裸「merge」也是（＝保留）。以前要問是因為預設未定義；現在定義了，問就只是把已決之事再丟回去。
 
-裸「merge」／「合併」（未指定壓不壓）：
+> **review 迭代痕跡不走這張表**——那批由 branch 內 squash 在送出前處理掉（見上節），無條件執行、不出題。兩件事常被混為一談：這裡決定的是「你自己的語意 commit 進 default 時長什麼樣」，上節處理的是「review 過程的機械痕跡不該留下」。
 
-- PR 相對 default **只有 1 顆 commit** → `--squash`，直接做（無歧義，不打斷）。顆數用指令取，別憑印象：
-  ```bash
-  git -C <toplevel> fetch origin                                              # 先對齊——「另起一輪說 merge」時本地可能落後 remote
-  git -C <toplevel> rev-list --count origin/<default>..origin/<feature-branch>  # 以 remote ref 為上界，數的才是 PR 上真正有的
-  ```
-  本地 ref 落後時 `--count` 會少算 → 誤判「只有 1 顆」而直接 `--squash`，把 PR 上實際存在的多顆語意 commit 壓平。
-- **≥2 顆 commit** → 用 `AskUserQuestion` 給三個選項，題目**列出實際 commit 清單**：`保留 commit（rebase，線性歷史）` ／ `保留 commit + merge commit` ／ `壓成一顆`。**A bare "merge" is not an answer to this question** — 使用者若再回一次「merge」，重問，never pick a reading and proceed.
-- PR 內仍殘留 review 樣式 commit → **先跑 `ship-state.sh <repo>` 取 `review-residue:` 判定，不自行看 `git log` 認**（同本檔上節與 SKILL Step 1 第 6 項的禁令；誤認就是壓掉使用者自己的歷史，且緊接 force-push 不可回復）：有 `top-contiguous:` 才在選項文案點出「可先壓掉那幾顆再 merge」，reset 目標照抄該行的 `squash-cmd:`；只有 `buried:` 或 `UNKNOWN` → **不主動建議壓**，如實說明現況。
-- **選定的 flag 不可用**（`Rebase merging is not allowed` / `Merge commits are not allowed`；或 branch 含 merge commit 而 GitHub 拒絕 rebase——拒絕原因不同、處置相同）→ 停下回報、以剩下可用的方式重新給選項。**NEVER silently fall back to another flag** — 尤其別退回 `--squash`：那會壓掉使用者剛選擇要保留的 commit。
+- PR 內仍殘留 review 樣式 commit → **先跑 `ship-state.sh <repo>` 取 `review-residue:` 判定，不自行看 `git log` 認**（同本檔上節與 SKILL Step 1 第 6 項的禁令；誤認就是壓掉使用者自己的歷史，且緊接 force-push 不可回復）：有 `top-contiguous:` → 照該行的 `squash-cmd:` 壓掉再送，不必詢問；只有 `buried:` → **照常送出**，在摘要標明「N 顆 review 痕跡夾在語意 commit 中間，非互動式壓不掉」；`UNKNOWN` → 如實說明現況、不猜。
+- **選定的 flag 不可用**（`Rebase merging is not allowed` / `Merge commits are not allowed`；或 branch 含 merge commit 而 GitHub 拒絕 rebase——拒絕原因不同、處置相同）→ 停下回報、以剩下可用的方式給選項。**NEVER silently fall back to another flag** — 尤其別退回 `--squash`：那會壓掉使用者要保留的 commit。這是少數仍需詢問的例外：使用者選的做法在該 repo 不存在，沒有預設可推。
 
-其餘：
+### merge 受阻時的分流（先看狀態，不做「失敗就 retry」）
 
-- **失敗即停**：required checks 未過、merge conflict、gh 帳號無 write 權限 → 停下回報實際錯誤。**Never `--admin`, never bypass checks, never fall back to pushing default directly.**
+`gh pr merge` 失敗的原因不只 protection，而 `--admin` 只繞得過 **protection 規則**——衝突它一樣過不了。盲目 retry 只是多失敗一次，還把「繞過」用在不該用的地方。故**先查狀態再決定**：
+
+```bash
+gh pr view <PR-number|URL> -R "$repo_slug" --json mergeStateStatus,mergeable -q .mergeStateStatus
+```
+
+| 狀態 | 意思 | 「merge」 | 「bypass merge」 |
+|---|---|---|---|
+| `CLEAN` / `HAS_HOOKS` / `UNSTABLE` | 沒有硬性阻擋 | 直接 merge | 直接 merge（`--admin` 用不到） |
+| `BLOCKED` | protection 真的擋（缺 review／必要檢查） | **停**，回報並告知可用「bypass merge」 | 加 `--admin` 重試 |
+| `DIRTY` | 有衝突 | 停，回報 | **一樣停**——`--admin` 不解決衝突 |
+| `BEHIND` | base 落後、protection 要求最新 | 停，回報 | **一樣停**——該做的是更新 branch，不是繞過 |
+| 其他／查詢失敗 | 無從判定 | 停，回報實際錯誤 | 停，回報 |
+
+- **`--admin` 只在「bypass merge」＋ `BLOCKED` 這一格出現。** Never reach for it on any other row, and never as a retry after an unexplained failure. 它需要 admin 權限；ruleset 也可設成連 admin 都不能繞——兩種情況都是失敗即停、回報，不再想別的辦法。
+- **動用了 `--admin` 就必須在送出回報裡明說「這次繞過了 protection」。** 繞過本身要留在使用者看得到的地方。
+- **失敗即停**：gh 帳號無 write 權限、其他未列狀態 → 停下回報實際錯誤。**Never bypass checks by other means, never fall back to pushing the default branch directly.**
 - 多 repo（多個 PR 同輪開出）：先確認使用者的 merge 指令涵蓋哪些 PR，勿一句 merge 就全 merge。
 - merge 完成後回報：merged commit / 本地 default 已同步 / branch 已清。
 - **本序列只清它自己 merge 的那支**——更早的、或走別條路合併的 branch 不在此列，由 `ship-state.sh` 的 `stale-branches:` 訊號在下一輪 Step 1 攤開（附 `cleanup-cmd:`，經使用者同意才刪）。

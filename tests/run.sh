@@ -536,6 +536,48 @@ assert_rc "lib 缺席 → ship-state 照常完成（不因缺 pattern 而死）"
 if grep -q "^review-residue: UNKNOWN" <<< "$out"; then ok "lib 缺席 → review-residue 降級 UNKNOWN"; else bad "缺 UNKNOWN 降級（model 會被迫憑印象猜）"; fi
 if grep -q "^protection:" <<< "$out"; then ok "lib 缺席不影響其餘偵測輸出"; else bad "lib 缺席拖垮了其他輸出"; fi
 
+# --- review-terminal：上一場審查是「R5 終止」收場時，ship 前必須停 ---
+# 為何存在：Step 4 改成「說法關鍵字即授權、不再逐批確認」後，原本那道確認 gate 會順帶
+# 接住的「這批還沒審完」就沒人接了。拆掉守衛就得補上它接住的東西——這不是為沒見過的
+# 問題加規則，是為新造出的暴露補償。
+# 鑑別力來源是 ancestry：anchor 存在 .git/ 下、跨 branch 共用，只憑「有沒有 terminal_reason」
+# 會讓一場舊終止把之後每一批都擋住。terminal_head 必須是當前 HEAD 的祖先才算涵蓋這批。
+RA_FOR_SS="$ROOT/claude/skills/deep-review/scripts/review-anchor.sh"
+git clone -q "$TMP/sb-origin.git" "$TMP/rt-work"
+(cd "$TMP/rt-work" && git switch -qc feat/rt \
+    && echo t1 > t.txt && "${GITC[@]}" add t.txt && "${GITC[@]}" commit -qm "feat: 待審的實作")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rt-work")"
+if grep -q "^review-terminal:" <<< "$out"; then bad "無 anchor 卻報 review-terminal（會把每一批都擋住）"; else ok "無 anchor → 不印 review-terminal"; fi
+
+# 正常審查中（record 過但未終止）→ 不得誤報：那是進行中，不是終止收場
+"$RA_FOR_SS" record --repo "$TMP/rt-work" --mode branch-diff --base origin/main >/dev/null
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rt-work")"
+if grep -q "^review-terminal:" <<< "$out"; then bad "anchor 存在但未終止卻報 review-terminal"; else ok "anchor 存在但無 terminal_reason → 不報"; fi
+
+# R5 終止 → 必須印訊號且壓成 STOP（走真腳本寫入，順帶守住兩支腳本間的 anchor 格式漂移）
+"$RA_FOR_SS" terminate --repo "$TMP/rt-work" --reason r5-blocking >/dev/null
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rt-work")"
+if grep -q "^review-terminal: r5-blocking" <<< "$out"; then ok "terminal 且為祖先 → 印 review-terminal"; else bad "R5 終止未被偵測（未審完的變更會被關鍵字一路送出）"; fi
+if grep -q "^verdict: STOP" <<< "$out"; then ok "review-terminal 壓成 verdict: STOP"; else bad "缺 STOP——說法關鍵字會直接覆蓋掉這道攔截"; fi
+if grep -q "^ship-path:" <<< "$out"; then ok "STOP 之外的偵測輸出照常保留"; else bad "review-terminal 早退吃掉了其餘輸出"; fi
+
+# 換到另一條由 default 長出的 branch → terminal_head 非祖先 → 那場終止與這批無關，須靜默
+(cd "$TMP/rt-work" && git switch -q main && git switch -qc feat/rt-other \
+    && echo o1 > o.txt && "${GITC[@]}" add o.txt && "${GITC[@]}" commit -qm "feat: 另一批工作")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rt-work")"
+if grep -q "^review-terminal:" <<< "$out"; then bad "非祖先的舊終止仍攔截（每批都會被擋，訊號會被學會忽略）"; else ok "terminal_head 非祖先 → 不攔（那是別批的事）"; fi
+
+# terminal_head 指向已不存在的物件（歷史被重建/gc）→ 無法鑑別，一律 fail-safe 報出來
+(cd "$TMP/rt-work" && git switch -q feat/rt)
+python3 - "$TMP/rt-work/.git/deep-review/anchor" <<'PYEOF'
+import sys, pathlib, re
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+assert "terminal_head=" in s, "fixture 前提失效：anchor 無 terminal_head"
+p.write_text(re.sub(r"^terminal_head=.*$", "terminal_head=" + "0" * 40, s, flags=re.M))
+PYEOF
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rt-work")"
+if grep -q "^review-terminal:" <<< "$out"; then ok "terminal_head 物件不存在 → fail-safe 仍報"; else bad "物件不存在時靜默放行（fail-open）"; fi
+
 # origin/HEAD 存在時（真實 clone 的常態）：其 short form 是**裸 remote 名**（"origin"），
 # 不是 branch——列進去會污染清單並讓 cleanup-cmd 拼出 `--deleteorigin`（實地跑真 repo 才
 # 抓到，原 fixture 無 origin/HEAD 故漏測）

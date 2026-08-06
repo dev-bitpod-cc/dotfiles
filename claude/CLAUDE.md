@@ -12,8 +12,9 @@
 
 ## PR / Git
 
-- **NEVER merge on your own** — only when the user explicitly says merge / bypass merge, **or picks「送出並 merge」in `/project log` Step 4 的確認選項**（同一個 gate 收掉的預先授權，效力相同）。"push" or "open a PR" alone does NOT include merge.
-- 使用者明說 merge 後的標準收尾：merge PR → 清 remote/本地 branch → 同步本地 default。**壓不壓由關鍵字決定**，裸「merge」且 PR ≥2 顆 commit → 給選項問，**a bare "merge" is never an answer to that question**。關鍵字表與完整序列見 `~/.claude/skills/project/references/ship-paths.md`「壓或不壓」＋「Merge 最後一哩」（唯一權威，勿在此重述對照）。
+- **NEVER merge on your own** — only when the user explicitly says merge / bypass merge（不論在哪一輪說的，`/project log` 的引數或事後另說皆算）。"push" or "open a PR" alone does NOT include merge.
+- 使用者明說 merge 後的標準收尾：merge PR → 清 remote/本地 branch → 同步本地 default，**一路做完不再回問**。**壓不壓由說法決定、預設保留**（裸「merge」＝保留語意 commit）。說法表與完整序列見 `~/.claude/skills/project/references/ship-paths.md`「說法表」＋「Merge 最後一哩」（唯一權威，勿在此重述對照）。
+- **說法授權的是「怎麼送」，never whether an unreviewed batch may ship.** `ship-state.sh` 印 `verdict: STOP`（含 `review-terminal:` 上一場審查未修完就終止）→ 停下處置，關鍵字不得覆蓋。
 - **Solo repo is not a lighter process** — "It's just me" / "no protection anyway" is never a reason to relax branch-first, the PR default, or explicit merge（理由與完整條文見 `ship-paths.md` 檔首，勿在此重述）。
 - **NEVER push on your own** — after finishing an issue implementation or review fixes, commit and STOP; wait for the user's next instruction.
 - **NEVER `git add -A` / `git add .` / `commit -a`**——顯式路徑 stage，且**顯式路徑仍是整檔**：同一檔混了他人 session 的區段時改用 `add -p` 只 stage 驗過的 hunk（或把他人區段移出、commit 完最後放回），commit 前看 `git diff --cached`。三次誤收皆在磁碟上恆綠，**只有乾淨 clone 看得見**（`git clone --no-local <repo> <tmpdir>`）——人工看 staged diff 已實證失敗三次，不能取代它。
@@ -40,6 +41,7 @@ When the user pastes third-party review findings, read the source code and verif
 ## 已知地雷
 
 - **shell 訊息裡 `$var` 緊接全形標點** → bash 會把全形字元併入變數名（`"（exit=$rc）"` → `set -u` 下噴 `rc）: unbound variable`）。繁中訊息幾乎必踩，且**只在錯誤路徑觸發**、正常測試照樣全綠。一律寫 `${var}`。（dotfiles 有 `tests/run.sh` 第 1b 節 gate 擋，其他 repo 沒有）
+- **不帶引號的 heredoc（`<<EOF`）內含反引號 → bash 做命令替換，指令真的被執行**。2026-08-07 實地：用 `python3 - <<PY` 產生 eval prompt，文字裡有 `` `git push` `` 與 `` `gh pr` `` 說明用的反引號，結果 **`git push` 真的推了一條 branch 上 GitHub**、`gh pr` 的說明文字被塞進產出的檔案，而變數展開位置留下空白。**寫 Markdown/prose 進檔案時幾乎必踩**——反引號是行內 code 的標準寫法。一律用 `<<'EOF'`（quoted delimiter，全文字面），需要帶入變數就走 `os.environ` / `sys.argv`，不要靠 shell 內插。無自動 gate 可擋。
 - **`sd` 的替換字串含 shell 變數** → `$job` 會被當成 capture group 展開為空，靜默毀損程式碼且過得了 `bash -n` 與 shellcheck。含 `$` 的替換改用 Edit 或 python 字面替換
 - **macOS 內建 CLI 是凍結的舊版**（Apple 因 GPLv3 停更：bash 3.2、rsync 已換自寫 openrsync、BSD awk 的 `length` 不分 locale 一律數 **bytes**）→ 分兩層應對：互動/運維工具用 brew 新版（rsync 已入 setup-mac-env.sh）；**腳本/tests 只用 POSIX 確定性子集**（量 bytes 明寫 `LC_ALL=C`，讓 BSD/GNU 結果一致），需要 GNU 行為就顯式呼叫 `gawk` 並 `command -v` 檢查——**勿靠 gnubin PATH shadowing**（隱形環境依賴，shellcheck 抓不到、換一台機器就變行為）
 - **`set -o pipefail` 下的 `printf "$big" | grep -q`** → `grep -q` 命中即退出，上游 printf 在**大輸入**下寫不完就吃 `SIGPIPE(141)`，pipefail 讓整條判偽 → 條件式（尤其前面有 `!`）結論反轉。**小輸入不發作**（printf 一次寫得完），故潛伏很久才在某個大檔上突然爆。存在性比對一律改 **herestring**：`grep -q PATTERN <<< "$big"`。兩處實地踩過：krepo `scripts/backup/lib/dest_r2.sh`（零備份保底清單比對）、dotfiles `ship-state.sh`（dossier 簽章與 Session Log 偵測——115KB STATUS.md 被誤報「簽章不符」，該 flag 的處置是「停下、勿當 dossier 改」，等於整份檔案被拒絕處理）。**寫守門測試時命中點必須放輸入前段**——放檔尾則 printf 早已寫完、SIGPIPE 不觸發，斷言形同虛設（實測：檔尾版突變仍全綠）。無自動 gate 可擋，靠這條記憶。

@@ -218,7 +218,7 @@ detect_protection() {
 detect_dossier() {
     local repo="$1" f="$1/STATUS.md"
     if [ ! -f "$f" ]; then
-        echo "dossier: NONE（無 STATUS.md——repo 非 trivial 時列入 Step 4 確認選項建議建立）"
+        echo "dossier: NONE（無 STATUS.md——repo 非 trivial 時在 Step 4 摘要附註建議建立，不出題、不自動建）"
         return
     fi
     # 三個尺寸量測皆為確定性訊號（prose 下沉為腳本——蒸餾判斷歸 model、量測歸腳本）：
@@ -380,19 +380,19 @@ detect_review_residue() {
     local repo="$1" remote="$2" default="$3" toplevel="$4"
     local base_ref mb n_all n_top n_buried top_hash h subj
     if [ "$HAVE_REVIEW_LIB" -ne 1 ]; then
-        echo "review-residue: UNKNOWN（deep-review 的 lib/review-subjects.sh 不可用——勿憑印象比對 subject，改在 Step 4 詢問使用者）"
+        echo "review-residue: UNKNOWN（deep-review 的 lib/review-subjects.sh 不可用——勿憑印象比對 subject，不猜不壓，摘要標明無法判定）"
         return
     fi
     base_ref="${remote:+${remote}/}${default}"
     if ! mb="$(git -C "$repo" merge-base "$base_ref" HEAD 2>/dev/null)"; then
         # 無共同祖先等情況：靜默 return 會讓 Step 4 的判定表少一列可對，model 只能猜——
         # 走與 lib 缺席同一個 UNKNOWN 出口，處置一致。
-        echo "review-residue: UNKNOWN（merge-base ${base_ref}..HEAD 解析失敗——勿憑印象比對 subject，改在 Step 4 詢問使用者）"
+        echo "review-residue: UNKNOWN（merge-base ${base_ref}..HEAD 解析失敗——勿憑印象比對 subject，不猜不壓，摘要標明無法判定）"
         return
     fi
     n_all="$(grep -cE "^(${REVIEW_SUBJECT_ALT})\$" <<< "$(git -C "$repo" log --format=%s "${mb}..HEAD" 2>/dev/null)")" || n_all=0
     if [ "${n_all:-0}" -eq 0 ]; then
-        echo "review-residue: none（無 review 機械 commit，Step 4 不出 squash 題）"
+        echo "review-residue: none（無 review 機械 commit，無事可壓）"
         return
     fi
     # 頂端連續段＝可安全 reset --soft 的範圍（不跨越語意 commit），與 deep-review 的 squash
@@ -405,7 +405,7 @@ detect_review_residue() {
         n_top=$((n_top + 1))
     done <<< "$(git -C "$repo" log --topo-order --format='%H%x09%s' "${mb}..HEAD")"
     n_buried=$(( n_all - n_top ))
-    echo "review-residue: ${n_all} 顆（${base_ref}..HEAD 內 review 機械 commit；Step 4 squash 選項依此出題）"
+    echo "review-residue: ${n_all} 顆（${base_ref}..HEAD 內 review 機械 commit；壓得掉的一律壓，不出題）"
     if [ "$n_top" -gt 0 ]; then
         echo "  top-contiguous: ${n_top} 顆（可安全壓，語意 commit 原樣保留）"
         echo "  squash-cmd: git -C $(shq "$toplevel") reset --soft ${top_hash}   # 此 hash = 使用者語意 commit 的邊界；記下來，Step 4 套用時直接用（本流程後續產生的 commit 會落在 reset 範圍內，**勿重跑重算**）"
@@ -414,6 +414,53 @@ detect_review_residue() {
         echo "  buried: ${n_buried} 顆（被非 review commit 隔開，reset --soft 壓不到——要單獨壓需 rebase -i，本 skill 不走互動式）"
         echo "  squash-all-cmd: git -C $(shq "$toplevel") reset --soft ${mb}   # 整支壓成一顆：**會連語意 commit 一起收**，選項文案須講明後果"
     fi
+}
+
+# review-terminal：上一場 deep-review 以「R5 仍有 blocking → 終止」收場，且那場涵蓋當前 HEAD。
+#
+# 為何 ship 端要讀 deep-review 的 anchor：Step 4 改成「說法關鍵字即授權、不再逐批停下確認」
+# 之後，原本那道 gate 順帶接住的「這批還沒審完」就沒有別人接了。拆掉守衛就得補上它接住的
+# 東西——這不是為沒見過的問題加規則，是為新造出的暴露補償。
+#
+# 鑑別力全靠 ancestry：anchor 存在 .git/ 下、跨 branch 共用，只憑「有沒有 terminal_reason」
+# 會讓一場舊終止把之後每一批都擋住——天天響的訊號等於沒有訊號。terminal_head 必須是當前
+# HEAD 的祖先，才代表那場終止涵蓋的正是現在要送的這批。
+#
+# 三種結局刻意不同：非祖先＝別批的事，靜默；terminal_head 已不存在（歷史重建 / gc）＝無從
+# 鑑別，fail-safe 照報；祖先＝攔。誤攔的代價是一個指令，漏放的代價是未審完的 code 進 main。
+detect_review_terminal() {
+    local repo="$1"
+    local gitdir anchor reason thead tat when note fmt
+    gitdir="$(git -C "$repo" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
+    anchor="${gitdir}/deep-review/anchor"
+    [ -f "$anchor" ] || return 0
+    reason="$(sed -n 's/^terminal_reason=//p' "$anchor" | head -1)"
+    [ -n "$reason" ] || return 0
+
+    thead="$(sed -n 's/^terminal_head=//p' "$anchor" | head -1)"
+    note=""
+    if [ -z "$thead" ]; then
+        note="（anchor 無 terminal_head，無從鑑別涵蓋範圍——fail-safe 照報）"
+    elif ! git -C "$repo" cat-file -e "${thead}^{commit}" 2>/dev/null; then
+        note="（terminal_head ${thead} 已不存在，歷史被重建或 gc——fail-safe 照報）"
+    elif ! git -C "$repo" merge-base --is-ancestor "$thead" HEAD 2>/dev/null; then
+        return 0
+    fi
+
+    # BSD 的 `date -r <epoch>` 與 GNU 的 `date -d @<epoch>` 語意不同且互不相容
+    # （GNU 的 -r 是「參照檔案 mtime」），兩邊都試；都失敗就不印時間，不為此中斷
+    when=""
+    if [ -n "${tat:="$(sed -n 's/^terminal_at=//p' "$anchor" | head -1)"}" ]; then
+        fmt='+%Y-%m-%d %H:%M'
+        when="$(date -r "$tat" "$fmt" 2>/dev/null || date -d "@${tat}" "$fmt" 2>/dev/null)" || when=""
+        [ -n "$when" ] && when="（終止於 ${when}）"
+    fi
+
+    echo "review-terminal: ${reason}${when}${note}"
+    echo "  deep-review 在仍有未修的 blocking findings 時終止，本批未經完整審查。"
+    echo "  A ship keyword authorizes HOW to ship, NEVER whether an unreviewed batch may ship. Do NOT let one override this."
+    echo "  處置二選一（Step 4 停下問使用者）：重跑審查（通過並 squash 後 anchor 自動清除）／使用者明說照送（PR 須記一筆「未完整審查」）"
+    echo "verdict: STOP（review-terminal——處置後再送；其餘偵測輸出照常，供摘要使用）"
 }
 
 # 殘留 branch 衛生：已**完全併入** default 的 local / remote branch。
@@ -437,7 +484,7 @@ detect_stale_branches() {
     [ -z "$locals" ] && [ -z "$remotes_merged" ] && return
     n_local=$([ -n "$locals" ] && printf '%s\n' "$locals" | wc -l | tr -d ' ' || echo 0)
     n_remote=$([ -n "$remotes_merged" ] && printf '%s\n' "$remotes_merged" | wc -l | tr -d ' ' || echo 0)
-    echo "stale-branches: $((n_local + n_remote))（已完全併入 ${default}，內容零損失可清；Step 4 確認選項建議，經同意才刪）"
+    echo "stale-branches: $((n_local + n_remote))（已完全併入 ${default}，內容零損失可清；Step 4 摘要附註列出，NEVER delete on your own）"
     if [ -n "$locals" ]; then
         printf '%s\n' "$locals" | sed 's/^/  local: /'
     fi
@@ -545,6 +592,7 @@ check_repo() {
     # -- 殘留 branch 衛生（已併入 default 的 local/remote branch；無殘留則靜默）--
     detect_stale_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
     detect_review_residue "$repo" "$remote" "$default" "$toplevel"
+    detect_review_terminal "$repo"
 
     # -- 無變更 → docs-only gate（判定需要 session 記憶，交回 model）--
     # 不在此早退：docs-only mode 隨後會產生 docs commit 走 Step 4/5，
