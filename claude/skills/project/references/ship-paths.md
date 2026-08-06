@@ -2,6 +2,8 @@
 
 SKILL.md Step 1/5 的展開。涵蓋 repo 解析、protection 偵測、branch-first 搬移、PR 路徑、直接 push 路徑、PR body 模板、失敗處理。
 
+> **Solo repo is not a lighter process.** One-person projects run the SAME shape as a protected-main team repo: branch → commits → review → PR → explicit merge. Never relax branch-first, the PR default, or the explicit-merge rule because "it's just me", "no one else will read this history", or "there's no protection to enforce it". 理由：repo 會移交、會加入新成員，使用者本人也會成為他人 repo 的成員——流程形狀一旦按「一人份」放寬，這些時刻就沒有秩序可交接，也養不出正式流程的手感。**這條只是防守既有規則被合理化侵蝕，不新增任何步驟。**
+
 > **本檔通則**：下文所有 `origin` 為 canonical remote 的 **stand-in**——非 `origin` repo（如 fork 工作流）一律把 `origin` 讀作解析出的 remote（`git -C <repo> remote`：有 `origin` 用之、否則取第一個；fork 場景 push 目標與 PR/protection 查詢目標可能不同 remote，見 SKILL Step 1 remote 假設）。gh 指令多 repo 時用 `-R <owner/repo>` 或子 shell `cd` 綁定，勿靠 cwd 隱式解析。**host 假設 GitHub.com**（`gh` 走 authenticated default host、compare URL 用 `github.com`）；GHE / 自架需 `GH_HOST` + `host/owner/repo`，不在本 skill 自動處理範圍。
 
 ## 目錄
@@ -12,6 +14,7 @@ SKILL.md Step 1/5 的展開。涵蓋 repo 解析、protection 偵測、branch-fi
 - [Branch-first 與誤 commit 搬移](#branch-first-與誤-commit-搬移)
 - [PR 路徑](#pr-路徑)
 - [直接 push 路徑](#直接-push-路徑)
+- [送出前的 branch 內 squash](#送出前的-branch-內-squashstep-4-選了先-squash-再送出時)
 - [Merge 最後一哩（使用者明說 merge 後）](#merge-最後一哩使用者明說-merge-後)
 - [PR title / body 模板](#pr-title--body-模板)
 - [push 失敗處理](#push-失敗處理)
@@ -149,6 +152,28 @@ git -C <repo> push -u origin <branch>   # 顯式 remote+branch+設 upstream（�
 ```
 仍需 Step 4 使用者確認。push 後無 PR 動作。
 
+## 送出前的 branch 內 squash（Step 4 選了「先 squash 再送出」時）
+
+**只壓 review 迭代痕跡，不動獨立語意的 commit**——與 deep-review 收尾同一條原則（語意 commit 在 PR 裡逐顆可讀，有參照價值）。
+
+```bash
+# 1. 定 reset 目標：從 HEAD 往回跳過連續的 review 迭代 commit，停在第一顆語意 commit（它本身保留）
+git -C <repo> log --oneline <default>..HEAD
+# deep-review 剛跑完且 anchor 還在 → 直接取現成答案，別自己數：
+~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <repo>
+
+# 2. reset 到該 hash，重新 commit（message 描述這批迭代做了什麼，不沿用被保留 commit 的 subject）
+git -C <repo> reset --soft <目標 hash>
+git -C <repo> commit -m "<type>: <描述>"
+
+```
+
+**本節到 commit 為止，不含任何 push。** branch 已 push 過時，覆寫 remote 需要 `--force-with-lease`——**那是 Step 5 的送出動作**，必須等重印摘要、使用者再次確認後才做（`git -C <repo> push --force-with-lease origin <feature-branch>`）。在這裡順手推掉，等於用 gate 沒顯示過的 commit set 重寫 remote，正是 Step 4 硬 gate 要防的事。
+
+- **`--force-with-lease`, NEVER `--force`** —— 前者在 remote 有他人新 commit 時會拒絕，後者直接蓋掉。
+- **NEVER reset past anything already on the default branch** —— 目標一律落在 `<default>..HEAD` 之內。
+- 目標拿不準就**不要壓**：回報現況讓使用者定奪。壓錯要救比不壓貴得多。
+
 ## Merge 最後一哩（使用者明說 merge 後）
 
 **Trigger: the user EXPLICITLY says "merge"** — in any turn after the PR exists. "push" or "open a PR" alone is NOT a merge instruction（沿用全域 CLAUDE.md 語意）。明說即是授權：不要因 skill 通篇的「絕不 merge」而拒絕或反覆再確認，把使用者卡在最後一哩。
@@ -156,22 +181,42 @@ git -C <repo> push -u origin <branch>   # 顯式 remote+branch+設 upstream（�
 **無 PR 可 merge 時**（形狀：使用者先前明說「不用 PR」走了 escape hatch，或全新空 repo 剛建 baseline——總之從頭到尾沒開過 PR）：**do NOT guess what "merge" meant.** 先跑 `ship-state.sh` 取當下狀態，再依狀態停下確認：
 
 - `verdict: BOOTSTRAP` → 使用者要的其實是「把東西弄上去」，走上方〈Bootstrap〉節（首推 baseline），這不是 merge。
-- default 已存在、當前在 feature branch、但無 PR → 問一句選哪條：**開 PR 再 squash-merge**（留紀錄，預設建議），或**只把 branch push 上去**由使用者自行合併。
+- default 已存在、當前在 feature branch、但無 PR → 用 `AskUserQuestion` 給兩個選項：**開 PR 再 merge**（留紀錄，預設建議），或**只把 branch push 上去**由使用者自行合併。
 - feature branch 尚未 push → 先照 Step 4/5 送出，再回到本節。
 - **"merge" is never permission to push the default branch.** 使用者要的是變更進 default，不是繞過流程進 default。
 
-標準收尾序列（PR 已存在）：
+標準收尾序列（PR 已存在；`<merge-flag>` 由下節決定）：
 
 ```bash
-gh pr merge <PR-number|URL> -R "$repo_slug" --squash --delete-branch
+gh pr merge <PR-number|URL> -R "$repo_slug" <merge-flag> --delete-branch
 # --delete-branch 刪 remote branch；在該 repo 工作目錄內執行時，gh 會順帶切回 default 並刪本地 branch
 git -C <repo> switch <default>          # 若 gh 未代切（如以 -R 在 repo 外執行）
-git -C <repo> pull origin <default>     # 同步本地 default——squash 產生新 commit，本地必落後
-git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash 後 -d 會誤判「未 merge」拒刪，
+git -C <repo> pull origin <default>     # 同步本地 default——merge 產生新 commit，本地必落後
+git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash/rebase 後 -d 會誤判「未 merge」拒刪，
                                         # 故先確認 PR 已 MERGED（gh pr view --json state）再 -D
 ```
 
-- **預設 `--squash`**（與 deep-review squash 紀律、Conventional Commits 單語意 commit 一致）。branch 上有多個**獨立語意** commit 值得保留 → merge 前一句話點出、由使用者選 `--merge`，不擅自代選。
+### 壓或不壓（`<merge-flag>` 的決定）
+
+review 迭代痕跡（`fix: address review findings` 這類）該壓，**使用者的語意 commit 不該壓**——它們在 PR 裡逐 commit 可讀、日後可追。GitHub 的 squash-merge 是全有全無、做不到只壓部分，故這是**整個 PR 的一次決定**。
+
+明確關鍵字 → 直接執行，不再問：
+
+| 使用者說 | `<merge-flag>` |
+|---|---|
+| 「merge 壓成一顆」／「squash merge」／「merge squash」 | `--squash` |
+| 「merge 不壓」／「merge 保留 commit」／「merge 別壓」 | `--rebase` |
+| 「merge commit」／「merge 留分支圖」 | `--merge` |
+
+裸「merge」／「合併」（未指定壓不壓）：
+
+- PR 相對 default **只有 1 顆 commit** → `--squash`，直接做（無歧義，不打斷）。
+- **≥2 顆 commit** → 用 `AskUserQuestion` 給三個選項，題目**列出實際 commit 清單**：`保留 commit（rebase，線性歷史）` ／ `保留 commit + merge commit` ／ `壓成一顆`。**A bare "merge" is not an answer to this question** — 使用者若再回一次「merge」，重問，never pick a reading and proceed.
+- PR 內仍殘留 review 樣式 commit（`fix: address review findings`／`wip: pre-review snapshot` 等）→ 在選項文案點出，並補一句可先在 branch 上壓掉它們（`reset --soft` + 重 commit + `push --force-with-lease`）再回來 merge。
+- **選定的 flag 不可用**（`Rebase merging is not allowed` / `Merge commits are not allowed`；或 branch 含 merge commit 而 GitHub 拒絕 rebase——拒絕原因不同、處置相同）→ 停下回報、以剩下可用的方式重新給選項。**NEVER silently fall back to another flag** — 尤其別退回 `--squash`：那會壓掉使用者剛選擇要保留的 commit。
+
+其餘：
+
 - **失敗即停**：required checks 未過、merge conflict、gh 帳號無 write 權限 → 停下回報實際錯誤。**Never `--admin`, never bypass checks, never fall back to pushing default directly.**
 - 多 repo（多個 PR 同輪開出）：先確認使用者的 merge 指令涵蓋哪些 PR，勿一句 merge 就全 merge。
 - merge 完成後回報：merged commit / 本地 default 已同步 / branch 已清。

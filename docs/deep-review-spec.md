@@ -64,8 +64,11 @@
   code-quality 判斷不可由主 agent 做；主 agent 只做 orchestration 與修復。
   需定義「無法分離時」的降級行為（明確告知 + 標註風險，非默默降級）。
 - **H2 迭代紀律**：每輪修復後必須 commit 才進下一輪；最終通過後 squash 成乾淨 commit。
-  squash 的 reset 目標必須恆等於「本次審查的起點」，且 **NEVER a moving ref, NEVER HEAD~N**
+  squash 的 reset 目標必須是**固定 hash**，且 **NEVER a moving ref, NEVER HEAD~N**
   （context 壓縮或跨 session 後仍須正確，見 E1）。
+  > 本條原寫「reset 目標必須恆等於『本次審查的起點』」，**2026-08-06 已推翻**（見附錄與
+  > STATUS.md）：目標改為由審查起點往上掃 subject 求得，只收攏 review 產生的 commit。
+  > 「固定 hash、不用 moving ref」的部分未變，仍是硬需求。
 - **H3 Branch 保護**：autofix 產生的 commit 絕不可落在 default branch 上；
   需在第一個 commit 前處理。NEVER push、NEVER merge（使用者明說才做）。
 - **H4 修復後驗證**：commit 前須跑該 repo 的測試；測試失敗不 commit、不進下一輪。
@@ -129,3 +132,6 @@
 （scope_base 與 squash_anchor 分離、只收攏審查產生的 commits），暴露本規格 H2
 「本次審查的起點」一詞的歧義——2026-07-21 已拍板維持現狀（anchor = 審查範圍起點，
 squash 範圍恆等審查範圍）並在 squash-cmd 加壓掉前警告，理由見 STATUS.md 關鍵決策。
+**2026-08-06 該拍板已被推翻**：改採與此處 clean-room 版相近的設計（squash base 由 subject
+掃描求得、只收攏 review 產生的 commits，語意 commit 保留），故本段記錄的是**當時**的結論，
+勿據此判斷現行實作；現況見 STATUS.md 關鍵決策與 `claude/skills/deep-review/`。

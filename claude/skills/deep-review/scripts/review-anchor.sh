@@ -10,7 +10,8 @@
 # 用法（exit 契約：0=成功；1=verdict STOP（無 anchor/stale/GC/超上限/非 git repo）；2=用法錯誤）：
 #   review-anchor.sh record     --repo <path> --mode <branch-diff|range|working-tree|baseline> \
 #                               [--base <ref>] [--range <X..Y>] [--tests-baseline <pass|fail|skip>]
-#       記錄本次審查起點（squash 的 reset 目標）。base hash 由腳本解析：
+#       記錄本次審查起點（**不等於 squash 的 reset 目標**——後者由 squash-cmd 自此往上掃
+#       subject 求得，見下）。base hash 由腳本解析：
 #         branch-diff  → merge-base <--base ref> HEAD（分叉點）
 #         range        → <X..Y> 的下界（拒三點 range——A...B 為對稱差語意，非錨點）
 #         working-tree → 當下 HEAD
@@ -28,8 +29,11 @@
 #       印出可照抄的 `git reset --soft <固定 hash>`。消費前雙驗：hash 存在（cat-file）
 #       + 是 HEAD 祖先（merge-base --is-ancestor；review 期間 rebase/換 branch 即 STOP）。
 #       stale 判 ancestry 而非 branch 名——record 在 branch-first 切換前後都合法。
-#       squash 範圍含「審查前既有 commits」（subject 非 review 產生的固定樣式）時印
-#       warning: 行——維持「squash 範圍恆等審查範圍」語意不變，僅告知（2026-07-21 拍板）。
+#       reset 目標 = squash base，由 base..HEAD 由新到舊掃 subject 求得（見 cmd_squash_cmd）：
+#       只壓 review 循環機械產生的 commit，使用者的語意 commit 原樣保留並以 squash-preserve:
+#       攤開。**squash 範圍自此 ≠ 審查範圍**（2026-08-06 刻意推翻 2026-07-21「兩者恆等」的
+#       拍板）——審查完整性不受影響：squash 後 branch 上的內容總和仍等於審查範圍，只是
+#       commit 邊界不同；而語意 commit 有參照價值（PR 逐 commit 可讀），不該被收尾壓平。
 #   review-anchor.sh codex-next --repo <path> [--full]
 #       取「下一輪 codex 審查」的 round 與 range，並原子性記錄本輪 HEAD（消滅「忘記
 #       更新 last-codex-HEAD 導致 C2 重審或漏審」的記憶失誤）：
@@ -65,6 +69,12 @@ fmt_epoch() {
 
 # 自 anchor 檔取 key（檔不存在回空）
 aget() { sed -n "s/^$1=//p" "$ANCHOR" 2>/dev/null | head -1; }
+
+# review 循環機械產生的 commit subject —— 定義在 lib/review-subjects.sh（與 review-state.sh
+# 的 round 偵測共用同一份，理由見該檔）。此處只負責加錨點。
+# shellcheck source=lib/review-subjects.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/review-subjects.sh"
+REVIEW_SUBJECT_RE="^(${REVIEW_SUBJECT_ALT})\$"
 
 [ $# -ge 1 ] || die_usage "缺少子指令（record|show|squash-cmd|codex-next|clear）"
 SUB="$1"; shift
@@ -151,6 +161,10 @@ cmd_record() {
         printf 'branch=%s\n'   "$branch"
         printf 'recorded=%s\n' "$(date +%s)"
         printf 'cycle=%s\n'    "$cycle"
+        # head_at_record：目前**無讀者**（原為 squash 既有-commit 判定的時間邊界，2026-08-06
+        # 改純 subject 掃描後移除該用途——它在分岔歷史下自身會誤判，codex C3 F2）。保留是為了
+        # 追溯「這場 review 從哪個 HEAD 起跑」，codex-next 重寫 anchor 時一併保存。
+        # 要新增讀者前先想清楚分岔情境，別直接當可信的祖先邊界用。
         printf 'head_at_record=%s\n' "$(git -C "$REPO" rev-parse HEAD)"
         [ -n "$TB_VAL" ] && printf 'tests_baseline=%s\n' "$TB_VAL"
     } > "$ANCHOR"
@@ -199,51 +213,47 @@ verify_hash_usable() {
 
 cmd_squash_cmd() {
     [ -f "$ANCHOR" ] || die_stop "無 anchor（先跑 record）"
-    local base_hash n
+    local base_hash
     base_hash="$(aget base)"
     echo "anchor: ${base_hash}（mode=$(aget mode), branch 當時=$(aget branch), recorded $(fmt_epoch "$(aget recorded)")）"
     verify_hash_usable "$base_hash" "anchor hash"
-    n="$(git -C "$REPO" rev-list --count "${base_hash}..HEAD")"
-    echo "squash-range: ${base_hash}..HEAD（${n} commit）"
+    # squash base：base..HEAD 由新到舊掃，跳過 review 樣式 commit，停在第一顆真語意 commit
+    # （該顆本身保留、成為 reset 目標）。全為樣式 → 退回 anchor base（下界保護，也是
+    # working-tree 模式的原行為：WIP snapshot + fix commits 全壓成一顆）。
+    # 掃描碰到語意 commit 就停、不跨越——review commit 被他線 commit 隔開時保守少壓，
+    # 未納入的那幾顆以 squash-note: 攤開，由主 agent 轉述給使用者處置。
+    # 撞名取捨：使用者手寫的 commit 若 subject 恰為那四個機械字串之一，會被當成 review 產生
+    # 而壓掉。人工撞名機率極低，且後果等同舊實作（舊版同樣全壓、只多印一行 warning），
+    # 故不加 head_at_record 之類的補償判定——它在分岔歷史下自身就會誤判（codex C3 F2）。
+    local squash_base="$base_hash" h s n n_pre n_note
+    while IFS=$'\t' read -r h s; do
+        [ -n "$h" ] || continue
+        if grep -Eq "$REVIEW_SUBJECT_RE" <<< "$s"; then continue; fi
+        squash_base="$h"
+        break
+    done <<< "$(git -C "$REPO" log --topo-order --format='%H%x09%s' "${base_hash}..HEAD")"
+
+    n="$(git -C "$REPO" rev-list --count "${squash_base}..HEAD")"
+    echo "squash-range: ${squash_base}..HEAD（${n} commit）"
     if [ "$n" -eq 0 ]; then
-        echo "verdict: WARNING — 無 commit 可 squash（reset 到 HEAD 無作用，照印無害）"
+        # 兩種來源：branch 上真的沒有新 commit，或 HEAD 本身即語意 commit（掃描停在原地）。
+        # 後者下方仍可能印 squash-note: 指出有 review commit 存在——兩行不衝突：確實沒有
+        # 「可安全壓的範圍」，被隔開的那幾顆要不要併由使用者決定。
+        echo "verdict: WARNING — 無 commit 可 squash（squash base 已是 HEAD，reset 無作用；下方若有 squash-note: 表示有 review commit 被語意 commit 隔在下層）"
     else
-        git -C "$REPO" log --oneline "${base_hash}..HEAD" | sed 's/^/  /'
-        # 審查前既有 commits：兩種判定取**聯集**，各補對方的盲點——
-        #   (a) 範圍：record 當時的 HEAD 之前的一律算既有。抓得到「subject 恰好撞上 review
-        #       樣式」的殘留(上一場 review 的 fix commit)——中性化後名稱固定通用，純 subject
-        #       判定必然誤放行(codex C2 F3)。
-        #   (b) subject：head_at_record 之後、但 subject 非 review 固定樣式者。抓得到 review
-        #       期間混入的他線 commit——範圍判定看不到它。
-        # 舊 anchor 無 head_at_record → 退回純 subject 判定(向後相容)。
-        # 現行格式不編輪號(中性化)；舊 R{N}/codex R{N} 樣式一併認，否則歷史 branch 誤報。
-        # squash 語意不變、僅告知——SKILL.md 要求主 agent 在 reset 前向使用者轉述此行。
-        local n_pre n_before har subj_range
-        har="$(aget head_at_record)"
-        # 範圍判定只有在 base ≤ har ≤ HEAD 的線性祖先鏈下才成立——分岔（record 後 rebase／
-        # 切到含同一 base 的 sibling branch）時，base..har 與 har..HEAD 相加不等於 base..HEAD，
-        # 會把不會被 reset 壓掉的舊 commit 算進警告（codex C3 F2）。驗不過就退回純 subject。
-        if [ -n "$har" ] \
-            && git -C "$REPO" cat-file -e "${har}^{commit}" 2>/dev/null \
-            && git -C "$REPO" merge-base --is-ancestor "$har" HEAD 2>/dev/null \
-            && git -C "$REPO" merge-base --is-ancestor "$base_hash" "$har" 2>/dev/null; then
-            n_before="$(git -C "$REPO" rev-list --count "${base_hash}..${har}")" || n_before=0
-            subj_range="${har}..HEAD"
-        else
-            if [ -n "$har" ]; then
-                echo "note: head_at_record 非 base..HEAD 的線性祖先鏈（rebase／換 branch？）——既有-commit 判定退回純 subject"
-            fi
-            n_before=0
-            subj_range="${base_hash}..HEAD"
-        fi
-        n_pre="$(git -C "$REPO" log --format=%s "$subj_range" \
-            | grep -Evc '^(fix: address (review|external review) findings|fix: R[0-9]+ review fixes|fix: codex [RC][0-9]+ fixes|wip: pre-review snapshot)$')" || true
-        n_pre=$(( n_before + ${n_pre:-0} ))
-        if [ "${n_pre:-0}" -gt 0 ]; then
-            echo "warning: 將壓掉 ${n_pre} 顆審查前既有 commit（清單見上，非本次 review 產生）"
+        git -C "$REPO" log --oneline "${squash_base}..HEAD" | sed 's/^/  /'
+    fi
+    if [ "$squash_base" != "$base_hash" ]; then
+        n_pre="$(git -C "$REPO" rev-list --count "${base_hash}..${squash_base}")"
+        echo "squash-preserve: ${n_pre} 顆 commit 保留（不納入 squash；若其中含 review 樣式者，下行 squash-note: 會點出）"
+        git -C "$REPO" log --oneline "${base_hash}..${squash_base}" | sed 's/^/  /'
+        # 大輸入下 `git log | grep` 會讓 grep 早退觸發 SIGPIPE + pipefail 判偽 → 用 herestring
+        n_note="$(grep -Ec "$REVIEW_SUBJECT_RE" <<< "$(git -C "$REPO" log --format=%s "${base_hash}..${squash_base}")")" || true
+        if [ "${n_note:-0}" -gt 0 ]; then
+            echo "squash-note: 保留範圍內仍有 ${n_note} 顆 review 樣式 commit（被非 review commit 隔開，未納入 squash）"
         fi
     fi
-    echo "squash-cmd: git -C ${REPO} reset --soft ${base_hash}"
+    echo "squash-cmd: git -C ${REPO} reset --soft ${squash_base}"
 }
 
 cmd_codex_next() {

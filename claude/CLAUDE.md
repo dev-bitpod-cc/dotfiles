@@ -13,7 +13,8 @@
 ## PR / Git
 
 - **NEVER merge on your own** — only when the user explicitly says merge / bypass merge. "push" or "open a PR" alone does NOT include merge.
-- 使用者明說 merge 後的標準收尾：merge PR（預設 squash）→ 清 remote/本地 branch → 同步本地 default（序列見 `~/.claude/skills/project/references/ship-paths.md`「Merge 最後一哩」）。
+- 使用者明說 merge 後的標準收尾：merge PR → 清 remote/本地 branch → 同步本地 default。**壓不壓由關鍵字決定**（「merge 壓成一顆」→ `--squash`；「merge 不壓／保留 commit」→ `--rebase`），裸「merge」且 PR ≥2 顆 commit → 給選項問，**a bare "merge" is never an answer to that question**。關鍵字表與完整序列見 `~/.claude/skills/project/references/ship-paths.md`「Merge 最後一哩」（唯一權威，勿在此重述）。
+- **Solo repo is not a lighter process** — "It's just me" / "no protection anyway" is never a reason to relax branch-first, the PR default, or explicit merge（理由與完整條文見 `ship-paths.md` 檔首，勿在此重述）。
 - **NEVER push on your own** — after finishing an issue implementation or review fixes, commit and STOP; wait for the user's next instruction.
 - **NEVER `git add -A` / `git add .` / `commit -a`**——顯式路徑 stage，且**顯式路徑仍是整檔**：同一檔混了他人 session 的區段時改用 `add -p` 只 stage 驗過的 hunk（或把他人區段移出、commit 完最後放回），commit 前看 `git diff --cached`。三次誤收皆在磁碟上恆綠，**只有乾淨 clone 看得見**（`git clone --no-local <repo> <tmpdir>`）——人工看 staged diff 已實證失敗三次，不能取代它。
   - 唯一例外：`/deep-review` 的 **WIP snapshot**（`deep-review/SKILL.md` 明列，本地暫存、終態會 squash），它要的正是「使用者原始變更的完整快照」。**但執行前須確認 working tree 全屬本次工作**——混了他人 in-flight 變更就停下問，別指望 snapshot 之後再拆（squash 終態一樣會把它送進 PR）。
@@ -27,7 +28,7 @@ When the user pastes third-party review findings, read the source code and verif
 
 載入 `deep-review` skill，執行方式一律依其「**Codex 呼叫協議**」節（唯一權威——呼叫指令、prompt 限制、exit 契約失敗處理都以該節為準，勿憑記憶重組、本檔不重述）；**不要**呼叫 `codex:rescue`（plugin broker 路徑會靜默卡死，理由見該節）。本觸發的專屬規則：
 
-- repo 路徑 + commit range 取最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊，range 直接沿用其 `base..head`（base 已錨定）；即使變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。報告未記錄 base（如新 session）→ 先跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh show --repo <repo>`（anchor 檔在即得錨定 base，跨 session 有效）；anchor 也無，才回退用 `HEAD~1..HEAD`。
+- repo 路徑 + commit range 取最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊，range 直接沿用其 `base..head`（base 已錨定）；即使變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。報告未記錄 base（如新 session）→ 先跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh show --repo <repo>`（anchor 檔在即得錨定 base，跨 session 有效）；anchor 也無 → 取 `git -C <repo> merge-base origin/<default> HEAD` 當下界審整條 branch——squash 只壓 review 產生的 commit、**語意 commit 會留在 branch 上**，故 branch 全長才等於審查範圍；**`HEAD~1..HEAD` 僅在確認 branch 只有一顆 commit 時成立**，否則正是本條開頭要防的漏審。
 - 收到 findings 後的處理判準：**最近一次 `/deep-review` 帶 `autofix`** → 驗證後自動修復並 commit；否則、或無法確定當時是否帶 autofix（如新 session）→ 列出 findings 等使用者決定。
 
 ---

@@ -39,7 +39,7 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, Agent
 | working-tree | `--mode working-tree` |
 | baseline（全庫 / path 引數，見 B1–B4） | `--mode baseline` |
 
-此錨點是 Step 5 squash 的 reset 目標，且與 autocodex commit range、第三方審查資訊**同一錨點**，故 squash 範圍恆等於審查範圍。**Always squash to the recorded anchor (via `squash-cmd` output), NEVER a moving ref, NEVER HEAD~N.**
+此錨點是審查範圍的起點，且與 autocodex commit range、第三方審查資訊**同一錨點**。Step 5 的 reset 目標則由 `squash-cmd` 從它往上算出——**只壓 review 循環機械產生的 commit，branch 上既有的語意 commit 原樣保留**（故 squash 範圍不等於審查範圍；squash 後 branch 內容總和仍等於審查範圍，只是 commit 邊界不同，理由見腳本檔頭）。**Always take the reset target from the `squash-cmd:` line, NEVER the anchor hash directly, NEVER a moving ref, NEVER HEAD~N.**
 
 **測試 baseline（record 時一併取得）**：record 前先跑一次 `~/.claude/skills/deep-review/scripts/verify-tests.sh <repo>` 取 baseline（exit 0→`pass`、1→`fail`、3→`skip`），以 `--tests-baseline <值>` 附在 record 引數記入錨點——「修復後驗證」據此分流（見該節）。baseline 為 `fail` → 當下明確告知使用者：repo 測試在審查前已紅，本次 autofix 的 commit 將不經測試驗證。
 
@@ -149,7 +149,7 @@ Round N review — 通過
 - 有 commit → working tree clean，Step 1 自動使用 `git diff <base>...HEAD` 審查完整 branch 狀態
 - Round 偵測依賴 `git log`，不 commit 則無法正確偵測輪次
 
-**Commit message 不編輪號**（一律 `fix: address review findings`，codex 階段 `fix: address external review findings`）。`fix: R4 review fixes` 這種寫法會讓 reviewer 跑一次 `git log` 就反推出**剩餘輪數**——那是 Step 4 花力氣關掉的洩漏管道，不該從 commit history 漏回去。**但擋不掉「已改過幾次」**（commit 數量本身即訊號），該殘留見 Step 4 的說明。Round 偵測不受影響：`review-state.sh` 數的是 `fix|refactor` 前綴的 commit 數，不解析輪號。
+**Commit message 不編輪號**（一律 `fix: address review findings`，codex 階段 `fix: address external review findings`）。`fix: R4 review fixes` 這種寫法會讓 reviewer 跑一次 `git log` 就反推出**剩餘輪數**——那是 Step 4 花力氣關掉的洩漏管道，不該從 commit history 漏回去。**但擋不掉「已改過幾次」**（commit 數量本身即訊號），該殘留見 Step 4 的說明。Round 偵測不受影響：`review-state.sh` 數的是**這組固定 subject 的完整比對**（`lib/review-subjects.sh` 單一來源），不解析輪號——也因此**偏離這組字面就數不到**，中性化 message 一律照抄、勿自行改寫。
 
 ## 執行流程
 
@@ -169,7 +169,7 @@ Deep Review 進度：
 - [ ] Step 6：Codex 第三方循環（僅 autocodex）
         進階段前先跑一次 codex runtime preflight check（非 0 只警告不阻擋）
         每輪重記一行：C{N} 審查 → 驗證 → 修復 → commit（上限 C3）
-- [ ] 通過後：squash 成乾淨 commit（`squash-cmd` 取指令 → reset → commit → `clear`；語意 message + runtime Co-Authored-By trailer；commit 即停，等使用者指示是否 push）
+- [ ] 通過後：squash 成乾淨 commit（`squash-cmd` 取指令 → reset → commit → `clear`；**`clear` 無條件跑，即使 WARNING 跳過了 reset/commit**；語意 message + runtime Co-Authored-By trailer；`squash-preserve:` / `squash-note:` 有印就轉述進報告；commit 即停，等使用者指示是否 push）
 ```
 
 ### 0. 識別審查範圍（多 Repo 偵測）
@@ -229,10 +229,10 @@ B4. 其餘（working-tree diff、<base>...HEAD branch diff、commit range、HEAD
 
 ### 2. 偵測迭代輪次
 
-取腳本 `round:` 輸出（依 `<base>..HEAD` 內 fix/refactor commit 數推斷；`ahead:` 清單即 branch commit 歷史）。
+取腳本 `round:` 輸出（依 `<base>..HEAD` **頂端連續**的 review 機械修復 commit 數推斷——使用者自己的 `fix:`/`refactor:` 會中斷連續段、更早場次被語意 commit 隔開的殘留也不計，否則兩者都會灌水吃掉 R5 預算；**與 squash 掃描是刻意不同的兩套集合、邊界也不同**——`wip: pre-review snapshot` 會中斷 round 計數（它不是一輪修復）卻會被 squash 收攏，故 `feat → wip → fix` 下 round 停在 wip、squash 停在 feat；勿把兩者重新耦合；`ahead:` 清單即 branch commit 歷史）。
 
-- 無 fix/refactor commit → **Round 1**
-- 有初始 commit + 後續 fix/refactor commit → **Round 2+**（依 fix commit 數推斷）
+- 無 review 修復 commit → **Round 1**（使用者自己的 `fix:`/`refactor:` 不算）
+- 有 review 修復 commit → **Round 2+**（依其顆數推斷）
 - 整檔審查模式（無 diff）→ **Round 1**
 - **baseline 模式（base = empty-tree / 全庫稽核）→ 一律 Round 1**，不以 `git log` 歷史推斷輪次（empty-tree base 會列出 repo 全部 commit，歷史上的 fix/refactor commit 不代表本次 review 的迭代輪次）；下方「銜接檢查」同樣不適用
 
@@ -350,7 +350,7 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 - 問題**按根因分組**，不按嚴重度排列，讓 fixer 一次解決共因問題
 - 修復計畫由 subagent 根據具體問題產出
 - 修完後先 commit（如 `fix: address review findings`），再執行下一輪 `/deep-review`
-- 最終通過後，主 agent squash 所有 review fix commits：執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，照 `squash-cmd:` 輸出照抄 reset（腳本拒給——`verdict: STOP`——時停下交使用者，勿自行湊 hash；腳本印 `warning:`（將壓掉審查前既有 commits）時，reset 前須向使用者轉述該行——autofix 通過報告中列出即可，不必中斷等待），重新 commit 後跑 `clear`。message 採原始功能變更的語意（不是 `fix: review fixes`），遵循專案 Conventional Commits，並附 `Co-Authored-By` trailer（以 runtime system prompt 的 Git 區塊為權威，勿在 skill 寫死 model 名稱/版本）
+- 最終通過後，主 agent squash 掉 squash base 之上的 review fix commits：執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，照 `squash-cmd:` 輸出照抄 reset（腳本拒給——`verdict: STOP`——時停下交使用者，勿自行湊 hash），重新 commit 後跑 `clear`。腳本另印兩行訊號，**有印就在通過報告轉述、不必中斷等待**：`squash-preserve:`（保留下來的既有語意 commit，它們會與新 squash commit 並存在 branch/PR 上）、`squash-note:`（被非 review commit 隔開、因此未納入本次 squash 的 review 樣式 commit——需要併掉得由使用者決定，勿自行擴大 reset 範圍）。**message 依 `squash-preserve:` 分流**（reset 目標一移動，「描述整個功能」就會失真）：無 `squash-preserve:`（squash base == anchor base，新 commit 即完整變更）→ 採原始功能變更的語意（不是 `fix: review fixes`）；**有 `squash-preserve:`** → 新 commit 的內容只是「相對保留 commit 的增量」，message 就描述那個增量（如 `fix: 修正 X 的邊界處理`），**NEVER reuse the preserved commit's subject** —— 寫成同一句功能語意會讓 PR 上出現兩顆同名 commit、其中一顆沒有該功能的內容。兩種情形都遵循專案 Conventional Commits，並附 `Co-Authored-By` trailer（以 runtime system prompt 的 Git 區塊為權威，勿在 skill 寫死 model 名稱/版本）。**`verdict: WARNING`（無 commit 可 squash）時跳過 reset 與 commit，但 `clear` 照跑**——沒有可壓的東西（`git commit` 會因無 staged 內容而失敗），但審查已完成，anchor 不清會讓下一場 review 被誤判成續跑（`cycle: 2+`）、也會讓 `show` 交出過期的審查起點
 - **通過報告必須附「第三方審查資訊」**：列出每個 repo 的 commit 範圍（`base..head`，base = anchor 記錄的審查起點，跨 session 可用 `review-anchor.sh show` 恢復）和變更摘要，方便使用者轉交第三方 reviewer。R5 終止報告不需要此區塊（代碼尚未就緒）
 
 ### 6. Codex 第三方審查循環（autocodex 模式）
@@ -375,6 +375,6 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 
 - codex 階段主 agent 同時扮演「驗證者」和「修復者」，不再委派 subagent（因為 codex 本身就是獨立第三方）
 - 多 repo 時逐 repo 處理，每個 repo 獨立計算輪次上限
-- 最終 squash 範圍涵蓋所有 review fix commits（主 agent 審查階段 + codex 階段）
+- 最終 squash 範圍涵蓋 squash base 之上的 review fix commits（主 agent 審查階段 + codex 階段）；被語意 commit 隔在下層而未納入者由 `squash-note:` 列出，**要不要併由使用者決定，勿自行擴大 reset 範圍**
 - 輸出報告參考 `references/report-templates.md` 中的 codex 通過 / codex 終止 / codex blocked 模板
 - codex 執行失敗（救援階梯走完仍無報告）→ 走 **blocked 模板**，不是終止模板：終止＝審完但沒收斂，blocked＝根本沒審成，兩者不可混用

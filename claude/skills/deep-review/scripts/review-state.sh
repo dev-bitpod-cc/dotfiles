@@ -6,7 +6,7 @@
 #   review-state.sh <repo-path>...
 #
 # 逐 repo 輸出：branch / base（含偵測途徑）/ working-tree（porcelain 含 untracked）/
-# ahead（<base>..HEAD）/ scope-priority 建議 / round（fix/refactor commit 推斷）/
+# ahead（<base>..HEAD）/ scope-priority 建議 / round（review 機械修復 commit 推斷）/
 # hashes（HEAD、merge-base——squash base 表的候選值）/ stat（建議 scope 的 diff 概覽）。
 #
 # exit code：0 = 全部 repo 偵測完成；1 = 有 repo 無效；2 = 用法錯誤
@@ -18,6 +18,10 @@
 # - priority 4 的範圍選擇是使用者的事——腳本印 MUST ASK USER，不代選。
 
 set -uo pipefail
+
+# round 偵測要認得哪些 subject 屬 review 循環——與 review-anchor.sh 的 squash 掃描共用同一份
+# shellcheck source=lib/review-subjects.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/review-subjects.sh"
 
 MAX_LIST=20  # 每類清單最多列出的行數；只影響顯示，計數仍為完整值
 
@@ -160,10 +164,22 @@ check_repo() {
     fi
 
     # -- round 偵測（baseline 模式一律 Round 1，由 model 依模式覆蓋）--
-    local n_fix=0
+    local n_fix=0 subj
     if [ -n "$base" ] && [ "$n_ahead" -gt 0 ]; then
-        n_fix="$(printf '%s\n' "$ahead" | grep -cE ' (fix|refactor)(\(|:|!)' )" || n_fix=0
-        echo "round: $((n_fix + 1))（$base..HEAD 內 fix/refactor commit ×${n_fix}；baseline 模式一律視為 Round 1）"
+        # 從 HEAD 往回數**連續**的 review 機械修復 commit，遇到任何其他 subject 即停。
+        # 為何是連續段而非整個範圍：**被語意 commit 隔開的上一場殘留**（squash-note 情境）
+        # 不會灌進新一場的輪次、白吃 R5 修復額度。
+        # 與 squash 掃描是**刻意不同的兩套集合，邊界也不同**，勿重新耦合：
+        #   round  用 REVIEW_FIX_ALT      → `wip:` 會**中斷**計數（它不是一輪修復）
+        #   squash 用 REVIEW_SUBJECT_ALT  → `wip:` 會被**收攏**（它要跟 fix 一起壓掉）
+        # 故 `feat → wip → fix` 下 round 停在 wip、squash 越過 wip 停在 feat（實證）。
+        # 取 %s 另跑一次而非解析上面的 --oneline：後者在使用者設了 log.decorate 時會多出
+        # `(HEAD -> x)`，行尾錨定就失效；herestring 避開 pipefail + SIGPIPE 早退。
+        while IFS= read -r subj; do
+            grep -Eq "^(${REVIEW_FIX_ALT})\$" <<< "$subj" || break
+            n_fix=$((n_fix + 1))
+        done <<< "$(git -C "$repo" log --format=%s "$base..HEAD" 2>/dev/null)"
+        echo "round: $((n_fix + 1))（$base..HEAD 頂端連續 review 修復 commit ×${n_fix}；使用者自己的 fix:/refactor: 與更早場次的殘留皆不計；baseline 模式一律視為 Round 1）"
     else
         echo "round: 1"
     fi

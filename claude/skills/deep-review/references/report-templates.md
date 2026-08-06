@@ -126,8 +126,8 @@
 
 ### Commit 建議
 {若有多筆 review fix commit（如 fix: address review findings）}
-主 agent 執行 squash：跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，把 `squash-cmd:` 整行照抄執行（腳本已解析出固定 hash 並驗過存在性與祖先關係；回 `verdict: STOP` 就停下交使用者，勿自行湊 hash、勿用會移動的 ref）。reset 後重新 commit，message 採原始功能變更的語意（如 `feat: 新增 X 功能`），不用 `fix: address review findings`。格式遵循專案 Conventional Commits 慣例。
-{squash-cmd 印 `warning:`（將壓掉審查前既有 commits）時，在此轉述該行讓使用者知悉}
+主 agent 執行 squash：跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，把 `squash-cmd:` 整行照抄執行（腳本已解析出固定 hash 並驗過存在性與祖先關係；回 `verdict: STOP` 就停下交使用者，勿自行湊 hash、勿用會移動的 ref）。reset 後重新 commit。**message 依 `squash-preserve:` 分流**：無 preserve → 採原始功能變更的語意（如 `feat: 新增 X 功能`）；有 preserve → 新 commit 只是相對保留 commit 的增量，message 描述該增量（如 `fix: 修正 X 的邊界處理`），**不得沿用被保留 commit 的 subject**。兩者都不用 `fix: address review findings`，格式遵循專案 Conventional Commits 慣例。`verdict: WARNING`（無 commit 可 squash）→ 跳過 reset 與 commit，**但仍要跑 `clear`**（審查已完成，anchor 殘留會讓下一場被誤判成續跑）。
+{squash-cmd 印 `squash-preserve:`（保留下來、將與新 commit 並存的既有語意 commit）或 `squash-note:`（被隔開、未納入本次 squash 的 review 樣式 commit）時，在此轉述該行讓使用者知悉}
 {若只有一筆 commit + clean working tree}
 可以直接 push。
 
@@ -182,7 +182,7 @@
 目前 branch 上有 {N} 個 review fix commit（`fix: address review findings`）。
 
 {根據剩餘問題的性質選擇建議}
-- 若建議重寫 → 執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，把 `squash-cmd:` 整行照抄執行（`reset --soft` 到錨點）回到起點，帶著所有變更重新設計 {區塊}，再重新 commit。**腳本回 `verdict: STOP` 就停下交使用者，勿自行湊 hash**——它擋的是 hash 已 GC 或已非 HEAD 祖先（review 期間 rebase／換 branch）的情況，硬 reset 會把不屬於本次審查的 commits 一併攤進 index
+- 若建議重寫 → 執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，把 `squash-cmd:` 整行照抄執行（`reset --soft` 到腳本算出的 squash base——**它通常不等於上方 `anchor:` 那行的 hash**，兩者不同是正常的，見 SKILL.md 錨點段）把 review 產生的修補收回 index，帶著它們重新設計 {區塊}，再重新 commit。**保留下來的語意 commit 仍在 branch 上**（reset 不會回到「什麼都沒做」的起點）。**腳本回 `verdict: STOP` 就停下交使用者，勿自行湊 hash**——它擋的是 hash 已 GC 或已非 HEAD 祖先（review 期間 rebase／換 branch）的情況，硬 reset 會把不屬於本次審查的 commits 一併攤進 index
 - 若可繼續修 → 保留現有 commit，在此基礎上繼續人工修復，完成後 squash（同樣照 `squash-cmd` 輸出）
 
 ### 續跑分流
@@ -194,7 +194,7 @@
 | 剩餘問題的樣子 | 建議行動 |
 |---|---|
 | 有界、具體、彼此無關 | 人工修完再跑一次（變更集已不同，輪次重新計數合理）。**同一 reviewer 已跑滿五輪時，換視角常比再跑一輪划算**——剩下的是局部行為問題（補一個值、加一條守門）不代表該由同一雙眼睛再看：可人工修完後跑 `autocodex`，或照最後一列的 (b) 直接把 `base..head` 交外部 reviewer |
-| 結構性：每輪修 A 就冒出 B | 照 `review-anchor.sh squash-cmd` 輸出 reset 回錨點（STOP 就停，勿自湊 hash），帶著變更重新設計 {區塊}，別在補丁上疊補丁 |
+| 結構性：每輪修 A 就冒出 B | 照 `review-anchor.sh squash-cmd` 輸出 reset（目標取 `squash-cmd:` 行，**不是 `anchor:` 行**；STOP 就停，勿自湊 hash），帶著變更重新設計 {區塊}，別在補丁上疊補丁 |
 | 收斂震盪：同一區塊來回、方向反覆 | 由使用者拍板固定一個方向再跑；不拍板則再跑幾輪結果相同 |
 | 只剩深井／建議等級 | 判定為通過（走通過模板 + Non-blocking follow-up），不應進入此終止報告 |
 | 難以判定，且 `cycle` ≥ 2 | **換視角而非換輪次**。注意：**此刻直接跑 `/deep-review autocodex` 到不了 codex 階段**——SKILL.md Step 6 只在主 agent 審查通過後才進入，而現在的前提就是還有 blocking findings。兩條可行路徑：(a) 人工修掉剩餘 blocking → 主審通過後才跑 `autocodex`；(b) 不經 deep-review，直接把 `base..head`（取 `review-anchor.sh show`）交給外部 reviewer |
@@ -232,7 +232,7 @@
 - [FP] {finding 描述} — {為何是 false positive}
 
 ### Commit 建議
-{與通過報告相同——squash 所有 review fix commits（主 agent 審查階段 + codex 階段），message 採原始功能語意}
+{與通過報告相同——squash base 之上的 review fix commits（主 agent 審查階段 + codex 階段）壓成一顆，message 依 `squash-preserve:` 分流（無 preserve → 原始功能語意；有 preserve → 描述相對保留 commit 的增量）；`squash-note:` 列出的未納入者不自行擴大 reset}
 
 主 agent 審查 + Codex 第三方審查皆通過，可以提交了。
 ```

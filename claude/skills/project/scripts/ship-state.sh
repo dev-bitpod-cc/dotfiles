@@ -212,7 +212,7 @@ detect_protection() {
 detect_dossier() {
     local repo="$1" f="$1/STATUS.md"
     if [ ! -f "$f" ]; then
-        echo "dossier: NONE（無 STATUS.md——repo 非 trivial 時列入 Step 4 附註建議建立）"
+        echo "dossier: NONE（無 STATUS.md——repo 非 trivial 時列入 Step 4 確認選項建議建立）"
         return
     fi
     # 三個尺寸量測皆為確定性訊號（prose 下沉為腳本——蒸餾判斷歸 model、量測歸腳本）：
@@ -339,7 +339,7 @@ detect_dossier() {
     if [ -n "$st_ct" ] && [ -n "$head_ct" ]; then
         lag=$(( (head_ct - st_ct) / 86400 ))
         if [ "$lag" -gt "$DOSSIER_STALE_DAYS" ]; then
-            echo "dossier-flag: 最後 commit 落後 repo 活動 ${lag} 天 > ${DOSSIER_STALE_DAYS}（過期——列入 Step 4 附註提醒、本次重點補齊）"
+            echo "dossier-flag: 最後 commit 落後 repo 活動 ${lag} 天 > ${DOSSIER_STALE_DAYS}（過期——列入 Step 4 附註告知、本次重點補齊）"
         fi
     fi
 }
@@ -365,7 +365,7 @@ detect_stale_branches() {
     [ -z "$locals" ] && [ -z "$remotes_merged" ] && return
     n_local=$([ -n "$locals" ] && printf '%s\n' "$locals" | wc -l | tr -d ' ' || echo 0)
     n_remote=$([ -n "$remotes_merged" ] && printf '%s\n' "$remotes_merged" | wc -l | tr -d ' ' || echo 0)
-    echo "stale-branches: $((n_local + n_remote))（已完全併入 ${default}，內容零損失可清；Step 4 附註建議，經同意才刪）"
+    echo "stale-branches: $((n_local + n_remote))（已完全併入 ${default}，內容零損失可清；Step 4 確認選項建議，經同意才刪）"
     if [ -n "$locals" ]; then
         printf '%s\n' "$locals" | sed 's/^/  local: /'
     fi

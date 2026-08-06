@@ -63,9 +63,9 @@
   "expected_behavior": [
     "執行 review → fix → commit 循環",
     "commit 前偵測到 pyproject.toml，跑 uv run pytest 驗證修復未引入 regression",
-    "每輪修復後以 fix: R{N} review fixes commit，再進入下一輪",
+    "每輪修復後以中性 message commit（`fix: address review findings`，**不編輪號**——編了等於把剩餘 budget 送進 reviewer 的 system prompt），再進入下一輪",
     "下一輪重新收集 diff（git diff base...HEAD），不沿用舊 diff",
-    "通過後 squash 成單一語意 commit（非 fix: review fixes），且 squash 後 commit 即停等使用者"
+    "通過後把 review fix commits squash 成一顆語意 commit（非 fix: review fixes）、branch 上既有的語意 commit 保留，且 squash 後 commit 即停等使用者"
   ]
 }
 ```
@@ -164,11 +164,12 @@
   "query": "/deep-review autofix",
   "setup": "三子情境各跑一次：(a) commit-range /deep-review autofix HEAD~3..HEAD，range 下界之前另有不相關 commit；(b) baseline（base=empty-tree，全庫稽核）；(c) review 期間 origin/<default> 前進（模擬他人 push）",
   "expected_behavior": [
-    "進修復循環前、第一個 fix commit 之前記下 squash base hash（與 branch-first 是否觸發解耦，無條件記錄）",
-    "(a) commit-range：squash base = range 下界，squash 不吃到 range 下界之前的不相關 commit（不 over-squash）",
-    "(b) baseline：squash base = 進入時 HEAD（pre-fix HEAD），不嘗試 reset 到 empty-tree（empty-tree 非 commit，reset 會 fatal）",
-    "(c) 最終 squash 用記下的固定 hash，NOT origin/<default> 等會移動的 ref——default 前進不改變 squash 目標，squash 範圍仍等於審查範圍",
-    "squash 後 commit message 採原始功能語意，附 runtime 指定的 Co-Authored-By trailer（skill 不寫死 model 版本）"
+    "進修復循環前、第一個 fix commit 之前記下 anchor base hash（與 branch-first 是否觸發解耦，無條件記錄；squash base 是收尾時由 squash-cmd 從它往上算出的另一個 hash）",
+    "(a) commit-range：reset 目標取 squash-cmd 輸出，絕不吃到 range 下界之前的不相關 commit（不 over-squash）",
+    "(b) baseline：anchor base = 進入時 HEAD（pre-fix HEAD），不嘗試 reset 到 empty-tree（empty-tree 非 commit，reset 會 fatal）",
+    "(c) 最終 squash 用 squash-cmd 印出的固定 hash，NOT origin/<default> 等會移動的 ref——default 前進不改變 squash 目標",
+    "只壓 review 循環產生的 commit：branch 上既有的語意 commit 原樣保留，squash-preserve: / squash-note: 有印就在報告轉述",
+    "squash 後 commit message 依 squash-preserve 分流（無 preserve → 原始功能語意；有 preserve → 描述相對保留 commit 的增量、不沿用其 subject），附 runtime 指定的 Co-Authored-By trailer（skill 不寫死 model 版本）"
   ]
 }
 ```
