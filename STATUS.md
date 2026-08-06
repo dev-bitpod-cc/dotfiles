@@ -6,84 +6,149 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-05)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-06)
 
 ---
 
 ## 進行中
 
-(暫無)
+### todo:GitHub 多身分收斂——讓標準 URL 直接可用(2026-08-06 記錄,未開工)
+
+**Context**:krepo 拆出 `krepo-common` 後,依賴要寫成 git URL。原本沿用本家的
+`git@github-work:...`,但 **`github-work` 是本機 SSH alias、不是真實主機名**——寫進 repo
+等於要求每個消費者的機器都有同名 alias,而接手者撞到的會是一個「看起來像網路錯誤、
+實際上是少了一段 SSH 設定」的失敗。krepo 端已改標準 `git@github.com:`(已 ship),
+但**機器端的多身分配置還沒收斂**,現在靠 `insteadOf` 撐著,那是多加一層改寫機制、不是簡化。
+
+**Goal**:標準 URL(`git@github.com:`)在每台機器上都直接可用,`insteadOf` 整層移除。
+
+**現況盤點**(2026-08-06 實測):
+
+| 機器 | `github-work` | 個人(`github.com`) |
+|---|---:|---|
+| 工作 mac | **28** | **2**(`isdotgd`、`.dotfiles`) |
+| db01 | 全部 | **0** |
+| 個人 MacBook | 也有工作 repo | 少數幾個 |
+
+**關鍵事實:三台機器的主要身分都是「工作」**——個人 MacBook 上也處理工作 repo,
+而公司開發機不會 clone 個人 repo。所以**沒有機器差異**,不需要 host-local 覆蓋
+(`ssh/config` 的 `Include ~/.ssh/config.local` 機制留著備用即可)。
+
+**方案**(共用設定,三台一致):
+
+```
+# 工作帳號 (jjshen-eland) = 預設 = 標準寫法
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_github_work
+    AddKeysToAgent yes
+    IdentitiesOnly yes
+
+# 私人帳號,少數 repo 明示
+Host github-me
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_github
+    AddKeysToAgent yes
+    IdentitiesOnly yes
+```
+
+⚠️ **`IdentitiesOnly yes` 一行都不能少**(現行兩個 block 本來就有,照抄即可)。少了它,
+ssh 會把 agent 裡的 key **逐一送給 GitHub**,而 GitHub 接受第一把有效的——於是認到**錯誤
+帳號**。這會直接打掉 AC 1 與 AC 5,且**失敗長相是「連得上但權限不對」**,比連不上更難查
+(連不上至少當場知道)。同理 `User git` 與 `HostName` 也照現行寫法保留,不要只留 IdentityFile。
+
+- **`github-work` 整條刪除**——`github.com` 就是工作,不需要第二條路徑
+- 工作 repo 的 remote 全部改標準 `git@github.com:`(機械替換,見下)
+- 個人 repo 改 `git@github-me:`(工作 mac 只有 2 個)
+- **移除 mac 與 db01 的 `insteadOf`**(2026-08-06 為了讓 krepo 能拉依賴而暫設在各自的
+  `~/.gitconfig`;它們是這次收斂要消滅的對象,不是終態)
+
+剩下的唯一 alias 是 `github-me`,**不可約**——GitHub 一把 SSH key 只能綁一個帳號,
+兩個身分就必須有一種區分方式。
+
+**AC**:
+
+1. 三台機器上 `git clone git@github.com:elandcomtw/...` 直接成功,無 URL 改寫
+2. `gh repo clone` 也對(⚠️ **`gh` 完全不看 SSH alias**,這是 alias 方案永遠解不掉的一半,
+   只有「讓 `github.com` 就是工作身分」能解)
+3. `~/.gitconfig` 內無任何 `insteadOf`,`ssh/config` 內無 `github-work`
+4. 三台機器上 `cd ~/Projects/krepo && uv sync` 都能拉到 `krepo-common`
+5. 個人 repo(`isdotgd`、`dotfiles`)在改用 `github-me` 後仍可 push
+
+**遷移順序**(順序錯會鎖住存取):
+
+```bash
+# 1. 先確認每台機器都有 ~/.ssh/id_github_work（個人 MacBook 也要，它也跑工作 repo）
+# 2. 改 dotfiles 的 ssh/config，部署到各機器，驗證身分：
+#    ssh -T git@github.com   → 應認到 jjshen-eland
+#    ssh -T git@github-me    → 應認到 dev-bitpod-cc
+#    ⚠️ 判準是「認到誰」不是「連得上」。認到錯帳號 → 八成是 IdentitiesOnly 沒設，
+#       ssh 把 agent 裡的 key 逐一送出、GitHub 收了第一把有效的。
+# 3. 身分驗證通過後才改 remote（第 2 步沒過就往下做，會把 remote 改成連不對身分的形式）：
+for d in ~/Projects/*/ ~/.dotfiles; do
+  url=$(git -C "$d" remote get-url origin 2>/dev/null) || continue
+  case "$url" in
+    git@github-work:*) git -C "$d" remote set-url origin "${url/github-work:/github.com:}" ;;
+    git@github.com:dev-bitpod-cc/*) git -C "$d" remote set-url origin "${url/github.com:/github-me:}" ;;
+  esac
+done
+# 4. 最後移除 insteadOf：git config --global --unset-all url.<...>.insteadOf
+```
+
+⚠️ **`.dotfiles` 自己的 remote 也要改**(它是個人 repo)——上面的迴圈已涵蓋,但要記得
+那正是你正在編輯的 repo,改完先 `git remote -v` 確認再 push。
+
+**風險與回退**:動的是憑證設定,改錯會讓所有 repo 存取一起失敗。回退指令**依「改動是否已
+commit」分兩種**——`git checkout ssh/config` 只在**尚未 commit** 時有效;遷移一旦 commit
+(而跨機部署的前提就是 commit + push),它從 HEAD 取回的還是新版,等於把壞設定又還原一次:
+
+```bash
+git revert <遷移 commit>                      # 已 commit(跨機部署後的常態)
+git checkout <遷移前 commit> -- ssh/config    # 或只取回單檔
+git checkout ssh/config                       # 僅限尚未 commit
+```
+
+⚠️ **但部署後才生效**——回退也要重新部署,別以為 git 操作完就完事了。
+
+⚠️ **回退路徑本身會被這個變更弄壞**:遠端機器拉 dotfiles 走的正是 GitHub SSH。認證改壞又
+已散佈出去,那些機器就**拉不到修正**——得 `ssh <host>`(內網 CA cert,不受此變更影響)進去
+手動改 `~/.ssh/config`,或臨時加回 `insteadOf` 撐住。**先在一台機器驗過再散佈,不要一次
+`dotsync` 全部。建議清醒時做,不要在深夜動**。
 
 ---
 
 ## 關鍵決策(附理由)
 
-- **2026-08-05 `add -A` 禁令的例外只有 deep-review WIP snapshot,且附前置條件**:新立的全域
-  禁令與 `deep-review/SKILL.md` 的 `git add -A && git commit -m "wip: ..."` 直接對撞(第三方
-  審查抓到,全 repo 唯一衝突點)。**不改 skill**——WIP snapshot 要的正是「使用者原始變更的
-  完整快照」以便後續 revert 壞修復,改顯式路徑會毀掉語意。改在禁令側開例外,但**必須附
-  「執行前確認 working tree 全屬本次工作」**:snapshot 終態會 squash 進 PR,混了他人變更
-  一樣誤收,「先 snapshot 再拆」是假解。
-- **2026-08-05 codex 側需要自己的 branch-first,不能只說「ship 歸 shipping agent」**:原條
-  「Branching...belong to the shipping agent + leave the work committed on the current
-  branch」在 HEAD 站 main 時,字面就是**要 codex commit 到 default branch**。Branching 移出
-  該條、改要求 codex 自行 `switch -c`(只做乾淨情境;誤 commit 的救援仍歸 Claude 的
-  `branch-first.sh`)。
-- **2026-08-05「先 STOP」與「混檔 staging 技法」必須寫明順序**:兩條並列會被讀成二選一
-  (一律停 vs 照樣 stage)。正解是鏈條——發現非自己的變更→停下報告→使用者確認→才用
-  `add -p` 等技法。本 session 實走過一次(STATUS.md 混了先前未提交的技術債,處置是 ship
-  摘要問使用者,而非自行硬拆)。:外部建議
-  「先取消固定所有權(codex 只碰 `codex/`)再談共用」**順序顛倒**——固定所有權當時是唯一在
-  擋 codex 的東西(`AGENTS.md` 只有 skill authoring + decision notes、零 git 紀律,而
-  `config.toml` 是 `danger-full-access`);且所有權早已自然鬆動(#39/#40 即 codex 撰寫、
-  Claude 代 ship),那個要解的問題並不存在。
+> 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。
+
+- **2026-08-05 handoff 續寫偵測必須查 archive,不能只查 active**:原判準是「active 有同 slug
+  **或** 本 session 剛 resume 過」,刻意不查 archive(當時理由:續寫入口通常是 resume,前一份
+  已在 context)。codex C1 指出「新 session 直接 `/handoff <slug>`」整條失效——前一份已被消費
+  躺在 archive,兩個判準都不成立,第 N 輪判成首輪。**自打臉點:h5 沙盒的 setup 正是該路徑,
+  等於造了自己規則涵蓋不到的反例卻沒察覺。**教訓:**規則與 eval fixture 同批寫時,先拿
+  fixture 對規則走一遍**——fixture 是反例產生器,不只是驗收工具。
+- **2026-08-06 predecessor 定位改用腳本子指令,推翻「一行 `ls` 足夠」的原判斷**:計畫階段
+  刻意不加子指令(理由:續寫入口通常是 resume、前一份已在 context)。結果同一處被 codex
+  **C1/C2/C3 三輪逐輪擠**:只查 active → 分支迴歸 → glob 尾錨定仍誤中(`*` 吃得下中間的
+  工作線名,查 `foo` 撈到 `bar-foo`)。根因是拿 glob 做本質上需要精確比對的事。新增
+  `find-predecessor`(檔名去時戳前綴後全等 + 檔內 `slug:` 相符,兩層精確)。**判準:同一處
+  連續三輪被審查擠,問題在抽象層級、不在措辭**——此時「不要為改而改」不再適用,已有實據。
+- **2026-08-06 突變測試要先驗「突變已生效」,且雙層防禦須一次全破**:本輪兩次假綠——
+  第一次 `str.replace` 沒命中(靜默無效),第二次只突變第一層、被第二層 frontmatter 驗證
+  擋下,兩次都看似「斷言無鑑別力」實則突變未達成。修法:replace 前 `assert old in s`、
+  寫入後 grep 確認,且要**一次破壞所有防線**才算模擬回退。
+- **2026-08-05 改寫規則的分支條件,比新增規則更容易掉情境**:上條的修法改了三版才收斂——
+  v1「指定 slug 時用它查 archive」→ v2「未指定 slug 時先列 archive 看工作線」(補上 H5 那個
+  沒給 slug 的情境,卻把 v1 覆蓋的情境換成了**互斥**分支)→ v3「不論有無指定都查」。**v2 是
+  修復引入的迴歸,codex C2 抓到**;掉的那塊剛好不在當時盯著的 eval 情境裡。判準:**改寫分支
+  條件前,先確認舊版覆蓋的情境沒被新分支排除**。
 - **2026-08-05 跨 agent 不預先建抽象:共用 contract 層與 `/project spec` 移植皆否決**:
   移植實測不是複製(codex 側 reviewer-brief 27 行 vs Claude 側 97 行、#39 pass-privacy 範圍
   刻意更廣),抽共用檔會退化成「共用+兩份 override」,反製造該建議自己列的「兩邊語意不同」
   風險;`/project spec` 則低風險=低價值——上次真實 cross-agent 斷點(#34)的解是 12 行
   decision notes 條款,已證明正確粒度是**薄契約+既有 artifact**。兩者皆等 RED 再議。
-- **2026-08-05 跨 agent 共用的污染邊界分三層**:可共用=repo 事實、程式碼、測試、機械腳本、
-  最終決策;**不主動共用**=嫌疑清單、上輪 findings、輪次、預期答案、作者的判斷路徑;
-  **可刻意不同**=兩邊 reviewer 的判準與 orchestration,只要各自有 eval oracle。無邊界的
-  「共用 contract」會慢性稀釋 8/5 整批隔離決策(審查者與作者分離、輪次隱蔽、gitStatus 洩漏)
-  ——**共用與獨立審查是張力,不是可並列的好處**。
-- **2026-08-05 reviewer 的提問端一律走白名單契約,不用禁語黑名單**:列舉禁語**可證會漏**
-  ——本 repo 實測一次(偵測 regex 列了 `final round`、實際寫法是 `FINAL allowed review
-  round`,差點誤判對照組乾淨),與同批 codex fixture 的 blocklist-vs-allowlist 是同一教訓。
-  白名單的代價要一起記:**收太緊會擋掉必要資訊**(契約模板漏了 priority 2 的 untracked
-  清單槽,reviewer 會整批漏審新檔且不自知,由 codex C2/C3 連兩輪抓到)。
-- **2026-08-05「審查者與作者分離」的邊界=分離判斷、不分離提問**:`Separating the judge
-  does nothing if the same party writes the question.` 主 agent 仍構造 subagent prompt,
-  故硬約束全下在提問端(判準交路徑、bar 與 task 恆定、輪次/上限不外洩)。裁決端實測無失敗
-  (FP 罕見、幾乎都承認照修),故**不加 judge 覆核、不加 FP 記錄欄位**——no failing
-  scenario, no instruction。
-- **2026-08-05 輪次是 orchestration 私有狀態,但隱蔽有已知殘留**:保留輪次的原理由(brief
-  需要它調重心)站不住——**補丁痕跡是 code 的性質、不是 history 的性質**。中性化擋掉輪號與
-  剩餘輪數,**擋不掉「已改過幾次」**(commit 數量本身即訊號);要消除得每輪 squash、破壞迭代
-  紀律,故接受殘留但文件不得宣稱成完全隔離。
-- **2026-08-05 洩漏主管道是 harness 注入的 gitStatus,不是 reviewer 主動查**:實測
-  `tool_uses=0` 的 subagent 能逐字複述主 repo 五個 commit hash——**gitStatus(含最近 5 筆
-  subject)直接進 subagent system prompt,不做任何動作就看得到、且關不掉**。故 commit message
-  中性化從一致性修補升為**必要條件**(寫 `fix: R4 ...` 等於把輪號直送 system prompt)。同批
-  驗完 codex 列的三類 metadata 管道(task/role names、checkpoint messages)與 fresh-context
-  保證皆乾淨,故不加禁令。證據見 deep-review `evals.md`。
-- **2026-08-05 eval 的 `expected_behavior` 不得要求證據不支持的推論**:d4 初版的 fixture 與
-  endpoint 之間無明示綁定,判準卻要 reviewer 據相似性認定 provenance——**等於獎勵無根據歸屬、
-  懲罰「我無法確認」這個更嚴謹的答案**(而後者正是 brief 要求的態度)。補 `_source` metadata
-  使綁定機械可驗證。與 F18「判準寫成答案導向」同型:**oracle 寫歪會系統性淘汰最該保留的行為**。
-- **2026-08-05 git 收尾序列不得串成一行、更不得吞掉中間錯誤**:`git switch main 2>/dev/null;
-  git pull origin main` 串一行——switch 因他線未 commit 變更而失敗,錯誤被 `2>/dev/null` 吃掉
-  又沒檢 exit code,於是 **pull 在 feature branch 上跑成 rebase**,16 顆往已 squash 的 default
-  重放炸出滿地衝突(`rebase --abort` 可完整還原,但屬不必要的險)。正確替代:`git fetch origin
-  <default>:<default>` 更新本地 ref 再切。與 `git add -A` 誤收同根源:**為省事合併 git 動作,
-  錯誤就藏在中間**。
-- **2026-08-05 多 session 共用 working tree:commit 一律顯式路徑,`git add -A` 是誤收源**:
-  同一錯誤犯三次(誤收 codex 端 repo-review 工作);第三次是循環陷阱——commit 後把他人區段 `cp`
-  回 working tree,下次編輯同檔就疊上去、整檔 add 必然再收。**三次都只有乾淨 checkout 看得見**
-  (本機檔案在磁碟上恆綠)。四條:(a) 顯式路徑——但 `git add <path>` **仍是整檔、擋不住同檔
-  混改**(2026-08-05 補),混檔須 `add -p` 只 stage 驗過的 hunk、且 commit 前看 `diff --cached`;
-  (b) 混檔按**檔案內區段**拆、非只按目錄;(c) 拆完必跑 `git clone --no-local` 實測——人工看
-  staged diff 已實證失敗三次,不能取代這條;(d) 他人區段最後才放回。
 - **2026-08-05 dossier 超標優先歸檔,不靠壓縮無關的舊條目**:本次為容納新增內容,接連蒸餾五條
   無關的歷史決策才勉強壓在 24576 門檻下——每次都無損(留結論與理由、砍推導史),但「為了幾百
   bytes 去改一條無關舊決策」重複五次本身即訊號:**邊際壓縮效益遞減,再壓會開始損失資訊**。
@@ -94,27 +159,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   倒果為因;且進 brief 當批即生出第二層規則(授權邊界),而 d4 fixture 測不到那半,留下無 oracle
   的規則。折衷版(改標註 evidence 為查證/推論)同樣無 RED,降為 backlog。**repo-review 仍移植
   收斂診斷**(依根因重複/震盪 vs 各輪不同分類)並補了 tests gate。全紀錄見 deep-review `evals.md`。
-- **2026-08-03 codex 的決策發聲採「產原料寫進行中、ship 端蒸餾」,不讓 codex 學 dossier 規範**:
-  #34 暴露 cross-agent 記錄斷點(codex 改 `codex/skills/`、Claude 端 ship,理由只能從 diff 反推)。
-  界線是原理性的:**機制反推無損,但否決的方案與死路在 diff 裡永遠沒有痕跡**。故 `codex/AGENTS.md`
-  只要求把推不到的那部分追加到「進行中」(不 commit 不管格式),蒸餾與章節語意留 ship 端;並帶
-  「純機制改動免寫」免除條款(無免除=每次小改都付儀式成本)。
-- **2026-08-03 repo-review 多輪 autofix 死鎖以「gate 一次、之後查 ownership」解,不放寬 clean
-  要求**:`--autofix` 要求 clean worktree,而規範要求每輪 rerun helper,R1 修完必髒 → 第二輪必得
-  `autofix-safe:no`,契約自我封死。解法:`--autofix` 只當**首次編輯前的一次性起始 gate**,後續
-  改跑不帶 flag 的 helper 並比對 dirty path 歸屬,遇 pre-existing/concurrent/未記錄即停。
-  **反向解(放寬 clean)會讓「絕不碰使用者變更」整條保證失效**——根因是判定時機錯置,不是太嚴。
-- **2026-08-03 autofix 安全判定補 `base-not-commit`——tree base 的 ancestor 檢查回 `n/a` 不是
-  `no`**:`HEAD~1^{tree}..HEAD` 這類 base 先前一路穿過 ancestor gate 拿到 `autofix-safe:yes`,
-  等於在無法界定祖先關係的範圍上放行改檔+checkpoint。新判定置於 ancestor gate **之前**,條件
-  `BASE_TYPE != commit && BASE_HASH != EMPTY_TREE`——刻意保留 empty-tree baseline 的既有豁免
-  (該路徑語意明確且已有測試,一併擋掉會誤傷首次全 repo review)。
-- **2026-08-03 Codex reviewer 的 fresh context 要顯式 `fork_turns=none`,不靠預設**:spawn 介面
-  預設繼承全部 turns,規範只寫「用 fresh-context subagent」等於**spec 上宣稱 fresh、行為上帶著
-  parent 的實作意圖與嫌疑清單**——delegate 的價值(獨立重推結論)當場歸零。介面無法建立無歷史
-  reviewer 時一律明說降級,不得聲稱跑過 fresh-context pass。
-
-> **2026-07 及更早的決策已歸檔** → `docs/archive/decisions-2026-07.md`（機制多已固化在 skill／腳本／tests；歸檔保存的是「為什麼這樣決定、否決了什麼」）。
 
 ## 死路(試過但放棄——防重工)
 
@@ -151,6 +195,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   stub 覆蓋;遇真實空報告時確認 resume 能救回,F15(b) 才算 GREEN
 - [ ] review-anchor 的 stale STOP 與 codex-next 冪等(F16 b/c)已由 tests 第 19 節釘死,
   實戰(autocodex 迭代中 rebase/重試)尚未驗過
+- [ ] `claude/evals/setup-sandboxes.sh` 不在 shellcheck / `bash -n` / 全形標點 gate 範圍
+  (第 1、1b、2 節只涵蓋 `scripts/`、`claude/scripts/`、`*/skills/*/scripts/`、functions/setup/tests)。
+  2026-08-05 加 h5/h6/h7 沙盒時靠手動 `shellcheck` 才抓到:**unquoted heredoc(`<<EOF`)內的
+  markdown 反引號會被當命令替換執行**(SC2006),而該檔全靠 heredoc 灌 fixture 內容。沙盒腳本
+  繼續長大就值得納入 gate
 - [ ] codex plugin 去留待定:實質只當傳輸管道,exec 接管後僅剩 `/codex:transfer` 獨有——
   exec 路徑跑穩數輪後重新評估 uninstall
 - [ ] codex C2 轉交 findings 餘項(2026-07-21 代收):F6 skill-building-guide 的
@@ -171,6 +220,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已完成(里程碑)
 
+> 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`。
+
+- ✅ 2026-08-06 handoff skill 優化:拿 archive 52 份實檔做統計,補上兩個高頻卻無規則的使用
+  模式——同 slug 多輪續寫(約 40%)的死路承接、多 repo 錨點(27%)的逐 repo 對帳;`anchors`
+  改記 toplevel 絕對路徑、`list` 補 path/title、新增 `find-predecessor` 子指令。H5/H6/H7
+  三情境在 Sonnet 全 GREEN,codex C1/C2/C3 共 12 條 findings 全數驗證處理(其中 2 條屬 SSH
+  工作項)。`./tests/run.sh` 583 PASS。
 - ✅ 2026-08-05 上兩批 git 紀律的第三方審查修復(3 blocking + 1 minor,全判 TP):`add -A`
   例外(禁令側與 `deep-review/SKILL.md` 使用點**兩處都寫**前置條件)、codex 自有 branch-first、
   STOP 與混檔技法的順序銜接、`clone --no-local` 補齊參數。
@@ -196,18 +252,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - ✅ 2026-08-04 lftp 納入標準工具鏈取代內建 sftp(#36):setup 加裝+版控 `lftprc`+
   `ensure-lftprc.sh` 接 dotsync 散佈,14 台全到位(4.9.3);選型見死路節,`ls` 單檔陷阱(報錯但
   其實已傳成功、須用 `cls`)見 `lftprc` 註解。(526→547)
-
 - ✅ 2026-08-03 codex repo-review 契約補強:autofix 起始 gate 一次化+後續 ownership 檢查(解 C2 F5 死鎖)、tree base 擋 autofix、reviewer `fork_turns=none`、mixed-context manifest;順帶 gitignore_global 收 `**/.claude/settings.local.json`(單機 key 檔全 repo 免誤 commit)。(#34;evals F16–F18,tests 526/0)
 - ✅ 2026-08-03 macOS 大型 notarized binary 路徑快取卡死地雷入庫(#33;syspolicyd 以完整路徑為 key,`killall` 解)
-- ✅ 2026-07-29 dossier 治理再下沉三訊號:條目行號/建議收斂目標/各節佔比(#32;SKILL.md 逐條處置複述改指腳本,消一處已漂移的重複記載)
-- ✅ 2026-07-22 殘留 branch 衛生訊號+實地清掉兩支老殘留(#28;教訓:git fixture 須複製真 clone 的 origin/HEAD ref 佈局)
-- ✅ 2026-07-22 無 protection repo 改 PR 預設,Scenario 11 首次覆蓋 OPEN 路徑(u3 RED→GREEN,#27)
-- ✅ 2026-07-22 /project 補 bootstrap 路徑——空 repo 首次 ship 的機制門控豁免(tests 先 RED 後 GREEN,#26)
-- ✅ 2026-07-21 skills 下沉三部曲收官:check-crawl-quality/project/handoff(#21/#22/#23;tests 235→478 全綠)
-- ✅ 2026-07-21 deep-review prose 下沉腳本+body 密度收斂(review-anchor/verify-tests/codex-protocol.md,#18/#12;evals d1/d2 雙 PASS)
-- ✅ 2026-07-20 autocodex 卡死根治——傳輸層改 headless codex exec(#8;exec 三輪實跑無卡死)
-- ✅ 2026-07-17 /project 摩擦修復+全機隊生效(#1/#2;輕量路徑/詢問收斂/merge 最後一哩,dotsync 14 台)
-- ✅ 2026-07-16 多主機工作流改造(c673844;/project 取代 /uap、SessionStart pull hook、dossier/transfer 模板)
 
 ## 已知缺口
 

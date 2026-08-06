@@ -4,11 +4,15 @@
 #
 # 用法：
 #   handoff-anchor.sh anchors <repo-path>...   # 產生 frontmatter 錨點行（created + 逐 repo anchor）
+#                                              # 路徑可為相對或 repo 子目錄，錨點一律記 toplevel 絕對路徑
 #   handoff-anchor.sh verify  <handoff.md>     # 驗證交接檔錨點 vs 各 repo 現況
 #   handoff-anchor.sh consume <handoff.md>     # 消費歸檔：mv 到同層 archive/ 加秒級時戳前綴，
 #                                              # 印 archived: <路徑>；已消費（父目錄為
 #                                              # archive 或檔名已帶時戳前綴）→ 拒絕
 #   handoff-anchor.sh list    [dir]            # 列出 active 交接檔（年齡/EXPIRED）+ 自動清過期 archive
+#   handoff-anchor.sh find-predecessor <slug> [dir]
+#                                              # 依 slug 精確定位前一份交接檔（active 優先，其次
+#                                              # archive 最新一輪）；無命中印 NONE（＝首輪）
 #
 # verify 逐錨點輸出判定：
 #   FRESH      — 記錄的 HEAD == 現在的 HEAD（內容可信）
@@ -25,7 +29,7 @@
 #                exit 1 ≠ 已歸檔：讀 stderr 分辨，mv 失敗時交接檔仍在 active）；
 #            2 = 用法錯誤
 #
-# 限制：repo 路徑不可含空白（anchor 行以空白分欄）——anchors 遇含空白路徑直接報錯拒絕。
+# 限制：repo 路徑（解析後的 toplevel）不可含空白（anchor 行以空白分欄）——anchors 直接報錯拒絕。
 # list 的 dir 預設 $HANDOFF_DIR，未設則 ~/.claude/handoffs。
 
 set -uo pipefail
@@ -36,6 +40,7 @@ MAX_LOG=20           # DRIFTED 時最多列出的中間 commit 數；只影響�
 
 usage() {
     echo "用法：$0 anchors <repo>... | verify <handoff.md> | consume <handoff.md> | list [dir]" >&2
+    echo "      $0 find-predecessor <slug> [dir]" >&2
     exit 2
 }
 
@@ -56,22 +61,29 @@ cmd_anchors() {
     local failed=0
     echo "created: $(date +%Y-%m-%d)"
     for repo in "$@"; do
-        case "$repo" in *[[:space:]]*)
-            echo "error: repo 路徑含空白，錨點格式不支援（anchor 行以空白分欄）：$repo" >&2
-            failed=1
-            continue ;;
-        esac
-        if ! git -C "$repo" rev-parse --show-toplevel >/dev/null 2>&1; then
-            echo "error: 不是 git repo（或路徑不存在）：$repo" >&2
+        # 記錄路徑一律用 toplevel 絕對路徑：輸入可能是相對路徑（`.`）或 repo 子目錄，原樣寫進
+        # 錨點後，日後在 cwd 已不同的新 session verify 會對到**別的 repo**——而失敗訊息會是
+        # 誤導性的 DIVERGED「歷史改寫」（真相是路徑錯），其處置又是整份交接檔降級為線索，
+        # 錨點機制等於白費。順帶把子目錄輸入對齊 repo root。
+        local top
+        top="$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null)"
+        if [ -z "$top" ]; then
+            echo "error: 不是 git repo（或路徑不存在）：${repo}" >&2
             failed=1
             continue
         fi
+        # 空白檢查對解析後的 top 而非原輸入：相對路徑輸入本身可以無空白、toplevel 卻含空白
+        case "$top" in *[[:space:]]*)
+            echo "error: repo 路徑含空白，錨點格式不支援（anchor 行以空白分欄）：${top}" >&2
+            failed=1
+            continue ;;
+        esac
         local branch sha dirty
-        branch="$(git -C "$repo" symbolic-ref --short -q HEAD)" || branch="DETACHED"
+        branch="$(git -C "$top" symbolic-ref --short -q HEAD)" || branch="DETACHED"
         # full sha：short sha 日後可能因物件增長變 ambiguous，導致 verify 誤判 DIVERGED
-        sha="$(git -C "$repo" rev-parse HEAD)"
-        dirty="$(git -C "$repo" status --porcelain | wc -l | tr -d ' ')"
-        echo "anchor: $repo $branch $sha dirty=$dirty"
+        sha="$(git -C "$top" rev-parse HEAD)"
+        dirty="$(git -C "$top" status --porcelain | wc -l | tr -d ' ')"
+        echo "anchor: $top $branch $sha dirty=$dirty"
     done
     return "$failed"
 }
@@ -229,15 +241,74 @@ cmd_consume() {
     exit 0
 }
 
+# find-predecessor：依 slug 精確定位前一份交接檔（W1 判首輪／續寫用）。
+#
+# 為何不是一行 glob：`archive/*-<slug>.md` 看似尾錨定，但 `*` 一樣吃得下中間的工作線名——
+# 查 `foo` 會命中 `20260802-120000-bar-foo.md`，`tail -1` 還剛好選它（時戳較新，字典序在後）。
+# 同一處的定位邏輯被三輪第三方審查逐輪擠（只查 active → 分支迴歸 → glob 誤中），根因就是
+# 拿 glob 做精確比對。本子指令改用兩層精確判準：
+#   (1) 檔名去掉 YYYYMMDD[-HHMMSS]- 歸檔前綴後，須**完全等於** <slug>
+#   (2) 檔內若有 slug: frontmatter，也須完全相等（不符即跳過——檔名與內容對不上的檔不採用）
+# slug 不再進 glob，含 glob 字元或空白也不會誤匹配。
+#
+# 找不到是正常結果（＝首輪，不是錯誤），故一律 exit 0；用法錯誤才 exit 2。
+cmd_find_predecessor() {
+    [ $# -ge 1 ] && [ $# -le 2 ] || usage
+    local slug="$1"
+    local dir="${2:-${HANDOFF_DIR:-$HOME/.claude/handoffs}}"
+    if [ ! -d "$dir" ]; then
+        echo "predecessor: NONE（目錄不存在：${dir}）"
+        exit 0
+    fi
+
+    local hit_active="" hit_archive="" f base name content_slug
+    # active 與 archive 一起掃；glob 依字典序展開，archive 檔名帶時戳前綴，
+    # 故「最後一個命中的 archive 檔」即最新一輪
+    for f in "$dir"/*.md "$dir"/archive/*.md; do
+        [ -f "$f" ] || continue
+        base="$(basename -- "$f")"
+        name="${base%.md}"
+        case "$name" in
+            [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*)
+                name="${name#????????-??????-}" ;;
+            [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-*)
+                name="${name#????????-}" ;;
+        esac
+        [ "$name" = "$slug" ] || continue
+        content_slug="$(sed -n 's/^slug:[[:space:]]*//p' "$f" | head -1)"
+        if [ -n "$content_slug" ] && [ "$content_slug" != "$slug" ]; then
+            continue
+        fi
+        case "$f" in
+            "$dir"/archive/*) hit_archive="$f" ;;
+            *)                hit_active="$f" ;;
+        esac
+    done
+
+    if [ -n "$hit_active" ]; then
+        echo "predecessor: $hit_active"
+        echo "location: active（尚未消費——續寫會整檔覆寫它）"
+    elif [ -n "$hit_archive" ]; then
+        echo "predecessor: $hit_archive"
+        echo "location: archive（已消費的前一輪）"
+    else
+        echo "predecessor: NONE（active 與 archive 皆無 slug=${slug} 的交接檔 → 首輪）"
+    fi
+    exit 0
+}
+
 cmd_list() {
     local dir="${1:-${HANDOFF_DIR:-$HOME/.claude/handoffs}}"
     if [ ! -d "$dir" ]; then
         echo "handoffs: NONE（目錄不存在：${dir}）"
         exit 0
     fi
+    # path 行要能直接餵給 verify/consume，相對輸入先解析成絕對（同 consume 的解析模式）
+    local abs
+    abs="$(CDPATH='' cd -- "$dir" 2>/dev/null && pwd -P)" && dir="$abs"
 
     # -- active 交接檔 --
-    local found=0 f base created age flag
+    local found=0 f base created age flag title
     for f in "$dir"/*.md; do
         [ -f "$f" ] || continue
         found=1
@@ -250,6 +321,11 @@ cmd_list() {
         else
             echo "active: $base — created 無法解析 — SUSPECT"
         fi
+        # path：verify/consume 吃完整路徑，印出來免得讀取端自己手拼
+        echo "  path: $f"
+        # title：多份待選時光看 slug 分不出是哪條工作線；無標題行則整行省略
+        title="$(sed -n 's/^# Handoff:[[:space:]]*//p' "$f" | head -1)"
+        [ -n "$title" ] && echo "  title: $title"
     done
     [ "$found" -eq 0 ] && echo "active: none"
 
@@ -271,5 +347,6 @@ case "$cmd" in
     verify)  cmd_verify "$@" ;;
     consume) cmd_consume "$@" ;;
     list)    cmd_list "$@" ;;
+    find-predecessor) cmd_find_predecessor "$@" ;;
     *) usage ;;
 esac

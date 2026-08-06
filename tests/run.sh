@@ -1103,6 +1103,9 @@ else bad "repo-review reviewer brief 缺失或未連結"; fi
 
 echo "▶ 13. handoff-anchor.sh 錨點驗證與生命週期判定"
 HA_SCRIPT="$ROOT/claude/skills/handoff/scripts/handoff-anchor.sh"
+# 錨點記的是 `rev-parse --show-toplevel`，會解析 symlink（macOS 的 $TMPDIR 走 /var → /private/var），
+# 故路徑期望值用解析後的形式；Linux 的 /tmp 無 symlink，兩者相同
+HA_REAL="$(cd "$TMP" && pwd -P)"
 
 # fixture：單 repo，1 commit
 git init -q -b main "$TMP/ha-work"
@@ -1112,7 +1115,7 @@ git init -q -b main "$TMP/ha-work"
 echo dirty > "$TMP/ha-work/untracked.txt"
 out="$("$HA_SCRIPT" anchors "$TMP/ha-work")"
 assert_rc "anchors 正常 repo → exit 0" 0 $?
-if echo "$out" | grep -q "^created: " && echo "$out" | grep -q "^anchor: $TMP/ha-work main .* dirty=1$"; then
+if echo "$out" | grep -q "^created: " && echo "$out" | grep -q "^anchor: $HA_REAL/ha-work main .* dirty=1$"; then
     ok "anchors 輸出 created + anchor（dirty=1）"
 else bad "anchors 輸出格式錯誤"; fi
 rm "$TMP/ha-work/untracked.txt"
@@ -1128,6 +1131,22 @@ assert_rc "anchors 含空白路徑 → exit 1" 1 $?
 if ! echo "$out" | grep -q "^anchor: " && echo "$out" | grep -q "含空白"; then
     ok "含空白路徑 → 報錯且不輸出 anchor 行"
 else bad "含空白路徑未被寫入端擋下"; fi
+
+# anchors：相對路徑／repo 子目錄輸入 → 錨點記 toplevel 絕對路徑。原樣記 `.` 的話，cwd 已不同的
+# 新 session 會 verify 到別的 repo，且誤報成 DIVERGED「歷史改寫」（真相是路徑錯）→ 整份降級
+mkdir -p "$TMP/ha-work/sub"
+out="$(cd "$TMP/ha-work/sub" && "$HA_SCRIPT" anchors .)"
+assert_rc "anchors 子目錄相對路徑 → exit 0" 0 $?
+if echo "$out" | grep -q "^anchor: $HA_REAL/ha-work main "; then
+    ok "相對路徑/子目錄輸入 → 錨點記 toplevel 絕對路徑"
+else bad "錨點未正規化為 toplevel 絕對路徑（${out}）"; fi
+
+# 空白檢查對解析後的 toplevel 而非原輸入——相對輸入本身無空白、toplevel 卻含空白時仍須擋下
+out="$(cd "$TMP/ha spaced" && "$HA_SCRIPT" anchors . 2>&1)"
+assert_rc "anchors 相對輸入但 toplevel 含空白 → exit 1" 1 $?
+if ! echo "$out" | grep -q "^anchor: " && echo "$out" | grep -q "含空白"; then
+    ok "含空白 toplevel 經相對路徑輸入仍被擋"
+else bad "相對路徑繞過了 toplevel 空白檢查（${out}）"; fi
 
 # verify：FRESH
 mkdir -p "$TMP/ha-handoffs"
@@ -1205,6 +1224,61 @@ if [ ! -f "$TMP/ha-handoffs/archive/20260101-dead.md" ] && [ -f "$TMP/ha-handoff
     ok "list 清超過保留期的 archive、留新的"
 else bad "archive 清理行為錯誤"; fi
 if echo "$out" | grep -q "archive: 已清 1 份"; then ok "list 回報清理數量"; else bad "list 未回報清理"; fi
+
+# list：path 行（verify/consume 吃完整路徑，讀取端不必手拼）與 title 行（多份待選時只看 slug
+# 分不出是哪條工作線）；無標題行的檔整行省略，不留空欄位
+printf -- '---\ncreated: %s\n---\n# Handoff: 訂單重試強化\n' "$(date +%Y-%m-%d)" > "$TMP/ha-handoffs/titled.md"
+out="$("$HA_SCRIPT" list "$TMP/ha-handoffs")"
+if echo "$out" | grep -q "^  path: .*/ha-handoffs/titled.md$"; then ok "list 印完整 path 行"; else bad "list 缺 path 行"; fi
+if echo "$out" | grep -q "^  title: 訂單重試強化$"; then ok "list 印 title 行"; else bad "list 缺 title 行"; fi
+assert_eq "無標題行的檔不印 title" "1" "$(echo "$out" | grep -c '^  title: ')"
+rm "$TMP/ha-handoffs/titled.md"
+
+# --- find-predecessor（W1 判首輪/續寫：依 slug 精確定位前一份）---
+# 關鍵迴歸：`archive/*-<slug>.md` 的尾錨定擋不住中間的工作線名——查 foo 會命中 bar-foo，
+# 且 tail -1 剛好選它（時戳較新、字典序在後）。同一處定位邏輯被三輪第三方審查逐輪擠，
+# 這節把「精確比對」釘死。DO NOT relax these back into a glob.
+FP="$TMP/ha-fp"; mkdir -p "$FP/archive"
+fp_mk() { printf -- '---\nslug: %s\ncreated: 2026-08-01\n---\n# Handoff: %s\n' "$2" "$2" > "$FP/$1"; }
+# bar-foo 的時戳**必須最新**，否則 glob 實作的 tail -1 也會剛好答對，斷言就沒有鑑別力
+# （同「守門測試的命中點要放在逼得出缺陷的位置」那條教訓）
+fp_mk "archive/20260804-120000-bar-foo.md" "bar-foo"
+fp_mk "archive/20260801-090000-foo.md" "foo"
+fp_mk "archive/20260803-100000-foo.md" "foo"
+
+out="$("$HA_SCRIPT" find-predecessor foo "$FP")"
+assert_rc "find-predecessor 命中 → exit 0" 0 $?
+assert_eq "後綴同名的別條工作線不得誤中（bar-foo vs foo），且取同 slug 最新一份" \
+    "$FP/archive/20260803-100000-foo.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+if echo "$out" | grep -q "^location: archive"; then ok "命中 archive 標 location"; else bad "location 標記錯誤"; fi
+
+out="$("$HA_SCRIPT" find-predecessor bar-foo "$FP")"
+assert_eq "查較長的工作線名照樣精確" \
+    "$FP/archive/20260804-120000-bar-foo.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# active 未消費者優先（它比 archive 任何一輪都新）
+fp_mk "foo.md" "foo"
+out="$("$HA_SCRIPT" find-predecessor foo "$FP")"
+assert_eq "active 未消費的同 slug 優先於 archive" "$FP/foo.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# 檔名對得上但檔內 slug 不符 → 不採用（手改過的殘檔不得被撿）
+printf -- '---\nslug: someone-else\n---\n' > "$FP/archive/20260804-110000-mismatch.md"
+out="$("$HA_SCRIPT" find-predecessor mismatch "$FP")"
+if echo "$out" | grep -q "predecessor: NONE"; then ok "檔內 slug 與檔名不符 → 不採用"; else bad "採用了 slug 不符的檔"; fi
+
+# 無命中＝首輪，是正常結果不是錯誤
+out="$("$HA_SCRIPT" find-predecessor brand-new "$FP")"
+assert_rc "find-predecessor 無命中 → exit 0（首輪是正常結果）" 0 $?
+if echo "$out" | grep -q "predecessor: NONE"; then ok "無命中印 NONE"; else bad "無命中輸出錯誤"; fi
+
+# slug 含 glob 字元 → 不做 pathname expansion（slug 已不進 glob）
+out="$("$HA_SCRIPT" find-predecessor '*' "$FP")"
+if echo "$out" | grep -q "predecessor: NONE"; then ok "slug 含 glob 字元不誤匹配"; else bad "glob 字元被展開"; fi
+
+"$HA_SCRIPT" find-predecessor >/dev/null 2>&1
+assert_rc "find-predecessor 無引數 → exit 2" 2 $?
+"$HA_SCRIPT" find-predecessor foo "$TMP/no-such-dir" >/dev/null
+assert_rc "find-predecessor 目錄不存在 → exit 0" 0 $?
 
 out="$("$HA_SCRIPT" list "$TMP/no-such-dir")"
 assert_rc "list 目錄不存在 → exit 0（回報 NONE）" 0 $?
