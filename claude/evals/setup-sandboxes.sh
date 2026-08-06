@@ -737,6 +737,14 @@ def refund(total, rate):
     return total * rate
 EOF
         git add -A && git commit -qm "feat: refund helper"
+        # R5 終止的真實形狀：4 輪修復各留一顆中性 message 的 commit。
+        # 少了這段，anchor 說「跑滿五輪」但 git log 只有一顆 feat——受測 agent 會（正確地）
+        # 指出狀態自相矛盾而拒絕往下走，那時測到的是 fixture 缺陷、不是 skill 行為。
+        # （2026-08-07 eval 首次實跑抓到，回頭補上。）
+        for i in 1 2 3 4; do
+            printf '# review fix %s\n' "$i" >> app.py
+            git add -A && git commit -qm "fix: address review findings"
+        done
     )
     # 造出「前一場審查已 R5 終止」的 anchor 狀態
     "$HOME/.claude/skills/deep-review/scripts/review-anchor.sh" record \

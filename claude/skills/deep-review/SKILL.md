@@ -227,8 +227,8 @@ Deep Review 進度：
 判為 skill-authoring batch 時：
 
 - **只跑一次診斷 review**，不進修復循環（`autofix` 引數在此不生效）。
-- **severity 判準完全不變**——照 `reviewer-brief.md` 既有的 F10 分級：prose 裡「夾帶指令 misbehave」「步驟自相矛盾」**仍是 blocking**；只有措辭與完整度是 non-blocking。**切斷的是 loop，不是 correctness bar。**（2026-08-06 那批四條高風險 finding 全在 `.md` 裡、全屬「照做會錯」類——降級它們等於放行真 bug。）
-- **eval 檔絕不進 subagent prompt**（`evals.md` 明寫「不從 SKILL.md body 連結」，它是開發期 oracle）。報告可告訴使用者下一步走 eval workflow，但不把 eval 內容交給 reviewer。
+- **severity 判準完全不變**——照 `reviewer-brief.md`「Completeness 深井」節既有的分級：prose 裡「夾帶指令 misbehave」「步驟自相矛盾」**仍是 blocking**；只有措辭與完整度是 non-blocking。**切斷的是 loop，不是 correctness bar。**（**指涉那份判準時一律用 brief 自己的節名，NEVER 用 evals 的情境編號**——`F10` 是開發期 oracle 的編號、brief 裡並不存在，寫進 prompt 等於誘導 reviewer 去讀 evals；2026-08-07 eval 實測到受測 agent 照抄成 `the brief's F10 severity guidance`。）（2026-08-06 那批四條高風險 finding 全在 `.md` 裡、全屬「照做會錯」類——降級它們等於放行真 bug。）
+- **eval 檔絕不進 subagent prompt**（`evals.md` 明寫「不從 SKILL.md body 連結」，它是開發期 oracle）。**報告必須明說「本批的完成判定看 evals + `tests/run.sh`，不是這份審查」並指向下一步的 eval workflow**（2026-08-07 eval 實測：不寫成硬要求時，agent 會漏掉這句，使用者容易把「review 通過」誤讀成「這批完成了」）；但**不把 eval 內容交給 reviewer**。
 - blocking finding 的處置**依可驗證性分流**（測試難寫 ≠ finding 不真）：
 
   | 情況 | 處置 |
