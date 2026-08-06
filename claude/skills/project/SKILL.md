@@ -151,7 +151,7 @@ These are hard constraints. Read them before touching git.
    | 腳本輸出 | Step 4 處置 |
    |---|---|
    | `review-residue: none` | 不出 squash 題 |
-   | 有 `top-contiguous: N` | 出題：壓掉頂端那 N 顆 review 痕跡**＋本輪 Step 3 將產生的 commit**（你的語意 commit 原樣保留）／原樣送出。**文案必須寫出「本輪文檔 commit 會一併收進這顆」**——否則 gate 顯示的與實際送出的不是同一份 |
+   | 有 `top-contiguous: N` | 出題：壓掉頂端那 N 顆 review 痕跡**＋本輪 Step 3 將產生的 commit**（你的語意 commit 原樣保留）／原樣送出。**文案必須寫出「本輪 Step 3 產生的 commit（docs，mixed state 下也含 code）會一併收進這顆」**——否則 gate 顯示的與實際送出的不是同一份 |
    | 只有 `buried: N` | 出題時**必須講明後果**：整支壓成一顆會連語意 commit 一起收／原樣送出。要單獨壓 buried 那幾顆需 `rebase -i`，本 skill 不走互動式 |
    | `top-contiguous` 與 `buried` **同時出現** | 預設只壓頂端那段（零風險）；整支全壓僅在使用者明確要求時用，且同樣須講明會連語意 commit 一起收。**不要把兩條路併成一個選項** |
    | `review-residue: UNKNOWN` | 照該行指示在 Step 4 問使用者，不猜 |
@@ -207,13 +207,13 @@ Ship 摘要：
 
 摘要之後**不要**用自由問句收尾（「確認送出？」這類會讓一句「merge」同時像確認、像指令、也像對建議的回答）——改用 **`AskUserQuestion`** 收確認：
 
-- **第 1 題固定**「這批怎麼處理？」——PR 路徑三選項：`送出，停在 PR`（我看過再決定）／`送出並 merge`／`取消`；直接 push 路徑無 PR，退為 `送出` / `取消`。
+- **第 1 題固定**「這批怎麼處理？」——PR 路徑三選項：`送出，停在 PR`（我看過再決定）／`送出並 merge`／`取消`；直接 push 路徑與 Bootstrap 路徑無 PR 可 merge，退為 `送出` / `取消`。
   選了「送出並 merge」即構成 `references/ship-paths.md`「Merge 最後一哩」所要的 explicit instruction——**開完 PR 就接著做完（merge → 清 remote/本地 branch → 同步 default），不要再問一次**。merge **方式**（壓不壓）不在本題細分：PR 最終只剩 1 顆 commit → 直接 squash-merge；仍 ≥2 顆 → 依「壓或不壓」節停下再問。**理由：Step 4 當下 PR 還沒開、commit 數還會被同批的 squash 題改變，此刻問等於要使用者預測。**
-- **其餘題目 = 詢問收斂來的待決事項**，一項一題，選項寫成**具體處置**而非 yes/no（例：branch 有 3 個 `fix:` commit → `先 squash 成一顆再送出` / `原樣送出（PR 逐 commit 可讀）`）。來源：squash 提醒／STATUS.md 建立／dossier 衛生待決／stale-branches 清掃／是否開 PR。
+- **其餘題目 = 詢問收斂來的待決事項**，一項一題，選項寫成**具體處置**而非 yes/no（例：腳本印 `top-contiguous: 3 顆` → `先壓掉那 3 顆 review 痕跡再送出（本輪文檔一併收進）` / `原樣送出（PR 逐 commit 可讀）`——**範例也不得示範自行比對 `fix:` 前綴**，判準一律取腳本訊號）。來源：squash 提醒／STATUS.md 建立／dossier 衛生待決／stale-branches 清掃／是否開 PR。
 - **上限**（工具限制：≤4 題、每題 ≤4 選項）：待決超過 3 項（多 repo 合計）→ 依 **改動 git 歷史 > 刪除東西 > 文檔類** 取前 3 出題，其餘寫進「附註」並在送出後回報「未處理」。
 - 多 repo：第 1 題涵蓋全部 repo（摘要已逐 repo 列出），待決題在題目文字標明所屬 repo。
 - `AskUserQuestion` 不可用（背景 turn／工具被停用）→ 退回文字編號選項並 **STOP**。
-- **處置先於送出**：使用者若同時選了「送出」與任一**會改變待送內容**的處置（squash／建立 STATUS.md／dossier 收斂），順序一律是**用 Step 1 記下的 hash 套用處置（NEVER recompute——理由見 Step 1 第 6 項）→ 重新 commit → 重印一次摘要並取得再次確認 → 才進 Step 5**。**Never push a commit set that differs from the one the gate displayed** —— 那等於 critical-op gate 顯示的東西和實際送出的不是同一份。
+- **處置先於送出**：使用者若同時選了「送出」與任一**會改變待送內容**的處置（squash／建立 STATUS.md／dossier 收斂），順序一律是**用 Step 1 記下的 hash 套用處置（NEVER recompute——理由見 Step 1 第 6 項）→ 重新 commit → 重印一次摘要並取得再次確認 → 才進 Step 5**。多個處置同時選中時，**含 `fetch` 的處置（stale-branches 清掃）一律排在 push 之後**——先跑會污染 `--force-with-lease` 的比較基準。**Never push a commit set that differs from the one the gate displayed** —— 那等於 critical-op gate 顯示的東西和實際送出的不是同一份。
 
 **No confirmation → STOP.** 這是硬 gate（見 Critical）。**A "merge" chosen here IS the explicit instruction** —— 它不是把 merge 變成預設，而是把「送出後還要再問一次」收進同一個 gate；使用者選了「停在 PR」就一律不 merge，事後仍可另外明說。
 
@@ -221,7 +221,7 @@ Ship 摘要：
 
 確認後逐 repo 執行（完整指令序列見 `references/ship-paths.md`）：
 
-- **本輪做過 branch 內 squash 且該 branch 已 push 過** → push 指令改為 `git -C <toplevel> push --force-with-lease origin <feature-branch>`（**NEVER `--force`**；被拒的分流見 `references/ship-paths.md`「push 失敗處理」——那裡 `pull --rebase` 會把剛壓掉的 commit 拉回來）。未 push 過的 branch 照常首推，不需要 force。
+> **修飾條件（不是第四條路徑）**：本輪做過 branch 內 squash 且該 branch 已 push 過 → 下列各路徑的 push 指令改為 `git -C <repo> push --force-with-lease=<feature-branch>:<squash 前記下的遠端 SHA> origin <feature-branch>`（**必須帶 expected SHA**——裸 lease 比對本地 tracking ref，而本流程自己會 fetch，詳見 `references/ship-paths.md`）（**NEVER `--force`**；被拒的分流見 `references/ship-paths.md`「push 失敗處理」——那裡 `pull --rebase` 會把剛壓掉的 commit 拉回來）。未 push 過的 branch 照常首推，不需要 force。
 - **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`，多 repo 須 `-R <owner/repo>` 綁定）：有則指向、無則 `gh pr create`（同樣 `-R` 綁定；title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。完整綁定指令見 `references/ship-paths.md`。輸出 PR URL。**接著依 Step 4 那題的答案分流**：選了「送出並 merge」→ 直接進「Merge 最後一哩」，**不再問一次**；選了「停在 PR」→ 附一句提示：「之後說『merge』即可由我接手最後一哩（merge + 清 branch + 同步本地 default）；要指定壓不壓就說『merge 壓成一顆』或『merge 保留 commit』，否則我會就 PR 內容給你選」——**不要**在此承諾特定 merge 方式，壓不壓一律依 `references/ship-paths.md`「壓或不壓」判定，序列見同檔「Merge 最後一哩」。**不 push default branch；未獲明說 merge 前不 merge。**
 - **直接 push 路徑**（escape hatch：確定無保護**且**使用者明說不用 PR）：push **當前 branch**（branch-first 無條件，故此處一定是 feature branch、非 default）：`git -C <repo> push -u origin <feature-branch>`（**顯式 remote + branch**，不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref；`origin` 為 stand-in）。**本路徑不是無保護 repo 的預設**——預設仍是 PR（見 Step 1 第 4 項），走到這裡代表使用者已明說不用 PR，故不再回頭勸開 PR。
 - **Bootstrap 路徑**（`verdict: BOOTSTRAP`）：照抄腳本的 `bootstrap-cmd:`（推本地 default 建立 baseline），完成後**重跑 `ship-state.sh` 確認 BOOTSTRAP 已消失**——此後回到正常路徑，後續 commit 一律 feature branch。

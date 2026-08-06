@@ -28,7 +28,9 @@ When the user pastes third-party review findings, read the source code and verif
 
 載入 `deep-review` skill，執行方式一律依其「**Codex 呼叫協議**」節（唯一權威——呼叫指令、prompt 限制、exit 契約失敗處理都以該節為準，勿憑記憶重組、本檔不重述）；**不要**呼叫 `codex:rescue`（plugin broker 路徑會靜默卡死，理由見該節）。本觸發的專屬規則：
 
-- repo 路徑 + commit range 取最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊，range 直接沿用其 `base..head`（base 已錨定）；即使變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。報告未記錄 base（如新 session）→ 先跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh show --repo <repo>`（anchor 檔在即得錨定 base，跨 session 有效）；anchor 也無 → 取 `git -C <repo> merge-base origin/<default> HEAD` 當下界審整條 branch——squash 只壓 review 產生的 commit、**語意 commit 會留在 branch 上**，故 branch 全長才等於審查範圍；**`HEAD~1..HEAD` 僅在確認 branch 只有一顆 commit 時成立**，否則正是本條開頭要防的漏審。
+- repo 路徑 + commit range 取最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊，range 直接沿用其 `base..head`（base 已錨定）；即使變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。報告未記錄 base（如新 session）→ 先跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh show --repo <repo>`（anchor 檔在即得錨定 base，跨 session 有效）；anchor 也無 → 依 HEAD 是否仍領先 default 分流：
+  - **仍領先**（`origin/<default>..HEAD` 非空）→ 取 `git -C <repo> merge-base origin/<default> HEAD` 當下界審整條 branch（squash 只壓 review 產生的 commit、**語意 commit 會留在 branch 上**，故 branch 全長才等於審查範圍）。
+  - **已併入 default**（該 range 為空）→ **merge-base 會退化成 HEAD、range 為空**，此時沒有可自動推導的下界：**停下問使用者要審哪個範圍**（列出近期 merge commit／PR 供選）。**NEVER 退回 `HEAD~1..HEAD`** —— 那正是本條開頭要防的漏審；`HEAD~1..HEAD` 只在確認整批就只有一顆 commit 時才成立。
 - 收到 findings 後的處理判準：**最近一次 `/deep-review` 帶 `autofix`** → 驗證後自動修復並 commit；否則、或無法確定當時是否帶 autofix（如新 session）→ 列出 findings 等使用者決定。
 
 ---

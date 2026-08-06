@@ -7,7 +7,8 @@
 # 本腳本把 state 落地到 .git/ 下的檔案，並印出「已解析完成的指令」供 model 照抄，
 # model 全程不經手 hash。
 #
-# 用法（exit 契約：0=成功；1=verdict STOP（無 anchor/stale/GC/超上限/非 git repo）；2=用法錯誤）：
+# 用法（exit 契約：0=成功；1=verdict STOP（無 anchor/stale/GC/超上限/非 git repo/
+#       lib/review-subjects.sh 不可用——僅 squash-cmd）；2=用法錯誤）：
 #   review-anchor.sh record     --repo <path> --mode <branch-diff|range|working-tree|baseline> \
 #                               [--base <ref>] [--range <X..Y>] [--tests-baseline <pass|fail|skip>]
 #       記錄本次審查起點（**不等於 squash 的 reset 目標**——後者由 squash-cmd 自此往上掃
@@ -57,6 +58,11 @@
 
 set -uo pipefail
 
+# 照抄行裡的路徑一律過這個 helper——直接插進單引號會在路徑含單引號時讓 quoting 破裂
+# （實測 `/tmp/alice's-repo` 產出的行 `bash -n` 直接 syntax error）。三支腳本各留一份 3 行
+# 純函式：它是標準演算法、不是會漂移的事實，比為它多開一個跨 skill lib 依賴划算。
+shq() { local q="'"; printf "%s%s%s" "$q" "${1//$q/$q\\$q$q}" "$q"; }
+
 die_usage() { echo "error: $*" >&2; exit 2; }
 
 # 錨點消費失敗的統一出口：印 STOP verdict、exit 1
@@ -70,8 +76,9 @@ fmt_epoch() {
 # 自 anchor 檔取 key（檔不存在回空）
 aget() { sed -n "s/^$1=//p" "$ANCHOR" 2>/dev/null | head -1; }
 
-# review 循環機械產生的 commit subject —— 定義在 lib/review-subjects.sh（與 review-state.sh
-# 的 round 偵測共用同一份，理由見該檔）。此處只負責加錨點。
+# review 循環機械產生的 commit subject —— 定義在 lib/review-subjects.sh（三個消費者共用：
+# 本檔的 squash 掃描、review-state.sh 的 round 偵測、project/ship-state.sh 的 review-residue；
+# 改 pattern 前三個都要驗，理由與各自的漂移後果見該檔）。此處只負責加錨點。
 REVIEW_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/review-subjects.sh"
 HAVE_REVIEW_LIB=0
 if [ -f "$REVIEW_LIB" ]; then
@@ -79,7 +86,6 @@ if [ -f "$REVIEW_LIB" ]; then
     . "$REVIEW_LIB" && HAVE_REVIEW_LIB=1
 fi
 REVIEW_SUBJECT_RE="^(${REVIEW_SUBJECT_ALT:-})\$"
-
 
 [ $# -ge 1 ] || die_usage "缺少子指令（record|show|squash-cmd|codex-next|clear）"
 SUB="$1"; shift
@@ -186,7 +192,7 @@ cmd_record() {
     # range 模式審查指令 = range 引數本身、baseline 為全庫審查，...HEAD 都會審錯範圍——不印
     case "$MODE_VAL" in
         branch-diff|working-tree)
-            echo "diff-cmd: git -C '${REPO_ABS}' diff ${base_hash}...HEAD" ;;
+            echo "diff-cmd: git -C $(shq "$REPO_ABS") diff ${base_hash}...HEAD" ;;
     esac
 }
 
@@ -265,7 +271,7 @@ cmd_squash_cmd() {
             echo "squash-note: 保留範圍內仍有 ${n_note} 顆 review 樣式 commit（被非 review commit 隔開，未納入 squash）"
         fi
     fi
-    echo "squash-cmd: git -C '${REPO_ABS}' reset --soft ${squash_base}"
+    echo "squash-cmd: git -C $(shq "$REPO_ABS") reset --soft ${squash_base}"
 }
 
 cmd_codex_next() {
@@ -302,7 +308,7 @@ cmd_codex_next() {
         # 冪等重印：codex run 失敗重試場景，round 不誤增、state 不動
         echo "codex-round: C$(aget codex_round)"
         echo "codex-range: $(aget codex_range)"
-        echo "codex-cmd: ~/.claude/skills/deep-review/scripts/codex-exec-review.sh run --repo '${REPO_ABS}' --range $(aget codex_range) --round C$(aget codex_round)"
+        echo "codex-cmd: ~/.claude/skills/deep-review/scripts/codex-exec-review.sh run --repo $(shq "$REPO_ABS") --range $(aget codex_range) --round C$(aget codex_round)"
         return 0
     else
         round=$((c_round + 1))
@@ -332,7 +338,7 @@ cmd_codex_next() {
 
     echo "codex-round: C${round}"
     echo "codex-range: ${range}"
-    echo "codex-cmd: ~/.claude/skills/deep-review/scripts/codex-exec-review.sh run --repo '${REPO_ABS}' --range ${range} --round C${round}"
+    echo "codex-cmd: ~/.claude/skills/deep-review/scripts/codex-exec-review.sh run --repo $(shq "$REPO_ABS") --range ${range} --round C${round}"
 }
 
 cmd_clear() {

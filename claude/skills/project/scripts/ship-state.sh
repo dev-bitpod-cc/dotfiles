@@ -91,6 +91,11 @@ fi
 overall=0
 
 # 印一段清單（stdin），縮排並截斷到 MAX_LIST
+# 照抄行裡的路徑一律過這個 helper——直接插進單引號會在路徑含單引號時讓 quoting 破裂
+# （實測 `/tmp/alice's-repo` 產出的行 `bash -n` 直接 syntax error）。三支腳本各留一份 3 行
+# 純函式：它是標準演算法、不是會漂移的事實，比為它多開一個跨 skill lib 依賴划算。
+shq() { local q="'"; printf "%s%s%s" "$q" "${1//$q/$q\\$q$q}" "$q"; }
+
 print_list() {
     local total="$1"
     head -n "$MAX_LIST" | sed 's/^/  /'
@@ -163,7 +168,7 @@ detect_bootstrap() {
     echo "verdict: BOOTSTRAP（全新空 repo 的第一次 ship：遠端尚無 default branch，故無 default 可保護、branch-first 在此不適用）"
     echo "bootstrap-note: 首推的 branch 將成為遠端 default branch —— 推 '${branch}' 即以它為 default（事後只能人工進 repo settings 改），Step 4 摘要須向使用者標明"
     echo "bootstrap-scope: 豁免僅涵蓋下面這一次 push（建立 baseline）。baseline 一存在，本 verdict 即不再出現、branch-first 與 never-push-default 全數恢復——後續 commit 一律走 feature branch"
-    echo "bootstrap-cmd: git -C '${toplevel}' push -u ${remote} ${branch}"
+    echo "bootstrap-cmd: git -C $(shq "$toplevel") push -u $(shq "$remote") $(shq "$branch")"
 }
 
 # protection 判定（classic + ruleset；判定順序見 ship-paths.md）
@@ -355,6 +360,9 @@ if [ -f "$REVIEW_LIB" ]; then
 fi
 
 # Step 4 squash 選項的判定依據：branch 上有無 review 迭代痕跡、能不能安全壓、reset 目標是誰。
+# 注意 `squash-cmd:` 這個 key 與 deep-review 的 review-anchor.sh 同名但**語意不同**：那邊從
+# 審查 anchor 往上掃（review 收尾用），這邊從 merge-base 往上掃（ship 前整理用）。兩者不可互換
+# ——ship 時 anchor 多半已被 clear，照抄那邊只會拿到 verdict: STOP。
 # 三者都是 model 憑印象會漂的 git 事實，故一律由腳本解析、印成可照抄的指令。
 detect_review_residue() {
     local repo="$1" remote="$2" default="$3" toplevel="$4"
@@ -388,14 +396,13 @@ detect_review_residue() {
     echo "review-residue: ${n_all} 顆（${base_ref}..HEAD 內 review 機械 commit；Step 4 squash 選項依此出題）"
     if [ "$n_top" -gt 0 ]; then
         echo "  top-contiguous: ${n_top} 顆（可安全壓，語意 commit 原樣保留）"
-        echo "  squash-cmd: git -C '${toplevel}' reset --soft ${top_hash}   # 此 hash = 使用者語意 commit 的邊界；記下來，Step 4 套用時直接用（本流程後續產生的 commit 會落在 reset 範圍內，**勿重跑重算**）"
+        echo "  squash-cmd: git -C $(shq "$toplevel") reset --soft ${top_hash}   # 此 hash = 使用者語意 commit 的邊界；記下來，Step 4 套用時直接用（本流程後續產生的 commit 會落在 reset 範圍內，**勿重跑重算**）"
     fi
     if [ "$n_buried" -gt 0 ]; then
         echo "  buried: ${n_buried} 顆（被非 review commit 隔開，reset --soft 壓不到——要單獨壓需 rebase -i，本 skill 不走互動式）"
-        echo "  squash-all-cmd: git -C '${toplevel}' reset --soft ${mb}   # 整支壓成一顆：**會連語意 commit 一起收**，選項文案須講明後果"
+        echo "  squash-all-cmd: git -C $(shq "$toplevel") reset --soft ${mb}   # 整支壓成一顆：**會連語意 commit 一起收**，選項文案須講明後果"
     fi
 }
-
 
 # 殘留 branch 衛生：已**完全併入** default 的 local / remote branch。
 # 動機：merge 最後一哩只清它自己 merge 的那支——規則生效前的老 branch、或走別條路
@@ -425,16 +432,19 @@ detect_stale_branches() {
     if [ -n "$remotes_merged" ]; then
         printf '%s\n' "$remotes_merged" | sed 's/^/  remote: /'
     fi
+    # `--` option terminator：ref 名可以長得像選項——`git branch -- '--all'` 前端會拒，但
+    # `git update-ref refs/heads/--all` 建得起來且 `check-ref-format` 判合法。shell quoting
+    # 擋不住這個（quote 完 git 仍把 `--all` 當選項），要靠 terminator。
     # 清掃指令：fetch --prune 先行（清掉已在遠端刪除的本地殘影，避免對不存在的 branch 下刪除）。
     # 逐項串接而非 sed 拼字串——前一版用 sed 補空白，遇裸 remote 名就拼出 `--deleteorigin`
-    cmd="git -C '${toplevel}' fetch --prune"
+    cmd="git -C $(shq "$toplevel") fetch --prune"
     if [ -n "$locals" ]; then
-        cmd="${cmd} && git -C '${toplevel}' branch -d"
-        while IFS= read -r b; do cmd="${cmd} ${b}"; done <<< "$locals"
+        cmd="${cmd} && git -C $(shq "$toplevel") branch -d --"
+        while IFS= read -r b; do cmd="${cmd} $(shq "$b")"; done <<< "$locals"
     fi
     if [ -n "$remotes_merged" ]; then
-        cmd="${cmd} && git -C '${toplevel}' push ${remote} --delete"
-        while IFS= read -r b; do cmd="${cmd} ${b#"${remote}"/}"; done <<< "$remotes_merged"
+        cmd="${cmd} && git -C $(shq "$toplevel") push $(shq "$remote") --delete --"
+        while IFS= read -r b; do cmd="${cmd} $(shq "${b#"${remote}"/}")"; done <<< "$remotes_merged"
     fi
     echo "cleanup-cmd: ${cmd}"
 }
@@ -514,7 +524,7 @@ check_repo() {
     if [ "$branch" = "$default" ] && [ "$n_commits" -gt 0 ]; then
         echo "misplaced: WARNING — $n_commits commit 已誤 commit 在本地 ${default}（情況 B——用下行指令救援，勿手打序列、勿 reset --hard）"
         # 印 toplevel 絕對路徑而非呼叫端引數——照抄行可能在另一個 cwd 執行，相對路徑會指錯 repo
-        echo "branch-first-cmd: ~/.claude/skills/project/scripts/branch-first.sh '$toplevel' <type>/<slug>"
+        echo "branch-first-cmd: ~/.claude/skills/project/scripts/branch-first.sh $(shq "$toplevel") <type>/<slug>"
     fi
 
     # -- dossier 偵測（Step 2 衛生檢查；門檻見檔頭常數，單一來源）--
