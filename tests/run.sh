@@ -1314,6 +1314,23 @@ out="$("$HA_SCRIPT" find-predecessor fenced "$FP")"
 assert_eq "正文/code fence 內的 slug: 不得被當成 frontmatter" \
     "$FP/archive/20260808-110000-fenced.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
 
+# 歧義檔名 **+ 無 slug: frontmatter** → 兩種解讀都合法，同一份必然被兩個 slug 撈到。
+# 資訊不足、消不掉，但必須附 AMBIGUOUS note 讓讀取端知道要先確認內容再採用
+printf -- '---\ncreated: 2026-08-01\n---\n' > "$FP/archive/20260810-120000-ambignofm.md"
+out="$("$HA_SCRIPT" find-predecessor ambignofm "$FP")"
+if echo "$out" | grep -q "^note: AMBIGUOUS"; then
+    ok "歧義檔名 + 無 metadata → 附 AMBIGUOUS note"
+else bad "歧義且無 metadata 卻未標 AMBIGUOUS"; fi
+assert_eq "歧義檔確實會被另一個 slug 也撈到（故 note 是必要的，不是裝飾）" \
+    "$(echo "$out" | sed -n 's/^predecessor: //p')" \
+    "$("$HA_SCRIPT" find-predecessor "120000-ambignofm" "$FP" | sed -n 's/^predecessor: //p')"
+
+# 有 slug: frontmatter 佐證者無歧義 → 不得誤標 AMBIGUOUS
+out="$("$HA_SCRIPT" find-predecessor "120000-ambig" "$FP")"
+if echo "$out" | grep -q "^note: AMBIGUOUS"; then
+    bad "檔內 slug: 已可佐證歸屬，卻誤標 AMBIGUOUS"
+else ok "有 slug: 佐證 → 不標 AMBIGUOUS"; fi
+
 # frontmatter 有 slug: 但值為空 → malformed，不可當成「沒有欄位」放行
 printf -- '---\nslug:\ncreated: 2026-08-01\n---\n' > "$FP/archive/20260809-100000-emptyfm.md"
 out="$("$HA_SCRIPT" find-predecessor emptyfm "$FP")"

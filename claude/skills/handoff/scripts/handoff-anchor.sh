@@ -267,7 +267,7 @@ cmd_find_predecessor() {
         exit 0
     fi
 
-    local hit_active="" hit_archive="" hit_key="" f base name key matched
+    local hit_active="" hit_archive="" hit_key="" hit_ambiguous=0 f base name key matched ambiguous
 
     # 讀 frontmatter 的 slug 欄位。輸出 `=<值>` 表示**欄位存在**（值可能為空）；輸出空字串
     # 表示無 frontmatter 或其中無該欄位。只掃第一個 `---` 到下一個 `---`——正文／code fence
@@ -306,6 +306,13 @@ cmd_find_predecessor() {
         # `YYYYMMDD-<slug>`（legacy）與 `YYYYMMDD-HHMMSS-<slug>` 在 slug 恰以「6 位數字-」
         # 開頭時**無法從檔名區分**（`20260807-120000-foo` 可讀成 slug=foo 或 slug=120000-foo）。
         # 歧義消不掉，故兩種解讀都試，任一命中即算——否則正確的那個 slug 反而找不到自己的前一份。
+        # 檔名同時讀得通兩種格式、檔內又無 slug: 可佐證 → 這個檔的歸屬**本質上不確定**
+        # （同一份會同時被 `foo` 與 `120000-foo` 撈到）。資訊不足，消不掉，但要讓讀取端知道。
+        ambiguous=0
+        case "$name" in
+            [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*)
+                [ -z "$(fm_slug "$f")" ] && ambiguous=1 ;;
+        esac
         matched=0
         case "$name" in
             [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*)
@@ -325,7 +332,7 @@ cmd_find_predecessor() {
         [ "$matched" -eq 1 ] || continue
         slug_matches "$f" "$slug" || continue
         if [ -z "$hit_key" ] || [ "$key" -gt "$hit_key" ]; then
-            hit_archive="$f"; hit_key="$key"
+            hit_archive="$f"; hit_key="$key"; hit_ambiguous="$ambiguous"
         fi
     done
 
@@ -335,6 +342,7 @@ cmd_find_predecessor() {
     elif [ -n "$hit_archive" ]; then
         echo "predecessor: $hit_archive"
         echo "location: archive（已消費的前一輪）"
+        [ "$hit_ambiguous" -eq 1 ] && echo "note: AMBIGUOUS——檔名新舊兩種歸檔格式都讀得通、檔內又無 slug: 可佐證，同一份會被兩個 slug 撈到。採用前先讀內容確認確實是這條工作線。"
     else
         echo "predecessor: NONE（active 與 archive 皆無 slug=${slug} 的交接檔 → 首輪）"
     fi
