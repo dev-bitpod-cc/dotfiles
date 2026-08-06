@@ -1297,6 +1297,30 @@ out="$("$HA_SCRIPT" find-predecessor nofm "$FP")"
 assert_eq "無 slug: frontmatter 的檔仍採用（向後相容，契約如此）" \
     "$FP/archive/20260808-100000-nofm.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
 
+# `YYYYMMDD-<slug>` 與 `YYYYMMDD-HHMMSS-<slug>` 在 slug 恰以「6 位數字-」開頭時無法從檔名
+# 區分（20260807-120000-foo 可讀成 slug=foo 或 slug=120000-foo）。歧義消不掉 → 兩種解讀都試，
+# 否則正確的那個 slug 反而找不到自己的前一份
+printf -- '---\nslug: 120000-ambig\n---\n' > "$FP/archive/20260807-120000-ambig.md"
+out="$("$HA_SCRIPT" find-predecessor "120000-ambig" "$FP")"
+assert_eq "legacy 檔的 slug 恰以 6 位數字開頭 → 仍定位得到" \
+    "$FP/archive/20260807-120000-ambig.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# frontmatter 判定只掃第一個 --- 到下一個 ---：正文／code fence 裡的 `slug:` 不算數
+# （W3 模板本身就長那樣，交接檔在講 handoff skill 時會把它貼進正文）
+# shellcheck disable=SC2016  # 三個反引號是 fixture 的字面 markdown code fence，不是命令替換
+printf -- '---\ncreated: 2026-08-01\n---\n# Handoff\n\n```\nslug: other-line\n```\n' \
+    > "$FP/archive/20260808-110000-fenced.md"
+out="$("$HA_SCRIPT" find-predecessor fenced "$FP")"
+assert_eq "正文/code fence 內的 slug: 不得被當成 frontmatter" \
+    "$FP/archive/20260808-110000-fenced.md" "$(echo "$out" | sed -n 's/^predecessor: //p')"
+
+# frontmatter 有 slug: 但值為空 → malformed，不可當成「沒有欄位」放行
+printf -- '---\nslug:\ncreated: 2026-08-01\n---\n' > "$FP/archive/20260809-100000-emptyfm.md"
+out="$("$HA_SCRIPT" find-predecessor emptyfm "$FP")"
+if echo "$out" | grep -q "predecessor: NONE"; then
+    ok "frontmatter slug: 空值 → 不採用（不等同缺少欄位）"
+else bad "空值 slug 被當成缺少欄位而放行"; fi
+
 "$HA_SCRIPT" find-predecessor >/dev/null 2>&1
 assert_rc "find-predecessor 無引數 → exit 2" 2 $?
 "$HA_SCRIPT" find-predecessor foo "$TMP/no-such-dir" >/dev/null

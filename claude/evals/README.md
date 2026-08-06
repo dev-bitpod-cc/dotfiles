@@ -57,7 +57,7 @@
 | h6 | handoff | resume-side：多 repo 混合 verdict（a FRESH／b DRIFTED）逐 repo 處置（H6） |
 | h7 | handoff | resume-side：DIVERGED（錨點被 amend 掉）內容降級為線索（H7） |
 
-root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒；handoff H3 只需空 handoffs 目錄。
+root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒；handoff H3 只需空 handoffs 目錄；handoff H8 沿用 h5 沙盒（另起 instance，只有 query 給不給 slug 的差別）。
 
 ## 歷史基線
 

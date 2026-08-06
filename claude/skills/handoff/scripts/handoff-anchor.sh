@@ -267,13 +267,26 @@ cmd_find_predecessor() {
         exit 0
     fi
 
-    local hit_active="" hit_archive="" hit_key="" f base name key
+    local hit_active="" hit_archive="" hit_key="" f base name key matched
 
-    # 檔內 slug: 存在時須相符；沒有該欄位者放行（向後相容）
+    # 讀 frontmatter 的 slug 欄位。輸出 `=<值>` 表示**欄位存在**（值可能為空）；輸出空字串
+    # 表示無 frontmatter 或其中無該欄位。只掃第一個 `---` 到下一個 `---`——正文／code fence
+    # 裡的 `slug:` 不算數（W3 模板本身就長那樣，交接檔在講 handoff skill 時會把它貼進正文，
+    # 掃全檔會把範例值當成真欄位、進而拒絕正確的前一份）。
+    fm_slug() {
+        awk '
+            NR==1 { if ($0 != "---") exit; next }
+            $0 == "---" { exit }
+            /^slug:/ { sub(/^slug:[[:space:]]*/, ""); print "=" $0; exit }
+        ' "$1"
+    }
+
+    # 檔內 frontmatter slug 存在時須完全相符；沒有該欄位者放行（向後相容舊手寫檔）。
+    # 欄位存在但值為空 → 屬 malformed，不當成「沒有欄位」放行。
     slug_matches() {
-        local cs
-        cs="$(sed -n 's/^slug:[[:space:]]*//p' "$1" | head -1)"
-        [ -z "$cs" ] || [ "$cs" = "$2" ]
+        local fs
+        fs="$(fm_slug "$1")"
+        [ -z "$fs" ] || [ "${fs#=}" = "$2" ]
     }
 
     # -- active：檔名即 <slug>.md，不剝任何前綴 --
@@ -290,16 +303,26 @@ cmd_find_predecessor() {
         [ -f "$f" ] || continue
         base="$(basename -- "$f")"
         name="${base%.md}"
+        # `YYYYMMDD-<slug>`（legacy）與 `YYYYMMDD-HHMMSS-<slug>` 在 slug 恰以「6 位數字-」
+        # 開頭時**無法從檔名區分**（`20260807-120000-foo` 可讀成 slug=foo 或 slug=120000-foo）。
+        # 歧義消不掉，故兩種解讀都試，任一命中即算——否則正確的那個 slug 反而找不到自己的前一份。
+        matched=0
         case "$name" in
             [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*)
                 key="${name:0:8}${name:9:6}"
-                name="${name#????????-??????-}" ;;
+                if [ "${name#????????-??????-}" = "$slug" ]; then
+                    matched=1
+                elif [ "${name#????????-}" = "$slug" ]; then
+                    key="${name:0:8}000000"      # 實為 legacy：同日視為最早
+                    matched=1
+                fi ;;
             [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-*)
                 key="${name:0:8}000000"          # legacy：同日視為最早
-                name="${name#????????-}" ;;
-            *)  key="00000000000000" ;;          # 無歸檔前綴（手工放入）：視為最舊
+                [ "${name#????????-}" = "$slug" ] && matched=1 ;;
+            *)  key="00000000000000"             # 無歸檔前綴（手工放入）：視為最舊
+                [ "$name" = "$slug" ] && matched=1 ;;
         esac
-        [ "$name" = "$slug" ] || continue
+        [ "$matched" -eq 1 ] || continue
         slug_matches "$f" "$slug" || continue
         if [ -z "$hit_key" ] || [ "$key" -gt "$hit_key" ]; then
             hit_archive="$f"; hit_key="$key"
