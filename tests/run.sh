@@ -35,6 +35,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1   # 相對路徑的 source 解析與 git 操作以 repo 根為基準（從外部目錄執行時避免 SC1091 誤報）
 FIX="$ROOT/tests/fixtures"
 TMP="$(mktemp -d)"
+# macOS 的 mktemp 給 /var/...（symlink），而腳本的照抄行印 git --show-toplevel 的 realpath
+# （/private/var/...）——不正規化，所有「整行照抄」斷言都會因路徑前綴不同而假紅。
+TMP="$(cd "$TMP" && pwd -P)"
 trap 'rm -rf "$TMP"' EXIT
 
 PASS=0
@@ -402,7 +405,7 @@ if echo "$out" | grep -q "fetch --prune"; then ok "清掃指令前置 fetch --pr
 # 為何下沉：判「哪些 commit 算 review 迭代痕跡」需要 deep-review 的權威 subject 清單，
 # model 憑印象比對會把使用者自己的 `fix: 修正某某` 當痕跡建議壓掉，而使用者一句「好」
 # 就 force-push 了。reset 目標 hash 同理，不讓 model 湊。
-git clone -q "$TMP/sb-origin.git" "$TMP/rr-work" 2>/dev/null || git clone -q "$TMP/ss-origin.git" "$TMP/rr-work"
+git clone -q "$TMP/sb-origin.git" "$TMP/rr-work"   # 沿用 stale-branches 段的 origin（同段 fixture，baseline 明確）
 (cd "$TMP/rr-work" && git switch -qc feat/rr \
     && echo r1 > r.txt && "${GITC[@]}" add r.txt && "${GITC[@]}" commit -qm "feat: 使用者的語意實作")
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-work")"
@@ -415,7 +418,7 @@ rr_feat="$(git -C "$TMP/rr-work" rev-parse HEAD)"
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-work")"
 if grep -q "^review-residue: 2 顆" <<< "$out"; then ok "review-residue 計數正確"; else bad "review-residue 計數錯誤（${out}）"; fi
 if grep -q "top-contiguous: 2 顆" <<< "$out"; then ok "頂端連續段顆數正確"; else bad "頂端連續段錯誤"; fi
-if grep -qE "^  squash-cmd: git -C .* reset --soft ${rr_feat}\$" <<< "$out"; then ok "squash-cmd 指向第一顆語意 commit（腳本解析，model 不湊 hash）"; else bad "squash-cmd 目標錯誤"; fi   # 路徑取 toplevel（realpath），只驗 hash
+if grep -qE "^  squash-cmd: git -C .* reset --soft ${rr_feat}( |\$)" <<< "$out"; then ok "squash-cmd 指向第一顆語意 commit（腳本解析，model 不湊 hash）"; else bad "squash-cmd 目標錯誤"; fi   # 路徑取 toplevel（realpath），只驗 hash；hash 後可接說明註解
 if grep -q "buried:" <<< "$out"; then bad "無 buried 卻誤印"; else ok "無 buried 時不印該行"; fi
 
 # 被非 review commit 隔開（Step 3 的 docs commit 壓在最上）→ reset --soft 壓不到，
@@ -427,6 +430,51 @@ if grep -q "top-contiguous:" <<< "$out"; then bad "頂端非 review commit 卻�
 if grep -q "buried: 2 顆" <<< "$out"; then ok "被隔開的痕跡計為 buried"; else bad "buried 計數錯誤（${out}）"; fi
 if grep -qE "^  squash-all-cmd: git -C .* reset --soft ${rr_mb} " <<< "$out"; then ok "buried 時改印整支全壓指令"; else bad "缺 squash-all-cmd"; fi
 if grep -q "會連語意 commit 一起收" <<< "$out"; then ok "全壓指令附後果警語"; else bad "全壓指令缺警語"; fi
+
+# --- 跨 Step 時序：Step 1 的 hash 是「使用者語意 commit 的邊界」，Step 3 之後不得重算 ---
+# 2026-08-06 一次真實回歸的重現：曾把規則改成「套用當下重跑」，但 Step 3 的 docs commit 會讓
+# 頂端連續段恆為 0、verdict 從 top-contiguous 翻成 buried，現場只剩會壓掉語意 commit 的全壓
+# 指令——使用者勾的處置沒有對應指令可執行。連兩輪 review 沒被測試擋住，故在此釘死。
+git clone -q "$TMP/sb-origin.git" "$TMP/rr-time"
+(cd "$TMP/rr-time" && git switch -qc feat/t \
+    && echo t1 > t.txt && "${GITC[@]}" add t.txt && "${GITC[@]}" commit -qm "feat: 使用者的語意實作" \
+    && echo t2 > t.txt && "${GITC[@]}" commit -qam "fix: address review findings" \
+    && echo t3 > t.txt && "${GITC[@]}" commit -qam "fix: address review findings")
+rr_t_feat="$(git -C "$TMP/rr-time" rev-parse HEAD~2)"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-time")"       # 模擬 Step 1
+rr_t_hash="$(grep -oE "reset --soft [0-9a-f]{40}" <<< "$out" | head -1 | awk '{print $3}')"
+if [ "$rr_t_hash" = "$rr_t_feat" ]; then ok "Step 1 的 squash-cmd 指向使用者語意 commit（邊界）"; else bad "Step 1 hash 未指向語意 commit"; fi
+
+(cd "$TMP/rr-time" && echo t4 > t.txt && "${GITC[@]}" commit -qam "docs: 同步 dossier")   # 模擬 Step 3
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-time")"
+if grep -q "top-contiguous:" <<< "$out"; then bad "Step 3 後仍報 top-contiguous（測試前提失效，重看 detect_review_residue）"; else ok "Step 3 後 top-contiguous 消失——這就是不得重算的理由"; fi
+if grep -q "buried: 2 顆" <<< "$out"; then ok "Step 3 後形狀翻轉為 buried（重算只會剩全壓指令）"; else bad "buried 未如預期出現"; fi
+
+(cd "$TMP/rr-time" && git reset --soft "$rr_t_hash")                     # 模擬 Step 4 用 Step 1 的 hash
+if [ "$(git -C "$TMP/rr-time" rev-parse HEAD)" = "$rr_t_feat" ]; then ok "用 Step 1 的 hash reset → 停在使用者語意 commit"; else bad "reset 目標錯誤"; fi
+if [ "$(git -C "$TMP/rr-time" rev-list --count origin/main..HEAD)" = "1" ]; then ok "語意 commit 保留、其上全部收攏"; else bad "語意 commit 未保留"; fi
+if [ -n "$(git -C "$TMP/rr-time" diff --cached --name-only)" ]; then ok "review 痕跡 + 本輪 docs 進 index（內容零損失）"; else bad "index 為空（內容遺失）"; fi
+
+# --- top-contiguous 與 buried 同時出現：SKILL 為此專列一行處置，須有守門 ---
+git clone -q "$TMP/sb-origin.git" "$TMP/rr-both"
+(cd "$TMP/rr-both" && git switch -qc feat/b2 \
+    && echo b1 > b.txt && "${GITC[@]}" add b.txt && "${GITC[@]}" commit -qm "feat: 第一段語意" \
+    && echo b2 > b.txt && "${GITC[@]}" commit -qam "fix: address review findings" \
+    && echo b3 > b.txt && "${GITC[@]}" commit -qam "feat: 第二段語意" \
+    && echo b4 > b.txt && "${GITC[@]}" commit -qam "fix: address review findings" \
+    && echo b5 > b.txt && "${GITC[@]}" commit -qam "fix: address external review findings")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/rr-both")"
+if grep -q "^review-residue: 3 顆" <<< "$out"; then ok "混合情境總數正確"; else bad "混合情境總數錯誤"; fi
+if grep -q "top-contiguous: 2 顆" <<< "$out" && grep -q "buried: 1 顆" <<< "$out"; then ok "混合情境兩組訊號並存"; else bad "混合情境訊號缺失（SKILL 有此列處置卻無守門）"; fi
+if grep -qE "^  squash-cmd: " <<< "$out" && grep -qE "^  squash-all-cmd: " <<< "$out"; then ok "混合情境兩條指令都印（由使用者選，不由 agent 併）"; else bad "混合情境指令不全"; fi
+
+# --- lib 缺席 → UNKNOWN 降級（不猜、不 set -u 爆炸）---
+mkdir -p "$TMP/ss-nolib"
+cp "$SS_SCRIPT" "$TMP/ss-nolib/ship-state.sh"      # 不複製 ../../deep-review/scripts/lib/
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$TMP/ss-nolib/ship-state.sh" "$TMP/rr-both" 2>&1)"
+assert_rc "lib 缺席 → ship-state 照常完成（不因缺 pattern 而死）" 0 $?
+if grep -q "^review-residue: UNKNOWN" <<< "$out"; then ok "lib 缺席 → review-residue 降級 UNKNOWN"; else bad "缺 UNKNOWN 降級（model 會被迫憑印象猜）"; fi
+if grep -q "^protection:" <<< "$out"; then ok "lib 缺席不影響其餘偵測輸出"; else bad "lib 缺席拖垮了其他輸出"; fi
 
 # origin/HEAD 存在時（真實 clone 的常態）：其 short form 是**裸 remote 名**（"origin"），
 # 不是 branch——列進去會污染清單並讓 cleanup-cmd 拼出 `--deleteorigin`（實地跑真 repo 才
@@ -984,7 +1032,7 @@ if echo "$out" | grep -q "continuity: WARNING"; then ok "dirty+ahead → continu
 # HEAD 在 main（rs-clean、priority 4）→ REQUIRED + branch-cmd + empty-tree 常數
 out="$("$RS_SCRIPT" "$TMP/rs-clean")"
 if echo "$out" | grep -q "branch-first: REQUIRED"; then ok "HEAD 在 main → branch-first REQUIRED"; else bad "main branch-first 誤判"; fi
-if echo "$out" | grep -qF "branch-cmd: git -C $TMP/rs-clean switch -c <type>/<slug>"; then ok "branch-cmd 印出待填指令"; else bad "branch-cmd 缺失"; fi
+if echo "$out" | grep -qF "branch-cmd: git -C '$TMP/rs-clean' switch -c <type>/<slug>"; then ok "branch-cmd 印出待填指令"; else bad "branch-cmd 缺失"; fi
 if echo "$out" | grep -q "empty-tree: 4b825dc642cb6eb9a060e54bf8d69288fbee4904"; then ok "priority 4 印 empty-tree 常數"; else bad "empty-tree 常數缺失"; fi
 
 # dirty 但 ahead=0 → 無 continuity（兩條件須同時成立）
@@ -2165,7 +2213,7 @@ if [ -f "$ra_anchor" ] && grep -qxF "base=$ra_mb" "$ra_anchor"; then ok "anchor 
 ra_feat_x="$(git -C "$TMP/ra-work" rev-parse HEAD~1)"
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-work")"
 assert_rc "squash-cmd happy path → exit 0" 0 $?
-if echo "$out" | grep -qxF "squash-cmd: git -C $TMP/ra-work reset --soft $ra_feat_x"; then ok "squash-cmd 停在語意 commit（不壓既有 feat）"; else bad "squash-cmd 指令錯誤（squash base 未避開既有語意 commit）"; fi
+if echo "$out" | grep -qxF "squash-cmd: git -C '$TMP/ra-work' reset --soft $ra_feat_x"; then ok "squash-cmd 停在語意 commit（不壓既有 feat）"; else bad "squash-cmd 指令錯誤（squash base 未避開既有語意 commit）"; fi
 if echo "$out" | grep -q "fix: R1 review fixes"; then ok "squash-range 列出 commit"; else bad "squash-range 清單缺失"; fi
 if echo "$out" | grep -q "^squash-preserve: 1 顆" && grep -q "feat: x" <<< "$out"; then ok "squash-preserve 列出保留的既有 commit"; else bad "squash-preserve 缺失或未列保留 commit"; fi
 
@@ -2215,7 +2263,7 @@ ra_h1="$(git -C "$TMP/ra-work" rev-parse HEAD)"
 out="$("$RA_SCRIPT" codex-next --repo "$TMP/ra-work")"
 assert_rc "codex-next C1 → exit 0" 0 $?
 if echo "$out" | grep -q "codex-round: C1" && echo "$out" | grep -qxF "codex-range: $ra_mb..$ra_h1"; then ok "C1 range = anchor-base..HEAD"; else bad "C1 range 錯誤"; fi
-if echo "$out" | grep -qF "codex-cmd: ~/.claude/skills/deep-review/scripts/codex-exec-review.sh run --repo $TMP/ra-work --range $ra_mb..$ra_h1 --round C1"; then ok "codex-cmd 整行照抄可執行"; else bad "codex-cmd 錯誤"; fi
+if echo "$out" | grep -qF "codex-cmd: ~/.claude/skills/deep-review/scripts/codex-exec-review.sh run --repo '$TMP/ra-work' --range $ra_mb..$ra_h1 --round C1"; then ok "codex-cmd 整行照抄可執行"; else bad "codex-cmd 錯誤"; fi
 out="$("$RA_SCRIPT" codex-next --repo "$TMP/ra-work")"
 assert_rc "同 HEAD 再呼叫 → exit 0" 0 $?
 if echo "$out" | grep -q "codex-round: C1"; then ok "同 HEAD 冪等（round 不誤增）"; else bad "冪等失敗"; fi
@@ -2292,7 +2340,27 @@ ra_imp5_mb="$(git -C "$TMP/ra-imp5" rev-parse origin/main)"
     && echo b1 > b.txt && "${GITC[@]}" add b.txt && "${GITC[@]}" commit -qm "fix: address review findings")
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp5")"
 if grep -q "^squash-preserve:" <<< "$out"; then bad "分岔歷史誤列 preserve（範圍外 commit 被算入）"; else ok "分岔時不誤列既有 commit"; fi
-if grep -qxF "squash-cmd: git -C $TMP/ra-imp5 reset --soft $ra_imp5_mb" <<< "$out"; then ok "分岔時 squash base 仍為 anchor base（全為 review commit）"; else bad "分岔時 squash base 錯誤"; fi
+if grep -qxF "squash-cmd: git -C '$TMP/ra-imp5' reset --soft $ra_imp5_mb" <<< "$out"; then ok "分岔時 squash base 仍為 anchor base（全為 review commit）"; else bad "分岔時 squash base 錯誤"; fi
+
+# --- 照抄行一律絕對路徑（相對路徑呼叫時尤其重要：照抄處的 cwd 未必是這裡）---
+# 一條 case 覆蓋三種輸出；只驗絕對性，不比對整段路徑（避免與 fixture 路徑寫死耦合）
+(cd "$TMP/ra-work" && "$RA_SCRIPT" record --repo . --mode branch-diff --base origin/main >/dev/null)
+out="$( (cd "$TMP/ra-work" && "$RA_SCRIPT" record --repo . --mode branch-diff --base origin/main) )"
+if grep -qE "^diff-cmd: git -C '/" <<< "$out"; then ok "相對 --repo → diff-cmd 印絕對路徑"; else bad "diff-cmd 沿用了相對路徑"; fi
+out="$( (cd "$TMP/ra-work" && "$RA_SCRIPT" squash-cmd --repo .) )"
+if grep -qE "^squash-cmd: git -C '/" <<< "$out"; then ok "相對 --repo → squash-cmd 印絕對路徑"; else bad "squash-cmd 沿用了相對路徑"; fi
+out="$( (cd "$TMP/ra-work" && "$RA_SCRIPT" codex-next --repo .) )"
+if grep -qE "^codex-cmd: .* --repo '/" <<< "$out"; then ok "相對 --repo → codex-cmd 印絕對路徑（下游 codex-exec-review 會對 --repo 做 -d 檢查）"; else bad "codex-cmd 沿用了相對路徑（換 cwd 執行會 exit 5 或指到別的 repo）"; fi
+
+# --- lib 缺席：只有需要 subject 清單的 squash-cmd 該停，其餘子指令照常 ---
+mkdir -p "$TMP/ra-nolib/scripts"
+cp "$RA_SCRIPT" "$TMP/ra-nolib/scripts/review-anchor.sh"   # 不複製 lib/
+"$TMP/ra-nolib/scripts/review-anchor.sh" record --repo "$TMP/ra-work" --mode working-tree >/dev/null 2>&1
+assert_rc "lib 缺席 → record 照常（不需要 subject 清單）" 0 $?
+out="$("$TMP/ra-nolib/scripts/review-anchor.sh" squash-cmd --repo "$TMP/ra-work" 2>&1)"
+rc=$?
+assert_rc "lib 缺席 → squash-cmd STOP（不用空 regex 硬跑）" 1 $rc
+if grep -q "verdict: STOP" <<< "$out"; then ok "lib 缺席的 squash-cmd 印 STOP verdict"; else bad "缺 STOP verdict（會被當成正常結果）"; fi
 
 # 用法錯誤 / 非 git repo
 "$RA_SCRIPT" bogus --repo "$TMP/ra-work" >/dev/null 2>&1
@@ -2328,7 +2396,7 @@ if grep -qxF "tests_baseline=fail" "$ra_imp_anchor" 2>/dev/null; then ok "codex-
 
 # record（branch-diff）輸出 diff-cmd 整行（固定 hash，照抄慣例）
 out="$("$RA_SCRIPT" record --repo "$TMP/ra-imp" --mode branch-diff --base origin/main --tests-baseline pass 2>/dev/null)"
-if echo "$out" | grep -qxF "diff-cmd: git -C $TMP/ra-imp diff $ra_imp_mb...HEAD"; then ok "record 印 diff-cmd（固定 hash）"; else bad "diff-cmd 缺失或錯誤"; fi
+if echo "$out" | grep -qxF "diff-cmd: git -C '$TMP/ra-imp' diff $ra_imp_mb...HEAD"; then ok "record 印 diff-cmd（固定 hash）"; else bad "diff-cmd 缺失或錯誤"; fi
 
 # range 模式不印 diff-cmd（審查指令 = range 引數本身，...HEAD 會審錯範圍）
 out="$("$RA_SCRIPT" record --repo "$TMP/ra-imp" --mode range --range "$ra_imp_mb..HEAD" 2>/dev/null)"
@@ -2345,7 +2413,7 @@ if grep -q "^tests_baseline=" "$ra_imp_anchor"; then bad "無 flag 時 tests_bas
 # squash base 避開既有語意 commit：branch 上的 feat 保留，只壓其上的 review fix
 ra_imp_feat="$(git -C "$TMP/ra-imp" rev-parse HEAD~1)"
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp")"
-if grep -qxF "squash-cmd: git -C $TMP/ra-imp reset --soft $ra_imp_feat" <<< "$out"; then ok "squash base = 既有 feat commit（只壓其上的 review fix）"; else bad "squash base 未停在既有語意 commit"; fi
+if grep -qxF "squash-cmd: git -C '$TMP/ra-imp' reset --soft $ra_imp_feat" <<< "$out"; then ok "squash base = 既有 feat commit（只壓其上的 review fix）"; else bad "squash base 未停在既有語意 commit"; fi
 if grep -q "^squash-preserve: 1 顆" <<< "$out" && grep -q "feat: w feature" <<< "$out"; then ok "squash-preserve 列出被保留的 feat"; else bad "squash-preserve 缺失"; fi
 
 # 撞名取捨（原 codex C2 F3 的位置）：使用者手寫的 commit 若 subject 恰為 review 固定樣式，
@@ -2358,7 +2426,7 @@ git clone -q "$TMP/ra-origin.git" "$TMP/ra-imp4"
 ra_imp4_mb="$(git -C "$TMP/ra-imp4" rev-parse origin/main)"
 (cd "$TMP/ra-imp4" && echo p2 > p.txt && "${GITC[@]}" commit -qam "fix: address review findings")
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp4")"
-if grep -qxF "squash-cmd: git -C $TMP/ra-imp4 reset --soft $ra_imp4_mb" <<< "$out"; then ok "全為 review 樣式 → squash base 退回 anchor base（下界保護）"; else bad "全樣式時 squash base 錯誤"; fi
+if grep -qxF "squash-cmd: git -C '$TMP/ra-imp4' reset --soft $ra_imp4_mb" <<< "$out"; then ok "全為 review 樣式 → squash base 退回 anchor base（下界保護）"; else bad "全樣式時 squash base 錯誤"; fi
 if grep -q "^squash-preserve:" <<< "$out"; then bad "全為 review 樣式卻列 preserve"; else ok "全為 review 樣式 → 不列 preserve"; fi
 
 # review commit 被非 review commit 隔開（HEAD 本身即非 review）→ 保守不跨越，
@@ -2377,7 +2445,7 @@ ra_mix_feat="$(git -C "$TMP/ra-mix" rev-parse HEAD)"
 (cd "$TMP/ra-mix" && echo m3 > m.txt && "${GITC[@]}" commit -qam "fix: address review findings")
 "$RA_SCRIPT" record --repo "$TMP/ra-mix" --mode branch-diff --base origin/main >/dev/null
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-mix")"
-if grep -qxF "squash-cmd: git -C $TMP/ra-mix reset --soft $ra_mix_feat" <<< "$out"; then ok "交錯：squash base 停在中間的語意 commit"; else bad "交錯情境 squash base 錯誤"; fi
+if grep -qxF "squash-cmd: git -C '$TMP/ra-mix' reset --soft $ra_mix_feat" <<< "$out"; then ok "交錯：squash base 停在中間的語意 commit"; else bad "交錯情境 squash base 錯誤"; fi
 if grep -q "^squash-range: .*（1 commit）" <<< "$out"; then ok "交錯：squash 範圍非空（1 顆）"; else bad "交錯情境範圍錯誤"; fi
 if grep -q "^squash-note: 保留範圍內仍有 1 顆 review 樣式 commit" <<< "$out"; then ok "交錯：範圍非空時仍印 squash-note"; else bad "範圍非空時漏印 squash-note"; fi
 
@@ -2390,7 +2458,7 @@ ra_imp2_base="$(git -C "$TMP/ra-imp2" rev-parse HEAD)"
     && echo v2 > v.txt && "${GITC[@]}" commit -qam "fix: R1 review fixes")
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp2")"
 if grep -q "^squash-preserve:" <<< "$out"; then bad "純 review commits 誤列 preserve"; else ok "純 review commits 無 preserve"; fi
-if grep -qxF "squash-cmd: git -C $TMP/ra-imp2 reset --soft $ra_imp2_base" <<< "$out"; then ok "working-tree 模式行為不變（base = anchor base）"; else bad "working-tree 模式 squash base 漂移"; fi
+if grep -qxF "squash-cmd: git -C '$TMP/ra-imp2' reset --soft $ra_imp2_base" <<< "$out"; then ok "working-tree 模式行為不變（base = anchor base）"; else bad "working-tree 模式 squash base 漂移"; fi
 
 # 中性化 commit message（不編輪號，避免 reviewer 跑 git log 反推進度）：
 # 新格式須被認得，且舊格式仍認（歷史 branch 上還有舊 commit，誤判會噴假 warning）
@@ -2406,13 +2474,13 @@ ra_imp3_base="$(git -C "$TMP/ra-imp3" rev-parse HEAD)"
     && echo n6 > n.txt && "${GITC[@]}" commit -qam "fix: codex C1 fixes" \
     && echo n7 > n.txt && "${GITC[@]}" commit -qam "fix: codex R1 fixes")
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp3")"
-if grep -qxF "squash-cmd: git -C $TMP/ra-imp3 reset --soft $ra_imp3_base" <<< "$out"; then ok "中性/舊格式 commit message 皆認得（新舊並存、全數納入 squash）"; else bad "中性化或舊格式 message 未被認出（squash base 提前停下）"; fi
+if grep -qxF "squash-cmd: git -C '$TMP/ra-imp3' reset --soft $ra_imp3_base" <<< "$out"; then ok "中性/舊格式 commit message 皆認得（新舊並存、全數納入 squash）"; else bad "中性化或舊格式 message 未被認出（squash base 提前停下）"; fi
 if grep -q "^squash-preserve:" <<< "$out"; then bad "全為 review 樣式卻列 preserve"; else ok "六種樣式全認得 → 無 preserve"; fi
 # 反向：真的語意 commit 仍要擋住掃描（不因放寬 pattern 而越界壓掉）
 (cd "$TMP/ra-imp3" && echo n8 > n.txt && "${GITC[@]}" commit -qam "feat: unrelated work")
 ra_imp3_feat="$(git -C "$TMP/ra-imp3" rev-parse HEAD)"
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-imp3")"
-if grep -qxF "squash-cmd: git -C $TMP/ra-imp3 reset --soft $ra_imp3_feat" <<< "$out"; then ok "放寬 pattern 後語意 commit 仍擋得住掃描"; else bad "語意 commit 被越過（會被誤壓）"; fi
+if grep -qxF "squash-cmd: git -C '$TMP/ra-imp3' reset --soft $ra_imp3_feat" <<< "$out"; then ok "放寬 pattern 後語意 commit 仍擋得住掃描"; else bad "語意 commit 被越過（會被誤壓）"; fi
 if grep -q "^squash-note: 保留範圍內仍有 7 顆 review 樣式 commit" <<< "$out"; then ok "被隔開的 7 顆 review commit 以 squash-note 攤開"; else bad "squash-note 顆數錯誤或缺失"; fi
 
 # --- 續跑（cycle≥2）：兩場 review 的 fix commit 一併壓，base 不停在上一場的 fix ---
@@ -2427,7 +2495,7 @@ ra_cyc2_feat="$(git -C "$TMP/ra-cyc2" rev-parse HEAD)"
 "$RA_SCRIPT" record --repo "$TMP/ra-cyc2" --mode branch-diff --base origin/main >/dev/null
 (cd "$TMP/ra-cyc2" && echo c3 > c.txt && "${GITC[@]}" commit -qam "fix: address review findings")
 out="$("$RA_SCRIPT" squash-cmd --repo "$TMP/ra-cyc2")"
-if grep -qxF "squash-cmd: git -C $TMP/ra-cyc2 reset --soft $ra_cyc2_feat" <<< "$out"; then ok "續跑：兩場的 fix commit 一併壓、停在 feat"; else bad "續跑時 squash base 錯誤（上一場 fix 殘留）"; fi
+if grep -qxF "squash-cmd: git -C '$TMP/ra-cyc2' reset --soft $ra_cyc2_feat" <<< "$out"; then ok "續跑：兩場的 fix commit 一併壓、停在 feat"; else bad "續跑時 squash base 錯誤（上一場 fix 殘留）"; fi
 if grep -q "^squash-preserve: 1 顆" <<< "$out"; then ok "續跑：既有 feat 仍保留"; else bad "續跑 preserve 錯誤"; fi
 
 echo "▶ 20. verify-tests.sh（deep-review skill script）框架偵測與 exit 契約（uv/bun stub）"

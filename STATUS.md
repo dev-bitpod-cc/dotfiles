@@ -139,8 +139,12 @@ git checkout ssh/config                       # 僅限尚未 commit
   squash-merge 全有全無,故是整個 PR 的一次決定;舊規則預設全壓、保留要靠 agent 主動察覺,
   方向與「語意 commit 有參照價值」相反。裸「merge」在 PR ≥2 顆 commit 時給三選項,**且再答
   一次「merge」不算回答**——該詞同時是動作與 `--merge` flag,自行挑解讀正是
-  `disambiguate-overloaded-terms` 記的失效形狀。同時 Step 4 的「確認送出?」改
-  `AskUserQuestion`(待決一項一題、選項寫具體處置);**merge 授權絕不進 Step 4 選項**。
+  `disambiguate-overloaded-terms` 記的失效形狀。
+- **2026-08-06 merge 授權收進 Step 4 第 1 題,同批推翻自己稍早的拍板**:先寫了「merge 授權絕不
+  進 Step 4 選項」,但那等於把本來一句「merge」就一路到底(push→PR→merge→清 branch→同步
+  default)的路徑拆成兩步——**使用者實地被問兩次才發現**。改為第 1 題即「這批怎麼處理?」
+  (送出停在 PR／送出並 merge／取消),勾選即構成 explicit merge instruction。**merge 方式仍不
+  在該題細分**:當下 PR 還沒開、commit 數還會被同批 squash 題改變,此刻問等於要使用者預測。
 - **2026-08-06 「同型掃描」的完備度由 pattern 選擇決定,不由「有掃」決定**:本批 R1–R5 每輪
   都做了 grep 同型掃描、每輪也都掃乾淨了,但下一輪 reviewer 換一種措辭又找到新殘留(5 輪都是
   同一根因「語意反轉的下游未同步」的不同實例)。更尖銳的是 codex C2/C3:同一個事實(round 與
@@ -174,6 +178,7 @@ git checkout ssh/config                       # 僅限尚未 commit
   bytes 去改一條無關舊決策」重複五次本身即訊號:**邊際壓縮效益遞減,再壓會開始損失資訊**。
   改採歸檔後一次降 33%(24556→16444)。**判準**:條目已固化在 skill/腳本/tests 且不再影響現行
   方向 → 歸檔;仍在生效的一律不歸檔(死路=防重工、技術債=未解決,移出 always-on 即失效)。
+
 ## 死路(試過但放棄——防重工)
 
 - **mc(Midnight Commander)當遠端檔案管理器**:評估後放棄,理由是**協定層而非偏好**——
@@ -235,13 +240,13 @@ git checkout ssh/config                       # 僅限尚未 commit
 ## 已完成(里程碑)
 
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
-> 2026-08-05 該批已歸檔至 `docs/archive/milestones-2026-08.md`。
+> 2026-08-05 該批與 handoff skill 那條已歸檔至 `docs/archive/milestones-2026-08.md`。
 
 - ✅ 2026-08-06 squash/merge 決策改造:deep-review 收尾只壓 review 機械 commit(語意 commit
   保留並以 `squash-preserve:`/`squash-note:` 攤開)、round 改頂端連續段、merge 壓不壓改關鍵字
   分流+選項式詢問、`/project log` Step 4 確認改 `AskUserQuestion`。主審 R1–R5 終止(全為
   「語意反轉下游未同步」的不同實例)、修一條後重跑 PASS;codex C1/C2/C3 共 11 條 TP、修 9 條,
-  終止時剩 2 條(1 條措辭已修、1 條缺 eval 情境已列待補)。`./tests/run.sh` 609 PASS。
+  終止時剩 2 條(1 條措辭已修、1 條缺 eval 情境已列待補)。後續同批再收:merge 決定併入 Step 4 第 1 題、review 痕跡偵測下沉 `ship-state.sh`(`review-residue:`)。`./tests/run.sh` 624 PASS。
 
 ## 已知缺口
 

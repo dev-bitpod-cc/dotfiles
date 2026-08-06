@@ -2,7 +2,7 @@
 
 > **快照基準**：deep-review skill @ commit 22ae336（2026-07-21）。
 > **定位**：clean-room 重寫實驗（見文末附錄）產出的需求層蒸餾——描述**目標、硬需求、環境事實**，
-> 不描述實作機制。**Non-normative**：skill 演進不回寫本檔（避免 double-source；
+> 不描述實作機制。**Non-normative**：skill 演進不回寫本檔（避免 double-source；**唯一例外＝『本條已被推翻，見 X』的失效標記**——不回寫等於讓被推翻的條文以現況之姿被讀，比 double-source 更危險；
 > 實作的單一權威恆為 `claude/skills/deep-review/`）。
 > **用途**：skill 的第一份需求層文件；重大重構或移交時的規格參照；附錄記錄「只活在實作裡」的知識缺口。
 

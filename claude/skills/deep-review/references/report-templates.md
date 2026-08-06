@@ -129,7 +129,7 @@
 主 agent 執行 squash：跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，把 `squash-cmd:` 整行照抄執行（腳本已解析出固定 hash 並驗過存在性與祖先關係；回 `verdict: STOP` 就停下交使用者，勿自行湊 hash、勿用會移動的 ref）。reset 後重新 commit。**message 依 `squash-preserve:` 分流**：無 preserve → 採原始功能變更的語意（如 `feat: 新增 X 功能`）；有 preserve → 新 commit 只是相對保留 commit 的增量，message 描述該增量（如 `fix: 修正 X 的邊界處理`），**不得沿用被保留 commit 的 subject**。兩者都不用 `fix: address review findings`，格式遵循專案 Conventional Commits 慣例。`verdict: WARNING`（無 commit 可 squash）→ 跳過 reset 與 commit，**但仍要跑 `clear`**（審查已完成，anchor 殘留會讓下一場被誤判成續跑）。
 {squash-cmd 印 `squash-preserve:`（保留下來、將與新 commit 並存的既有語意 commit）或 `squash-note:`（被隔開、未納入本次 squash 的 review 樣式 commit）時，在此轉述該行讓使用者知悉}
 {若只有一筆 commit + clean working tree}
-可以直接 push。
+無 review fix commit 可壓 → 跳過 reset/commit，**但 `review-anchor.sh clear --repo <r>` 仍要跑**（審查已完成，anchor 殘留會讓下一場被判 `cycle: 2+`、`show` 也會交出過期起點）。之後可以直接 push。
 
 ### 第三方審查資訊
 {列出每個涉及的 repo，方便使用者轉交第三方 reviewer}

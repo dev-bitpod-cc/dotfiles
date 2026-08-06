@@ -344,16 +344,6 @@ detect_dossier() {
         fi
     fi
 }
-
-# 殘留 branch 衛生：已**完全併入** default 的 local / remote branch。
-# 動機：merge 最後一哩只清它自己 merge 的那支——規則生效前的老 branch、或走別條路
-# 合併的 branch 會無聲累積（實證：dotfiles 累到 2 支，是偶然跑 branch --list 才發現，
-# 流程從未告知）。與 dossier 衛生同性質：只印訊號，處置留給 SKILL Step 4 由使用者定奪。
-#
-# 判定用本地 ref、不碰網路——代價是 remote-tracking 可能含**已在遠端刪除但本地未
-# prune 的殘影**，故 cleanup-cmd 前置 `fetch --prune`（先對齊再刪，殘影會自己消失）。
-# 排除當前 branch 與 default 本身；未併入 default 的 branch 是「還沒 ship 的工作」，
-# 不在此列（誤報會誘導刪掉未送出的成果）。
 # review 痕跡的權威 subject 清單在 deep-review——那些 commit 是它產生的，清單跟著產生者走。
 # 跨 skill source；缺席時降級印 UNKNOWN 而**不猜**：讓 model 憑印象比對 subject，漂一個字
 # 就會把使用者自己的 `fix: 修正某某` 當成迭代痕跡建議壓掉，而使用者一句「好」就 force-push 了。
@@ -374,7 +364,12 @@ detect_review_residue() {
         return
     fi
     base_ref="${remote:+${remote}/}${default}"
-    mb="$(git -C "$repo" merge-base "$base_ref" HEAD 2>/dev/null)" || return
+    if ! mb="$(git -C "$repo" merge-base "$base_ref" HEAD 2>/dev/null)"; then
+        # 無共同祖先等情況：靜默 return 會讓 Step 4 的判定表少一列可對，model 只能猜——
+        # 走與 lib 缺席同一個 UNKNOWN 出口，處置一致。
+        echo "review-residue: UNKNOWN（merge-base ${base_ref}..HEAD 解析失敗——勿憑印象比對 subject，改在 Step 4 詢問使用者）"
+        return
+    fi
     n_all="$(grep -cE "^(${REVIEW_SUBJECT_ALT})\$" <<< "$(git -C "$repo" log --format=%s "${mb}..HEAD" 2>/dev/null)")" || n_all=0
     if [ "${n_all:-0}" -eq 0 ]; then
         echo "review-residue: none（無 review 機械 commit，Step 4 不出 squash 題）"
@@ -393,14 +388,24 @@ detect_review_residue() {
     echo "review-residue: ${n_all} 顆（${base_ref}..HEAD 內 review 機械 commit；Step 4 squash 選項依此出題）"
     if [ "$n_top" -gt 0 ]; then
         echo "  top-contiguous: ${n_top} 顆（可安全壓，語意 commit 原樣保留）"
-        echo "  squash-cmd: git -C ${toplevel} reset --soft ${top_hash}"
+        echo "  squash-cmd: git -C '${toplevel}' reset --soft ${top_hash}   # 此 hash = 使用者語意 commit 的邊界；記下來，Step 4 套用時直接用（本流程後續產生的 commit 會落在 reset 範圍內，**勿重跑重算**）"
     fi
     if [ "$n_buried" -gt 0 ]; then
         echo "  buried: ${n_buried} 顆（被非 review commit 隔開，reset --soft 壓不到——要單獨壓需 rebase -i，本 skill 不走互動式）"
-        echo "  squash-all-cmd: git -C ${toplevel} reset --soft ${mb}   # 整支壓成一顆：**會連語意 commit 一起收**，選項文案須講明後果"
+        echo "  squash-all-cmd: git -C '${toplevel}' reset --soft ${mb}   # 整支壓成一顆：**會連語意 commit 一起收**，選項文案須講明後果"
     fi
 }
 
+
+# 殘留 branch 衛生：已**完全併入** default 的 local / remote branch。
+# 動機：merge 最後一哩只清它自己 merge 的那支——規則生效前的老 branch、或走別條路
+# 合併的 branch 會無聲累積（實證：dotfiles 累到 2 支，是偶然跑 branch --list 才發現，
+# 流程從未告知）。與 dossier 衛生同性質：只印訊號，處置留給 SKILL Step 4 由使用者定奪。
+#
+# 判定用本地 ref、不碰網路——代價是 remote-tracking 可能含**已在遠端刪除但本地未
+# prune 的殘影**，故 cleanup-cmd 前置 `fetch --prune`（先對齊再刪，殘影會自己消失）。
+# 排除當前 branch 與 default 本身；未併入 default 的 branch 是「還沒 ship 的工作」，
+# 不在此列（誤報會誘導刪掉未送出的成果）。
 detect_stale_branches() {
     local repo="$1" remote="$2" default="$3" branch="$4" toplevel="$5"
     local locals remotes_merged n_local n_remote cmd b

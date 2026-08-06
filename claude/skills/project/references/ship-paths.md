@@ -156,17 +156,26 @@ git -C <repo> push -u origin <branch>   # 顯式 remote+branch+設 upstream（�
 
 **只壓 review 迭代痕跡，不動獨立語意的 commit**——與 deep-review 收尾同一條原則（語意 commit 在 PR 裡逐顆可讀，有參照價值）。
 
+**reset 目標一律照抄 Step 1 `ship-state.sh` 記下的那一行，NEVER recompute it, NEVER pick a hash by eyeballing `git log`**——它是**使用者語意 commit 的邊界**（Step 1 跑在 Step 3 之前，此刻 HEAD 之上還沒有本流程自己的 commit）。套用當下重跑會讓 verdict 形狀翻轉（`top-contiguous` 恆為 0），現場只剩會壓掉語意 commit 的全壓指令——理由與實測見 SKILL Step 1 第 6 項 —— 判「哪顆是 review 迭代痕跡」需要 deep-review 的權威 subject 清單（理由見 SKILL Step 1 第 6 項），挑錯就是把使用者的語意 commit 一起壓掉。
+
+| 使用者在 Step 4 選的 | 照抄哪一行 | 結果 |
+|---|---|---|
+| 壓掉頂端那段 review 痕跡 | `squash-cmd:` | 語意 commit 原樣保留 |
+| 整支壓成一顆（僅在使用者明確要求時） | `squash-all-cmd:` | **連語意 commit 一起收**，選項文案須已講明 |
+
 ```bash
-# 1. 定 reset 目標：從 HEAD 往回跳過連續的 review 迭代 commit，停在第一顆語意 commit（它本身保留）
-git -C <repo> log --oneline <default>..HEAD
-# deep-review 剛跑完且 anchor 還在 → 直接取現成答案，別自己數：
-~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <repo>
+# 1. reset 到腳本給的 hash（整行照抄，勿自行改寫路徑或 hash）
+git -C <toplevel> reset --soft <腳本給的 hash>
 
-# 2. reset 到該 hash，重新 commit（message 描述這批迭代做了什麼，不沿用被保留 commit 的 subject）
-git -C <repo> reset --soft <目標 hash>
-git -C <repo> commit -m "<type>: <描述>"
+# 2. 重新 commit。message 要同時涵蓋「這批 review 修復」與「本輪文檔同步」——本輪 Step 3
+#    產生的 commit 位於 reset 目標之上，會一併被收進這顆；不沿用被保留 commit 的 subject。
+#    附環境指定的 Co-Authored-By trailer，同 Step 3 的規則。
+git -C <toplevel> commit -m "<type>: <描述>
 
+<Co-Authored-By trailer，取 runtime system prompt 的 Git 區塊>"
 ```
+
+> `review-anchor.sh squash-cmd` **不是這裡的來源**——deep-review 收尾最後一步就是 `clear`，anchor 已刪、該指令會回 `verdict: STOP`。它只在「deep-review 中途停下、anchor 仍在」時可用。
 
 **本節到 commit 為止，不含任何 push。** branch 已 push 過時，覆寫 remote 需要 `--force-with-lease`——**那是 Step 5 的送出動作**，必須等重印摘要、使用者再次確認後才做（`git -C <repo> push --force-with-lease origin <feature-branch>`）。在這裡順手推掉，等於用 gate 沒顯示過的 commit set 重寫 remote，正是 Step 4 硬 gate 要防的事。
 
@@ -176,7 +185,7 @@ git -C <repo> commit -m "<type>: <描述>"
 
 ## Merge 最後一哩（使用者明說 merge 後）
 
-**Trigger: the user EXPLICITLY says "merge"** — either in any turn after the PR exists, **or by picking「開完直接 merge」in the Step 4 confirmation options**（後者是同一個 gate 內收掉的預先授權，效力相同；使用者選「停在 PR」則一律不 merge）。 "push" or "open a PR" alone is NOT a merge instruction（沿用全域 CLAUDE.md 語意）。明說即是授權：不要因 skill 通篇的「絕不 merge」而拒絕或反覆再確認，把使用者卡在最後一哩。
+**Trigger: the user EXPLICITLY says "merge"** — either in any turn after the PR exists, **or by picking「送出並 merge」in the Step 4 confirmation options**（後者是同一個 gate 內收掉的預先授權，效力相同；使用者選「停在 PR」則一律不 merge）。 "push" or "open a PR" alone is NOT a merge instruction（沿用全域 CLAUDE.md 語意）。明說即是授權：不要因 skill 通篇的「絕不 merge」而拒絕或反覆再確認，把使用者卡在最後一哩。
 
 **無 PR 可 merge 時**（形狀：使用者先前明說「不用 PR」走了 escape hatch，或全新空 repo 剛建 baseline——總之從頭到尾沒開過 PR）：**do NOT guess what "merge" meant.** 先跑 `ship-state.sh` 取當下狀態，再依狀態停下確認：
 
@@ -210,7 +219,12 @@ review 迭代痕跡（`fix: address review findings` 這類）該壓，**使用�
 
 裸「merge」／「合併」（未指定壓不壓）：
 
-- PR 相對 default **只有 1 顆 commit** → `--squash`，直接做（無歧義，不打斷）。
+- PR 相對 default **只有 1 顆 commit** → `--squash`，直接做（無歧義，不打斷）。顆數用指令取，別憑印象：
+  ```bash
+  git -C <toplevel> fetch origin                                              # 先對齊——「另起一輪說 merge」時本地可能落後 remote
+  git -C <toplevel> rev-list --count origin/<default>..origin/<feature-branch>  # 以 remote ref 為上界，數的才是 PR 上真正有的
+  ```
+  本地 ref 落後時 `--count` 會少算 → 誤判「只有 1 顆」而直接 `--squash`，把 PR 上實際存在的多顆語意 commit 壓平。
 - **≥2 顆 commit** → 用 `AskUserQuestion` 給三個選項，題目**列出實際 commit 清單**：`保留 commit（rebase，線性歷史）` ／ `保留 commit + merge commit` ／ `壓成一顆`。**A bare "merge" is not an answer to this question** — 使用者若再回一次「merge」，重問，never pick a reading and proceed.
 - PR 內仍殘留 review 樣式 commit（`fix: address review findings`／`wip: pre-review snapshot` 等）→ 在選項文案點出，並補一句可先在 branch 上壓掉它們（`reset --soft` + 重 commit + `push --force-with-lease`）再回來 merge。
 - **選定的 flag 不可用**（`Rebase merging is not allowed` / `Merge commits are not allowed`；或 branch 含 merge commit 而 GitHub 拒絕 rebase——拒絕原因不同、處置相同）→ 停下回報、以剩下可用的方式重新給選項。**NEVER silently fall back to another flag** — 尤其別退回 `--squash`：那會壓掉使用者剛選擇要保留的 commit。
@@ -244,6 +258,8 @@ review 迭代痕跡（`fix: address review findings` 這類）該壓，**使用�
 
 ## push 失敗處理
 
-- `! [rejected] ... (fetch first)`：remote 有新 commit → 提示 `git -C <repo> pull --rebase origin <branch>` 後重試（feature branch 通常不會撞，除非他人也 push 同 branch）。
+- `! [rejected] ...`：**先分流，兩種成因的處置相反**——
+  - **本輪做過 branch 內 squash**（歷史被刻意改寫，見上節）→ `git -C <toplevel> push --force-with-lease origin <feature-branch>`。**NEVER `pull --rebase` here** —— 它會把剛壓掉的那串 review commit 原封不動拉回來，squash **靜默失效**（PR 上痕跡照舊），或因同內容重疊卡在 rebase 衝突中途。
+  - **沒改寫歷史**（純粹 remote 有他人新 commit）→ 提示 `git -C <repo> pull --rebase origin <branch>` 後重試（feature branch 通常不會撞，除非他人也 push 同 branch）。
 - `src refspec ... does not match` / 無 upstream → 用 `-u origin <branch>`。
 - gh 未登入（`gh auth status` 失敗）→ 停下，提示使用者 `gh auth login`，不要硬推。

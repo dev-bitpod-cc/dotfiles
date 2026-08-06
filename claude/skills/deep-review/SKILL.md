@@ -234,7 +234,7 @@ B4. 其餘（working-tree diff、<base>...HEAD branch diff、commit range、HEAD
 - 無 review 修復 commit → **Round 1**（使用者自己的 `fix:`/`refactor:` 不算）
 - 有 review 修復 commit → **Round 2+**（依其顆數推斷）
 - 整檔審查模式（無 diff）→ **Round 1**
-- **baseline 模式（base = empty-tree / 全庫稽核）→ 一律 Round 1**，不以 `git log` 歷史推斷輪次（empty-tree base 會列出 repo 全部 commit，歷史上的 fix/refactor commit 不代表本次 review 的迭代輪次）；下方「銜接檢查」同樣不適用
+- **baseline 模式（base = empty-tree / 全庫稽核）→ 一律 Round 1**，不以 `git log` 歷史推斷輪次（empty-tree base 會列出 repo 全部 commit，歷史上符合 review 樣式的 commit 不代表本次 review 的迭代輪次）；下方「銜接檢查」同樣不適用
 
 輪次影響審查重心，但**不把上一輪的 review 報告傳給 subagent**——每輪獨立判斷。
 

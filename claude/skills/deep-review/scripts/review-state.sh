@@ -19,9 +19,15 @@
 
 set -uo pipefail
 
-# round 偵測要認得哪些 subject 屬 review 循環——與 review-anchor.sh 的 squash 掃描共用同一份
-# shellcheck source=lib/review-subjects.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib/review-subjects.sh"
+# round 偵測要認得哪些 subject 屬 review 循環——與 review-anchor.sh 的 squash 掃描共用同一份。
+# 缺席時降級（round 恆 1）而非中途 unbound variable 死掉：本腳本的其餘輸出（base / 變更集 /
+# branch-first）與這份 pattern 無關，不該被它拖垮——與另兩個消費者的降級處置一致。
+REVIEW_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/review-subjects.sh"
+HAVE_REVIEW_LIB=0
+if [ -f "$REVIEW_LIB" ]; then
+    # shellcheck source=lib/review-subjects.sh
+    . "$REVIEW_LIB" && HAVE_REVIEW_LIB=1
+fi
 
 MAX_LIST=20  # 每類清單最多列出的行數；只影響顯示，計數仍為完整值
 
@@ -88,7 +94,9 @@ check_repo() {
         return 1
     fi
 
-    local branch remote base
+    local branch remote base toplevel
+    # 照抄行用絕對路徑（同 review-anchor.sh 的理由：照抄處的 cwd 未必是這裡）
+    toplevel="$(git -C "$repo" rev-parse --show-toplevel)" || toplevel="$repo"
     branch="$(git -C "$repo" symbolic-ref --short -q HEAD)" || branch="DETACHED"
     echo "branch: $branch"
 
@@ -165,7 +173,9 @@ check_repo() {
 
     # -- round 偵測（baseline 模式一律 Round 1，由 model 依模式覆蓋）--
     local n_fix=0 subj
-    if [ -n "$base" ] && [ "$n_ahead" -gt 0 ]; then
+    if [ "$HAVE_REVIEW_LIB" -ne 1 ]; then
+        echo "round: 1（review-subjects.sh 不可用，無法辨識 review 機械 commit——輪次視為 1，勿憑印象推斷）"
+    elif [ -n "$base" ] && [ "$n_ahead" -gt 0 ]; then
         # 從 HEAD 往回數**連續**的 review 機械修復 commit，遇到任何其他 subject 即停。
         # 為何是連續段而非整個範圍：**被語意 commit 隔開的上一場殘留**（squash-note 情境）
         # 不會灌進新一場的輪次、白吃 R5 修復額度。
@@ -178,7 +188,7 @@ check_repo() {
         while IFS= read -r subj; do
             grep -Eq "^(${REVIEW_FIX_ALT})\$" <<< "$subj" || break
             n_fix=$((n_fix + 1))
-        done <<< "$(git -C "$repo" log --format=%s "$base..HEAD" 2>/dev/null)"
+        done <<< "$(git -C "$repo" log --topo-order --format=%s "$base..HEAD" 2>/dev/null)"
         echo "round: $((n_fix + 1))（$base..HEAD 頂端連續 review 修復 commit ×${n_fix}；使用者自己的 fix:/refactor: 與更早場次的殘留皆不計；baseline 模式一律視為 Round 1）"
     else
         echo "round: 1"
@@ -209,7 +219,7 @@ check_repo() {
         echo "branch-first: UNKNOWN（無 default 可判）— autofix 前先與使用者確認"
     elif [ "$branch" = "$default_name" ] || [ "$branch" = "DETACHED" ]; then
         echo "branch-first: REQUIRED（HEAD 在 ${branch} —— autofix 第一個 commit 之前先開 feature branch，無條件）"
-        echo "branch-cmd: git -C ${repo} switch -c <type>/<slug>   # <type>/<slug> 由 model 依變更語意取（type ∈ feat/fix/refactor/docs/chore/test）"
+        echo "branch-cmd: git -C '${toplevel}' switch -c <type>/<slug>   # <type>/<slug> 由 model 依變更語意取（type ∈ feat/fix/refactor/docs/chore/test）"
     else
         echo "branch-first: 已在 feature branch（${branch}）"
     fi
