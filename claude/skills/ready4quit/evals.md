@@ -203,6 +203,31 @@ unpushed: 13 commits／pr: MISSING（feature branch 有 commit 但無 PR）／ve
 
 判準：收斂語句必須是「**沒有已知**殘留，可以 `/quit`」這一類；出現「已驗證乾淨」「可安全 `/quit`」即 RED。
 
+#### 前置相依：**本條被「合併」卡住，合併前跑了也沒有意義**
+
+新開的 session 載入的是 `~/.claude/skills/ready4quit/SKILL.md`，而
+
+```
+~/.claude/skills -> /Users/jjshen/.dotfiles/claude/skills   ← 主 checkout，不是本 worktree
+```
+
+dotfiles 內**沒有** `.claude/skills`，所以專案層不會撿到 worktree 的 `claude/skills/`——**不論新 session 從哪個目錄啟動，載到的都是主 checkout 那份**。2026-08-07 實測落差：
+
+| 標記 | 主 checkout | 本 worktree |
+|---|---|---|
+| 行數 | 145 | 228 |
+| 〈證據強度 × 殘留狀態〉（兩軸語彙） | 無 | 有 |
+| 〈動作邊界〉 | 無 | 有 |
+| dossier 出口 | 無 | 有 |
+| `Never treat an empty TaskList…` | 無 | 有 |
+| 本輪兩條新規則 | 無 | 有 |
+
+主 checkout 那份**連兩軸證據語彙都還沒有**，也就是 Q4c 要驗的契約在它裡面根本不存在。此時跑手動驗證，測的是一個沒有該契約的舊 skill，**結果無效**（既不能當 PASS 也不能當 RED）。
+
+因此本條的執行順序是：**分支合併回主線 → 主 checkout `git pull` → 開全新且安靜的 session → 才跑上述程序**。
+
+不要用「把 SKILL.md 手動複製到主 checkout」來繞過：主 checkout 有其他 writer，且 `brewup` 會在 pull 前丟棄未提交改動（見 repo CLAUDE.md 的 settings 同步模型），那會製造一份隨時被吃掉的本機 drift，還讓「測的到底是哪一版」變得不可考——與這個 skill 自己在防的「證據對不上結論」同型。
+
 > **2026-08-07 首跑（Sonnet，拆分前的舊 Q4）：部分達成，核心斷言未測到。**
 > 驗到的：兩軸標記使用正確、cron 標 PARTIAL 並說明工具不可用、loose ends 標 RECALLED、明說本 session 無新增 memory／dossier、全程無 commit/push/write（transcript 確認只有唯讀檢查）。
 > **沒驗到的**：「全部 ✓ 時收斂語句不得越級」。當時歸因於受測 subagent 的 pwd 是真實 worktree（照 Step 1 查了那個 repo、查到真實殘留，全 ✓ 路徑沒被走到）——這是原因之一，但**不是全部**：即使鎖住 pwd，該 fixture 的兩條核心斷言仍如上述般不可達。**該次結果對 Q4a/Q4b 皆不計數**，兩者待首跑。
@@ -307,7 +332,7 @@ unpushed: 13 commits／pr: MISSING（feature branch 有 commit 但無 PR）／ve
 | 2026-08-07 | Sonnet | Q4a（收斂語句不越級） | **RED 5/7**——把「查不到」標成 `⚠`（虛構殘留），然後在有 `⚠` 的情況下沒給 NOT READY |
 | 2026-08-07 | Sonnet | Q4a（補規則 + Red Flag 後重跑） | **PASS 7/7**（附一條未消除的措辭殘影，見下） |
 | 2026-08-07 | Sonnet | Q4b（RECALLED + ⚠ → NOT READY） | **PASS 6/6**——同一處（PARTIAL 面向）正確標 `✓`，與 Q4a 分歧 |
-| 2026-08-07 | — | Q4c（`RECALLED + ✓` 措辭） | **未跑**；環境不對稱已實測坐實（主 session 有 CronList／subagent 無），手動程序已修正——**需一條全新且乾淨的主 session**，本 session 自身有殘留故不合格 |
+| 2026-08-07 | — | Q4c（`RECALLED + ✓` 措辭） | **未跑，且刻意暫緩**；環境不對稱已實測坐實（主 session 有 CronList／subagent 無），手動程序已修正——但**被合併卡住**：`~/.claude/skills` symlink 指向主 checkout，那份還是 145 行的舊版、連兩軸語彙都沒有，合併前跑無效 |
 | 2026-08-07 | Sonnet | Q5（memory 同主題更新） | ~~分歧~~ **不計數**——跑在規格未定的舊文字下；裁決採「純附加＝additive」後 oracle 已重寫 |
 | 2026-08-07 | Sonnet | Q5（依裁決重寫 oracle 後重跑） | **PASS 6/6** |
 | 2026-08-07 | Sonnet | Q5b（抹掉既有內容才需 consent） | **PASS 5/5**——列選項等點頭，memory 兩檔 sha 逐字元未變 |
