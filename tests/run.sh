@@ -447,34 +447,37 @@ else ok "多 remote：fetch other 不會讓 origin 的 stale ref 過關"; fi
 
 # (d) squash merge 後 remote branch 被刪：commit 已經以 squash 形式進了 default，
 #     baseline 退回 default 會把它們算成「未 push」——PR 是 MERGED 時不該計入殘留
-git init --bare -q -b main "$TMP/sq-origin.git"
-git init -q -b main "$TMP/sq-work"
-(cd "$TMP/sq-work" \
+#     fixture 名前綴 hyg-：第 9 節（ship-state）另有一組同語意的 sq-work/sq-origin，
+#     兩節共用 $TMP，撞名會讓後建的那組 `git init` 落在既有 repo 上（re-init + remote
+#     already exists），fixture 靜默不成立、斷言整批假紅。前綴是唯一防線，勿改回裸 sq-。
+git init --bare -q -b main "$TMP/hyg-sq-origin.git"
+git init -q -b main "$TMP/hyg-sq-work"
+(cd "$TMP/hyg-sq-work" \
     && echo a > f && "${GITC[@]}" add f && "${GITC[@]}" commit -qm c1 \
-    && git remote add origin "$TMP/sq-origin.git" && git push -q origin main \
+    && git remote add origin "$TMP/hyg-sq-origin.git" && git push -q origin main \
     && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main \
     && git switch -qc feat/sq && echo b > g && "${GITC[@]}" add g && "${GITC[@]}" commit -qm "feat: sq" \
     && git push -q origin feat/sq)
-git -C "$TMP/sq-origin.git" update-ref -d refs/heads/feat/sq   # merge 後刪 remote branch
-git -C "$TMP/sq-work" rev-parse HEAD > "$TMP/hyg-head-oid"     # PR 合併當下的 head = 現在的 HEAD
-out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/sq-work")"
+git -C "$TMP/hyg-sq-origin.git" update-ref -d refs/heads/feat/sq   # merge 後刪 remote branch
+git -C "$TMP/hyg-sq-work" rev-parse HEAD > "$TMP/hyg-head-oid"     # PR 合併當下的 head = 現在的 HEAD
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/hyg-sq-work")"
 if grep -q "verdict: RESIDUE" <<< "$out"; then
     bad "MERGED + remote branch 已刪仍判 RESIDUE（與『MERGED 不算殘留』矛盾）：$out"
 else ok "MERGED + remote branch 已刪 → 不判 RESIDUE"; fi
 
 # (f) MERGED 不可掩蓋「合併之後才寫的 commit」——那些是真殘留。
 #     撤銷的依據必須是 PR 的 headRefOid，不能因為 state=MERGED 就整批清掉
-(cd "$TMP/sq-work" && echo after > after.txt && "${GITC[@]}" add after.txt \
+(cd "$TMP/hyg-sq-work" && echo after > after.txt && "${GITC[@]}" add after.txt \
     && "${GITC[@]}" commit -qm "feat: 合併後才寫的")
 # headRefOid 仍停在 PR 合併當下那顆（上一行的新 commit 不在其中）
-out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/sq-work")"
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/hyg-sq-work")"
 if grep -q "verdict: RESIDUE" <<< "$out"; then
     ok "MERGED 後新增的 commit → 仍判 RESIDUE"
 else bad "MERGED 掩蓋了合併後新增的 commit（假 CLEAN）：$out"; fi
 
 # headRefOid 拿不到時必須保守：不可撤銷（寧可誤報殘留，不可誤報乾淨）
 : > "$TMP/hyg-head-oid"
-out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/sq-work")"
+out="$(GIT_HYGIENE_GH="$TMP/hyg-gh-merged" "$GH_SCRIPT" "$TMP/hyg-sq-work")"
 if grep -q "verdict: CLEAN" <<< "$out"; then
     bad "headRefOid 不可得時仍撤銷 unpushed（假 CLEAN）：$out"
 else ok "headRefOid 不可得 → 保守不撤銷"; fi
