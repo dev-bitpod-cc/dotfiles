@@ -187,10 +187,13 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   主 session 呼叫 `CronList` 得 `No scheduled jobs.`、`TaskOutput` schema 也載入;探針 subagent
   (`Tools: *`)對 `select:CronList,TaskOutput,TaskList` 一律得 `No matching deferred tools found`。
   故凡「該工具查得成」才成立的情境做不出來——ready4quit **Q4c**(`RECALLED + ✓` 的收斂措辭,需
-  最低證據等級剛好是 RECALLED)因此無 GREEN 證據。改主 session 手動驗又有兩道前提:**`~/.claude/skills`
-  symlink 指向主 checkout**(合併前載到的是舊版,跑了無效)、且**該 session 自身必須乾淨**(本次想跑時
-  有 15 顆未 push commit,Git 衛生 ⚠ → 全 ✓ 路徑走不到)。順序:合併 → 主 checkout pull → 開全新且
-  安靜的 session → 才跑;程序全文見 `claude/skills/ready4quit/evals.md`。
+  最低證據等級剛好是 RECALLED)因此無 GREEN 證據。symlink 前置已於 2026-08-07 合併後解除,但
+  **手動驗證第二次嘗試仍無效**,且暴露原程序自身兩個錯:①`~/.dotfiles` 不能當 pwd(harness 持續
+  往 `claude/settings.json` 寫 drift,Git 衛生恆為 ⚠);②**「全新且安靜的 session」自相矛盾**——
+  沒有對話歷史時回憶型面向落 `PARTIAL` 而非 `RECALLED`,「安靜」給 ✓、「全新」卻毀掉 RECALLED。
+  另有未證實的第三道障礙(單次觀察):`tasks/` 的孤兒條目讓背景面向被迫 PARTIAL,若為常態則本條
+  結構性不可達。**v3 程序**(改用沙盒 repo、開場先做幾件唯讀的事製造可回憶歷史、跑前先 `ls`
+  確認 `tasks/` 為空)見 `claude/skills/ready4quit/evals.md`——**別再照舊程序跑**。
 - **祖先判定那條路徑的 `cleanup-cmd` remote 刪除仍是裸 `push --delete`**(無 lease、無執行當下
   重驗)。local 側的 `-d` 由 git 自己把關(未併入即拒),remote 側沒有等價保護——偵測後有人推過
   就會刪掉未併入的 commit,與本批修掉的 TOCTOU 同型。修法現成:改發 `cleanup-stale-branch.sh
