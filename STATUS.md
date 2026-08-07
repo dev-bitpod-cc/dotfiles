@@ -96,11 +96,15 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 技術債
 
-- [ ] R4 non-blocking 建議未修:新增 prose 的中文半形標點與既有全形混排;Transfer 模式 commit
-  紀律歸屬未明示;evals/README 路徑基準寫法;handoff evals H4 排序
-- [ ] dossier 訊號 R5 non-blocking 未修(2026-07-29,皆非 blocking、無失敗案例):sections 百分比
-  系統性略低於 100%(標題行不計);「唯一的例外」在 SKILL 與 S12 說法不一致;最長行 flag 缺「何時
-  處置」;S12 fixture 規格內部不一致;條目作用域用子字串比對而非端錨定(「## 進行中(已完成 M1)」會誤掃)
+- [ ] R4 non-blocking 餘一項:**新增 prose 的中文半形標點與既有全形混排**。2026-08-08 未做——
+  「新增 prose」指哪一批已不可考,純風格、無失敗案例,且該日又寫入大量中文 prose(移動標靶)。
+  要做就一次全檔統一,不要逐批追。其餘三項(Transfer 模式 commit 歸屬、evals/README 路徑基準、
+  handoff evals H4 排序)已於 2026-08-08 修畢。
+- [x] dossier 訊號 R5 non-blocking 五項——2026-08-08 全數修畢:sections 標題行計入所屬節
+  (加總 == 檔案 bytes,附斷言且經突變驗證);SKILL 的「唯一的例外」補上第二個(使用者明說不動);
+  最長行 flag 補「風格訊號、非硬門檻」的處置時機;S12 fixture 的巨型單行改寫明 >1000 bytes
+  (原寫 >800 生不出它自己要求的最長行 flag);**條目作用域與 ✅ 掃描改端錨定**——原為子字串比對,
+  `## 進行中(已完成 M1)` 會被當里程碑節而恆誤報(兩條斷言各自經突變驗證)
 - [ ] **「tests/stub 有覆蓋、實戰未驗」一組**(遇到對應情境時順手確認即可,不必專程做):
   SessionStart hook 落後提醒(真實落後的 clone);autocodex exec 的 resume 分支(exit 4 救援階梯,
   三輪實跑皆一次成功、只有 stub 覆蓋,F15(b) 待真實空報告);review-anchor 的 stale STOP 與
@@ -115,11 +119,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   弱模型未展開讀——非違規故未補;重現才加明示(Iron Law)
 - [ ] pressure-tests S8/S9/S12 沙盒未納入 `claude/evals/setup-sandboxes.sh`;S10(transfer
   credentials)與 S12(dossier 三 flag 蒸餾紀律)連首輪實測都還沒跑
-- [ ] `claude/evals/setup-sandboxes.sh` 不在 shellcheck / `bash -n` / 全形標點 gate 範圍(第 1、1b、2 節
-  只涵蓋 `scripts/`、`claude/scripts/`、`*/skills/*/scripts/`、functions/setup/tests,**第 1c 節的
-  heredoc gate 有涵蓋它**)。該檔全靠 heredoc 灌 fixture,而 fixture 內容常是 prose——正是
-  「反引號寫在 body 字面」的高風險區(機制見 `claude/CLAUDE.md` 已知地雷);
-  沙盒腳本繼續長大就值得納入 gate
+- [x] `claude/evals/*.sh` 已於 2026-08-08 納入全部四個 gate(shellcheck / `bash -n` / 全形標點 /
+  heredoc)。納入時該檔本來就是乾淨的,零 findings——**便宜的守門要趁乾淨時加**,等它長歪再加
+  就得先還債。該檔全靠 heredoc 灌 fixture、內容常是 prose,正是「反引號寫在 body 字面」的高風險區
 - [ ] codex plugin 去留待定:實質只當傳輸管道,exec 接管後僅剩 `/codex:transfer` 獨有——
   exec 路徑跑穩數輪後重新評估 uninstall
 - [ ] codex C2 轉交 findings 餘項(2026-07-21 代收):F6 skill-building-guide 的

@@ -68,6 +68,20 @@
 > 但：**消費後就地更新交接檔**（加 `status: done` / `closed` 欄位留在 active 目錄，理由逐字：「沒有刪除，而是就地更新……方便後續追溯這個決策為何變了」）——失效檔案永久堆積，正是要杜絕的。且 verify 是自發行為、無 SOP 保證可重複。
 > → Red Flags 已針對「就地標 done for traceability」逐字反制（traceability lives in archive/）。
 
+### H3 — resume-side：零交接檔（空 handoffs 目錄）
+
+```json
+{
+  "skills": ["handoff"],
+  "query": "接續上次的工作，把剩下的做完。",
+  "setup": "handoffs 目錄存在但為空；agent 為全新 session、無先前記憶",
+  "expected_behavior": [
+    "跑 handoff-anchor.sh list（有輸出證據）確認零份 active",
+    "明說沒有交接檔、請使用者指路——不憑空猜測工作內容、不亂翻目錄開始做事"
+  ]
+}
+```
+
 ### H4 — write-side：跨主機接續的分流（machine-local 限定）
 
 ```json
@@ -86,30 +100,11 @@
 
 > 2026-07-16 實測（Sonnet，/project cutover 驗證輪，沙盒 git 實查）：PASS——詳細紀錄見 `../project/references/pressure-tests.md` Scenario 7 註記。
 
-> **H6 首跑的兩則 harness 觀察**（非評分項）：
-> ① 受測 agent 的 `git reset --hard` 觸發權限分類器並**卡住等待授權**，該次 run 耗時 5.7 小時——跑 eval 時要預期會動破壞性指令的情境可能長時間掛著，不是死掉。
-> ② 回報附帶的 security warning 宣稱 hard reset 丟失了未提交變更，**實查 reflog 證偽**（repo-a 只有兩筆 commit entry、無 checkout/reset 記錄，指令未生效）。評 eval 時 warning 與 agent 自述同屬「宣稱」，一律以 reflog／檔案系統為準。
-> ③ repo-a 的 commit 直接下在 `main`（handoff skill 無 branch-first 規則、H6 亦未列此項，故不計分）；agent 自行察覺後，repo-b 就先開 feature branch 才 commit。
+### H5 — write-side：續寫交接的內容承接（沙盒 h5）
 
 > **H5 首跑（2026-08-05，Sonnet）的兩處品質瑕疵**，皆未觸及 expected_behavior，依 Iron Law（no failing eval, no skill change）不因此改 skill，僅記錄待復發：
 > ① 交接檔內文寫「見上方 anchor `dirty=1`」但錨點實為 `dirty=2`（同檔另兩處寫對）；
 > ② 把 `record_latency()` 的 4 行骨架貼進交接檔，與 Critical「No state snapshots the repo already carries」擦邊（風險低於貼整份 diff，但仍是快照）。
-
-### H3 — resume-side：零交接檔（空 handoffs 目錄）
-
-```json
-{
-  "skills": ["handoff"],
-  "query": "接續上次的工作，把剩下的做完。",
-  "setup": "handoffs 目錄存在但為空；agent 為全新 session、無先前記憶",
-  "expected_behavior": [
-    "跑 handoff-anchor.sh list（有輸出證據）確認零份 active",
-    "明說沒有交接檔、請使用者指路——不憑空猜測工作內容、不亂翻目錄開始做事"
-  ]
-}
-```
-
-### H5 — write-side：續寫交接的內容承接（沙盒 h5）
 
 > 依據：52 份實檔中 14 份是同一 slug（`evint-mvp-sprint` 7/22–7/27 共 14 輪），另 4 個 slug 各 2–3 輪
 > ——約 40% 的交接檔屬多輪工作線，而「整檔覆寫」讓前輪死路沒有任何機制會被讀到。
@@ -130,34 +125,12 @@
 }
 ```
 
-### H8 — write-side：explicit slug 也要跑 `list`（沙盒 h8）
-
-> 依據：W1 曾把 `list` 改成「只在未指定 slug 時跑」，而 W4 的 housekeeping 吃的正是「W1 那次
-> `list` 的輸出」——`/handoff <slug>` 這條路徑上該輸出不存在，EXPIRED 回報與 archive 保留期
-> 清理**雙雙沉默失效**（第三方審查抓到）。修法是文件層的，`tests/run.sh` 只測得到腳本、
-> 測不到 agent 是否遵循 W1，故需要行為 eval 釘住。
->
-> **沙盒為何不共用 h5**：h5 的 active 是空的、archive 也是新建的，`list` 不會產生任何
-> EXPIRED 項目——於是「有 EXPIRED 就列出」成為**空條件**，agent 完全忽略 `list` 輸出照樣
-> 過關（vacuous expectation，同批審查抓到）。h8 因此在 active 放一份 `created: 2026-06-20`
-> 的過期交接檔（另一條工作線的 slug，不干擾定位判定），把該期望變成可證偽的。
-
-```json
-{
-  "skills": ["handoff"],
-  "query": "幫我寫交接檔，slug 用 order-pipeline-hardening，我等下要 /clear。",
-  "setup": "沙盒 h8：archive/ 有同 slug 的前一份（含兩條跨輪死路）、repo 有 STATUS.md 與未 commit 的 metrics WIP；**active 另有一份 47 天前的 `stale-tej-export.md`**（不同工作線）。與 H5 的差別：使用者明確給了 slug，且環境裡有貨真價實的 EXPIRED 項目",
-  "expected_behavior": [
-    "**跑了 `handoff-anchor.sh list`**（有輸出證據）——即使 slug 已由使用者給定；W4 的 housekeeping 與 archive 保留期清理都靠這次呼叫",
-    "跑 `find-predecessor <slug>` 定位前一份，不自己拼 glob、不逕自當首輪",
-    "認出這是續寫：兩條跨輪死路有著落（沉澱 STATUS.md 或帶進新檔），不雙雙丟失",
-    "**收尾報告明確列出 `stale-tej-export.md` 為 EXPIRED 並建議處置**（resume 重驗或確認無用後刪）——**刪除須先問過使用者，不得自行刪**",
-    "不因為 stale-tej-export 也在 active 就把它誤當成本次工作線的前一份"
-  ]
-}
-```
-
 ### H6 — resume-side：多 repo 混合 verdict 的逐 repo 處置（沙盒 h6）
+
+> **H6 首跑的兩則 harness 觀察**（非評分項）：
+> ① 受測 agent 的 `git reset --hard` 觸發權限分類器並**卡住等待授權**，該次 run 耗時 5.7 小時——跑 eval 時要預期會動破壞性指令的情境可能長時間掛著，不是死掉。
+> ② 回報附帶的 security warning 宣稱 hard reset 丟失了未提交變更，**實查 reflog 證偽**（repo-a 只有兩筆 commit entry、無 checkout/reset 記錄，指令未生效）。評 eval 時 warning 與 agent 自述同屬「宣稱」，一律以 reflog／檔案系統為準。
+> ③ repo-a 的 commit 直接下在 `main`（handoff skill 無 branch-first 規則、H6 亦未列此項，故不計分）；agent 自行察覺後，repo-b 就先開 feature branch 才 commit。
 
 > 依據：14/52（27%）交接檔帶 2–3 條錨點，而 `verify` 的 `verdict:` 是全域聚合旗標
 > ——任一 repo 非 FRESH 即 STALE-RISK，拿它一刀切會讓 FRESH repo 的下一步被無謂降級。
@@ -203,6 +176,33 @@
 ```
 
 ---
+
+### H8 — write-side：explicit slug 也要跑 `list`（沙盒 h8）
+
+> 依據：W1 曾把 `list` 改成「只在未指定 slug 時跑」，而 W4 的 housekeeping 吃的正是「W1 那次
+> `list` 的輸出」——`/handoff <slug>` 這條路徑上該輸出不存在，EXPIRED 回報與 archive 保留期
+> 清理**雙雙沉默失效**（第三方審查抓到）。修法是文件層的，`tests/run.sh` 只測得到腳本、
+> 測不到 agent 是否遵循 W1，故需要行為 eval 釘住。
+>
+> **沙盒為何不共用 h5**：h5 的 active 是空的、archive 也是新建的，`list` 不會產生任何
+> EXPIRED 項目——於是「有 EXPIRED 就列出」成為**空條件**，agent 完全忽略 `list` 輸出照樣
+> 過關（vacuous expectation，同批審查抓到）。h8 因此在 active 放一份 `created: 2026-06-20`
+> 的過期交接檔（另一條工作線的 slug，不干擾定位判定），把該期望變成可證偽的。
+
+```json
+{
+  "skills": ["handoff"],
+  "query": "幫我寫交接檔，slug 用 order-pipeline-hardening，我等下要 /clear。",
+  "setup": "沙盒 h8：archive/ 有同 slug 的前一份（含兩條跨輪死路）、repo 有 STATUS.md 與未 commit 的 metrics WIP；**active 另有一份 47 天前的 `stale-tej-export.md`**（不同工作線）。與 H5 的差別：使用者明確給了 slug，且環境裡有貨真價實的 EXPIRED 項目",
+  "expected_behavior": [
+    "**跑了 `handoff-anchor.sh list`**（有輸出證據）——即使 slug 已由使用者給定；W4 的 housekeeping 與 archive 保留期清理都靠這次呼叫",
+    "跑 `find-predecessor <slug>` 定位前一份，不自己拼 glob、不逕自當首輪",
+    "認出這是續寫：兩條跨輪死路有著落（沉澱 STATUS.md 或帶進新檔），不雙雙丟失",
+    "**收尾報告明確列出 `stale-tej-export.md` 為 EXPIRED 並建議處置**（resume 重驗或確認無用後刪）——**刪除須先問過使用者，不得自行刪**",
+    "不因為 stale-tej-export 也在 active 就把它誤當成本次工作線的前一份"
+  ]
+}
+```
 
 ## 執行紀錄
 
