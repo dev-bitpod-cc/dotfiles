@@ -138,7 +138,7 @@ These are hard constraints. Read them before touching git.
 
 對每個 repo：
 
-1. **狀態偵測（單一來源）**：沿用 Step 0 的 `ship-state.sh` 輸出（單 repo 鎖定時在此直跑一次）——每 repo 印出 `branch` / `remotes`（多 remote 附 fork 提示）/ `default` / `files-vs-default`（三點，branch 自身帶來的檔）/ `commits-ahead`（兩點，領先 default 的 commit）/ `working-tree`（porcelain 含 untracked）/ `misplaced`（誤 commit 在本地 default 的警示，附 `branch-first-cmd:` 供第 5 項照抄）/ `dossier`（STATUS.md 衛生訊號，Step 2 用）/ `stale-branches`（已完全併入 default 的 local/remote branch，附 `cleanup-cmd:`；無殘留則不印）/ `review-residue`（review 迭代痕跡與可照抄的 squash 指令，第 6 項用）/ `protection` / `ship-path` / `branch-first`。**Do not re-run the underlying git/gh commands one by one — the script IS the detection.**
+1. **狀態偵測（單一來源）**：沿用 Step 0 的 `ship-state.sh` 輸出（單 repo 鎖定時在此直跑一次）——每 repo 印出 `branch` / `remotes`（多 remote 附 fork 提示）/ `default` / `files-vs-default`（三點，branch 自身帶來的檔）/ `commits-ahead`（兩點，領先 default 的 commit）/ `working-tree`（porcelain 含 untracked）/ `misplaced`（誤 commit 在本地 default 的警示，附 `branch-first-cmd:` 供第 5 項照抄）/ `dossier`（STATUS.md 衛生訊號，Step 2 用）/ `stale-branches`（已完全併入 default 的 local/remote branch，附 `cleanup-cmd:`；無殘留則不印）/ `squash-merged-branches`（squash-merge 後祖先鏈斷掉、`branch --merged` 看不到的殘留，經 merged PR 的 headRefOid 比對確認）/ `review-residue`（review 迭代痕跡與可照抄的 squash 指令，第 6 項用）/ `protection` / `ship-path` / `branch-first`。**Do not re-run the underlying git/gh commands one by one — the script IS the detection.**
 2. **變更集**（= 此 branch **相對 default 的變更**，即 PR 將含的內容；**不等於「未 push」**——已 push 到 feature branch upstream 的 commit 仍落在此範圍，push 狀態由 Step 5 處理且 push 為冪等）：取腳本的 `files-vs-default` + `working-tree` 合併為完整**檔案**清單（Step 2 判模組、Step 4 列變更檔都靠它；`commits-ahead` 只有主旨、無檔名，deep-review 交接的「clean tree + 只剩 branch commit」情境靠 `files-vs-default` 列檔）。無變更（腳本印 `changes: NONE`）→ 跳過此 repo，**除非符合下述 docs-only mode**。
    **Docs-only mode**：repo git 無變更（tree clean、無領先 default 的 commit），但 session 記憶中有本 session **已 ship**（已 merge／已 push）的變更 → 不跳過。變更集改由那批 commit 重建檔案清單：逐 commit `git -C <repo> show --name-only <sha>`（已 merge 進 default 者用 default 上的對應 commit）。後續步驟照常：Step 2 據此同步文檔、Step 3 只會產生 `docs:` commit、branch-first／protection／Step 4 確認全部適用；Step 2 掃完確認文檔皆已同步 → 該 repo 無事可做，如實回報。**A clean tree does not mean "nothing to ship" — "code shipped, docs lagging" is the common case this mode exists for.**
 3. **branch protection**：取腳本的 `protection:` verdict（classic + ruleset 都查過）——`PROTECTED` / `OPEN` / `UNKNOWN → treat as PROTECTED`。**Never reinterpret the script's UNKNOWN as "probably open" — Unknown = protected, the script already says so.** verdict 附 `viewerPermission=READ`（classic `Not Found`）→ 身分分離情境，後續處置（`git push --dry-run` 探權限、Step 4 摘要點明、不自行硬推）見 `references/ship-paths.md`。
@@ -175,7 +175,10 @@ These are hard constraints. Read them before touching git.
   - 里程碑達成 → 「進行中」項收斂或移入「已完成」；「下一步」隨進度改寫（跨主機接續的交接點就在這裡）。
   - 衛生檢查（總量治理）：偵測訊號取 Step 1 同一份腳本輸出的 `dossier:` / `dossier-flag:` / `dossier-sections:` 行——**門檻常數與逐 flag 處置的單一來源都是 ship-state.sh**：每則 flag 自帶處置，條目 flag 另附**行號**、全檔 flag 另附**建議收斂目標**；全檔超標時另印 `dossier-sections:` 各節佔比，**動手前先看它決定收哪一節、別憑印象挑**。references 若提及數字僅為說明性引用、以腳本為準；章節語意與收斂規則見 `references/dossier.md`。**照 flag 訊息處置，結果一律列入 Step 4 附註告知**。唯一的例外是 `簽章不符`（撞名領域產物）→ **停下告知、勿當 dossier 改**。
   - `dossier: NONE` 且 repo 非 trivial（有持續開發跡象）→ 在 Step 4 摘要「附註」建議從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，**不出題、不自動建**（使用者要就下輪說）。
-- **殘留 branch 衛生**：腳本印 `stale-branches:`（已完全併入 default，內容零損失）→ 在 Step 4 摘要「附註」列出並附上 `cleanup-cmd:`，**不出題、絕不自動刪**。Deleting branches is never something this flow does on its own. merge 最後一哩只清它自己 merge 的那支，老殘留靠這個訊號才會被看見。
+- **殘留 branch 衛生（兩個訊號，來源不同、指令也不同）**：
+  - `stale-branches:`（祖先關係判定：已完全併入 default）→ 附 `cleanup-cmd:`，整行照抄。
+  - `squash-merged-branches:`（**squash-merge 後祖先鏈斷掉**，`branch --merged` 結構上看不到；腳本已用 merged PR 的 `headRefOid` == 本地 tip 驗過）→ 每支附一行 `cleanup-cmd:` 呼叫 `cleanup-stale-branch.sh`，**它會在執行當下重驗 tip**（偵測到刪除之間 branch 可能又前進）。同段的 `skipped:` 行是**診斷、不是待刪清單**——SHA 不符或來自 fork 的一律不碰。`scan: partial` 代表查詢達上限，**未列出不代表沒有**，摘要要照實說。
+  - 兩者都是 **在 Step 4 摘要「附註」列出，不出題、絕不自動刪**。Deleting branches is never something this flow does on its own. merge 最後一哩只清它自己 merge 的那支，老殘留靠這兩個訊號才會被看見。
 - 涉及模組的 `**/CLAUDE.md`（只動受影響的）。
 - 相關 `docs/plans/*.md`（存在時）。
 - 所有更動文檔頂部的 `updated` 日期改為今天（YYYY-MM-DD；STATUS.md 的對應欄位名為「更新日期」）。
@@ -223,7 +226,7 @@ Ship 摘要：
 | `review-residue:` 有 `top-contiguous:` | **一律壓掉再送**，reset 目標照抄 Step 1 記下的 `squash-cmd:`（NEVER recompute——理由見 Step 1 第 6 項） |
 | `review-residue:` 只有 `buried:` | 照常送出，摘要標明「N 顆夾在語意 commit 中間，非互動式壓不掉」 |
 | `review-residue: UNKNOWN` | 照常送出，摘要標明無法判定、未處理 |
-| `stale-branches:` / `dossier: NONE` / dossier flag 待決 | **不出題也不自動做**，寫進摘要「附註」一行提示。刪東西永遠不會自動發生 |
+| `stale-branches:` / `squash-merged-branches:` / `dossier: NONE` / dossier flag 待決 | **不出題也不自動做**，寫進摘要「附註」一行提示（`scan: partial` 要照實標明「未列出不代表沒有」）。刪東西永遠不會自動發生 |
 
 「附註」列兩類：**純告知**（已依 flag 處置完的結果）、以及**未處理的待決項**（一律標明「未處理」，不得因為不出題就靜默丟掉）。無則省略。輕量路徑摘要縮為 3 行（路徑＋branch＋變更檔）。
 

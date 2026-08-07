@@ -121,8 +121,19 @@ git checkout ssh/config                       # 僅限尚未 commit
 
 ## 關鍵決策(附理由)
 
-> 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。
+> 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-07 squash-merge 殘留改比對 merged PR,判準是 `headRefOid` 相等而非同名**:
+  `branch --merged` 判祖先關係,squash-merge 在 default 上產生全新 commit、無祖先鏈,**結構上
+  看不到**;而本 repo 家規正是 squash-merge,等於該訊號對主要情境無效(舊 fixture 用「branch 不加
+  commit」才會綠——測試綠、功能無效)。**headRefOid 必須等於本地 tip** 才算數:不符代表同名 branch
+  事後又有新工作、那些 commit 不在 default 上,列進清單就是誘導刪掉唯一副本 → 只印診斷。fork 同理
+  不採信。**達查詢上限一律標 `partial`、絕不印 `none`**——截斷處靜默等於謊報「掃完了、沒有」。
+- **2026-08-07 破壞性刪除下沉成腳本,expected SHA 綁「執行當下」而非偵測當下**:偵測與刪除之間有
+  TOCTOU 窗口(另一 session/主機可能又 commit),照抄的 `-D` 對此無感,而 branch 是那些 commit 的
+  唯一 ref。訊號產生時驗過那次是**舊資訊**。remote 另加 `ls-remote` 重驗 + lease 雙重比對。
+  **副作用判準**:lease 是第二道防線,拿掉前置比對它照樣會擋 → 前置比對必須**另立斷言**,
+  否則整段可被刪光而測試全綠(本批實地驗到)。
 - **2026-08-07 Step 4 從「逐批出題」改「說法即授權」,拆掉的守衛另補一道**:使用者實地回報「說了
   ship 還被問四次」是摩擦。改為送出說法(merge／bypass merge／只推 branch…)出現在本輪訊息裡就
   印完摘要做到底、零提問;沒說法才問一題。**但這拆掉的是「push 前你一定會看到摘要並有機會攔」**,
@@ -151,11 +162,6 @@ git checkout ssh/config                       # 僅限尚未 commit
   oracle leak(寫了 `F10` 這個只存在於 `evals.md` 的情境編號,受測 agent 直接把它抄進
   reviewer prompt)、另兩條是 fixture 自身不自洽。**判準:eval 是 oracle,未跑過的 eval 不是
   證據、是意圖。** 與上面三種「假綠」形狀同源,只是發生在行為層而非腳本層。
-- **2026-08-05 dossier 超標優先歸檔,不靠壓縮無關的舊條目**:本次為容納新增內容,接連蒸餾五條
-  無關的歷史決策才勉強壓在 24576 門檻下——每次都無損(留結論與理由、砍推導史),但「為了幾百
-  bytes 去改一條無關舊決策」重複五次本身即訊號:**邊際壓縮效益遞減,再壓會開始損失資訊**。
-  改採歸檔後一次降 33%(24556→16444)。**判準**:條目已固化在 skill/腳本/tests 且不再影響現行
-  方向 → 歸檔;仍在生效的一律不歸檔(死路=防重工、技術債=未解決,移出 always-on 即失效)。
 
 ## 死路(試過但放棄——防重工)
 
@@ -176,12 +182,9 @@ git checkout ssh/config                       # 僅限尚未 commit
 
 - [ ] R4 non-blocking 建議未修:新增 prose 的中文半形標點與既有全形混排;Transfer 模式 commit
   紀律歸屬未明示;evals/README 路徑基準寫法;handoff evals H4 排序
-- [ ] dossier 訊號 R5 non-blocking 未修(2026-07-29,皆非 blocking、無失敗案例):
-  `dossier-sections` 百分比因標題行不計而系統性略低於 100%(需在說明點一句);SKILL.md「唯一的
-  例外」與 S12「使用者堅持不動也是例外」說法不一致;最長行 flag 訊息缺「何時處置」;S12 fixture
-  規格內部不一致(setup 寫 >800B 條目、expected 要最長行 flag 需 >1000B);條目作用域用子字串
-  比對(`決策|里程碑|已完成`)而非簽章那種端錨定,標題寫成「## 進行中(已完成 M1)」會誤掃;
-  `CLAUDE.md` 摘要句未提「非錨定 pattern 的 ✅ 例外」
+- [ ] dossier 訊號 R5 non-blocking 未修(2026-07-29,皆非 blocking、無失敗案例):sections 百分比
+  系統性略低於 100%(標題行不計);「唯一的例外」在 SKILL 與 S12 說法不一致;最長行 flag 缺「何時
+  處置」;S12 fixture 規格內部不一致;條目作用域用子字串比對而非端錨定(「## 進行中(已完成 M1)」會誤掃)
 - [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
 - [ ] Scenario 11 的「merge 但無 PR」分支只在 SKILL body 一行指標帶到 ship-paths,GREEN 實測中
   弱模型未展開讀——非違規故未補;重現才加明示(Iron Law)
@@ -230,7 +233,16 @@ git checkout ssh/config                       # 僅限尚未 commit
   (說法覆蓋不了)與 merge 受阻的 `mergeStateStatus` 分流(`--admin` 只給「bypass merge」+`BLOCKED`)。
   沙盒補 u4/u5,三條行為 eval 在 Sonnet 實跑首輪全 PASS。672 PASS。
 
+- ✅ 2026-08-07 squash-merge 殘留 branch 偵測與安全清除:`squash-merged-branches:` 訊號(headRefOid
+  比對／fork 不採信／`scan: complete|partial`)+ `cleanup-stale-branch.sh`(三道前提、remote 走
+  ls-remote 重驗 + lease 雙重比對),並修掉「當前 branch 的 remote 對應被列為可刪」的實地誤報。699 PASS。
+
 ## 已知缺口
+
+- **祖先判定那條路徑的 `cleanup-cmd` remote 刪除仍是裸 `push --delete`**(無 lease、無執行當下
+  重驗)。local 側的 `-d` 由 git 自己把關(未併入即拒),remote 側沒有等價保護——偵測後有人推過
+  就會刪掉未併入的 commit,與本批修掉的 TOCTOU 同型。修法現成:改發 `cleanup-stale-branch.sh
+  <repo> remote <branch> <sha>`。**刻意未收進本批**——會動到既有斷言的輸出形狀,且無實地失敗案例。
 
 - **buried 的 review 痕跡壓不掉,不變式只做到「壓得掉的一律壓」**:`fix: address review findings`
   夾在語意 commit 中間時 `reset --soft` 碰不到。**做得到但沒做**:`rebase -i` 配
@@ -244,14 +256,6 @@ git checkout ssh/config                       # 僅限尚未 commit
   default)。分岔時 push 會被拒,prose 端有防線(`ship-paths.md` squash 步驟 0 的 fetch +
   `--is-ancestor`)但**無訊號**——2026-08-07 跑 eval 時由受測 agent 自行 `branch -vv` 才發現。
   補法＝一行 ancestry 檢查,形狀同 `review-terminal`;暫不補,無實地失敗案例。
-
-- **`stale-branches` 對 squash-merge 結構性盲視(已用 fixture 證實,批次 B 待做)**:偵測靠
-  `git branch --merged`,那是**祖先關係**判定;squash-merge 後內容已完全在 default 上但無祖先
-  鏈,故一律看不見。**本 repo 家規正是 squash-merge**,等於這條訊號對主要情境無效——而測試
-  fixture 用「branch 不加 commit」(純祖先)才會綠,是**測試綠、功能無效**的教科書形狀。
-  已規劃解法:B1 只加訊號(`gh pr list` 比對,`headRefOid` 須等於本機 branch tip 才算,SHA 不符
-  印診斷不進清理清單、fork 不採信、達 limit 時絕不輸出 `none`);B2 破壞性刪除下沉成
-  `cleanup-stale-branch.sh`,**expected SHA 綁執行當下重驗**(偵測與刪除之間有 TOCTOU 窗口)。
 
 - **證據標註 = backlog,無 RED 不進 brief**:待觀察失效為「finding 建立在未查證推論、fixer 誤信」,
   至今零觀察;日後出現再加標註版(零風險、可測),而非授權外部存取。全紀錄見 deep-review `evals.md`。

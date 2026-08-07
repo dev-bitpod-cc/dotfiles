@@ -479,8 +479,11 @@ detect_stale_branches() {
         | grep -vxF "$default" | grep -vxF "$branch")" || locals=""
     # `branch -r` 會把 <remote>/HEAD 的 short form 印成**裸 remote 名**（如 "origin"）——
     # 那不是 branch，漏排除會污染清單並讓 cleanup-cmd 拼出 `--deleteorigin`（實地跑真 repo 才發現）
+    # 排除當前 branch 的 **remote 對應**：2026-08-07 實地誤報——遠端有一條與當前 branch 同名、
+    # 指向 default tip 的 branch（意外 push 造成）時，它符合「已併入 default」而被列為可刪，
+    # 照抄 cleanup-cmd 就會把「本次正要送出的那條」從遠端砍掉。local 側早已排除，remote 側漏了。
     remotes_merged="$(git -C "$repo" branch -r --merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
-        | grep -vxF "$remote/$default" | grep -vxF "$remote" | grep -v '/HEAD$')" || remotes_merged=""
+        | grep -vxF "$remote/$default" | grep -vxF "$remote" | grep -vxF "$remote/$branch" | grep -v '/HEAD$')" || remotes_merged=""
     [ -z "$locals" ] && [ -z "$remotes_merged" ] && return
     n_local=$([ -n "$locals" ] && printf '%s\n' "$locals" | wc -l | tr -d ' ' || echo 0)
     n_remote=$([ -n "$remotes_merged" ] && printf '%s\n' "$remotes_merged" | wc -l | tr -d ' ' || echo 0)
@@ -506,6 +509,95 @@ detect_stale_branches() {
         while IFS= read -r b; do cmd="${cmd} $(shq "${b#"${remote}"/}")"; done <<< "$remotes_merged"
     fi
     echo "cleanup-cmd: ${cmd}"
+}
+
+# squash-merge 盲視的補償訊號（只加訊號，刪除一律走 cleanup-stale-branch.sh）。
+#
+# 為何需要：上面那段判的是**祖先關係**，而 squash-merge 在 default 上產生一顆全新 commit、
+# 與 branch 沒有祖先鏈——內容零損失卻永遠偵測不到。**本 repo 家規正是 squash-merge**，
+# 等於那條訊號對主要情境無效（既有 fixture 用「branch 不加 commit」才會綠，是測試綠、
+# 功能無效的形狀）。
+#
+# 判準只認一件事：merged PR 的 **headRefOid 等於本機該 branch 的 tip**。
+# 不符即「同名 branch 事後又有新工作」——那些 commit 不在 default 上，列進清理清單就是
+# 誘導使用者刪掉唯一的副本，故只印診斷、不列入。fork 來源的 PR 同理不採信（headRefName
+# 相同不代表是這個 repo 的 branch）。
+#
+# 上限 200：`gh pr list` 預設只回 30，靜默截斷會讓「沒列出來」被讀成「沒有」。取 200 是
+# 單次查詢仍快、又遠高於任何一輪 ship 的合理 PR 量；達上限一律標 partial，**絕不印 none**。
+SQUASH_PR_LIMIT=200
+
+detect_squash_merged_branches() {
+    local repo="$1" remote="$2" default="$3" branch="$4" toplevel="$5"
+    local locals_un remotes_un names slug prs n_rows scan
+    local n name tip pr_num pr_oid pr_owner owner row hits listed skipped
+
+    # 候選 = 祖先判定「未併入」者（已併入的由上一段處理，別重複列）
+    locals_un="$(git -C "$repo" branch --no-merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
+        | grep -vxF "$default" | grep -vxF "$branch")" || locals_un=""
+    remotes_un="$(git -C "$repo" branch -r --no-merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
+        | grep -vxF "$remote/$default" | grep -vxF "$remote" | grep -vxF "$remote/$branch" | grep -v '/HEAD$')" || remotes_un=""
+    names="$(printf '%s\n%s\n' "$locals_un" "${remotes_un//${remote}\//}" | grep -v '^$' | sort -u)"
+    [ -z "$names" ] && return
+
+    owner=""
+    slug="$( (cd "$repo" && "$GH_BIN" repo view --json nameWithOwner -q .nameWithOwner) 2>/dev/null)" || slug=""
+    if [ -n "$slug" ]; then owner="${slug%%/*}"; fi
+    if [ -z "$slug" ]; then
+        # 查不到 ≠ 沒有。宣稱 none 會讓使用者以為掃過了
+        echo "squash-merged-branches: UNKNOWN（gh 不可用或 repo slug 解析失敗——無從比對 merged PR；未列出不代表沒有）"
+        return
+    fi
+    prs="$("$GH_BIN" pr list -R "$slug" --state merged --limit "$SQUASH_PR_LIMIT" \
+        --json number,headRefName,headRefOid,headRepositoryOwner \
+        -q '.[] | [.number, .headRefName, .headRefOid, .headRepositoryOwner.login] | @tsv' 2>/dev/null)" || prs=""
+    if [ -z "$prs" ]; then
+        echo "squash-merged-branches: UNKNOWN（gh pr list 無輸出或失敗——無從比對；未列出不代表沒有）"
+        return
+    fi
+    n_rows="$(grep -c . <<< "$prs")"
+    if [ "$n_rows" -ge "$SQUASH_PR_LIMIT" ]; then
+        scan="partial（結果數達上限 ${SQUASH_PR_LIMIT}，更舊的 merged PR 未掃到——未列出不代表沒有）"
+    else
+        scan="complete（掃過 ${n_rows} 筆 merged PR，未達上限 ${SQUASH_PR_LIMIT}）"
+    fi
+
+    listed=""; skipped=""; n=0
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        row="$(awk -F'\t' -v b="$name" '$2 == b {print; exit}' <<< "$prs")"
+        [ -n "$row" ] || continue          # 沒有對應的 merged PR = 還沒 ship 的工作，靜默略過
+        pr_num="$(cut -f1 <<< "$row")"; pr_oid="$(cut -f3 <<< "$row")"; pr_owner="$(cut -f4 <<< "$row")"
+        if [ "$pr_owner" != "$owner" ]; then
+            skipped="${skipped}  skipped: ${name} — PR #${pr_num} 來自 fork（${pr_owner}），不採信"$'\n'
+            continue
+        fi
+        hits=""
+        grep -qxF "$name" <<< "$locals_un" && hits="local"
+        grep -qxF "${remote}/${name}" <<< "$remotes_un" && hits="${hits}${hits:+,}remote"
+        tip="$(git -C "$repo" rev-parse --verify -q "$name" 2>/dev/null)" \
+            || tip="$(git -C "$repo" rev-parse --verify -q "${remote}/${name}" 2>/dev/null)" || tip=""
+        if [ "$pr_oid" != "$tip" ]; then
+            skipped="${skipped}  skipped: ${name} — PR #${pr_num} 的 headRefOid 與本地 tip 不符（SHA mismatch：同名 branch 事後又有新工作？那些 commit 不在 ${default} 上）"$'\n'
+            continue
+        fi
+        case "$hits" in
+            *local*)  listed="${listed}  local: ${name}（PR #${pr_num}）"$'\n'
+                      listed="${listed}  cleanup-cmd: ~/.claude/skills/project/scripts/cleanup-stale-branch.sh $(shq "$toplevel") local $(shq "$name") ${tip}"$'\n'
+                      n=$((n + 1)) ;;
+        esac
+        case "$hits" in
+            *remote*) listed="${listed}  remote: ${remote}/${name}（PR #${pr_num}）"$'\n'
+                      listed="${listed}  cleanup-cmd: ~/.claude/skills/project/scripts/cleanup-stale-branch.sh $(shq "$toplevel") remote $(shq "$name") ${tip}"$'\n'
+                      n=$((n + 1)) ;;
+        esac
+    done <<< "$names"
+
+    [ -z "$listed" ] && [ -z "$skipped" ] && return
+    echo "squash-merged-branches: ${n}（PR 已 squash-merge：內容在 ${default} 上但無祖先鏈，\`branch --merged\` 看不到；Step 4 摘要附註列出，NEVER delete on your own）"
+    [ -n "$listed" ] && printf '%s' "$listed"
+    [ -n "$skipped" ] && printf '%s' "$skipped"
+    echo "  scan: ${scan}"
 }
 
 check_repo() {
@@ -591,6 +683,7 @@ check_repo() {
 
     # -- 殘留 branch 衛生（已併入 default 的 local/remote branch；無殘留則靜默）--
     detect_stale_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
+    detect_squash_merged_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
     detect_review_residue "$repo" "$remote" "$default" "$toplevel"
     detect_review_terminal "$repo"
 
