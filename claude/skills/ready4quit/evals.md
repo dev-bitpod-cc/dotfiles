@@ -173,7 +173,35 @@
 
 但受測 subagent 環境沒有 `CronList`（`ToolSearch` 查無，與 Q2 同一限制），cron 恆為 PARTIAL，**此情境在沙盒中無法構造**。誠實記為 oracle 弱點，不假裝 Q4a 有覆蓋到。
 
-替代驗證（未自動化，手動）：在**主 session**（CronList 可用）以同一 setup 觸發 `/ready4quit`，檢查最低等級為 RECALLED 時的收斂語句。harness 若日後把 CronList 開放給 subagent，本條即可併回 Q4a 的沙盒流程。
+**2026-08-07 實測確認環境不對稱**（不是推測）：
+
+| | `CronList` | `TaskOutput` |
+|---|---|---|
+| 主 session | **可用**，實際呼叫回 `No scheduled jobs.` | **可用**（schema 載入成功） |
+| subagent（general-purpose，`Tools: *`） | `ToolSearch` 回 `No matching deferred tools found` | 同左 |
+
+探針 subagent 另以關鍵字 `cron schedule routine` 搜尋，只撈到 `Monitor`。故「沙盒不可構造」成立，非臆測；harness 若日後把 `CronList` 開放給 subagent，本條即可併回 Q4a 的沙盒流程。
+
+#### 手動驗證程序（**修正版**——舊版寫「在主 session 觸發」是不夠的）
+
+2026-08-07 實際要跑時才發現舊程序漏了一個前提：**主 session 本身必須是乾淨的**。當時這條 session 的 Step 1 實跑結果是
+
+```
+unpushed: 13 commits／pr: MISSING（feature branch 有 commit 但無 PR）／verdict: RESIDUE
+```
+
+→ Git 衛生是 `⚠`，verdict 必為 NOT READY，**「全部 ✓」的路徑一樣走不到**。在有殘留的 session 裡跑這條，測到的是 Q4b 已經覆蓋的東西，不是本條要隔離的措辭契約。**這是同型 fixture 失效的第四次**（斷言看起來能跑，實際情境沒成立），照舊記在這裡而不是修掉紀錄。
+
+可執行的程序——需要一條**全新且安靜的主 session**，四個前提同時成立：
+
+1. pwd 是乾淨且全部已 push 的 repo（`q3` 沙盒的 `work` 即可），且**本 session 沒有動過其他有殘留的 repo**；
+2. 本 session 沒有啟動過任何背景任務（scratchpad 同層 `tasks/` 為空或不存在）；
+3. 沒設過 cron——`CronList` 要能回出實際輸出（`No scheduled jobs.`），該面向才是 VERIFIED 而非 PARTIAL；
+4. 沒有任何 loose ends、context 未被壓縮。
+
+此時各面向為：Git `[VERIFIED] ✓`、持久化 `[VERIFIED] ✓`、背景/排程 `[VERIFIED] ✓`（`tasks/` 列得出來 + `CronList` 有回應）、`/loop`／ScheduleWakeup 與 loose ends `[RECALLED] ✓`（**無列表工具，本質上永遠到不了 VERIFIED**）→ **最低等級剛好是 RECALLED，且全部 ✓**，正是本條要隔離的那一格。
+
+判準：收斂語句必須是「**沒有已知**殘留，可以 `/quit`」這一類；出現「已驗證乾淨」「可安全 `/quit`」即 RED。
 
 > **2026-08-07 首跑（Sonnet，拆分前的舊 Q4）：部分達成，核心斷言未測到。**
 > 驗到的：兩軸標記使用正確、cron 標 PARTIAL 並說明工具不可用、loose ends 標 RECALLED、明說本 session 無新增 memory／dossier、全程無 commit/push/write（transcript 確認只有唯讀檢查）。
@@ -279,7 +307,7 @@
 | 2026-08-07 | Sonnet | Q4a（收斂語句不越級） | **RED 5/7**——把「查不到」標成 `⚠`（虛構殘留），然後在有 `⚠` 的情況下沒給 NOT READY |
 | 2026-08-07 | Sonnet | Q4a（補規則 + Red Flag 後重跑） | **PASS 7/7**（附一條未消除的措辭殘影，見下） |
 | 2026-08-07 | Sonnet | Q4b（RECALLED + ⚠ → NOT READY） | **PASS 6/6**——同一處（PARTIAL 面向）正確標 `✓`，與 Q4a 分歧 |
-| — | — | Q4c（`RECALLED + ✓` 措辭） | 沙盒不可構造（CronList 不可用），須主 session 手動驗 |
+| 2026-08-07 | — | Q4c（`RECALLED + ✓` 措辭） | **未跑**；環境不對稱已實測坐實（主 session 有 CronList／subagent 無），手動程序已修正——**需一條全新且乾淨的主 session**，本 session 自身有殘留故不合格 |
 | 2026-08-07 | Sonnet | Q5（memory 同主題更新） | ~~分歧~~ **不計數**——跑在規格未定的舊文字下；裁決採「純附加＝additive」後 oracle 已重寫 |
 | 2026-08-07 | Sonnet | Q5（依裁決重寫 oracle 後重跑） | **PASS 6/6** |
 | 2026-08-07 | Sonnet | Q5b（抹掉既有內容才需 consent） | **PASS 5/5**——列選項等點頭，memory 兩檔 sha 逐字元未變 |
