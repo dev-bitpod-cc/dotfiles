@@ -40,10 +40,19 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
-- **2026-08-07 「無自動 gate 可擋」的地雷,只要判準寫得出來就該做成 gate**:unquoted heredoc
-  含反引號這條記憶**當天早上才寫進 CLAUDE.md**,同一晚仍當場再踩(在 `ssh/config` 加註解用了
-  行內 code 的反引號,而灌那個檔的正是 `<< SSHEOF`,差一步把毀損的 `~/.ssh/config` 送上全機隊)。
+- **2026-08-07 「符合已知地雷的形狀」≠「就是那個地雷」——沒實測就別把重構寫成修 bug**:
+  在 `ssh/config` 加了帶反引號的註解,而灌那個檔的是 `<< SSHEOF`,當下判定「反引號會被執行、
+  差一步把毀損的 config 送上全機隊」,把三處改成 `echo + cat` 並以此為由寫進 commit / PR /
+  dossier / CLAUDE.md **四處**。**實測後全錯**:命令替換的結果**不會被重新掃描**,`$(cat 檔)`
+  注入的反引號原樣保留、不執行;危險的只有「反引號寫在 heredoc body **字面**」那種
+  (probe 驗證:字面版輸出 `INJECTED`、注入版原樣)。重構本身無害故保留,但四處理由全部更正。
+  **教訓兩層**:①地雷記憶會讓人用「形狀相符」代替驗證,而 shell 展開規則細到形狀根本不夠判;
+  ②錯誤結論一旦寫進 dossier 就會被未來當事實引用——**發現時要回頭改所有出處,不能只改程式碼**。
+- **2026-08-07 判準寫得出來的地雷就該做成 gate,但 gate 的判準只能涵蓋實際驗過的形狀**:
+  unquoted heredoc 含反引號這條記憶**當天早上才寫進 CLAUDE.md**、同一晚仍差點再踩,
   **記憶擋不住「寫 prose 時反引號是標準寫法」這種肌肉記憶**,故改做掃描器(第 1c 節)。
+  判準嚴格限定「body **字面**含反引號」——上一條那次誤判還為它加過一條 `$(cat …)` 規則,
+  那會把每個用 heredoc 灌檔的正常寫法都判紅,已撤銷並留 GREEN fixture 釘住。
   **掃描器自己必須有 RED/GREEN 自檢**——被改壞而恆不匹配時,對真實檔案的空輸出一樣是「通過」,
   正是 gate 靜默失效的標準形狀(第一版漏掉 `<< EOF` 的空白,RED 反綠、GREEN 反紅)。
 - **2026-08-07 一次性遷移也值得做成帶 gate 的腳本,判準是「還要在幾台機器上重跑」**:GitHub
@@ -142,8 +151,9 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
 - [ ] pressure-tests S8/S9/S12 沙盒未納入 `claude/evals/setup-sandboxes.sh`;S10(transfer
   credentials)與 S12(dossier 三 flag 蒸餾紀律)連首輪實測都還沒跑
 - [ ] `claude/evals/setup-sandboxes.sh` 不在 shellcheck / `bash -n` / 全形標點 gate 範圍(第 1、1b、2 節
-  只涵蓋 `scripts/`、`claude/scripts/`、`*/skills/*/scripts/`、functions/setup/tests)。該檔全靠 heredoc
-  灌 fixture,正是 unquoted heredoc 反引號地雷的高風險區(機制見 `claude/CLAUDE.md` 已知地雷);
+  只涵蓋 `scripts/`、`claude/scripts/`、`*/skills/*/scripts/`、functions/setup/tests,**第 1c 節的
+  heredoc gate 有涵蓋它**)。該檔全靠 heredoc 灌 fixture,而 fixture 內容常是 prose——正是
+  「反引號寫在 body 字面」的高風險區(機制見 `claude/CLAUDE.md` 已知地雷);
   沙盒腳本繼續長大就值得納入 gate
 - [ ] codex plugin 去留待定:實質只當傳輸管道,exec 接管後僅剩 `/codex:transfer` 獨有——
   exec 路徑跑穩數輪後重新評估 uninstall
@@ -172,7 +182,7 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
 - ✅ 2026-08-07 ready4quit 強化 + 四輪第三方審查修復：證據語彙拆兩軸（強度 × 殘留）、Step 2 memory/dossier 雙出口、背景任務證據來源改 `tasks/` 且 liveness 不得由 `.output` 推斷、`git-hygiene.sh` 補遠端事實與多 remote 一致性、hook 增報 worktree 雙寫入者；**eval 從零 GREEN 到 8 條 PASS**，其中 Q4a/Q5 是 eval 自己抓出、四輪第三方審查都沒看到的規格缺口（#59，754 PASS；Q4c 未驗見「已知缺口」）
 - ✅ 2026-08-07 `brewup`/`sysup` 從 rc alias 抽成 `scripts/*.sh`（雙平台單一來源，消除兩份複本的漂移風險）+ 新增 `brewfix` 復原入口；`all-up.sh` 改直接呼叫腳本、去掉 `bash -ic`（`no job control` 雜訊隨之消失）；`ensure-rc-source.sh` 增舊 alias 清理（**刪行而非 unalias**——14 台巡檢實測 rc 內 alias 與 source 的相對順序因機器而異，macmini 反向，`unalias` 會多數生效少數靜默失效）（787 PASS）
 
-- ✅ 2026-08-07 待辦批次收尾：`ship-state.sh` 兩項硬化（remote 刪除改走 `cleanup-stale-branch.sh`，帶 ls-remote 重驗＋lease；新增 `branch-diverged` 訊號）＋**unquoted heredoc 反引號 gate**（第 1c 節，掃描器附 RED/GREEN 自檢；三處灌 `ssh/config` 的 heredoc 改 `echo + cat`）＋ GitHub 多身分收斂本機完成 ＋ `migrate-github-remotes.sh`（822 PASS）
+- ✅ 2026-08-07 待辦批次收尾：`ship-state.sh` 兩項硬化（remote 刪除改走 `cleanup-stale-branch.sh`，帶 ls-remote 重驗＋lease；新增 `branch-diverged` 訊號）＋**unquoted heredoc 反引號 gate**（第 1c 節，掃描器附 RED/GREEN 自檢；灌 `ssh/config` 那三處同批改 `echo + cat`，但**當時給的理由是錯的**，見決策節首條）＋ GitHub 多身分收斂本機完成 ＋ `migrate-github-remotes.sh`（822 PASS）
 
 ## 已知缺口
 

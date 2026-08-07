@@ -925,8 +925,8 @@ mkdir -p ~/.ssh && chmod 700 ~/.ssh
 
 # 3b. SSH config
 if [ -f "$SCRIPT_DIR/ssh/config" ]; then
-    # 不用 heredoc 灌檔：理由同 setup-mac-env.sh 同段（ssh/config 註解裡的反引號會被
-    # 當命令替換執行，毀損的 config 直接落地）
+    # 灌檔用 echo + cat 而非 heredoc：理由同 setup-mac-env.sh 同段（少一層展開語意；
+    # 那裡也記了「以為在修 bug、實測發現兩種寫法等價」的澄清）
     {
         echo "# 此檔案由 dotfiles setup 腳本產生"
         echo "# 共用設定來自 ${SCRIPT_DIR}/ssh/config"

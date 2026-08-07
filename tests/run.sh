@@ -131,6 +131,15 @@ cat > /tmp/out.md << EOF
 說明：`git push` 會把 branch 推上去
 EOF
 HDFIX
+# `$(cat 某檔)` 注入外部檔案內容 → **不得**報。命令替換的結果不會被重新掃描，該檔裡的
+# 反引號不會被執行（2026-08-07 實測；當時誤判成同一個地雷、為它加過一條誤報規則，
+# 那條規則會把每個「用 heredoc 灌檔」的正常寫法都判紅）。
+cat > "$TMP/hd/green-cat.sh" <<'HDFIX'
+cat > ~/.ssh/config << SSHEOF
+# 此檔案由 dotfiles setup 腳本產生
+$(cat "$DOTFILES_DIR/ssh/config")
+SSHEOF
+HDFIX
 cat > "$TMP/hd/green.sh" <<'HDFIX'
 cat > /tmp/out.md << 'SAFE'
 說明：`git push` 在這裡是字面，不會被執行
@@ -141,9 +150,13 @@ echo "一般行的 `date` 不歸本 gate 管"
 # 註解裡討論 <<EOF 這個寫法時不得被當成 heredoc 起始——本 gate 自己的註解就會這樣寫，
 # 誤判會把後面數行全報成 body（第一版即如此，真正的問題行反而被蓋掉）
 echo "上一行是註解，這行的 `date` 同樣不歸本 gate 管"
+cat > "$1" <<STUB
+printf '%s\n' "\$(cat '${3:-/dev/null}')"
+STUB
 HDFIX
 if [ -n "$(awk -f "$HD_GATE" "$TMP/hd/red.sh")" ]; then ok "gate 自檢：unquoted heredoc 含反引號 → 命中"; else bad "gate 失效（RED fixture 沒被抓，真實掃描的空輸出不可信）"; fi
-if [ -z "$(awk -f "$HD_GATE" "$TMP/hd/green.sh")" ]; then ok "gate 自檢：quoted heredoc／herestring／一般行 → 不誤報"; else bad "gate 誤報（會逼人把安全寫法改壞以求過測）"; fi
+if [ -z "$(awk -f "$HD_GATE" "$TMP/hd/green-cat.sh")" ]; then ok "gate 自檢：\$(cat 某檔) 注入 → 不報（展開結果不重新掃描，實測確認）"; else bad "gate 把安全的灌檔寫法判紅——每個用 heredoc 灌檔的地方都會被逼著改"; fi
+if [ -z "$(awk -f "$HD_GATE" "$TMP/hd/green.sh")" ]; then ok "gate 自檢：quoted heredoc／herestring／註解／跳脫的 \\\$(cat → 不誤報"; else bad "gate 誤報（會逼人把安全寫法改壞以求過測）"; fi
 hd_hits="$(awk -f "$HD_GATE" \
     "$ROOT"/scripts/*.sh "$ROOT"/scripts/lib/*.sh \
     "$ROOT"/claude/scripts/*.sh \
