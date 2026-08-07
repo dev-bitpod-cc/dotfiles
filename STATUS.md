@@ -189,29 +189,25 @@ git checkout ssh/config                       # 僅限尚未 commit
 - [ ] dossier 訊號 R5 non-blocking 未修(2026-07-29,皆非 blocking、無失敗案例):sections 百分比
   系統性略低於 100%(標題行不計);「唯一的例外」在 SKILL 與 S12 說法不一致;最長行 flag 缺「何時
   處置」;S12 fixture 規格內部不一致;條目作用域用子字串比對而非端錨定(「## 進行中(已完成 M1)」會誤掃)
+- [ ] **「tests/stub 有覆蓋、實戰未驗」一組**(遇到對應情境時順手確認即可,不必專程做):
+  SessionStart hook 落後提醒(真實落後的 clone);autocodex exec 的 resume 分支(exit 4 救援階梯,
+  三輪實跑皆一次成功、只有 stub 覆蓋,F15(b) 待真實空報告);review-anchor 的 stale STOP 與
+  codex-next 冪等(F16 b/c,待 autofix 迭代中真的 rebase/重試);repo-review 新契約(F16–F18 規格
+  覆蓋,待多輪 autofix 確認弱模型不會退回每輪帶 `--autofix`)
 - [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
 - [ ] Scenario 11 的「merge 但無 PR」分支只在 SKILL body 一行指標帶到 ship-paths,GREEN 實測中
   弱模型未展開讀——非違規故未補;重現才加明示(Iron Law)
 - [ ] pressure-tests S8/S9/S12 沙盒未納入 `claude/evals/setup-sandboxes.sh`;S10(transfer
   credentials)與 S12(dossier 三 flag 蒸餾紀律)連首輪實測都還沒跑
-- [ ] SessionStart hook 落後提醒未在真實落後 clone 驗過(tests 有覆蓋)——下次任一主機落後時順手確認
-- [ ] autocodex exec 的 resume 分支(exit 4 救援階梯)未實戰驗證——三輪實跑皆一次成功,只有
-  stub 覆蓋;遇真實空報告時確認 resume 能救回,F15(b) 才算 GREEN
-- [ ] review-anchor 的 stale STOP 與 codex-next 冪等(F16 b/c)已由 tests 第 19 節釘死,
-  實戰(autocodex 迭代中 rebase/重試)尚未驗過
-- [ ] `claude/evals/setup-sandboxes.sh` 不在 shellcheck / `bash -n` / 全形標點 gate 範圍
-  (第 1、1b、2 節只涵蓋 `scripts/`、`claude/scripts/`、`*/skills/*/scripts/`、functions/setup/tests)。
-  2026-08-05 加 h5/h6/h7 沙盒時靠手動 `shellcheck` 才抓到:**unquoted heredoc(`<<EOF`)內的
-  markdown 反引號會被當命令替換執行**(SC2006),而該檔全靠 heredoc 灌 fixture 內容。沙盒腳本
-  繼續長大就值得納入 gate
+- [ ] `claude/evals/setup-sandboxes.sh` 不在 shellcheck / `bash -n` / 全形標點 gate 範圍(第 1、1b、2 節
+  只涵蓋 `scripts/`、`claude/scripts/`、`*/skills/*/scripts/`、functions/setup/tests)。該檔全靠 heredoc
+  灌 fixture,正是 unquoted heredoc 反引號地雷的高風險區(機制見 `claude/CLAUDE.md` 已知地雷);
+  沙盒腳本繼續長大就值得納入 gate
 - [ ] codex plugin 去留待定:實質只當傳輸管道,exec 接管後僅剩 `/codex:transfer` 獨有——
   exec 路徑跑穩數輪後重新評估 uninstall
 - [ ] codex C2 轉交 findings 餘項(2026-07-21 代收):F6 skill-building-guide 的
   `$skill-creator/scripts/quick_validate.py` 路徑解析(context-dependent)。F5(多輪 autofix
   死鎖)已於 2026-08-03 判 true positive 並修復
-- [ ] repo-review 新契約(起始 gate 一次 + 後續 ownership 檢查、mixed-context manifest)僅由
-  evals F16–F18 規格覆蓋,**實戰未跑過**——下次真跑 autofix 多輪時確認弱模型不會退回每輪帶
-  `--autofix`
 - [ ] 輪次隱蔽的框架效應只有**弱證據**(2026-08-05):A/B 盲測每組 n=3、B 組內變異大(2/4/2),
   blocking 平均 3.67→2.67 方向一致但未達證實;質性佐證較強(B 組把 README 已揭露的缺口讀成
   「已承認故不算」而降級,A 組三個零出現)。**擴大樣本才能定論**——全文見 deep-review `evals.md`。
@@ -227,19 +223,10 @@ git checkout ssh/config                       # 僅限尚未 commit
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05／08-06 各批已歸檔至 `docs/archive/milestones-2026-08.md`。
 
-- ✅ 2026-08-07 skill-authoring one-shot gate + R5 terminal state:deep-review 對 skill 類變更
-  只跑一次診斷(severity 不放寬、blocking 照報,只是不進 autofix 循環),`force-skill-loop` 為
-  唯一 escape hatch;`terminate`/`resume-after-terminal` 兩個子指令讓 R5 終止跨 session 可見。
-  eval 沙盒補 d4–d7,四條行為 eval 在 Sonnet 實跑至 GREEN。665 PASS。
-
-- ✅ 2026-08-07 ship 說法語法(說法即授權):Step 4 由逐批出題改為「說法出現即執行到底、零提問」,
-  merge 預設保留語意 commit、review 痕跡壓得掉的一律壓;新增 `review-terminal:` 事實前提 STOP
-  (說法覆蓋不了)與 merge 受阻的 `mergeStateStatus` 分流(`--admin` 只給「bypass merge」+`BLOCKED`)。
-  沙盒補 u4/u5,三條行為 eval 在 Sonnet 實跑首輪全 PASS。672 PASS。
-
-- ✅ 2026-08-07 squash-merge 殘留 branch 偵測與安全清除:`squash-merged-branches:` 訊號(headRefOid
-  比對／fork 不採信／`scan: complete|partial`)+ `cleanup-stale-branch.sh`(三道前提、remote 走
-  ls-remote 重驗 + lease 雙重比對),並修掉「當前 branch 的 remote 對應被列為可刪」的實地誤報。699 PASS。
+- ✅ 2026-08-07 deep-review skill-authoring one-shot gate + R5 terminal state（#51，665 PASS）
+- ✅ 2026-08-07 ship 說法語法：說法即授權、merge 預設保留、`review-terminal` STOP、merge 受阻分流（#52，672 PASS）
+- ✅ 2026-08-07 squash-merge 殘留偵測 + `cleanup-stale-branch.sh` 安全清除（#53，699 PASS）
+- ✅ 2026-08-07 Scenario 15 補測：`BLOCKED` 不得自動 `--admin`，正反兩向 PASS（#54）
 
 ## 已知缺口
 
@@ -268,36 +255,29 @@ git checkout ssh/config                       # 僅限尚未 commit
   至今零觀察;日後出現再加標註版(零風險、可測),而非授權外部存取。全紀錄見 deep-review `evals.md`。
 
 - **deep-review anchor 跨批次會 stale,`squash-cmd` 因而指向錯誤目標**:anchor 只在 autofix 的
-  `record` 寫入,走「codex 第三方審查」觸發詞路徑(非 autofix)時不 record,`squash-cmd` 遂讀到
-  **上一批**的 anchor(2026-08-05 實遇:本批 3 顆 commit,腳本卻給出會壓掉 5 顆的 reset 目標)。
-  腳本行為正確,缺的是「anchor 屬於哪一批」。2026-08-06 squash 改 subject 掃描後**風險已大幅
-  縮小**——會停在第一顆語意 commit,跨批次的舊語意 commit 不再被壓;殘餘只剩「上一批的 review
-  fix commit 被收進本批 squash」。解法已知:`squash-cmd` 偵測 anchor 非當前 branch 祖先時改判
-  STOP——**`codex-next` 已有這道檢查**,剩下的是移植;處置＝`record --mode branch-diff --base main`。
+  `record` 寫入,走「codex 第三方審查」觸發詞路徑時不 record → 讀到**上一批**的 anchor(2026-08-05
+  實遇:本批 3 顆卻給出會壓掉 5 顆的 reset 目標)。2026-08-06 squash 改 subject 掃描後風險大幅縮小
+  (會停在第一顆語意 commit),殘餘只剩「上一批的 review fix commit 被收進本批 squash」。解法已知:
+  `squash-cmd` 偵測 anchor 非當前 branch 祖先時改判 STOP——**`codex-next` 已有這道檢查**,剩移植。
 
-- **`/project log` Step 2 對「規則只寫了一半」無偵測能力**:2026-08-05 該步抓到 `add -A`
-  例外的使用點缺口(條件只寫在禁令側、執行者讀的是 skill)純屬**偶然**——`CLAUDE.md` 的例外
-  文字剛好點名 `deep-review/SKILL.md`,順著文字就找到了。**同一 session 的反證**:#43 走過
-  同一個 Step 2(輕量路徑、快速核對),F2/F3 兩條 blocking 照樣漏出,由第三方審查才抓到。
-  Step 2 沒有「規則的對稱面／使用點」概念。**不補文字原則**——與下條「同型掃描有原則無
-  產出物」完全同型,實戰最易被跳過;日後復發才做**訊號化**(`ship-state.sh` 偵測變更集含
-  `claude/CLAUDE.md`／`codex/AGENTS.md`／`skills/*/SKILL.md` 時印對稱面候選,不判語意),
-  形狀同 `dossier-flag`。現有防線只有第三方審查。
+- **「規則的對稱面／使用點」與「同型掃描」都只有文字原則、無產出物**(兩者同型,合併記):
+  - *Step 2 對「規則只寫了一半」無偵測*:2026-08-05 抓到 `add -A` 例外的使用點缺口純屬**偶然**
+    (`CLAUDE.md` 的例外文字剛好點名 `deep-review/SKILL.md`)。同 session 反證:#43 走過同一個
+    Step 2,F2/F3 兩條 blocking 照樣漏出,由第三方審查才抓到。
+  - *deep-review 的同型掃描*:對「測試」有機械化 gate(`verify-tests.sh` exit code 契約),對
+    同型掃描只有 brief/SKILL 的文字要求。2026-08-05 krepo 實戰回饋:連跑四輪修復時最易被跳過
+    的正是這類原則性敘述,且該次漏的就是它。
+  **共同結論:不補文字原則**——文字是最易被跳過的那層。要做就做**訊號化/checklist 化**
+  (如 `ship-state.sh` 偵測變更集含 `CLAUDE.md`／`AGENTS.md`／`SKILL.md` 時印對稱面候選,不判語意,
+  形狀同 `dossier-flag`;或要求 fixer 每輪寫出「本輪抽象出的規則 + `rg` 命中數」)。做不成
+  exit-code gate——規則是語意抽象出來的,機器不知道要 grep 什麼。現有防線只有第三方審查。
 
-- **同型掃描有文字原則、無產出物(機制不對稱)**:deep-review 對「測試」有機械化 gate
-  (`verify-tests.sh` 的 exit code 契約),對「同型掃描」只有 `reviewer-brief.md` 與 SKILL.md
-  的文字要求。2026-08-05 krepo 實戰回饋指出:連跑四輪修復時最容易被跳過的正是這類原則性
-  敘述,且該次漏的就是它。**做不成 exit-code gate**——規則是語意抽象出來的,機器不知道要
-  grep 什麼;可行的只有 checklist 化(要求 fixer 每輪在報告寫出「本輪抽象出的規則 + `rg`
-  命中數」),但那會改動 fixer 每輪的報告格式,待單獨評估。終止報告新增的「根因與前輪
-  重複?」欄只在**終止時**部分暴露此失效模式,太晚。
+- **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper 首次執行核可)**:cask 首次 exec quarantine 過的
+  新 binary,同步等系統核可對話框(常沒搶到焦點,看似卡死在 `Linking Binary`)。解法:對話框按允許
+  (誤按取消→系統設定「仍要允許」)→ `brew reinstall --cask codex` 補完並清 `*.upgrading`。
+  **勿用 xattr 除 quarantine 或 --no-quarantine**(不必要的安全弱化)。僅 codex 實際升版時發生;
+  經 SSH 的 allup 對話框只出現在實體螢幕,該 Mac 須先本機核可過該版。
 
-- **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper 首次執行核可)**:cask 的 completion artifact
-  首次 exec quarantine 過的新 binary,同步等系統核可對話框(常沒搶到焦點,看似卡死於
-  `Linking Binary`)。解法:在對話框按允許(誤按取消→系統設定「仍要允許」),再
-  `brew reinstall --cask codex` 補完並清 `*.upgrading` 殘留。**勿用 xattr 除 quarantine 或
-  --no-quarantine**(核可即足夠,那是不必要的安全弱化)。僅 codex 實際升版時發生(對話框綁
-  CDHash 問一次);經 SSH 的 allup 對話框只出現在實體螢幕,該 Mac 須先本機核可過該版。
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,
   改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
 - biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+credentials 明文散於三台。
