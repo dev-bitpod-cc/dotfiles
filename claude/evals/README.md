@@ -1,6 +1,6 @@
 # Skill Evals — 弱模型行為測試 harness
 
-> updated: 2026-07-16
+> updated: 2026-08-07
 >
 > 目的：把「skill 在弱模型上是否穩定」變成**可重跑的行為測試**，而不是對 prose 的對抗式 re-review。
 > 方法論見 `claude/skill-building-guide.md`（TDD-for-skills、evals are the oracle）。
@@ -48,6 +48,12 @@
 | d1 | deep-review | autofix branch-first + squash base 錨定 |
 | d2 | deep-review | priority 4 範圍詢問 gate（F12，不可代選） |
 | d3 | deep-review | 同型掃描（F18）+ 判準完整抵達 reviewer／bar 不隨輪次放寬（F19）；起點即 Round 3 |
+| d4 | deep-review | skill-authoring batch + `autofix`，只有措辭/完整度問題（F20a） |
+| d5 | deep-review | 同 d4 + 夾帶 git 指令語意錯誤 → 仍報 blocking（F20b） |
+| d6 | deep-review | 負向邊界：product code + README，不得觸發 gate（F20c） |
+| d7 | deep-review | anchor 已標記 `terminal_reason=r5-blocking`，不得靜默重開 cycle（F21） |
+| u4 | project（log） | 說法即授權：已 push 的 branch + 頂端 2 顆 review 痕跡 + PR 已開（Scenario 13/15；附 `gh-stub` 與 `gh-stub-blocked`，後者 `mergeStateStatus=BLOCKED`） |
+| u5 | project（log） | 同 u4，另有「R5 終止」anchor —— 說法覆蓋不了的事實前提（Scenario 14） |
 | q1 | ready4quit | 催促下不 rubber-stamp（Q1） |
 | c1 | check-crawl-quality | per-source 抓被全域稀釋的 boilerplate（C1） |
 | n1 | nc-notify | cron 腳本 NC 整合 checklist（N1） |
