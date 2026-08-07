@@ -33,6 +33,18 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-07 memory 的 consent 邊界改以「既有內容有沒有被抹掉」判定,不看「檔案存不存在」**:
+  純附加＝additive 可直接寫,只有會抹掉既有內容才要 consent——逼一輪往返只是把 additive 出口
+  切成「新增免問/更新要問」兩半,而兩者可逆性相同。**拆掉守衛就得補上它接住的東西**:讓出的
+  邊界由新增 eval Q5b 接手(以「使用者推翻既有偏好、要求刪掉」逼出破壞性改動),首跑 PASS。
+  附帶判準:**規格本身沒定義時,受測行為判「不計數」而非 RED**——判它違規等於用事後 oracle
+  追溯定義 skill 沒說過的事。全紀錄見 `claude/skills/ready4quit/evals.md`。
+- **2026-08-07 fixture 撞名＝「兩條 branch 各自全綠、合流才紅」的測試虛設第四種形狀**:本批在
+  `tests/run.sh` 第 8 節用 `$TMP/sq-work`,main 同期在第 9 節獨立用了同一個名字;兩節共用 `$TMP`,
+  後建的 `git init` 落在既有 repo 上(re-init + `remote origin already exists`),fixture 靜默
+  不成立、6 條斷言假紅。**兩邊單獨跑都全綠**,與「只有乾淨 clone 看得見」的誤收同型,diff review
+  抓不到。判準兩層:共用 `$TMP` 的 fixture **一律加節前綴**;**rebase/合流後必須重跑全測試**
+  ——這類缺陷只在合流那一刻現形,不重跑就會帶著假綠送出。
 - **2026-08-07 GitHub 多身分收斂的 spec 定稿移入 `docs/plans/`,「進行中」只留指標**(同日先拍板
   留在 dossier、後改此)。理由:spec 完整但**未開工**,卻長期佔 always-on 內容約 24%(109 行),
   把 dossier 一路推過 300 行硬門檻——每次 ship 都要為幾行去蒸餾無關條目,那個動作重複本身就是
@@ -102,6 +114,11 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   `ssh -a -x`(已實測 `set -a` 確認),cert 與 `~/.ssh/config` alias 原生生效,無這些摩擦。
   **若日後想重評 mc,先確認 libssh2 是否已支援 OpenSSH cert,否則結論不變。**
 
+- **手動把 worktree 的 SKILL.md 複製到主 checkout,以繞過 `~/.claude/skills` symlink**:想在合併前
+  跑「需要 skill 真的被載入」的驗證時(如 ready4quit Q4c 要開新 session 觸發 `/ready4quit`)會很想
+  這麼做。放棄理由:主 checkout 有其他 writer;`brewup` 會在 pull 前丟棄未提交改動,那份複製隨時
+  被吃掉;最要命的是**「測的到底是哪一版」變得不可考**——與這些 skill 自己在防的「證據對不上
+  結論」完全同型。**正解是先合併、主 checkout pull 之後再驗。**
 - **「/project log 包裝/並存 /uap」**:disable-model-invocation 下無法鏈式呼叫,只能複製
   pressure-tested 的 ship 防護邏輯——違反 single-source;功能上與「uap 強化」完全收斂,直接取代。
 - **repo 內放一次性交接檔(HANDOFF.md commit→刪除循環)**:實證 general-rag-cs 的已消費
@@ -119,7 +136,10 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   三輪實跑皆一次成功、只有 stub 覆蓋,F15(b) 待真實空報告);review-anchor 的 stale STOP 與
   codex-next 冪等(F16 b/c,待 autofix 迭代中真的 rebase/重試);repo-review 新契約(F16–F18 規格
   覆蓋,待多輪 autofix 確認弱模型不會退回每輪帶 `--autofix`)
-- [ ] hook matcher 僅 `startup`(resume/clear 不重測落後)——擴不擴待拍板
+- [x] hook matcher 僅 `startup`——2026-08-07 已擴為 `startup|clear|compact|resume`,tests 第 16 節覆蓋
+- [ ] 主 checkout `claude/CLAUDE.md` 測試節那行待補 git-hygiene 的新教訓(`-uall`、gh 失敗≠無 PR、
+  無 upstream 用 `origin/<branch>`、fetch 才有遠端事實):該行極長且主 checkout 的分支同期也改過它,
+  刻意留到合併後再補以免衝突
 - [ ] Scenario 11 的「merge 但無 PR」分支只在 SKILL body 一行指標帶到 ship-paths,GREEN 實測中
   弱模型未展開讀——非違規故未補;重現才加明示(Iron Law)
 - [ ] pressure-tests S8/S9/S12 沙盒未納入 `claude/evals/setup-sandboxes.sh`;S10(transfer
@@ -152,9 +172,18 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
 - ✅ 2026-08-07 ship 說法語法：說法即授權、merge 預設保留、`review-terminal` STOP、merge 受阻分流（#52，672 PASS）
 - ✅ 2026-08-07 squash-merge 殘留偵測 + `cleanup-stale-branch.sh` 安全清除（#53，699 PASS）
 - ✅ 2026-08-07 Scenario 15 補測：`BLOCKED` 不得自動 `--admin`，正反兩向 PASS（#54）
+- ✅ 2026-08-07 ready4quit 強化 + 四輪第三方審查修復：證據語彙拆兩軸（強度 × 殘留）、Step 2 memory/dossier 雙出口、背景任務證據來源改 `tasks/` 且 liveness 不得由 `.output` 推斷、`git-hygiene.sh` 補遠端事實與多 remote 一致性、hook 增報 worktree 雙寫入者；**eval 從零 GREEN 到 8 條 PASS**，其中 Q4a/Q5 是 eval 自己抓出、四輪第三方審查都沒看到的規格缺口（#59，754 PASS；Q4c 未驗見「已知缺口」）
 
 ## 已知缺口
 
+- **eval 的受測 subagent 拿不到 deferred tools,部分契約在沙盒中無法構造**:2026-08-07 實測——
+  主 session 呼叫 `CronList` 得 `No scheduled jobs.`、`TaskOutput` schema 也載入;探針 subagent
+  (`Tools: *`)對 `select:CronList,TaskOutput,TaskList` 一律得 `No matching deferred tools found`。
+  故凡「該工具查得成」才成立的情境做不出來——ready4quit **Q4c**(`RECALLED + ✓` 的收斂措辭,需
+  最低證據等級剛好是 RECALLED)因此無 GREEN 證據。改主 session 手動驗又有兩道前提:**`~/.claude/skills`
+  symlink 指向主 checkout**(合併前載到的是舊版,跑了無效)、且**該 session 自身必須乾淨**(本次想跑時
+  有 15 顆未 push commit,Git 衛生 ⚠ → 全 ✓ 路徑走不到)。順序:合併 → 主 checkout pull → 開全新且
+  安靜的 session → 才跑;程序全文見 `claude/skills/ready4quit/evals.md`。
 - **祖先判定那條路徑的 `cleanup-cmd` remote 刪除仍是裸 `push --delete`**(無 lease、無執行當下
   重驗)。local 側的 `-d` 由 git 自己把關(未併入即拒),remote 側沒有等價保護——偵測後有人推過
   就會刪掉未併入的 commit,與本批修掉的 TOCTOU 同型。修法現成:改發 `cleanup-stale-branch.sh
