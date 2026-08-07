@@ -661,12 +661,14 @@ alias glog='git log --oneline --graph --decorate'
 alias clauded='claude --dangerously-skip-permissions'
 alias claudea='claude --enable-auto-mode'
 
-# 跨主機共用便利函數（dotsync / tmuxls / allup 等）
+# 跨主機共用便利函數（dotsync / tmuxls / allup / brewup / sysup / brewfix 等）
 # 版控於 shell/functions.sh，由 dotsync 散佈；新增函數只需改該檔，毋須重跑 setup
+#
+# 系統更新的 brewup 曾是此處的一行 alias（mac/linux 各一份複本），現已抽成
+# scripts/brewup.sh 由 functions.sh 包裝——雙平台共用同一份邏輯，且 all-up.sh
+# 可直接呼叫腳本而毋須 `bash -ic`。切勿在此重新定義同名 alias：alias 展開優先於
+# function 查找，會靜默遮蔽 functions.sh 的版本。
 [ -f ~/.dotfiles/shell/functions.sh ] && source ~/.dotfiles/shell/functions.sh
-
-# 系統更新
-alias brewup='(cd ~/.dotfiles && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1); brew trust --formula oven-sh/bun/bun 2>/dev/null; brew update && brew upgrade --yes && brew cleanup; { command -v claude &>/dev/null && claude update 2>/dev/null; claude plugins marketplace update 2>/dev/null; jq -r ".enabledPlugins // {} | keys[]" ~/.dotfiles/claude/settings.json 2>/dev/null | while read -r p; do claude plugins install "$p" 2>/dev/null; claude plugins update "$p" 2>/dev/null; done; } 2>/dev/null; { [ -f ~/.dotfiles/ssh/known_hosts ] && cp ~/.dotfiles/ssh/known_hosts ~/.ssh/known_hosts 2>/dev/null; } 2>/dev/null'
 
 # -------------------------------------------
 # fzf 配置

@@ -18,3 +18,12 @@ tmuxls() { ~/.dotfiles/scripts/tmux-ls.sh "$@"; }
 
 # 批次系統更新（mac: brewup；linux: brewup+sysup）；無引數＝本機+遠端（本機若在清單自動扣除）
 allup() { ~/.dotfiles/scripts/all-up.sh "$@"; }
+
+# Homebrew + dotfiles + Claude plugins 更新（雙平台共用同一份邏輯）
+brewup() { ~/.dotfiles/scripts/brewup.sh "$@"; }
+
+# apt 系統更新（Linux；於 macOS 執行會友善報錯並 exit 2）
+sysup() { ~/.dotfiles/scripts/sysup.sh "$@"; }
+
+# macOS：cask 升版被 Gatekeeper 卡死的診斷與復原（預設唯讀，--fix 才動手）
+brewfix() { ~/.dotfiles/scripts/brewfix.sh "$@"; }

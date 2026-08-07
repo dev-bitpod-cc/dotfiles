@@ -2261,6 +2261,35 @@ RC_FILE="$ers_none" bash "$ERS"
 assert_rc "rc 不存在 → exit 0" 0 $?
 if [ ! -e "$ers_none" ]; then ok "rc 不存在 → 不建立檔案"; else bad "rc 不存在卻建立了檔案"; fi
 
+# --- 已遷移到 functions.sh 的舊 alias 清理 ---
+# 不能靠 functions.sh 裡 unalias：alias 展開優先於 function 查找，而 rc 裡 alias 與
+# source 行的相對順序因機器而異（實地 14 台：13 台 source 在後、macmini 在前），
+# unalias 會變成「多數生效、少數靜默失效」。故這裡驗的是「確實從 rc 刪行」。
+ers_stale="$TMP/rc-stale"
+printf 'alias brewup=%s\nalias sysup=%s\nalias ll=%s\nexport KEEP=1\n' "'old-brewup'" "'old-sysup'" "'eza -l'" > "$ers_stale"
+RC_FILE="$ers_stale" bash "$ERS" >/dev/null
+assert_rc "含舊 alias → exit 0" 0 $?
+ers_n=$(grep -cE '^alias (brewup|sysup)=' "$ers_stale")
+assert_eq "brewup/sysup alias 已移除" "0" "$ers_n"
+if grep -qxF "alias ll='eza -l'" "$ers_stale"; then ok "其他 alias 未被誤刪"; else bad "誤刪了其他 alias"; fi
+if grep -qxF 'export KEEP=1' "$ers_stale"; then ok "非 alias 內容保留"; else bad "非 alias 內容遺失"; fi
+if grep -qF "$MARKER" "$ers_stale"; then ok "同時補上 source 行"; else bad "未補上 source 行"; fi
+
+# 重跑 → 幂等（已無舊 alias，檔案不再變動）
+cp "$ers_stale" "$ers_stale.after1"
+RC_FILE="$ers_stale" bash "$ERS" >/dev/null
+if diff -q "$ers_stale" "$ers_stale.after1" >/dev/null; then ok "清理後重跑 → 內容不變"; else bad "清理後重跑仍改動檔案"; fi
+
+# 前提檢查：減幅超過 2 行 → 原封不動（守住「破壞性覆寫前先驗行數」那道閘）
+# 沒有這條，整段前提檢查可以被刪光而測試照樣全綠。
+ers_many="$TMP/rc-many"
+printf 'alias brewup=%s\nalias brewup=%s\nalias sysup=%s\nalias sysup=%s\nexport KEEP=1\n' \
+    "'a'" "'b'" "'c'" "'d'" > "$ers_many"
+cp "$ers_many" "$ers_many.orig"
+RC_FILE="$ers_many" bash "$ERS" >/dev/null 2>&1
+ers_many_n=$(grep -cE '^alias (brewup|sysup)=' "$ers_many")
+assert_eq "減幅 4 行 > 上限 2 → 四行舊 alias 全數保留（未覆寫）" "4" "$ers_many_n"
+
 echo "▶ 16. session-pull-check.sh（SessionStart hook）落後偵測與靜默契約"
 SPC="$ROOT/claude/scripts/session-pull-check.sh"
 
@@ -3853,6 +3882,108 @@ if [ "${longest_label:-999}" -le 200 ]; then
 else
     bad "來源顯示標籤無上限（實測 ${longest_label} bytes）"
 fi
+
+echo "▶ 22. brewup / sysup / brewfix（rc alias 抽成腳本後的三個入口）"
+
+# --- sysup.sh 平台 guard ---
+SYSUP_SH="$ROOT/scripts/sysup.sh"
+SYSUP_UNAME=Darwin bash "$SYSUP_SH" >/dev/null 2>&1
+assert_rc "sysup 於非 Linux → exit 2（不觸碰 apt）" 2 $?
+
+# --- brewfix.sh ---
+BFX="$ROOT/scripts/brewfix.sh"
+bfx="$TMP/bfx"; mkdir -p "$bfx/Caskroom" "$bfx/bin"
+
+# stub：預設「無 brew prefix 底下的 process」
+cat > "$bfx/ps-empty" <<'STUB'
+#!/usr/bin/env bash
+echo "  501 /usr/sbin/unrelated"
+STUB
+# stub：一個位於 brew prefix 底下、lsof 條目極少（＝一個 dylib 都沒載入）的 process
+cat > "$bfx/ps-stuck" <<'STUB'
+#!/usr/bin/env bash
+printf '%s %s\n' 99999 "__PREFIX__/Caskroom/codex/1.0/bin/codex"
+STUB
+sed -i.bak "s|__PREFIX__|$bfx|" "$bfx/ps-stuck" && rm -f "$bfx/ps-stuck.bak"
+cat > "$bfx/lsof-few" <<'STUB'
+#!/usr/bin/env bash
+printf 'a\nb\nc\nd\ne\nf\ng\n'
+STUB
+cat > "$bfx/lsof-many" <<'STUB'
+#!/usr/bin/env bash
+for i in $(seq 1 60); do echo "line$i"; done
+STUB
+cat > "$bfx/killall-stub" <<'STUB'
+#!/usr/bin/env bash
+echo "killall $*" >> "$KILLALL_LOG"
+STUB
+cat > "$bfx/sudo-stub" <<'STUB'
+#!/usr/bin/env bash
+[ "${1:-}" = "-n" ] && exit 0     # 佯裝免密 sudo 可用
+shift 0; exec "$@"
+STUB
+chmod +x "$bfx"/ps-* "$bfx"/lsof-* "$bfx"/killall-stub "$bfx"/sudo-stub
+
+bfx_env() {
+    BREWFIX_UNAME=Darwin BREWFIX_BREW_PREFIX="$bfx" BREWFIX_CASKROOM="$bfx/Caskroom" \
+    BREWFIX_PS="$1" BREWFIX_LSOF="$2" BREWFIX_KILLALL="$bfx/killall-stub" \
+    BREWFIX_SUDO="$bfx/sudo-stub" KILLALL_LOG="$bfx/killall.log" bash "$BFX" "${3:-}"
+}
+
+# 非 macOS → exit 2
+BREWFIX_UNAME=Linux bash "$BFX" >/dev/null 2>&1
+assert_rc "非 macOS → exit 2" 2 $?
+
+# 未知參數 → exit 2（不得被當成 --fix）
+BREWFIX_UNAME=Darwin bash "$BFX" --wipe >/dev/null 2>&1
+assert_rc "未知參數 → exit 2" 2 $?
+
+# Caskroom 不存在 → exit 2
+BREWFIX_UNAME=Darwin BREWFIX_BREW_PREFIX="$bfx" BREWFIX_CASKROOM="$bfx/nope" bash "$BFX" >/dev/null 2>&1
+assert_rc "Caskroom 不存在 → exit 2" 2 $?
+
+# 乾淨 → CLEAN / exit 0
+out=$(bfx_env "$bfx/ps-empty" "$bfx/lsof-many"); rc=$?
+assert_rc "無殘留無卡死 → exit 0" 0 $rc
+assert_eq "verdict: CLEAN" "verdict: CLEAN" "$(echo "$out" | grep '^verdict:')"
+
+# 有 *.upgrading 殘留 → RESIDUE / exit 1，且唯讀模式**不得刪除**
+mkdir -p "$bfx/Caskroom/codex/0.1.upgrading"
+out=$(bfx_env "$bfx/ps-empty" "$bfx/lsof-many"); rc=$?
+assert_rc "有殘留 → exit 1" 1 $rc
+assert_eq "verdict: RESIDUE" "verdict: RESIDUE" "$(echo "$out" | grep '^verdict:')"
+if [ -d "$bfx/Caskroom/codex/0.1.upgrading" ]; then ok "唯讀模式未刪除殘留"; else bad "唯讀模式竟刪除了殘留"; fi
+
+# --fix → 清除殘留並複驗 CLEAN
+out=$(bfx_env "$bfx/ps-empty" "$bfx/lsof-many" --fix); rc=$?
+assert_rc "--fix 清完 → exit 0" 0 $rc
+if [ ! -d "$bfx/Caskroom/codex/0.1.upgrading" ]; then ok "--fix 已清除殘留"; else bad "--fix 未清除殘留"; fi
+
+# 無卡死 process 時不得驚動 syspolicyd（killall 是全系統動作，不該無謂執行）
+if [ ! -s "$bfx/killall.log" ]; then ok "無卡死 process → 不呼叫 killall"; else bad "無卡死卻呼叫了 killall"; fi
+
+# 卡死 process（lsof 條目極少）→ STUCK
+out=$(bfx_env "$bfx/ps-stuck" "$bfx/lsof-few"); rc=$?
+assert_rc "偵測到卡死 process → exit 1" 1 $rc
+assert_eq "verdict: STUCK" "verdict: STUCK" "$(echo "$out" | grep '^verdict:')"
+if echo "$out" | grep -q '^stuck-process: pid=99999'; then ok "列出卡死 pid"; else bad "未列出卡死 pid"; fi
+
+# 同一個 process，但 lsof 條目正常（dylib 已載入）→ 不得判為卡死
+out=$(bfx_env "$bfx/ps-stuck" "$bfx/lsof-many"); rc=$?
+assert_rc "lsof 條目正常 → 不誤判為卡死（exit 0）" 0 $rc
+assert_eq "verdict: CLEAN（正常執行中的 process）" "verdict: CLEAN" "$(echo "$out" | grep '^verdict:')"
+
+# --fix 遇卡死 → 才呼叫 killall syspolicyd
+: > "$bfx/killall.log"
+bfx_env "$bfx/ps-stuck" "$bfx/lsof-few" --fix >/dev/null 2>&1
+if grep -q 'killall syspolicyd' "$bfx/killall.log"; then ok "--fix 遇卡死 → 呼叫 killall syspolicyd"; else bad "--fix 遇卡死卻未呼叫 killall"; fi
+
+# 破壞性刪除的作用域：Caskroom 外的 *.upgrading 不得被碰
+outside="$TMP/outside.upgrading"; mkdir -p "$outside"
+mkdir -p "$bfx/Caskroom/tool/9.9.upgrading"
+bfx_env "$bfx/ps-empty" "$bfx/lsof-many" --fix >/dev/null 2>&1
+if [ -d "$outside" ]; then ok "Caskroom 外的 *.upgrading 未被觸碰"; else bad "誤刪了 Caskroom 外的目錄"; fi
+if [ ! -d "$bfx/Caskroom/tool/9.9.upgrading" ]; then ok "Caskroom 內殘留已清"; else bad "Caskroom 內殘留未清"; fi
 
 echo ""
 echo "════════════════════════════"
