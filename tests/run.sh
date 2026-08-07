@@ -601,6 +601,153 @@ out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
 if ! echo "$out" | grep -qE "^  local: .*feat/old-merged"; then ok "當前 branch 不列入 local 殘留"; else bad "把當前 branch 列為可刪殘留（${out}）"; fi
 (cd "$TMP/sb-work" && git switch -q main)
 
+# 當前 branch 的 **remote 對應**同樣不得列入（2026-08-07 實地誤報：意外 push 了一條指向
+# main tip 的同名 branch，腳本排除了 local 卻沒排除 origin/<當前 branch>，於是建議刪掉
+# 「本次正要送出的那條」——照抄就會把自己的 branch 從遠端砍掉）
+(cd "$TMP/sb-work" && git switch -q feat/old-merged)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
+if ! echo "$out" | grep -qE "^  remote: origin/feat/old-merged"; then ok "當前 branch 的 remote 對應不列入殘留"; else bad "把當前 branch 的 remote 對應列為可刪（照抄會砍掉正要送出的 branch）"; fi
+(cd "$TMP/sb-work" && git switch -q main)
+
+# --- squash-merge 盲視（B1：只加訊號，不產生 -D 指令）---
+# 為何存在：`git branch --merged` 判的是**祖先關係**，而 squash-merge 在 default 上產生
+# 一顆全新 commit、與 branch 無祖先鏈——內容零損失卻永遠偵測不到。**本 repo 家規正是
+# squash-merge**，等於這條訊號對主要情境完全無效；而既有 fixture 用「branch 不加 commit」
+# （純祖先）才會綠，是「測試綠、功能無效」的教科書形狀。
+# 判準取 `gh pr list` 的 merged PR：**headRefOid 必須等於本機 branch tip** 才算數——
+# 同名 branch 事後又有新工作時 SHA 會不同，那些 commit 不在 default 上，列進去就是誘導刪掉。
+make_gh_prlist_stub() {   # $1=路徑 $2=headRefOid $3=owner $4=額外 PR 筆數(湊 limit 用)
+    cat > "$1" <<STUB
+#!/usr/bin/env bash
+case "\$*" in
+    *nameWithOwner*) echo "acme/widget" ;;
+    *viewerPermission*) echo "READ" ;;
+    *"/protection"*) echo "gh: Branch not protected (HTTP 404)"; exit 1 ;;
+    *"rules/branches"*) echo '[]' ;;
+    *"pr list"*)
+        printf '12\tfeat/squashed\t%s\t%s\n' "$2" "$3"
+        i=0
+        while [ "\$i" -lt "$4" ]; do
+            printf '%d\tfiller-%d\tdeadbeef\tacme\n' "\$((100+i))" "\$i"
+            i=\$((i+1))
+        done ;;
+esac
+STUB
+    chmod +x "$1"
+}
+
+# fixture：squash-merge 的真實形狀——branch 有自己的 commit，main 上是「內容相同但另一顆」
+git init --bare -q "$TMP/sq-origin.git"
+git init -q -b main "$TMP/sq-work"
+(cd "$TMP/sq-work" \
+    && echo base > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/sq-origin.git" && git push -qu origin main \
+    && git switch -qc feat/squashed && echo feature > f.txt && "${GITC[@]}" commit -qam "feat: 功能" \
+    && git push -qu origin feat/squashed \
+    && git switch -q main && echo feature > f.txt && "${GITC[@]}" commit -qam "feat: 功能 (#12)" \
+    && git push -q origin main)
+sq_tip="$(git -C "$TMP/sq-work" rev-parse feat/squashed)"
+
+# 前提自檢：祖先判定看不到它（看得到就代表 fixture 沒造出 squash-merge 的形狀，後面全是假的）
+if ! grep -qx 'feat/squashed' <<< "$(git -C "$TMP/sq-work" branch --merged origin/main --format='%(refname:short)')"; then
+    ok "fixture 前提成立：squash-merge 後 branch --merged 看不到它（結構盲視）"
+else bad "fixture 未造出 squash-merge 形狀（branch 仍是祖先，後續斷言全部失效）"; fi
+
+make_gh_prlist_stub "$TMP/gh-sq" "$sq_tip" acme 0
+out="$(SHIP_STATE_GH="$TMP/gh-sq" "$SS_SCRIPT" "$TMP/sq-work")"
+if grep -q "^squash-merged-branches:" <<< "$out"; then ok "squash-merge 的殘留 branch 被偵測"; else bad "squash-merged branch 漏偵測（家規就是 squash-merge，等於訊號無效）"; fi
+if grep -q "feat/squashed" <<< "$out"; then ok "列出 branch 名與 PR 編號"; else bad "未列出 squash-merged branch"; fi
+if grep -qE "^  scan: complete" <<< "$out"; then ok "未達 limit → scan: complete"; else bad "缺 scan 狀態（達 limit 與否無從分辨）"; fi
+if grep -q "cleanup-stale-branch.sh" <<< "$out"; then ok "清掃走專用腳本（執行當下重驗 SHA），不給裸 -D"; else bad "squash-merged 段給了裸刪除指令或無指令"; fi
+if grep -qE "^  (local|remote): .*feat/squashed.* -[dD] " <<< "$out"; then bad "squash-merged 段出現裸 -D"; else ok "squash-merged 段不產生裸 -D 指令"; fi
+
+# headRefOid 與本地 tip 不符（同名 branch 已有新工作）→ 只印診斷，**不列入清理**
+make_gh_prlist_stub "$TMP/gh-sq-mismatch" 0000000000000000000000000000000000000000 acme 0
+out="$(SHIP_STATE_GH="$TMP/gh-sq-mismatch" "$SS_SCRIPT" "$TMP/sq-work")"
+if grep -q "SHA mismatch" <<< "$out"; then ok "headRefOid 不符 → 印診斷"; else bad "SHA 不符卻無診斷（靜默）"; fi
+if grep -qE "^  (local|remote): .*feat/squashed" <<< "$out"; then bad "SHA 不符仍列入可清理（會誘導刪掉不在 default 上的 commit）"; else ok "SHA 不符 → 不列入清理清單"; fi
+
+# fork 來源的 PR 不採信（headRefName 同名但那是別人 repo 的 branch）
+make_gh_prlist_stub "$TMP/gh-sq-fork" "$sq_tip" outsider 0
+out="$(SHIP_STATE_GH="$TMP/gh-sq-fork" "$SS_SCRIPT" "$TMP/sq-work")"
+if grep -qE "^  (local|remote): .*feat/squashed" <<< "$out"; then bad "採信了 fork 來源的 PR"; else ok "fork 來源不採信"; fi
+
+# 達 limit → partial，**絕不輸出 none**（截斷處靜默＝謊報「掃完了、沒有」）
+make_gh_prlist_stub "$TMP/gh-sq-limit" "$sq_tip" acme 199
+out="$(SHIP_STATE_GH="$TMP/gh-sq-limit" "$SS_SCRIPT" "$TMP/sq-work")"
+if grep -qE "^  scan: partial" <<< "$out"; then ok "結果數達 limit → scan: partial"; else bad "達 limit 未標 partial（截斷被當成掃完）"; fi
+
+# gh 不可用 → partial，且不得宣稱沒有殘留
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP/gh-sq-dead"; chmod +x "$TMP/gh-sq-dead"
+out="$(SHIP_STATE_GH="$TMP/gh-sq-dead" "$SS_SCRIPT" "$TMP/sq-work" 2>/dev/null)"
+if grep -qE "^squash-merged-branches: none" <<< "$out"; then bad "gh 失敗卻宣稱 none（查不到不等於沒有）"; else ok "gh 失敗 → 不宣稱 none"; fi
+
+# --- B2：cleanup-stale-branch.sh（破壞性刪除，執行當下重驗）---
+# 為何要專用腳本而非照抄 `git branch -D`：偵測與刪除之間有 TOCTOU 窗口——ship-state 印出
+# 訊號後，另一個 session（或使用者自己）可能在那支 branch 上又 commit 了東西。照抄的 `-D`
+# 對此完全無感，砍下去就砍了；把 expected SHA 綁在**執行當下**重驗才關得掉那個窗口。
+CL_SCRIPT="$ROOT/claude/skills/project/scripts/cleanup-stale-branch.sh"
+mk_cl_repo() {   # $1=路徑；造 main + feat/gone（local + remote）
+    rm -rf "$1"
+    git init --bare -q "$1-origin.git"
+    git init -q -b main "$1"
+    (cd "$1" && echo a > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+        && git remote add origin "$1-origin.git" && git push -qu origin main \
+        && git switch -qc feat/gone && echo b > f.txt && "${GITC[@]}" commit -qam "feat: gone" \
+        && git push -qu origin feat/gone && git switch -q main)
+}
+
+mk_cl_repo "$TMP/cl-work"
+cl_tip="$(git -C "$TMP/cl-work" rev-parse feat/gone)"
+
+# SHA 相符 → 刪得掉（local）
+out="$("$CL_SCRIPT" "$TMP/cl-work" local feat/gone "$cl_tip" 2>&1)"; rc=$?
+assert_rc "SHA 相符 → local 刪除成功（exit 0）" 0 $rc
+if ! git -C "$TMP/cl-work" rev-parse --verify -q feat/gone >/dev/null; then ok "local branch 已刪除"; else bad "回報成功卻沒刪掉（${out}）"; fi
+
+# SHA 不符（branch 在偵測之後又前進）→ STOP，且**不得刪**
+mk_cl_repo "$TMP/cl-moved"
+cl_old="$(git -C "$TMP/cl-moved" rev-parse feat/gone)"
+(cd "$TMP/cl-moved" && git switch -q feat/gone && echo c > f.txt && "${GITC[@]}" commit -qam "feat: 別的 session 又推進了" && git switch -q main)
+out="$("$CL_SCRIPT" "$TMP/cl-moved" local feat/gone "$cl_old" 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ]; then ok "SHA 不符 → 非 0 退出"; else bad "SHA 不符卻回報成功（TOCTOU 窗口沒關）"; fi
+if git -C "$TMP/cl-moved" rev-parse --verify -q feat/gone >/dev/null; then ok "SHA 不符 → branch 原封不動（零 mutation）"; else bad "SHA 不符仍把 branch 刪了（不可逆）"; fi
+if grep -q "STOP" <<< "$out"; then ok "SHA 不符 → 輸出 STOP verdict"; else bad "缺 STOP verdict（${out}）"; fi
+
+# 當前 checked-out 的 branch → 拒刪（git 自己也會拒，但要給清楚 verdict 而非 git 的錯誤訊息）
+mk_cl_repo "$TMP/cl-cur"
+cl_cur_tip="$(git -C "$TMP/cl-cur" rev-parse feat/gone)"
+(cd "$TMP/cl-cur" && git switch -q feat/gone)
+out="$("$CL_SCRIPT" "$TMP/cl-cur" local feat/gone "$cl_cur_tip" 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ]; then ok "刪當前 branch → 非 0 退出"; else bad "刪掉了自己腳下那支"; fi
+if grep -q "STOP" <<< "$out"; then ok "刪當前 branch → 輸出 STOP verdict"; else bad "缺 STOP verdict（${out}）"; fi
+
+# remote 刪除：帶 lease，SHA 相符才刪
+mk_cl_repo "$TMP/cl-rem"
+cl_rem_tip="$(git -C "$TMP/cl-rem" rev-parse feat/gone)"
+out="$("$CL_SCRIPT" "$TMP/cl-rem" remote feat/gone "$cl_rem_tip" 2>&1)"; rc=$?
+assert_rc "SHA 相符 → remote 刪除成功（exit 0）" 0 $rc
+if ! git -C "$TMP/cl-rem" ls-remote --heads origin feat/gone | grep -q .; then ok "remote branch 已刪除"; else bad "remote 未刪除（${out}）"; fi
+
+# remote SHA 不符 → STOP，遠端原封不動
+mk_cl_repo "$TMP/cl-rem-moved"
+cl_rm_old="$(git -C "$TMP/cl-rem-moved" rev-parse feat/gone)"
+(cd "$TMP/cl-rem-moved" && git switch -q feat/gone && echo d > f.txt && "${GITC[@]}" commit -qam "feat: 遠端也前進了" && git push -q origin feat/gone && git switch -q main)
+out="$("$CL_SCRIPT" "$TMP/cl-rem-moved" remote feat/gone "$cl_rm_old" 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ]; then ok "remote SHA 不符 → 非 0 退出"; else bad "remote SHA 不符卻刪了"; fi
+if git -C "$TMP/cl-rem-moved" ls-remote --heads origin feat/gone | grep -q .; then ok "remote SHA 不符 → 遠端 branch 仍在"; else bad "remote SHA 不符仍刪掉遠端（不可逆）"; fi
+# lease 是第二道防線（拿掉前置比對它照樣會擋），故另立一條看**前置檢查本身**還在不在——
+# 少了這條，前置比對可以被整段刪掉而全綠：使用者拿到的會是 git 的 lease 錯誤訊息而非 STOP
+if grep -q "STOP" <<< "$out"; then ok "remote SHA 不符 → 輸出 STOP verdict（前置比對，不倚賴 lease 兜底）"; else bad "remote SHA 不符只靠 lease 擋（輸出是 git 錯誤，非 STOP verdict）"; fi
+
+# 引數與環境錯誤：用法錯 → 2；非 git repo → 非 0；branch 不存在 → STOP
+"$CL_SCRIPT" "$TMP/cl-work" local feat/gone >/dev/null 2>&1; assert_rc "引數不足 → exit 2" 2 $?
+"$CL_SCRIPT" "$TMP/cl-work" bogus feat/gone "$cl_tip" >/dev/null 2>&1; assert_rc "未知 scope → exit 2" 2 $?
+mkdir -p "$TMP/cl-notgit"
+if ! "$CL_SCRIPT" "$TMP/cl-notgit" local feat/gone "$cl_tip" >/dev/null 2>&1; then ok "非 git repo → 非 0 退出"; else bad "非 git repo 卻回報成功"; fi
+out="$("$CL_SCRIPT" "$TMP/cl-work" local feat/nonexistent "$cl_tip" 2>&1)"
+if grep -q "STOP" <<< "$out"; then ok "branch 不存在 → STOP（不當成已刪成功）"; else bad "branch 不存在未給 STOP（${out}）"; fi
+
 # --- bootstrap 偵測（全新空 repo 的第一次 ship；default 定位不到時才觸發）---
 # 兩種「default: NONE」的正確處置完全相反：遠端零 branch → 可建 baseline；遠端有
 # branch 但本地定位不到 → 絕不可推（推了就把 feature branch 變成遠端 default）。
