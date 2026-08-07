@@ -100,12 +100,20 @@ if [ -f "$fetch_head" ]; then
     fi
 fi
 
+# FETCH_HEAD 是 repo-global 的:剛 fetch 過任何一個 remote 都會讓它變新鮮,而我們無從
+# 得知抓的是不是要比較的那個。單 remote repo 沒有這個歧義(命中就是它),多 remote 一律
+# 重抓——否則「剛 fetch 過 other」會替 stale 的 origin/<branch> 背書,真正落後的 clone
+# 完全不出聲。不要改成 parse FETCH_HEAD 內容:同一個坑已在 git-hygiene.sh 踩過。
+if [ "$need_fetch" -eq 0 ] && [ "$(git remote | wc -l | tr -d ' ')" -gt 1 ]; then
+    need_fetch=1
+fi
+
 if [ -z "$git_dir" ]; then
     need_fetch=0          # 解析不到 git-dir 就別 fetch,後續一律當 ref 不新鮮
 elif [ "$need_fetch" -eq 0 ]; then
-    fetch_ok=1            # 新鮮度快取命中,視同剛 fetch 過
-    # 但 FETCH_HEAD 是 repo-global 的——多 remote repo 只要剛 fetch 過任何一個就會命中,
-    # 我們無從得知上次抓的是不是 base 建議要比的那個。故 baseline_fresh 維持 0。
+    fetch_ok=1            # 新鮮度快取命中(且此 repo 只有一個 remote),視同剛 fetch 過
+    # baseline_fresh 仍維持 0:命中的那個 remote 不保證是 origin,base 建議固定比
+    # origin/<default>,寧可多帶一句過期警告也不替它背書。
 fi
 
 if [ "$need_fetch" -eq 1 ]; then

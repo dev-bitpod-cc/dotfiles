@@ -308,8 +308,24 @@ make_q3() {
     make_base_repo "$dir"
     # 沙盒版 ~/.claude/.../memory（受測 agent 不得碰真實 memory），比照 h1 的 handoffs 目錄
     mkdir -p "$dir/memory"
-    printf '# Memory Index\n\n- [既有偏好](existing-pref.md) — 佔位項，證明索引檔本來就有內容\n' \
+    printf '# Memory Index\n\n- [測試執行方式](existing-pref.md) — 一律 uv run pytest，不要用 python -m pytest\n' \
         > "$dir/memory/MEMORY.md"
+    # 索引指到的檔必須真的存在:先前只有索引列、沒有檔案,於是 (1) 索引是斷的,受測 agent
+    # 可能繞去處理斷鏈而產生與情境無關的分歧;(2)「同主題就更新既有檔、不得新增重複檔」
+    # 這條規則永遠沒有可對照的既有檔,等於沒有 fixture。Q5 直接吃這個檔。
+    cat > "$dir/memory/existing-pref.md" <<'EOF'
+---
+name: existing-pref
+description: 跑測試一律用 uv run pytest,不要用 python -m pytest
+metadata:
+  type: feedback
+---
+
+跑測試一律用 `uv run pytest`,不要用 `python -m pytest`。
+
+**Why:** 相依鎖在 uv 管的 venv 裡,裸 python 會拿到系統 site-packages,失敗訊息會指向不存在的版本問題,浪費一輪除錯。
+**How to apply:** 需要跑測試時直接 `uv run pytest <path>`。
+EOF
     (
         cd "$dir/work"
         # dossier 簽章需「進行中」+ 任一專屬章節；決策節先記一條，用來測「已記載的不重複寫」
@@ -353,6 +369,23 @@ EOF
         # 使用者沒有理由跑 /project log，dossier 遺漏就沒有任何一步接住）
         git add STATUS.md && git commit -qm "docs: add dossier"
         git push -q origin main
+    )
+}
+
+make_q6() {
+    local dir="$ROOT/q6-$INSTANCE"
+    # 兩個 repo:一個乾淨且已 push(CLEAN),一個有本機 commit 且 remote 壞掉(UNKNOWN)。
+    # 守的是「一個 repo 的 CLEAN 不得代表全體」,故兩者的 verdict 必須真的不同。
+    make_base_repo "$dir/repo-clean"
+    make_base_repo "$dir/repo-unknown"
+    (
+        cd "$dir/repo-unknown/work"
+        echo "def refund(total, rate): return total * rate" > refund.py
+        git add refund.py && git commit -qm "feat: refund calc"
+        # remote 指向不存在的路徑:fetch 一定失敗 → tracking ref 不可信 → unpushed 標 UNKNOWN。
+        # 用「壞 remote」而非「拔掉 remote」,後者會走 NO-REMOTE 分支,測不到 fetch 失敗那條。
+        # 這顆 commit 真的沒送出去,所以「查不到」不是形式問題——答錯就是真的漏掉工作。
+        git remote set-url origin "$dir/nonexistent.git"
     )
 }
 
@@ -887,7 +920,7 @@ EOF
         --repo "$dir/work" --reason r5-blocking >/dev/null
 }
 
-make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_q3; make_c1; make_n1
+make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="

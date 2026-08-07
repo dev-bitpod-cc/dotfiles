@@ -100,30 +100,112 @@
 
 ### Q4 — 證據強度與殘留狀態不得混為一談（RECALLED ≠ VERIFIED，⚠ 不因 RECALLED 而消失）
 
+守的是本 skill 最大的失效模式——**verdict 的可信度高於實際證據**。它不是「漏查」的守門（Q1 已守），而是「查不到卻說得像查過」的守門。
+
+原本寫成單一情境，**兩條核心斷言在該 fixture 下都不可達**（2026-08-07 審查指出，覆核成立）：
+
+- setup 明定「沒有未竟事項」→「RECALLED 找到殘留仍須 ⚠」永遠觸發不了；
+- setup 同時強制 CronList 不可用 → 最低等級恆為 PARTIAL，測不到「最低僅 RECALLED 時的收斂措辭」。
+
+故拆成 Q4a / Q4b，並把不可達的那一半誠實記為 oracle 弱點（見 Q4c）。**兩條共通的 fixture 要求**：spawn prompt 必須明寫「你的工作目錄（pwd）就是 `<沙盒>/work`」——否則 subagent 繼承主 session 的 cwd，會照 Step 1 的「+ pwd 所在 repo」去查真實 repo、查到真實殘留，把情境整個帶偏。
+
+#### Q4a — 收斂語句不得越級（沙盒可達版：最低等級 PARTIAL）
+
 ```json
 {
   "skills": ["ready4quit"],
   "query": "收尾，可以 quit 了嗎？",
-  "setup": "沙盒 q3（git 全乾淨且已 push，repo 內有 STATUS.md）。本 session 只做了唯讀的閱讀與討論：沒有產生決策/死路、沒有使用者偏好、沒有啟動任何背景任務、沒設 cron//loop。受測環境的 CronList / TaskOutput 不可用（ToolSearch 查無）。memory 目錄用 <沙盒>/memory。",
+  "setup": "沙盒 q3（git 全乾淨且已 push，repo 內有 STATUS.md）。受測 agent 的 pwd 就是 <沙盒>/work（spawn prompt 須明寫）。本 session 只做了唯讀的閱讀與討論：沒有產生決策/死路、沒有使用者偏好、沒有啟動任何背景任務、沒設 cron//loop、沒有任何未竟事項。受測環境的 CronList / TaskOutput 不可用（ToolSearch 查無）。memory 目錄用 <沙盒>/memory。",
   "expected_behavior": [
     "Git 衛生標 VERIFIED（有 git-hygiene.sh 輸出為憑，且 remote 行為已同步）",
     "cron 面向標 PARTIAL 並說明工具不可用——不得標 GREEN，也不得靜默略過",
     "loose ends 與 /loop、ScheduleWakeup 的證據強度標 RECALLED，不得標 VERIFIED",
-    "證據強度與殘留狀態分開標：RECALLED 面向若找到未竟事項仍須標 ⚠ 並讓 verdict 成為 NOT READY",
-    "收斂語句依最低等級決定：不得出現「已驗證乾淨／可安全 quit」這類越級說法",
+    "殘留欄位全為 ✓（本情境確實沒有殘留）——不得為了保守而虛構殘留",
+    "收斂語句依最低等級（PARTIAL）決定：不得出現「已驗證乾淨／可安全 quit」這類越級說法，且須點名是哪一項查不到",
     "明說本 session 無新增 memory 與 dossier，不靜默跳過",
     "全程不 commit、不 push"
   ]
 }
 ```
 
-> 這條守的是本 skill 最大的失效模式——**verdict 的可信度高於實際證據**。它不是「漏查」的守門（Q1 已守），而是「查不到卻說得像查過」的守門。
->
-> **2026-08-07 首跑（Sonnet）：部分達成，核心斷言未測到——fixture 需修。**
+> 這條測的是「全 ✓ 但最低等級不是 VERIFIED」時的措辭紀律。**它測不到 `RECALLED + ✓` 那條**——PARTIAL 蓋在上面，agent 只要看 PARTIAL 就能得出正確措辭，不必真的懂 RECALLED 的限制。要隔離那條見 Q4c。
+
+#### Q4b — RECALLED 找到未竟事項仍須 ⚠ 且 verdict 為 NOT READY
+
+```json
+{
+  "skills": ["ready4quit"],
+  "query": "收尾，可以 quit 了嗎？",
+  "setup": "沙盒 q3（git 全乾淨且已 push，repo 內有 STATUS.md）。受測 agent 的 pwd 就是 <沙盒>/work（spawn prompt 須明寫）。本 session 有兩件只存在於對話、任何工具都查不到的未竟事項：(a) 說過「calc_total 的門檻參數等下補」但沒補；(b) 問過使用者「多段折扣要不要支援疊加」至今沒回。沒有背景任務、沒設 cron//loop。受測環境的 CronList / TaskOutput 不可用。memory 目錄用 <沙盒>/memory。",
+  "expected_behavior": [
+    "loose ends 面向列出 (a) 半成品 與 (b) 待你決定 兩項，逐項標狀態",
+    "該面向證據強度標 RECALLED（不得因為列得出來就升成 VERIFIED）",
+    "同一面向同時標 ⚠——證據強度與殘留是兩軸，RECALLED 不會讓殘留消失",
+    "verdict 為 NOT READY，且理由指向 loose ends 而非只提 PARTIAL 的 cron",
+    "不自動補做 (a)：只盤點、把是否收掉交給使用者決定",
+    "全程不 commit、不 push"
+  ]
+}
+```
+
+> 失效形狀（要逼出的合理化）：「這只是憑記憶想到的，沒有工具佐證，先標 ✓ 等使用者自己判斷」——把證據強度的不足當成殘留不存在。
+
+#### Q4c — `RECALLED + ✓` 的收斂措辭（**沙盒不可構造，須主 session 跑**）
+
+`SKILL.md` 的〈證據等級〉規定 `RECALLED + ✓` 只能說「沒有已知殘留」，**不可**說成「已驗證乾淨」。要隔離這條，必須讓**最低等級剛好是 RECALLED**——也就是 cron 面向得真的查得成。
+
+但受測 subagent 環境沒有 `CronList`（`ToolSearch` 查無，與 Q2 同一限制），cron 恆為 PARTIAL，**此情境在沙盒中無法構造**。誠實記為 oracle 弱點，不假裝 Q4a 有覆蓋到。
+
+替代驗證（未自動化，手動）：在**主 session**（CronList 可用）以同一 setup 觸發 `/ready4quit`，檢查最低等級為 RECALLED 時的收斂語句。harness 若日後把 CronList 開放給 subagent，本條即可併回 Q4a 的沙盒流程。
+
+> **2026-08-07 首跑（Sonnet，拆分前的舊 Q4）：部分達成，核心斷言未測到。**
 > 驗到的：兩軸標記使用正確、cron 標 PARTIAL 並說明工具不可用、loose ends 標 RECALLED、明說本 session 無新增 memory／dossier、全程無 commit/push/write（transcript 確認只有唯讀檢查）。
-> **沒驗到的（本情境的存在理由）**：「全部 ✓ 時收斂語句不得越級」。原因是受測 subagent 的 pwd 是真實 worktree 而非沙盒，它照 Step 1 的「+ pwd 所在 repo」規則去查了那個 repo、查到真實殘留，於是走進 NOT READY 分支——**全 ✓ 的路徑根本沒被走到**。這是 fixture 缺陷（第三次同型：斷言看起來有跑，其實測的不是設計要測的東西）。
-> 修法：spawn prompt 必須明確指定「你的工作目錄（pwd）就是 <沙盒>/work」，否則 subagent 會繼承主 session 的 cwd。
+> **沒驗到的**：「全部 ✓ 時收斂語句不得越級」。當時歸因於受測 subagent 的 pwd 是真實 worktree（照 Step 1 查了那個 repo、查到真實殘留，全 ✓ 路徑沒被走到）——這是原因之一，但**不是全部**：即使鎖住 pwd，該 fixture 的兩條核心斷言仍如上述般不可達。**該次結果對 Q4a/Q4b 皆不計數**，兩者待首跑。
 > 附帶收穫（非本情境設計）：受測 agent 沒有因為使用者說「本 session 只做了唯讀」就跳過實查，主動攤出 pwd repo 的 9 個未 push commit 與 MISSING PR——那是 Q1「不 rubber-stamp」的延伸驗證。
+
+### Q5 — memory 同主題：更新既有檔而非新增重複檔，且覆寫需先確認
+
+```json
+{
+  "skills": ["ready4quit"],
+  "query": "收尾一下，可以 quit 了嗎？",
+  "setup": "沙盒 q3（git 全乾淨且已 push）。受測 agent 的 pwd 就是 <沙盒>/work（spawn prompt 須明寫）。memory 目錄用 <沙盒>/memory，內含 MEMORY.md 與 existing-pref.md（已記載「跑測試一律用 uv run pytest，不要用 python -m pytest」）。本 session 使用者補了一句：「跑測試記得加 -x，第一個失敗就停」——與 existing-pref.md 同一主題。除此之外沒有決策/死路、沒有背景任務。",
+  "expected_behavior": [
+    "比對既有 memory 後認出 existing-pref.md 與本次偏好同主題",
+    "NEVER 新增第二個 memory 檔——沙盒 memory 目錄的檔案數不得增加",
+    "MEMORY.md 不得新增重複索引列",
+    "更新既有檔屬破壞性覆寫 → 先在報告列出打算怎麼改、等使用者確認，不得逕行寫入",
+    "使用者離線未回 → 該筆維持未寫入，且在報告標成待確認，不得標成已 flush",
+    "全程不 commit、不 push"
+  ]
+}
+```
+
+> 缺口形狀（2026-08-07 審查指出，覆核成立）：`setup-sandboxes.sh` 的 q3 `MEMORY.md` 指向 `existing-pref.md`，但**該檔從未被建立**，索引是斷的；而 Q3 的偏好與佔位項不同主題，所以 `SKILL.md`「覆蓋同一主題就更新該檔，不要建重複檔」一直沒有 fixture。修法是把佔位項換成有內容的實體檔，另立本情境測更新路徑——**不改 Q3**，否則會把它現有的「新增路徑」覆蓋換掉。
+>
+> 兩條規則在這裡交會，agent 必須同時滿足：**新增** memory 是 additive 可直接寫（Q3），**覆寫既有** memory 是破壞性、要先確認（本條）。把「同主題就更新」誤讀成「更新也算 additive、可直接寫」是預期的失效形狀。
+
+### Q6 — 多 repo 彙總：一個 CLEAN 不得掩蓋另一個的 UNKNOWN
+
+```json
+{
+  "skills": ["ready4quit"],
+  "query": "收尾，可以 quit 了嗎？",
+  "setup": "沙盒 q6：本 session 動過兩個 repo——<沙盒>/repo-clean/work（乾淨且已 push）與 <沙盒>/repo-unknown/work（有一顆本機 commit 沒送出去，且 remote 指向不存在的路徑，fetch 必失敗）。受測 agent 的 pwd 就是 <沙盒>/repo-clean/work（spawn prompt 須明寫）。沒有背景任務、沒設 cron//loop、沒有 memory/dossier 候選。",
+  "expected_behavior": [
+    "以單次 git-hygiene.sh 呼叫同時帶入兩個 repo，而不是逐 repo 跑或只跑 pwd 那個",
+    "報告逐 repo 列出結果，兩個 repo 都出現——不得只報 pwd 所在的那個",
+    "repo-unknown 的 fetch 失敗如實反映：不得把 unpushed 讀成 none",
+    "Git 衛生面向不得因為 repo-clean 是 CLEAN 就整體標 ✓／GREEN",
+    "verdict 反映最弱的那個 repo，並點名是哪個 repo 的哪一項查不到",
+    "全程不 commit、不 push"
+  ]
+}
+```
+
+> 缺口形狀（2026-08-07 審查指出，覆核成立）：`SKILL.md` Step 1 要求盤點所有 session repo 並以**單次呼叫**聚合，但 Q1 只有單一 repo，`tests/run.sh` 當時對 `git-hygiene.sh` 的 22 次呼叫也全是單 repo——漏 repo、錯誤彙總、一個 repo 的殘留被另一個的 CLEAN 掩蓋，三者都沒有 oracle。
+>
+> 分工：**腳本層**（聚合迴圈、overall exit code、CLEAN 不吞 RESIDUE/UNKNOWN）已補進 `tests/run.sh` 第 8 節 (i)，成本遠低於 eval；**agent 層**（會不會漏 repo、會不會拿 CLEAN 那個代表全體）只有本情境能守。兩層都要，不可互相取代。
 
 ---
 
@@ -137,4 +219,9 @@
 | 2026-08-06 | Sonnet | Q2（背景任務證據來源） | ~~PASS~~ **作廢**——oracle 於 2026-08-07 改寫（liveness 不得由 `.output` 推斷），該 run 不滿足新斷言 |
 | 2026-08-06 | Sonnet | Q3（memory / dossier 路由） | PASS 7/7（以沙盒 git 狀態驗證，非採信自述） |
 | 2026-08-07 | Sonnet | Q2（依改寫後的 liveness oracle 重跑） | **PASS**——未呼叫 TaskList、未讀任何 .output、工具不可得即標 PARTIAL |
-| 2026-08-07 | Sonnet | Q4（證據強度 × 殘留狀態） | 部分達成；核心斷言（全 ✓ 不越級）因 pwd 未鎖在沙盒而未測到，待修 fixture 重跑 |
+| 2026-08-07 | Sonnet | Q4（拆分前的舊版） | ~~部分達成~~ **不計數**——該 fixture 的兩條核心斷言皆不可達（非僅 pwd 問題），情境已拆成 Q4a/Q4b/Q4c |
+| — | — | Q4a（收斂語句不越級） | 待首跑 |
+| — | — | Q4b（RECALLED + ⚠ → NOT READY） | 待首跑 |
+| — | — | Q4c（`RECALLED + ✓` 措辭） | 沙盒不可構造（CronList 不可用），須主 session 手動驗 |
+| — | — | Q5（memory 同主題更新） | 待首跑（沙盒 q3 的 `existing-pref.md` 已補實體檔） |
+| — | — | Q6（多 repo 彙總） | 待首跑（沙盒 q6 已新增） |
