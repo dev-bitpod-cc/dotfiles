@@ -6,7 +6,11 @@
 # 用 `<< SSHEOF` 灌 ssh/config，而 ssh/config 正是會長註解的檔案）。
 # 兩次的共同點：**寫 Markdown/prose 進檔案**時反引號是標準寫法，所以「幾乎必踩」。
 #
-# 判準只認一件事：delimiter 沒被引號包住 → body 內出現反引號即紅。
+# 判準只認一件事：delimiter 沒被引號包住 → **body 字面**出現反引號即紅。
+# ⚠ **只管字面，不管展開後的內容**——這不是偷懶，是 shell 的規則：命令替換的結果不會被
+# 重新掃描。`$(cat 某檔)` 注入的內容裡即使有反引號也**不會**被執行（2026-08-07 實測確認，
+# 當時誤判成同一個地雷、還為它加過一條誤報規則）。所以灌檔用不用 heredoc 都安全，
+# 危險的只有「prose 直接寫在 heredoc body 裡」那種。
 # quoted heredoc（`<<'EOF'` / `<<"EOF"`）照樣要追蹤進出，否則它的 body 裡若含 `<<X` 樣式的
 # 文字（測試 fixture 幾乎一定有），掃描器會以為自己進到一個 unquoted heredoc 而誤報。
 # `<<<` 是 herestring，不是 heredoc——靠「match 起點前一字元不是 <」排除。

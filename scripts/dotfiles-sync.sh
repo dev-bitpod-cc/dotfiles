@@ -45,13 +45,17 @@ echo -e "${BLUE}▶ 本機同步${NC}"
 
 # 重新套用 SSH config + known_hosts
 if [ -f "$DOTFILES_DIR/ssh/config" ]; then
-    cat > ~/.ssh/config << SSHEOF
-# 此檔案由 dotfiles setup 腳本產生
-# 共用設定來自 $DOTFILES_DIR/ssh/config
-# 機器特定設定請編輯 ~/.ssh/config.local
-
-$(cat "$DOTFILES_DIR/ssh/config")
-SSHEOF
+    # 灌檔用 echo + cat 而非 heredoc：少一層展開語意，讀的人不必去判斷 body 會被怎麼處理。
+    # ⚠ 2026-08-07 曾誤判：以為 heredoc 版會執行 ssh/config 註解裡的反引號。**實測澄清——
+    # 命令替換的結果不會被重新掃描**，`$(cat 檔)` 注入的反引號不會執行，兩種寫法功能等價。
+    # 重構保留（確實比較直白），但它不是在修 bug。危險的只有「反引號寫在 body 字面」那種。
+    {
+        echo "# 此檔案由 dotfiles setup 腳本產生"
+        echo "# 共用設定來自 ${DOTFILES_DIR}/ssh/config"
+        echo "# 機器特定設定請編輯 ~/.ssh/config.local"
+        echo
+        cat "$DOTFILES_DIR/ssh/config"
+    } > ~/.ssh/config
     chmod 600 ~/.ssh/config
 fi
 
@@ -99,10 +103,8 @@ sync_remote() {
             fi
             # 重新套用 SSH config
             if [ -f ssh/config ]; then
-                # 不用 heredoc 灌檔：不帶引號的 heredoc 會對內容做命令替換與變數展開，
-                # 而 ssh/config 是**會長註解的檔案**，註解裡寫一組行內 code 的反引號就足以
-                # 讓那段被當指令執行、毀損的 config 直接部署到全機隊（2026-08-07 在加
-                # github-me 註解時當場撞到）。改成 echo + cat：內容完全不經 shell。
+                # 灌檔用 echo + cat 而非 heredoc：理由同本檔上方本機段（少一層展開語意）。
+                # ⚠ 不是在修 bug——`$(cat 檔)` 注入的反引號不會被執行，見上方註解的實測澄清。
                 {
                     echo "# 此檔案由 dotfiles sync 產生"
                     cat ssh/config
