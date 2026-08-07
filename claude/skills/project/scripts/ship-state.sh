@@ -29,8 +29,11 @@
 #
 # 設計原則：
 # - 唯讀。不 commit、不 switch——mutation 一律留給 skill 流程（branch-first
-#   搬移、提交、push 都在 Step 1/3/5 由 model 依 Critical gate 執行）。不 fetch，唯一
-#   碰網路的例外是 default 定位不到時的 bootstrap 判定（ls-remote，理由見 detect_bootstrap）。
+#   搬移、提交、push 都在 Step 1/3/5 由 model 依 Critical gate 執行）。**不 fetch**——
+#   碰網路的例外有二，都是 ls-remote（唯讀、不改任何本地 ref），且都在「本地狀態根本
+#   分辨不出來」的地方：① default 定位不到時的 bootstrap 判定（見 detect_bootstrap）；
+#   ② squash-merged 的 remote 行核對（見 detect_squash_merged_branches——該段本來就要
+#   打 gh，故不是新增網路依賴）。
 # - protection 判定封裝於此（classic + ruleset，邏輯解說見 references/ship-paths.md，
 #   本腳本為可執行權威）。Unknown = protected 直接印在輸出裡，不留給 model 重新詮釋。
 #
@@ -472,6 +475,9 @@ detect_review_terminal() {
 #
 # 判定用本地 ref、不碰網路——代價是 remote-tracking 可能含**已在遠端刪除但本地未
 # prune 的殘影**，故 cleanup-cmd 前置 `fetch --prune`（先對齊再刪，殘影會自己消失）。
+# ⚠ 與 detect_squash_merged_branches 的處置**刻意不同**：那邊改成 ls-remote 直接核對，
+# 因為它本來就要打 gh、網路成本已經付了；這裡是純本地路徑，為了殘影而引入網路會讓
+# 「正常路徑一次網路都不碰」的原則失守。兩者的殘影風險相同，緩解手段依成本結構分流。
 # 排除當前 branch 與 default 本身；未併入 default 的 branch 是「還沒 ship 的工作」，
 # 不在此列（誤報會誘導刪掉未送出的成果）。
 detect_stale_branches() {
@@ -533,6 +539,7 @@ detect_squash_merged_branches() {
     local repo="$1" remote="$2" default="$3" branch="$4" toplevel="$5"
     local locals_un remotes_un names slug prs n_rows scan
     local n name tip pr_num pr_oid pr_owner owner row hits listed skipped
+    local rheads rheads_ok rc
 
     # 候選 = 祖先判定「未併入」者（已併入的由上一段處理，別重複列）
     locals_un="$(git -C "$repo" branch --no-merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
@@ -541,6 +548,26 @@ detect_squash_merged_branches() {
         | grep -vxF "$remote/$default" | grep -vxF "$remote" | grep -vxF "$remote/$branch" | grep -v '/HEAD$')" || remotes_un=""
     names="$(printf '%s\n%s\n' "$locals_un" "${remotes_un//${remote}\//}" | grep -v '^$' | sort -u)"
     [ -z "$names" ] && return
+
+    # remote 行以**遠端事實**為準，不拿本地 tracking ref 當證據。
+    # 理由：`gh pr merge --delete-branch` 之後遠端 branch 已不存在，但本機沒 prune 時
+    # `refs/remotes/<remote>/<name>` 還在——只讀本地 ref 會把「本地沒 prune」報成
+    # 「遠端有殘留」。危害不是誤刪（cleanup-stale-branch.sh 會 ls-remote 重驗並 STOP），
+    # 而是**訊號混入虛報後，真有殘留時分不出哪支是真的**。
+    # 判準因此與 cleanup-stale-branch.sh 對齊（該檔亦註明「不讀本地 remote-tracking ref
+    # ——後者不 fetch 就是舊快照」）。單次呼叫、與 branch 數無關；本函式本來就要打 gh，
+    # 不是新增網路依賴。GIT_TERMINAL_PROMPT=0：認證失敗直接失敗，不掛在互動提示上。
+    # ⚠ ls-remote 的 exit code 必須單獨抓——接了 awk/sed 之後 `$?` 是 pipeline 最後一段的
+    #   狀態，ls-remote 失敗會被吃掉、rheads_ok 誤判成 1，退化成「靜默把 remote 行丟掉」。
+    rheads=""; rheads_ok=0
+    if [ -n "$remotes_un" ]; then
+        rheads="$(GIT_TERMINAL_PROMPT=0 git -C "$repo" ls-remote --heads "$remote" 2>/dev/null)"
+        rc=$?
+        if [ "$rc" -eq 0 ]; then
+            rheads_ok=1
+            rheads="$(printf '%s\n' "$rheads" | awk '{print $2}' | sed 's|^refs/heads/||')"
+        fi
+    fi
 
     owner=""
     slug="$( (cd "$repo" && "$GH_BIN" repo view --json nameWithOwner -q .nameWithOwner) 2>/dev/null)" || slug=""
@@ -589,9 +616,22 @@ detect_squash_merged_branches() {
                       n=$((n + 1)) ;;
         esac
         case "$hits" in
-            *remote*) listed="${listed}  remote: ${remote}/${name}（PR #${pr_num}）"$'\n'
-                      listed="${listed}  cleanup-cmd: ~/.claude/skills/project/scripts/cleanup-stale-branch.sh $(shq "$toplevel") remote $(shq "$name") ${tip}"$'\n'
-                      n=$((n + 1)) ;;
+            *remote*)
+                if [ "$rheads_ok" -eq 1 ] && ! grep -qxF "$name" <<< "$rheads"; then
+                    # 本地有 tracking ref、遠端沒有 → 未 prune 的殘影，不是遠端殘留。
+                    # 仍要說出來（使用者才知道該 prune），但不給刪除指令、不計入 n。
+                    skipped="${skipped}  skipped: ${name} — 遠端已無此 branch（本地 tracking 是未 prune 的殘影；\`git fetch --prune\` 可清）"$'\n'
+                else
+                    if [ "$rheads_ok" -eq 1 ]; then
+                        listed="${listed}  remote: ${remote}/${name}（PR #${pr_num}）"$'\n'
+                    else
+                        # ls-remote 失敗：查不到 ≠ 沒有。保留該行但標明未經遠端核對，
+                        # 與上方 gh 失敗時「不宣稱 none」同一判準。
+                        listed="${listed}  remote: ${remote}/${name}（PR #${pr_num}；**未驗證**——ls-remote 失敗，此行來自本地 tracking 快照）"$'\n'
+                    fi
+                    listed="${listed}  cleanup-cmd: ~/.claude/skills/project/scripts/cleanup-stale-branch.sh $(shq "$toplevel") remote $(shq "$name") ${tip}"$'\n'
+                    n=$((n + 1))
+                fi ;;
         esac
     done <<< "$names"
 

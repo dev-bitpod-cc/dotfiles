@@ -982,6 +982,52 @@ printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP/gh-sq-dead"; chmod +x "$TMP/gh-sq
 out="$(SHIP_STATE_GH="$TMP/gh-sq-dead" "$SS_SCRIPT" "$TMP/sq-work" 2>/dev/null)"
 if grep -qE "^squash-merged-branches: none" <<< "$out"; then bad "gh 失敗卻宣稱 none（查不到不等於沒有）"; else ok "gh 失敗 → 不宣稱 none"; fi
 
+# --- B1b：remote 行必須以**遠端事實**為準，不得拿本地 tracking 殘影當殘留 ---
+# 形狀：`gh pr merge --delete-branch` 之後遠端 branch 已不存在，但本機沒 prune，
+# `refs/remotes/origin/<name>` 還在。只讀本地 ref 就會把「本地沒 prune」報成「遠端有殘留」。
+# 危害不是誤刪（清理端 `cleanup-stale-branch.sh` 會 ls-remote 重驗並 STOP），而是**真有殘留時
+# 分不出哪支是真的**——訊號一旦混入虛報就失去可信度，正是本 repo 最在意的「結論高於證據」。
+# 同一支腳本的 `detect_stale_branches` 早就知道這個殘影問題（見其註解），只是選了另一種緩解；
+# 這裡改為對齊 `cleanup-stale-branch.sh` 的判準：直接問遠端。
+git init --bare -q -b main "$TMP/sqs-origin.git"
+git init -q -b main "$TMP/sqs-work"
+(cd "$TMP/sqs-work" \
+    && echo base > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/sqs-origin.git" && git push -q origin main \
+    && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main \
+    && git switch -qc feat/squashed && echo feature > f.txt && "${GITC[@]}" commit -qam "feat: 功能" \
+    && git push -q -u origin feat/squashed \
+    && git switch -q main && echo feature > f.txt && "${GITC[@]}" commit -qam "feat: 功能 (#12)" \
+    && git push -q origin main)
+sqs_tip="$(git -C "$TMP/sqs-work" rev-parse feat/squashed)"
+git -C "$TMP/sqs-origin.git" update-ref -d refs/heads/feat/squashed   # 模擬 --delete-branch
+
+# 前置自檢：缺任一條，下面的斷言就不是在測它宣稱要測的東西
+if [ -z "$(git -C "$TMP/sqs-origin.git" for-each-ref --format='%(refname:short)' refs/heads/feat/squashed)" ]; then
+    ok "fixture 前置：遠端已無 feat/squashed"
+else bad "fixture 未刪掉遠端 branch，虛報情境不成立（後續斷言失效）"; fi
+if git -C "$TMP/sqs-work" rev-parse --verify -q origin/feat/squashed >/dev/null; then
+    ok "fixture 前置：本地 tracking 殘影仍在（未 prune）"
+else bad "fixture 的本地殘影不存在，虛報情境不成立（後續斷言失效）"; fi
+
+make_gh_prlist_stub "$TMP/gh-sqs" "$sqs_tip" acme 0
+out="$(SHIP_STATE_GH="$TMP/gh-sqs" "$SS_SCRIPT" "$TMP/sqs-work")"
+if grep -qE "^  local: feat/squashed" <<< "$out"; then ok "本地 branch 仍列出（那是真殘留）"; else bad "連真的本地殘留也漏掉：$out"; fi
+if grep -qE "^  remote: origin/feat/squashed" <<< "$out"; then
+    bad "拿本地 tracking 殘影當遠端殘留（虛報——遠端其實已無該 branch）：$out"
+else ok "遠端已刪 → remote 行不列入（以遠端事實為準）"; fi
+if grep -qE "^  skipped: feat/squashed — 遠端已無" <<< "$out"; then
+    ok "殘影有診斷（使用者知道該 prune，不是靜默消失）"
+else bad "殘影被靜默丟棄，使用者不知道本地要 prune：$out"; fi
+
+# ls-remote 失敗 → **不得**靜默把 remote 行丟掉（查不到 ≠ 沒有，與 gh 失敗那條同判準）
+(cd "$TMP/sqs-work" && git remote set-url origin "$TMP/sqs-nonexistent.git")
+out="$(SHIP_STATE_GH="$TMP/gh-sqs" "$SS_SCRIPT" "$TMP/sqs-work" 2>/dev/null)"
+if grep -qE "^  remote: origin/feat/squashed.*未驗證" <<< "$out"; then
+    ok "ls-remote 失敗 → remote 行保留並標「未驗證」"
+else bad "ls-remote 失敗時把 remote 行靜默丟掉、或未標未驗證：$out"; fi
+(cd "$TMP/sqs-work" && git remote set-url origin "$TMP/sqs-origin.git")
+
 # --- B2：cleanup-stale-branch.sh（破壞性刪除，執行當下重驗）---
 # 為何要專用腳本而非照抄 `git branch -D`：偵測與刪除之間有 TOCTOU 窗口——ship-state 印出
 # 訊號後，另一個 session（或使用者自己）可能在那支 branch 上又 commit 了東西。照抄的 `-D`
