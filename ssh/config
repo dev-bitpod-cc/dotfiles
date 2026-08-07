@@ -3,19 +3,25 @@
 
 Include ~/.ssh/config.local
 
-# 私人帳號
+# 工作帳號 (jjshen-eland) = 預設 = 標準寫法
+# 三台機器的主要身分都是工作（個人 MacBook 也跑工作 repo，公司開發機不 clone 個人 repo），
+# 故 github.com 直接就是工作身分——標準 URL `git@github.com:` 免改寫即可用，`gh` 也才吃得到
+# （gh 完全不看 SSH alias，那是 alias 方案永遠解不掉的一半）。
+# ⚠ IdentitiesOnly yes 一行都不能少：少了它 ssh 會把 agent 裡的 key 逐一送出、GitHub 收下
+# 第一把有效的 → 認到**錯誤帳號**，長相是「連得上但權限不對」，比連不上更難查。
 Host github.com
     HostName github.com
     User git
-    IdentityFile ~/.ssh/id_github
+    IdentityFile ~/.ssh/id_github_work
     AddKeysToAgent yes
     IdentitiesOnly yes
 
-# 工作帳號 (jjshen-eland)
-Host github-work
+# 私人帳號 (dev-bitpod-cc)，少數 repo 明示走這條。
+# 這個 alias **不可約**——GitHub 一把 SSH key 只能綁一個帳號，兩個身分必須有區分方式。
+Host github-me
     HostName github.com
     User git
-    IdentityFile ~/.ssh/id_github_work
+    IdentityFile ~/.ssh/id_github
     AddKeysToAgent yes
     IdentitiesOnly yes
 
