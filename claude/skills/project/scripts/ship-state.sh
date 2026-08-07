@@ -468,6 +468,44 @@ detect_review_terminal() {
     echo "verdict: STOP（review-terminal——處置後再送；其餘偵測輸出照常，供摘要使用）"
 }
 
+# feature branch 對**自己的** remote tracking ref 是否分岔。
+#
+# 為何需要：本檔其餘訊號全在講「對 default 領先多少」，branch 與**它自己**的遠端版本分岔
+# 這件事完全看不見——2026-08-07 跑 eval 時是受測 agent 自己去 `branch -vv` 才發現的。
+# 分岔時 push 會被 non-fast-forward 拒；prose 端有防線（ship-paths.md squash 步驟 0 的
+# fetch + `--is-ancestor`），但那是在流程後段，而使用者在 Step 1 就該知道。
+#
+# 只印訊號、不動 verdict：分岔本身不是錯（squash/rebase/amend 之後的常態），要的只是
+# 「別在 push 那一刻才發現」。判定用本地 tracking ref、**不 fetch**（同本檔其餘偵測）——
+# 代價是遠端剛前進時會漏報，但要抓的主要情境「本地重寫過歷史、遠端還是舊的」本地就看得見。
+# 訊號因此明寫「本地快照」，處置一律要求先 fetch 再判。
+detect_branch_diverged() {
+    local repo="$1" remote="$2" default="$3" branch="$4"
+    local upstream tracked counts behind ahead
+    [ "$branch" = "$default" ] && return
+    [ "$branch" = "DETACHED" ] && return
+    # upstream 優先；沒設 upstream 就退用同名 <remote>/<branch>——「已 push 但沒 -u」是常態，
+    # 只認 upstream 會讓那批 branch 完全不受檢（判準同 git-hygiene.sh）
+    upstream="$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)" || upstream=""
+    if [ -n "$upstream" ]; then
+        tracked="$upstream"
+    elif git -C "$repo" rev-parse --verify -q "refs/remotes/${remote}/${branch}" >/dev/null 2>&1; then
+        tracked="${remote}/${branch}"
+    else
+        return                      # 從未 push 過 → 無從分岔
+    fi
+    git -C "$repo" merge-base --is-ancestor "$tracked" HEAD 2>/dev/null && return   # 純領先＝正常
+    counts="$(git -C "$repo" rev-list --left-right --count "${tracked}...HEAD" 2>/dev/null)" || counts=""
+    behind="$(awk '{print $1}' <<< "$counts")"; ahead="$(awk '{print $2}' <<< "$counts")"
+    if git -C "$repo" merge-base --is-ancestor HEAD "$tracked" 2>/dev/null; then
+        echo "branch-diverged: ${tracked} 領先本地 ${behind:-?} commit、本地零領先（本地快照——別台主機或另一個 session 推過？）"
+        echo "  處置：先 \`git -C $(shq "$repo") fetch $(shq "$remote")\` 取新事實，再決定 pull/rebase；勿在落後狀態上直接 ship"
+    else
+        echo "branch-diverged: 與 ${tracked} 已分岔（本地快照：領先 ${ahead:-?}、落後 ${behind:-?}）——push 會被 non-fast-forward 拒"
+        echo "  處置：先 \`git -C $(shq "$repo") fetch $(shq "$remote")\` 取新事實；確認遠端那幾顆確實已被本地重寫涵蓋，才用 --force-with-lease，勿裸 --force"
+    fi
+}
+
 # 殘留 branch 衛生：已**完全併入** default 的 local / remote branch。
 # 動機：merge 最後一哩只清它自己 merge 的那支——規則生效前的老 branch、或走別條路
 # 合併的 branch 會無聲累積（實證：dotfiles 累到 2 支，是偶然跑 branch --list 才發現，
@@ -478,11 +516,15 @@ detect_review_terminal() {
 # ⚠ 與 detect_squash_merged_branches 的處置**刻意不同**：那邊改成 ls-remote 直接核對，
 # 因為它本來就要打 gh、網路成本已經付了；這裡是純本地路徑，為了殘影而引入網路會讓
 # 「正常路徑一次網路都不碰」的原則失守。兩者的殘影風險相同，緩解手段依成本結構分流。
+# 上述分流只約束**偵測**這一側。**刪除一側兩邊一致**：remote 都走 cleanup-stale-branch.sh
+# （執行當下 ls-remote 重驗 + lease），那是使用者主動照抄時才付的網路成本，與「正常路徑
+# 不碰網路」無關。local 側則維持照抄式 `branch -d`——git 自己就會拒絕未併入的 branch，
+# 已有等價保護，換成腳本反而會把把關換成較弱的 `-D`＋SHA 比對。
 # 排除當前 branch 與 default 本身；未併入 default 的 branch 是「還沒 ship 的工作」，
 # 不在此列（誤報會誘導刪掉未送出的成果）。
 detect_stale_branches() {
     local repo="$1" remote="$2" default="$3" branch="$4" toplevel="$5"
-    local locals remotes_merged n_local n_remote cmd b
+    local locals remotes_merged n_local n_remote cmd b name tip
     locals="$(git -C "$repo" branch --merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
         | grep -vxF "$default" | grep -vxF "$branch")" || locals=""
     # `branch -r` 會把 <remote>/HEAD 的 short form 印成**裸 remote 名**（如 "origin"）——
@@ -499,8 +541,27 @@ detect_stale_branches() {
     if [ -n "$locals" ]; then
         printf '%s\n' "$locals" | sed 's/^/  local: /'
     fi
+    # remote 側**逐支**發 cleanup-stale-branch.sh，不再拼裸 `push --delete`。
+    # 為何：偵測與刪除之間有 TOCTOU 窗口，而 remote 側沒有 local `-d` 那種「git 自己把關」的
+    # 等價保護——裸 `push --delete` 對「偵測後有人推過」完全無感，砍下去遠端就沒有那些 commit
+    # 了（本地也未必有副本）。腳本會在**執行當下** ls-remote 重驗 tip、再帶 `--force-with-lease`
+    # 讓遠端自己做最後比對。這也順帶讓殘影從「對不存在的 branch 下刪除」的模糊失敗，變成一句
+    # 明確的 STOP（遠端已無此 branch）。形狀與 detect_squash_merged_branches 一致。
     if [ -n "$remotes_merged" ]; then
-        printf '%s\n' "$remotes_merged" | sed 's/^/  remote: /'
+        while IFS= read -r b; do
+            echo "  remote: ${b}"
+            name="${b#"${remote}"/}"
+            # tip 取自本地 tracking ref：它只是**候選值**，正確性由腳本執行當下的 ls-remote
+            # 重驗負責（殘影／過期快照都會在那裡被擋下），故此處不為它額外連網。
+            tip="$(git -C "$repo" rev-parse --verify -q "refs/remotes/${b}" 2>/dev/null)" || tip=""
+            if [ -n "$tip" ]; then
+                echo "  cleanup-cmd: ~/.claude/skills/project/scripts/cleanup-stale-branch.sh $(shq "$toplevel") remote $(shq "$name") ${tip}"
+            else
+                # 取不到 tip 就給不出帶重驗的指令。**不退化成裸刪**——沒有 expected SHA 的刪除
+                # 正是這段要消滅的東西，寧可要求人工確認。
+                echo "  skipped-cmd: ${b} — 取不到 tracking ref 的 tip，無帶重驗的刪除指令可給（請手動確認後再刪）"
+            fi
+        done <<< "$remotes_merged"
     fi
     # `--` option terminator：ref 名可以長得像選項——`git branch -- '--all'` 前端會拒，但
     # `git update-ref refs/heads/--all` 建得起來且 `check-ref-format` 判合法。shell quoting
@@ -511,10 +572,6 @@ detect_stale_branches() {
     if [ -n "$locals" ]; then
         cmd="${cmd} && git -C $(shq "$toplevel") branch -d --"
         while IFS= read -r b; do cmd="${cmd} $(shq "$b")"; done <<< "$locals"
-    fi
-    if [ -n "$remotes_merged" ]; then
-        cmd="${cmd} && git -C $(shq "$toplevel") push $(shq "$remote") --delete --"
-        while IFS= read -r b; do cmd="${cmd} $(shq "${b#"${remote}"/}")"; done <<< "$remotes_merged"
     fi
     echo "cleanup-cmd: ${cmd}"
 }
@@ -728,6 +785,9 @@ check_repo() {
     detect_squash_merged_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
     detect_review_residue "$repo" "$remote" "$default" "$toplevel"
     detect_review_terminal "$repo"
+
+    # -- 與自己的 remote tracking ref 分岔（只比對 default 會漏；無分岔則靜默）--
+    detect_branch_diverged "$repo" "$remote" "$default" "$branch"
 
     # -- 無變更 → docs-only gate（判定需要 session 記憶，交回 model）--
     # 不在此早退：docs-only mode 隨後會產生 docs commit 走 Step 4/5，
