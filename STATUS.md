@@ -123,6 +123,10 @@ git checkout ssh/config                       # 僅限尚未 commit
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-07 使用者拍板:GitHub 多身分收斂的 spec 定稿留在「進行中」,不移 `docs/plans/`**。
+  代價已知且接受:它佔 always-on 內容約 24%,dossier 會持續貼近 300 行硬門檻、每次 ship 觸發
+  尺寸 flag。**不要再提同一個搬移**——超標時改從其他節收斂,或如實把該 flag 標為「未處理(使用者
+  已拍板保留)」。
 - **2026-08-07 squash-merge 殘留改比對 merged PR,判準是 `headRefOid` 相等而非同名**:
   `branch --merged` 判祖先關係,squash-merge 在 default 上產生全新 commit、無祖先鏈,**結構上
   看不到**;而本 repo 家規正是 squash-merge,等於該訊號對主要情境無效(舊 fixture 用「branch 不加
@@ -244,13 +248,16 @@ git checkout ssh/config                       # 僅限尚未 commit
   就會刪掉未併入的 commit,與本批修掉的 TOCTOU 同型。修法現成:改發 `cleanup-stale-branch.sh
   <repo> remote <branch> <sha>`。**刻意未收進本批**——會動到既有斷言的輸出形狀,且無實地失敗案例。
 
-- **buried 的 review 痕跡壓不掉,不變式只做到「壓得掉的一律壓」**:`fix: address review findings`
-  夾在語意 commit 中間時 `reset --soft` 碰不到。**做得到但沒做**:`rebase -i` 配
-  `GIT_SEQUENCE_EDITOR` 指腳本是完全非互動的,把每顆 buried 標 `fixup` 折進前一顆語意 commit 即可
-  (前一顆本就是它的父節點,故 diff 必然套得上、後續 tree 不變,**衝突為零是結構保證**)。
-  **代價才是沒做的理由**:語意 commit 的 hash 與內容都會變(不再是 reviewer 看過的 tree)、
-  「squash 絕不動語意 commit」從結構保證退成測試保證、多一條 rebase 回滾路徑、branch 首顆是
-  buried 時無 fixup 目標;而實測多為 none/top-contiguous,頻率低。現況＝照送 + 摘要標明。
+- **說法表把授權綁在字面 token,但「用 --admin」語意上更明確卻不在表上**(現行＝不接受,會要求
+  使用者改說「bypass merge」)。設計 S15 eval 時撞到:原擬施壓句「加個 --admin 就過了」比 bypass
+  merge 還明確,等於把授權塞進施壓句、正確答案自己變歧義。**張力**:收進表等於承認自然語言等價詞,
+  而「不自行擴充等價詞」正是它擋 rationalization 的機制。無實地案例前不動。
+
+- **buried 的 review 痕跡壓不掉,不變式只做到「壓得掉的一律壓」**:夾在語意 commit 中間時
+  `reset --soft` 碰不到。**做得到但沒做**——`rebase -i` 配 `GIT_SEQUENCE_EDITOR` 是完全非互動的,
+  把每顆 buried 標 `fixup` 折進前一顆語意 commit 即可(前一顆本就是它父節點,**衝突為零是結構保證**)。
+  **代價才是沒做的理由**:語意 commit 的 hash 與內容都會變、「squash 絕不動語意 commit」從結構保證
+  退成測試保證、多一條 rebase 回滾路徑、branch 首顆是 buried 時無目標;而實測多為 none/top-contiguous。
 
 - **`ship-state.sh` 不檢查 feature branch 對「自己的 remote tracking ref」是否分岔**(只比對
   default)。分岔時 push 會被拒,prose 端有防線(`ship-paths.md` squash 步驟 0 的 fetch +
