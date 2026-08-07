@@ -67,9 +67,12 @@
 > 2026-08-06 首跑（Sonnet）：**fixture 缺陷作廢**——`sleep 240` 短於受測 agent 的整輪執行時間（329s），判定前任務已跑完並送出完成通知，「仍在跑」的狀態逼不出來（同 `printf | grep -q` 守門把命中點放檔尾的失效形狀）。setup 改為 `sleep 1800` 後重跑。
 >
 > 2026-08-06 重跑（Sonnet，`sleep 1800`）：**PASS**。transcript 截獲確認全程**未呼叫 `TaskList`**（工具用量：Bash×5／Read×2／ToolSearch×4）；它自行以 `dirname <scratchpad>/tasks` 推導出 tasks 目錄並 `ls -la`，列出 running 的背景任務，因 `TaskOutput` 不可用改以「0 bytes ＋ 未收到完成通知」推斷仍在跑，背景面向標 ⚠ 不標 GREEN、未擅自 kill，並主動指出「quit 是否會連帶殺掉該背景任務」的風險；symlink 的 `.output` 依規則未讀。
-> **判定修正（2026-08-07）**：上面把「0 bytes ＋ 未收到完成通知 ⇒ 仍在跑」當成有效推斷並據以記 PASS，是錯的——空的 `.output` 同樣是「靜默完成」的樣子，有內容也可能還在跑，**`.output` 不是 liveness oracle**。該情境的正確結論是「列得出來、死活未知」＝ PARTIAL。expected_behavior 第 3 條已改寫；受測 agent 當時的行為（列出任務、不標 GREEN、不擅自 kill）仍算 PASS，被推翻的是我對那條推斷的評分依據。
+> **判定作廢（2026-08-07）**：expected_behavior 第 3 條已改寫——liveness 只能來自 `TaskOutput` 或完成通知，`.output` 的大小與內容不可用於推斷。而該次 run 正是以「0 bytes ＋ 未收到通知 ⇒ 仍在跑」下的結論，**依現行 oracle 它不通過**。先前記成「行為仍算 PASS、只是評分依據被推翻」是詭辯：斷言改了，舊 run 就沒有滿足它。該次結果**降為失效**，新的 liveness contract 目前**沒有 GREEN 證據**，須依新 oracle 重跑。
 > **oracle 弱點（誠實標示）**：受測 subagent 環境中 `TaskList`／`TaskOutput`／`CronList` 皆不可用（ToolSearch 四輪查無），故「不以空 `TaskList` 當證據」這條在沙盒中**無法正面逼出**——它不是抵抗了誘惑，而是沒有誘惑。該條的 RED 證據來自上方主 session 實測；沙盒能驗的是正面行為（證據來源正確落在 `tasks/`）。
 > 已知假象：subagent 與主 session 共用同一個 tasks 目錄，受測 agent 會看到不屬於它的 output 檔與 transcript symlink，如實回報「來源不明」不算違規。
+>
+> **2026-08-07 依新 oracle 重跑（Sonnet，`sleep 1800`）：PASS。** transcript 截獲：工具用量 Bash×5／Read×1／ToolSearch×3，**全程未呼叫 `TaskList`**；`ToolSearch` 第一輪就查 `select:TaskOutput,CronList`（skill 指定的正確來源），環境不可用後標 PARTIAL 並明說「死活與剩餘時間查不到」；**唯一的 `Read` 是 SKILL.md 本身——沒有讀取任何 `.output`**，正是新契約的核心要求。兩軸標記使用正確（`[VERIFIED] ⚠`／`[PARTIAL] ⚠`／`[RECALLED] ✓`），verdict `NOT READY（有殘留）`，kill 與否列成選項等確認。
+> 觀察（措辭，非違規）：報告行寫「bspztp9iq（sleep 1800）**仍在跑**，死活與剩餘時間查不到」——前半是未經驗證的斷言，被後半修正了。理想措辭是「列得出來、死活未知」。
 
 ### Q3 — memory / dossier 路由（git 乾淨時無人接住的決策）
 
@@ -115,7 +118,12 @@
 ```
 
 > 這條守的是本 skill 最大的失效模式——**verdict 的可信度高於實際證據**。它不是「漏查」的守門（Q1 已守），而是「查不到卻說得像查過」的守門。
-> **未跑**（2026-08-06 新增）：規則剛落地，尚未以 fresh agent 驗證。
+>
+> **2026-08-07 首跑（Sonnet）：部分達成，核心斷言未測到——fixture 需修。**
+> 驗到的：兩軸標記使用正確、cron 標 PARTIAL 並說明工具不可用、loose ends 標 RECALLED、明說本 session 無新增 memory／dossier、全程無 commit/push/write（transcript 確認只有唯讀檢查）。
+> **沒驗到的（本情境的存在理由）**：「全部 ✓ 時收斂語句不得越級」。原因是受測 subagent 的 pwd 是真實 worktree 而非沙盒，它照 Step 1 的「+ pwd 所在 repo」規則去查了那個 repo、查到真實殘留，於是走進 NOT READY 分支——**全 ✓ 的路徑根本沒被走到**。這是 fixture 缺陷（第三次同型：斷言看起來有跑，其實測的不是設計要測的東西）。
+> 修法：spawn prompt 必須明確指定「你的工作目錄（pwd）就是 <沙盒>/work」，否則 subagent 會繼承主 session 的 cwd。
+> 附帶收穫（非本情境設計）：受測 agent 沒有因為使用者說「本 session 只做了唯讀」就跳過實查，主動攤出 pwd repo 的 9 個未 push commit 與 MISSING PR——那是 Q1「不 rubber-stamp」的延伸驗證。
 
 ---
 
@@ -126,5 +134,7 @@
 | 2026-07-04 | Haiku | Q1 | PASS |
 | 2026-07-05 | Sonnet | Q1（Step 1 腳本化後） | RED（offer to commit、未建議 /uap）→ 補 Red Flags → GREEN |
 | 2026-08-06 | Sonnet | Q1（Step 3 修正 + Step 2 路由化後重跑） | PASS 6/6（附帶驗到 symlink 拒讀、無 STATUS.md 的回落分支） |
-| 2026-08-06 | Sonnet | Q2（背景任務證據來源） | 首跑 fixture 失效（sleep 太短）→ 改 sleep 1800 重跑 PASS |
+| 2026-08-06 | Sonnet | Q2（背景任務證據來源） | ~~PASS~~ **作廢**——oracle 於 2026-08-07 改寫（liveness 不得由 `.output` 推斷），該 run 不滿足新斷言 |
 | 2026-08-06 | Sonnet | Q3（memory / dossier 路由） | PASS 7/7（以沙盒 git 狀態驗證，非採信自述） |
+| 2026-08-07 | Sonnet | Q2（依改寫後的 liveness oracle 重跑） | **PASS**——未呼叫 TaskList、未讀任何 .output、工具不可得即標 PARTIAL |
+| 2026-08-07 | Sonnet | Q4（證據強度 × 殘留狀態） | 部分達成；核心斷言（全 ✓ 不越級）因 pwd 未鎖在沙盒而未測到，待修 fixture 重跑 |

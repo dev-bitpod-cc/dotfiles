@@ -81,21 +81,26 @@ run_with_timeout() {   # <秒> <指令...>
     return "$rc"
 }
 
-# 推導 baseline 所屬的 remote：優先當前 branch 設定的 remote，否則 origin，再否則第一個。
+# 推導「必須刷新的 remote 清單」（空白分隔）。
+# baseline 只可能來自兩處：branch 設定的 remote（upstream 路徑），或 origin（同名 fallback
+# 與 default fallback 都是 origin/*）。兩者都要 fetch——只 fetch 其中一個，就會發生
+# 「fetch 了 A、卻拿 B 的 stale ref 判 CLEAN」（branch.<n>.remote=other 但沒設 merge 時，
+# @{upstream} 解析不到，baseline 會 fallback 到 origin/*，實測可重現假 CLEAN）。
 # 用 config 而非 ref，才不會受 stale/缺失的 tracking ref 影響。
-detect_remote() {
-    local repo="$1" branch="$2" remote=""
+detect_fetch_targets() {
+    local repo="$1" branch="$2" targets="" up_remote=""
     if [ "$branch" != "DETACHED" ]; then
-        remote="$(git -C "$repo" config --get "branch.${branch}.remote" 2>/dev/null)" || remote=""
+        up_remote="$(git -C "$repo" config --get "branch.${branch}.remote" 2>/dev/null)" || up_remote=""
     fi
-    if [ -z "$remote" ]; then
-        if git -C "$repo" remote | grep -qx origin; then
-            remote="origin"
-        else
-            remote="$(git -C "$repo" remote | head -1)"
-        fi
+    [ -n "$up_remote" ] && targets="$up_remote"
+    if git -C "$repo" remote | grep -qx origin; then
+        case " ${targets} " in
+            *" origin "*) ;;
+            *) targets="${targets:+${targets} }origin" ;;
+        esac
     fi
-    echo "$remote"
+    [ -n "$targets" ] || targets="$(git -C "$repo" remote | head -1)"
+    echo "$targets"
 }
 
 # 讓指定 remote 的 tracking ref 反映此刻的遠端。不 fetch 就只是在讀本機 cache——遠端
@@ -106,15 +111,20 @@ detect_remote() {
 # 會讓 origin 的 stale ref 被當成新鮮（實測可重現誤判 CLEAN）。pre-quit 是一次性檢查，
 # 省那一次 fetch 不值得拿 verdict 的可信度去換。
 # 回傳 0 = ref 可信；1 = 不可信（無 remote / 失敗 / 逾時）——呼叫端據此把 unpushed 降 UNKNOWN。
-refresh_remote() {   # <repo> <remote>
-    local repo="$1" remote="$2" rc=0
-    [ -n "$remote" ] || return 1
-    # 用 env 而非 `VAR=x func`：後者在 bash 中會讓變數在函式返回後殘留
-    # GIT_TERMINAL_PROMPT=0：https remote 要求互動認證時直接失敗，不掛住收尾流程
-    run_with_timeout "$FETCH_TIMEOUT_SECS" \
-        env GIT_TERMINAL_PROMPT=0 \
-            GIT_SSH_COMMAND="ssh -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -o BatchMode=yes" \
-            git -C "$repo" fetch --prune --quiet "$remote" 2>/dev/null || rc=1
+refresh_remote() {   # <repo> <remote>...
+    local repo="$1"; shift
+    [ $# -gt 0 ] || return 1
+    local r rc=0
+    for r in "$@"; do
+        [ -n "$r" ] || continue
+        # 用 env 而非 `VAR=x func`：後者在 bash 中會讓變數在函式返回後殘留
+        # GIT_TERMINAL_PROMPT=0：https remote 要求互動認證時直接失敗，不掛住收尾流程
+        run_with_timeout "$FETCH_TIMEOUT_SECS" \
+            env GIT_TERMINAL_PROMPT=0 \
+                GIT_SSH_COMMAND="ssh -o ConnectTimeout=${SSH_CONNECT_TIMEOUT} -o BatchMode=yes" \
+                git -C "$repo" fetch --prune --quiet "$r" 2>/dev/null || rc=1
+    done
+    # 任一 remote 沒刷新成功就整體不可信：baseline 可能正好落在失敗的那個上
     return "$rc"
 }
 
@@ -158,8 +168,9 @@ check_repo() {
     local has_remote=0 remote_fresh=0 remote_name=""
     [ -n "$(git -C "$repo" remote)" ] && has_remote=1
     if [ "$has_remote" -eq 1 ]; then
-        remote_name="$(detect_remote "$repo" "$branch")"
-        if refresh_remote "$repo" "$remote_name"; then
+        remote_name="$(detect_fetch_targets "$repo" "$branch")"
+        # shellcheck disable=SC2086  # 刻意分詞：remote_name 可能是多個 remote
+        if refresh_remote "$repo" $remote_name; then
             remote_fresh=1
             echo "remote: 已同步（fetch --prune ${remote_name}）"
         else

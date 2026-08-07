@@ -275,6 +275,27 @@ assert_eq "untracked 計數為展開後檔數" "uncommitted: 2 檔" \
     "$(grep -o 'uncommitted: [0-9]* 檔' <<< "$out")"
 rm -rf "$TMP/gh-work/newdir"
 
+# (h) fetch 的 remote 必須涵蓋 baseline 實際所屬的 remote。branch.<n>.remote 指向 other
+#     （且沒設 branch.<n>.merge，@{upstream} 因此解析不到）時 baseline 會 fallback 到
+#     origin/*——只 fetch other 就讓 stale 的 origin ref 過關，等於拿 A 的新鮮度替 B 背書
+git init --bare -q -b main "$TMP/mx-origin.git"
+git init --bare -q -b main "$TMP/mx-other.git"
+git init -q -b main "$TMP/mx-work"
+(cd "$TMP/mx-work" \
+    && echo a > f && "${GITC[@]}" add f && "${GITC[@]}" commit -qm c1 \
+    && git remote add origin "$TMP/mx-origin.git" && git remote add other "$TMP/mx-other.git" \
+    && git push -q origin main && git push -q other main \
+    && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main \
+    && git config branch.main.remote other \
+    && echo b >> f && "${GITC[@]}" commit -qam c2 && git push -q origin main)
+git -C "$TMP/mx-origin.git" update-ref refs/heads/main "$(git -C "$TMP/mx-work" rev-parse HEAD~1)"
+assert_eq "fixture 前置：origin 端已 rewind，本機 HEAD 不在遠端" \
+    "1" "$(git -C "$TMP/mx-work" rev-list --count "$(git -C "$TMP/mx-origin.git" rev-parse main)..HEAD" 2>/dev/null)"
+out="$("$GH_SCRIPT" "$TMP/mx-work")"
+if grep -q "verdict: CLEAN" <<< "$out"; then
+    bad "fetch 的 remote 與 baseline 的不一致，stale origin ref 過關判 CLEAN：$out"
+else ok "baseline 所屬 remote 一併 fetch → 不再誤判 CLEAN"; fi
+
 # git-hygiene 的 gh stub：只回應 `pr view`。腳本取 url,state,isDraft 三欄（tsv），
 # 因為只讀 url 會把 CLOSED（未合併就關掉）與 draft 都當成「已有 PR、無殘留」
 make_hyg_gh_stub() {  # <path> <nopr|authfail|open|draft|closed|merged> [headRefOid]
