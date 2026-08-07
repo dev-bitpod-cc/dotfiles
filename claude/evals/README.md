@@ -14,8 +14,10 @@
 
 ## 執行方式（手動，Claude A/B 法）
 
-1. **建沙盒**：`./claude/evals/setup-sandboxes.sh /tmp/skill-evals <instance>`
+1. **建沙盒**：`~/.dotfiles/claude/evals/setup-sandboxes.sh /tmp/skill-evals <instance>`
    （每個受測模型各建一份 instance，git 沙盒會被操作、不可共用。）
+   **路徑基準寫絕對的**——本檔的讀者是 spawn 出來的受測 agent，它的 cwd 是沙盒、不是 repo 根，
+   `./claude/evals/...` 那種相對寫法在它那邊必然找不到檔案。
 2. **spawn 受測 agent（Claude B）**：主 session（Claude A）用 Agent 工具指定 `model: haiku|sonnet`，prompt 結構：
    - 完整貼上該 skill 的 SKILL.md body（模擬 skill 已載入；references 給真實路徑供 Read）
    - 沙盒路徑 + 情境描述（照 evals.md 的 `setup`）

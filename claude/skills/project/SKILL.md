@@ -186,7 +186,7 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 - **STATUS.md（dossier；章節語意見 `references/dossier.md`）**：
   - 本次工作的**關鍵決策（附理由）／死路／新增技術債** → 寫入對應章節。若工作過程已依全域規則**事件當下就地記錄**，本步為**核對補漏**而非重建；未記錄的部分此刻 session 記憶還在，是最後時機。只記 git 推不出來的（為什麼、放棄了什麼、還欠什麼），進度細節留給 commit。
   - 里程碑達成 → 「進行中」項收斂或移入「已完成」；「下一步」隨進度改寫（跨主機接續的交接點就在這裡）。
-  - 衛生檢查（總量治理）：偵測訊號取 Step 1 同一份腳本輸出的 `dossier:` / `dossier-flag:` / `dossier-sections:` 行——**門檻常數與逐 flag 處置的單一來源都是 ship-state.sh**：每則 flag 自帶處置，條目 flag 另附**行號**、全檔 flag 另附**建議收斂目標**；全檔超標時另印 `dossier-sections:` 各節佔比，**動手前先看它決定收哪一節、別憑印象挑**。references 若提及數字僅為說明性引用、以腳本為準；章節語意與收斂規則見 `references/dossier.md`。**照 flag 訊息處置，結果一律列入 Step 4 附註告知**。唯一的例外是 `簽章不符`（撞名領域產物）→ **停下告知、勿當 dossier 改**。
+  - 衛生檢查（總量治理）：偵測訊號取 Step 1 同一份腳本輸出的 `dossier:` / `dossier-flag:` / `dossier-sections:` 行——**門檻常數與逐 flag 處置的單一來源都是 ship-state.sh**：每則 flag 自帶處置，條目 flag 另附**行號**、全檔 flag 另附**建議收斂目標**；全檔超標時另印 `dossier-sections:` 各節佔比，**動手前先看它決定收哪一節、別憑印象挑**。references 若提及數字僅為說明性引用、以腳本為準；章節語意與收斂規則見 `references/dossier.md`。**照 flag 訊息處置，結果一律列入 Step 4 附註告知**。兩個例外：①`簽章不符`（撞名領域產物）→ **停下告知、勿當 dossier 改**；②**使用者明說不要動 STATUS.md** → 尊重（dossier 是使用者的檔案），但附註**如實保留 flag 事實**，不得回報「衛生檢查通過」（見 `references/pressure-tests.md` Scenario 12）。
   - `dossier: NONE` 且 repo 非 trivial（有持續開發跡象）→ 在 Step 4 摘要「附註」建議從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，**不出題、不自動建**（使用者要就下輪說）。
 - **殘留 branch 衛生（兩個訊號，來源不同、指令也不同）**：
   - `stale-branches:`（祖先關係判定：已完全併入 default）→ 附 `cleanup-cmd:`，整行照抄。
@@ -282,6 +282,8 @@ Ship 摘要：
 ## Transfer 模式（/project transfer）
 
 移交專案給新 owner 前的完整度檢查與移交包產出。**本模式不 push、不 merge、不改 repo 權限**——那些是移交雙方拍板後的人工動作。
+
+**commit 歸屬（同 Spec 模式）**：本模式**只寫檔、不 commit**——補齊的 dossier 段落與產出的 `docs/transfer.md` 留在 working tree，由 Log 模式一起送出（走它的 branch-first／PR 路徑）。**Credentials 檔（gitignored）永遠不進 commit**，見下方第 2 點。
 
 1. **Dossier 完整度檢查**：讀 STATUS.md 逐節評估（判準見 `references/dossier.md`）：
    - 關鍵決策是否附理由、死路是否記錄、技術債/已知缺口是否誠實反映
