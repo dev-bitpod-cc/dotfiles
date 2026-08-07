@@ -116,6 +116,50 @@ else
     printf '%s\n' "$fullwidth_hits" | sed 's/^/     /'
 fi
 
+echo "▶ 1c. unquoted heredoc 反引號 gate"
+# bash 對 `<<EOF`（delimiter 未加引號）的 body 做命令替換 → 文字裡一組行內 code 的反引號
+# 會**真的被執行**。2026-08-07 兩次實地：一次讓 `git push` 真的推了一條 branch 上 GitHub；
+# 一次是 dotfiles-sync/setup 用 `<< SSHEOF` 灌 ssh/config，而 ssh/config 正是會長註解的檔案
+# ——差一步就把毀損的 ~/.ssh/config 部署到全機隊。判準與掃描器見 tests/heredoc-gate.awk。
+# DO NOT relax this gate — 失敗是靜默的：產出的檔案少一段文字，副作用發生在別的地方。
+HD_GATE="$ROOT/tests/heredoc-gate.awk"
+mkdir -p "$TMP/hd"
+# 掃描器自檢（RED 抓得到、GREEN 不誤報）。少了這兩條，掃描器被改壞而恆不匹配時，
+# 底下對真實檔案的空輸出一樣是「通過」——gate 會靜默變成永遠綠。
+cat > "$TMP/hd/red.sh" <<'HDFIX'
+cat > /tmp/out.md << EOF
+說明：`git push` 會把 branch 推上去
+EOF
+HDFIX
+cat > "$TMP/hd/green.sh" <<'HDFIX'
+cat > /tmp/out.md << 'SAFE'
+說明：`git push` 在這裡是字面，不會被執行
+內含 <<INNER 樣式的文字也不該讓掃描器誤判成新的 heredoc
+SAFE
+grep -q pattern <<< "$big"
+echo "一般行的 `date` 不歸本 gate 管"
+# 註解裡討論 <<EOF 這個寫法時不得被當成 heredoc 起始——本 gate 自己的註解就會這樣寫，
+# 誤判會把後面數行全報成 body（第一版即如此，真正的問題行反而被蓋掉）
+echo "上一行是註解，這行的 `date` 同樣不歸本 gate 管"
+HDFIX
+if [ -n "$(awk -f "$HD_GATE" "$TMP/hd/red.sh")" ]; then ok "gate 自檢：unquoted heredoc 含反引號 → 命中"; else bad "gate 失效（RED fixture 沒被抓，真實掃描的空輸出不可信）"; fi
+if [ -z "$(awk -f "$HD_GATE" "$TMP/hd/green.sh")" ]; then ok "gate 自檢：quoted heredoc／herestring／一般行 → 不誤報"; else bad "gate 誤報（會逼人把安全寫法改壞以求過測）"; fi
+hd_hits="$(awk -f "$HD_GATE" \
+    "$ROOT"/scripts/*.sh "$ROOT"/scripts/lib/*.sh \
+    "$ROOT"/claude/scripts/*.sh \
+    "$ROOT"/claude/skills/*/scripts/*.sh "$ROOT"/claude/skills/*/scripts/lib/*.sh \
+    "$ROOT"/codex/skills/*/scripts/*.sh \
+    "$ROOT/shell/functions.sh" \
+    "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh" \
+    "$ROOT"/claude/evals/*.sh \
+    "$ROOT/tests/run.sh")"
+if [ -z "$hd_hits" ]; then
+    ok "無 unquoted heredoc 的 body 含反引號"
+else
+    bad "有 unquoted heredoc 的 body 含反引號（一律改 <<'EOF'，變數走 os.environ/sys.argv）"
+    printf '%s\n' "$hd_hits" | sed 's/^/     /'
+fi
+
 echo "▶ 2. bash -n 語法 gate"
 syntax_fail=0
 for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
@@ -691,6 +735,64 @@ if echo "$out" | grep -q "resolve: UNKNOWN"; then ok "repo 外目錄 → UNKNOWN
 "$SS_SCRIPT" resolve >/dev/null 2>&1
 assert_rc "resolve 無 token → exit 2" 2 $?
 
+# --- branch 與**自己的** remote tracking ref 分岔（只比對 default 會漏）---
+# 缺口實據：2026-08-07 跑 eval 時，是受測 agent 自己去 `branch -vv` 才發現分岔——
+# 腳本所有訊號都在講「對 default 領先多少」，push 那一刻才被 non-fast-forward 拒。
+git init --bare -q "$TMP/bd-origin.git"
+git init -q -b main "$TMP/bd-work"
+(cd "$TMP/bd-work" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/bd-origin.git" && git push -qu origin main)
+
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bd-work")"
+if ! grep -q '^branch-diverged:' <<< "$out"; then ok "在 default 上 → 不報 branch-diverged"; else bad "default 誤報分岔（${out}）"; fi
+
+# feature branch 尚未 push → 無從分岔，必須靜默（噪音會讓訊號被學會忽略）
+(cd "$TMP/bd-work" && git switch -qc feat/bd \
+    && echo a > a.txt && "${GITC[@]}" add a.txt && "${GITC[@]}" commit -qm "feat: a")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bd-work")"
+if ! grep -q '^branch-diverged:' <<< "$out"; then ok "未 push 過的 branch → 不報分岔"; else bad "未 push 的 branch 誤報分岔（${out}）"; fi
+
+# push 之後單純領先（正常 ship 途中的常態）→ 仍須靜默
+(cd "$TMP/bd-work" && git push -qu origin feat/bd \
+    && echo b > b.txt && "${GITC[@]}" add b.txt && "${GITC[@]}" commit -qm "feat: b")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bd-work")"
+if ! grep -q '^branch-diverged:' <<< "$out"; then ok "純領先 upstream → 不報分岔"; else bad "純領先誤報成分岔（${out}）"; fi
+
+# 純落後：別台主機/另一個 session 推過，本地只是舊的（fetch 過但沒 merge）
+git clone -q "$TMP/bd-origin.git" "$TMP/bd-other"
+(cd "$TMP/bd-other" && git switch -q feat/bd \
+    && echo c > c.txt && "${GITC[@]}" add c.txt && "${GITC[@]}" commit -qm "feat: c" \
+    && git push -q origin feat/bd)
+(cd "$TMP/bd-work" && git reset -q --hard origin/feat/bd && git fetch -q origin)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bd-work")"
+if grep -q '^branch-diverged:' <<< "$out"; then ok "落後自己的 upstream → 報 branch-diverged"; else bad "落後 upstream 完全沒訊號（${out}）"; fi
+if grep -qE '^branch-diverged: .*零領先' <<< "$out"; then ok "純落後與真分岔的措辭分開（處置不同）"; else bad "純落後被講成 push 會被拒（處置會被導錯）"; fi
+
+# 真分岔：本地在落後狀態上又 commit → 互不為祖先，push 必被拒
+(cd "$TMP/bd-work" && echo d > d.txt && "${GITC[@]}" add d.txt && "${GITC[@]}" commit -qm "feat: d")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bd-work")"
+if grep -qE '^branch-diverged: .*已分岔' <<< "$out"; then ok "與 upstream 互不為祖先 → 報已分岔"; else bad "真分岔未被偵測（${out}）"; fi
+if grep -q 'non-fast-forward' <<< "$out"; then ok "分岔訊號說明後果（push 會被拒）"; else bad "分岔訊號未說明後果"; fi
+if grep -q 'force-with-lease' <<< "$out"; then ok "處置給 --force-with-lease（不給裸 --force）"; else bad "處置未指定 lease"; fi
+# 負面斷言鎖「可照抄的裸指令形式」，不鎖字串 `--force` 本身——處置文案裡的「勿裸 --force」
+# 是**警語**，把它一起判紅會逼人刪掉警語來過測試（第一版就誤中，正是這個形狀）
+if grep -qE 'push +--force([^-]|$)' <<< "$out"; then bad "處置給出裸 push --force（照抄會蓋掉遠端別人的 commit）"; else ok "處置不含可照抄的裸 push --force"; fi
+
+# 沒設 upstream 但已 push（`git push origin <b>` 不帶 -u，常態）→ 仍須以同名 tracking ref 受檢。
+# 只認 @{upstream} 會讓這一整批 branch 完全不受檢，而它們正是最容易被別台主機推過的一批。
+(cd "$TMP/bd-work" && git switch -qc feat/bd-noup \
+    && echo e > e.txt && "${GITC[@]}" add e.txt && "${GITC[@]}" commit -qm "feat: e" \
+    && git push -q origin feat/bd-noup)
+if (cd "$TMP/bd-work" && git rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1); then
+    bad "fixture 前提失效：feat/bd-noup 竟有 upstream（fallback 分支測不到）"
+else
+    ok "fixture 前提成立：feat/bd-noup 無 upstream"
+    (cd "$TMP/bd-work" && "${GITC[@]}" commit -q --amend -m "feat: e (rewritten)")
+    out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bd-work")"
+    if grep -qE '^branch-diverged: .*已分岔' <<< "$out"; then ok "無 upstream 者退用同名 tracking ref，分岔仍被偵測"; else bad "無 upstream 的已 push branch 不受檢（${out}）"; fi
+fi
+
 # --- 殘留 branch 衛生（已完全併入 default 的 local/remote branch）---
 # merge 最後一哩只清它自己 merge 的那支，規則生效前的老 branch 會無聲累積
 # （實證：dotfiles 累到 2 支才被偶然發現）。只印訊號 + 清掃指令，絕不代刪。
@@ -884,8 +986,16 @@ if grep -q "^review-terminal:" <<< "$out"; then ok "terminal_head 物件不存�
 (cd "$TMP/sb-work" && git remote set-head origin main)
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
 if ! echo "$out" | grep -qE "^  remote: origin$"; then ok "origin/HEAD 不被當成殘留 branch"; else bad "裸 remote 名混入殘留清單（${out}）"; fi
-if echo "$out" | grep -q -- "--delete origin/" ; then bad "cleanup-cmd 的 remote branch 名未剝 remote 前綴"; else ok "cleanup-cmd 剝除 remote 前綴"; fi
-if echo "$out" | grep -qF -- "--delete -- '" ; then ok "cleanup-cmd 的 --delete 後接 terminator 與 quoted branch 名（防 --deleteorigin 黏連）"; else bad "cleanup-cmd 拼接缺空白（如 --deleteorigin）"; fi
+# remote 側的刪除**一律走 cleanup-stale-branch.sh**（執行當下 ls-remote 重驗 + lease），
+# **絕不退化成裸 `push --delete`**：local 側有 git 自己把關（`-d` 對未併入的 branch 直接拒），
+# remote 側沒有等價保護——偵測後有人推過，裸刪就把那些 commit 從唯一的副本上砍掉。
+if echo "$out" | grep -qE "^  cleanup-cmd: .*cleanup-stale-branch\.sh .+ remote "; then ok "remote 殘留附 cleanup-stale-branch.sh（帶執行當下重驗）"; else bad "remote 殘留缺帶重驗的刪除指令（${out}）"; fi
+if echo "$out" | grep -qE "push .*--delete"; then bad "remote 刪除退回裸 push --delete（無 lease、無執行當下重驗）"; else ok "cleanup-cmd 不含裸 push --delete"; fi
+if echo "$out" | grep -qF "remote 'origin/"; then bad "cleanup-cmd 的 remote branch 名未剝 remote 前綴"; else ok "cleanup-cmd 剝除 remote 前綴"; fi
+# expected SHA 必須是該 tracking ref 的當下 tip。給錯就一律 STOP——指令看起來還在、實際上
+# 每次照抄都被擋，等於訊號默默廢掉（且失敗長相像「有人推過」，會誤導去查不存在的第二寫入者）
+sb_exp="$(git -C "$TMP/sb-work" rev-parse refs/remotes/origin/feat/old-merged)"
+if echo "$out" | grep -qE "^  cleanup-cmd: .*remote 'feat/old-merged' ${sb_exp}\$"; then ok "cleanup-cmd 帶正確的 expected SHA（＝tracking ref 當下 tip）"; else bad "cleanup-cmd 的 expected SHA 不符 tracking ref tip（照抄必被 STOP）"; fi
 
 # 未併入 default 的 branch（有獨立 commit）→ 不得列入（那是還沒 ship 的工作）
 (cd "$TMP/sb-work" \
@@ -908,6 +1018,30 @@ if ! echo "$out" | grep -qE "^  local: .*feat/old-merged"; then ok "當前 branc
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sb-work")"
 if ! echo "$out" | grep -qE "^  remote: origin/feat/old-merged"; then ok "當前 branch 的 remote 對應不列入殘留"; else bad "把當前 branch 的 remote 對應列為可刪（照抄會砍掉正要送出的 branch）"; fi
 (cd "$TMP/sb-work" && git switch -q main)
+
+# 端到端：把 remote 的 cleanup-cmd **照抄執行**，遠端 branch 必須真的消失。
+# 為何不只比對字串：上面驗的是「拼出來的樣子」，拼對了仍可能整條跑不動——參數順序、
+# quoting、SHA 位置任一錯都是**靜默失敗**，腳本回 STOP，而 STOP 的長相與「偵測後有人推過」
+# 這個正常保護一模一樣，讀不出是 bug。獨立 fixture（sbe- 前綴），不動上面共用的 sb-work。
+# ⚠ 路徑要換成 $ROOT 下的腳本：輸出裡的 `~/.claude/skills/...` 是**主 checkout** 的 symlink
+# 目標，在 worktree／乾淨 clone 上跑到的是別一份（見 claude/CLAUDE.md 已知地雷最後一條）。
+git init --bare -q "$TMP/sbe-origin.git"
+git init -q -b main "$TMP/sbe-work"
+(cd "$TMP/sbe-work" \
+    && echo hi > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/sbe-origin.git" && git push -qu origin main \
+    && git switch -qc feat/e2e-merged && git push -qu origin feat/e2e-merged \
+    && git switch -q main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sbe-work")"
+sbe_cmd="$(grep -E '^  cleanup-cmd: .*cleanup-stale-branch\.sh .+ remote ' <<< "$out" | head -1 | sed 's/^  cleanup-cmd: //')"
+sbe_args="${sbe_cmd#*cleanup-stale-branch.sh }"
+if [ -n "$sbe_cmd" ] && [ "$sbe_args" != "$sbe_cmd" ]; then
+    # `$0` 帶路徑、引數維持原樣照抄——腳本路徑本身不是本次要驗的東西，引數拼接才是
+    if bash -c '"$0" '"$sbe_args" "$ROOT/claude/skills/project/scripts/cleanup-stale-branch.sh" >/dev/null 2>&1; then ok "照抄 remote cleanup-cmd 可實際刪除（參數拼接端到端成立）"; else bad "照抄 remote cleanup-cmd 執行失敗（STOP／參數錯，訊號等於廢掉）"; fi
+    if git -C "$TMP/sbe-work" ls-remote --heads origin feat/e2e-merged 2>/dev/null | grep -q .; then bad "照抄後遠端 branch 仍在（指令實際沒生效）"; else ok "照抄後遠端殘留 branch 確實消失"; fi
+else
+    bad "未取得 remote 的 cleanup-cmd（fixture 前提失效）"
+fi
 
 # --- squash-merge 盲視（B1：只加訊號，不產生 -D 指令）---
 # 為何存在：`git branch --merged` 判的是**祖先關係**，而 squash-merge 在 default 上產生
@@ -3984,6 +4118,95 @@ mkdir -p "$bfx/Caskroom/tool/9.9.upgrading"
 bfx_env "$bfx/ps-empty" "$bfx/lsof-many" --fix >/dev/null 2>&1
 if [ -d "$outside" ]; then ok "Caskroom 外的 *.upgrading 未被觸碰"; else bad "誤刪了 Caskroom 外的目錄"; fi
 if [ ! -d "$bfx/Caskroom/tool/9.9.upgrading" ]; then ok "Caskroom 內殘留已清"; else bad "Caskroom 內殘留未清"; fi
+
+echo "▶ 23. migrate-github-remotes.sh（GitHub 多身分收斂的遷移入口）"
+# 這支要在 12 台機器上各跑一次，且它會**改每個 repo 的 remote**——錯一次的代價是那台機器
+# 所有 repo 一起連不上。三件事必須守住：身分驗證是硬前提（順序錯就把錯誤身分固化）、
+# dry-run 真的零 mutation、非 origin 的 remote 不能漏（實跑工作 mac 時就有兩條 fork remote）。
+MG_SCRIPT="$ROOT/scripts/migrate-github-remotes.sh"
+mg="$TMP/mg"; mkdir -p "$mg/roots"
+export GIT_CONFIG_GLOBAL="$mg/gitconfig"   # 隔離：絕不能碰使用者真的 ~/.gitconfig
+: > "$GIT_CONFIG_GLOBAL"
+
+# ssh stub：認到正確身分
+cat > "$mg/ssh-ok" <<'MGEOF'
+#!/usr/bin/env bash
+for a in "$@"; do
+    case "$a" in
+        git@github.com) echo "Hi jjshen-eland! You've successfully authenticated"; exit 1 ;;
+        git@github-me)  echo "Hi dev-bitpod-cc! You've successfully authenticated"; exit 1 ;;
+    esac
+done
+echo "unexpected: $*"; exit 1
+MGEOF
+# ssh stub：**連得上但認到錯帳號**——IdentitiesOnly 沒設時的真實長相，正是 gate 要擋的
+cat > "$mg/ssh-wrong" <<'MGEOF'
+#!/usr/bin/env bash
+echo "Hi dev-bitpod-cc! You've successfully authenticated"; exit 1
+MGEOF
+chmod +x "$mg/ssh-ok" "$mg/ssh-wrong"
+
+mg_mkrepo() {   # $1=名字 $2=origin url [$3=額外 remote 名 $4=額外 url]
+    local d="$mg/roots/$1"
+    git init -q -b main "$d"
+    git -C "$d" remote add origin "$2"
+    [ $# -ge 4 ] && git -C "$d" remote add "$3" "$4"
+}
+mg_reset() {
+    rm -rf "$mg/roots"; mkdir -p "$mg/roots"
+    mg_mkrepo work-a  "git@github-work:elandcomtw/krepo.git"
+    mg_mkrepo work-b  "git@github-work:elandinfo/biz-chat.git" fork "git@github-work:elandinfo/fork-biz-chat"
+    mg_mkrepo mine    "git@github.com:dev-bitpod-cc/isdotgd.git"
+    mg_mkrepo other   "https://gitlab.internal/iac/thing.git"
+}
+mg_url() { git -C "$mg/roots/$1" remote get-url "${2:-origin}"; }
+
+# 身分認到錯帳號 → STOP 且零 mutation
+mg_reset
+MIGRATE_SSH="$mg/ssh-wrong" "$MG_SCRIPT" --apply "$mg/roots" >/dev/null 2>&1
+assert_rc "身分認到錯帳號 → exit 1（STOP）" 1 $?
+assert_eq "STOP 時零 mutation（remote 原封不動）" \
+    "git@github-work:elandcomtw/krepo.git" "$(mg_url work-a)"
+
+# dry-run：印計畫、零 mutation
+out="$(MIGRATE_SSH="$mg/ssh-ok" "$MG_SCRIPT" "$mg/roots")"
+assert_rc "dry-run → exit 0" 0 $?
+if grep -q '^would-change: ' <<< "$out"; then ok "dry-run 印出換寫計畫"; else bad "dry-run 未印計畫（${out}）"; fi
+assert_eq "dry-run 零 mutation" "git@github-work:elandcomtw/krepo.git" "$(mg_url work-a)"
+if grep -q 'dry-run' <<< "$out"; then ok "dry-run 明示未執行"; else bad "dry-run 未告知這只是計畫"; fi
+
+# --apply：三種換寫都對，不該動的不動
+out="$(MIGRATE_SSH="$mg/ssh-ok" "$MG_SCRIPT" --apply "$mg/roots")"
+assert_rc "--apply → exit 0" 0 $?
+assert_eq "github-work → 標準 github.com" "git@github.com:elandcomtw/krepo.git" "$(mg_url work-a)"
+assert_eq "個人 repo → github-me"          "git@github-me:dev-bitpod-cc/isdotgd.git" "$(mg_url mine)"
+assert_eq "非 GitHub 的 remote 不得被碰"   "https://gitlab.internal/iac/thing.git"   "$(mg_url other)"
+# 本次的重點：spec 那段手貼迴圈只掃 origin，工作 mac 上就有兩條 fork remote 會被留下
+assert_eq "非 origin 的 remote 同樣換寫"   "git@github.com:elandinfo/fork-biz-chat"  "$(mg_url work-b fork)"
+
+# 幂等：再跑一次應無事可做
+out="$(MIGRATE_SSH="$mg/ssh-ok" "$MG_SCRIPT" --apply "$mg/roots")"
+if grep -q '需換寫 0' <<< "$out"; then ok "--apply 幂等（第二次無事可做）"; else bad "重跑仍有換寫（${out}）"; fi
+
+# insteadOf：只清 github-work 那幾條，使用者其他的改寫規則不得被波及
+git config --global "url.git@github-work:elandcomtw/.insteadOf" "git@github.com:elandcomtw/"
+git config --global "url.git@internal-mirror/.insteadOf" "https://internal/"
+MIGRATE_SSH="$mg/ssh-ok" "$MG_SCRIPT" --apply "$mg/roots" >/dev/null 2>&1
+if ! git config --global --get-regexp 'insteadof' 2>/dev/null | grep -q 'github-work'; then ok "github-work 的 insteadOf 已清"; else bad "insteadOf 未清（收斂沒完成）"; fi
+if git config --global --get-regexp 'insteadof' 2>/dev/null | grep -q 'internal-mirror'; then ok "無關的 insteadOf 未被波及"; else bad "誤刪了使用者其他的 insteadOf"; fi
+
+# --skip-identity-check：明說才跳過（stub 給錯身分也照跑）
+mg_reset
+MIGRATE_SSH="$mg/ssh-wrong" "$MG_SCRIPT" --apply --skip-identity-check "$mg/roots" >/dev/null 2>&1
+assert_rc "--skip-identity-check → 跳過 gate、exit 0" 0 $?
+assert_eq "跳過 gate 後仍正常換寫" "git@github.com:elandcomtw/krepo.git" "$(mg_url work-a)"
+
+# 未知選項 → exit 2（**不得**被當成路徑或靜默忽略：那會讓 --aply 這種打錯字變成
+# 「掃了整個 $HOME、什麼都沒做」而使用者以為跑過了）
+"$MG_SCRIPT" --aply "$mg/roots" >/dev/null 2>&1
+assert_rc "未知選項 → exit 2" 2 $?
+
+unset GIT_CONFIG_GLOBAL
 
 echo ""
 echo "════════════════════════════"
