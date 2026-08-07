@@ -144,9 +144,10 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   codex-next 冪等(F16 b/c,待 autofix 迭代中真的 rebase/重試);repo-review 新契約(F16–F18 規格
   覆蓋,待多輪 autofix 確認弱模型不會退回每輪帶 `--autofix`)
 - [x] hook matcher 僅 `startup`——2026-08-07 已擴為 `startup|clear|compact|resume`,tests 第 16 節覆蓋
-- [ ] 主 checkout `claude/CLAUDE.md` 測試節那行待補 git-hygiene 的新教訓(`-uall`、gh 失敗≠無 PR、
-  無 upstream 用 `origin/<branch>`、fetch 才有遠端事實):該行極長且主 checkout 的分支同期也改過它,
-  刻意留到合併後再補以免衝突
+- [x] 測試節那行待補 git-hygiene 的新教訓——2026-08-07 已補。**目標檔是 repo 根的 `CLAUDE.md`
+  (第 133 行、單行 5.6KB),不是原記的 `claude/CLAUDE.md`**(後者的測試節講的是「何時該寫測試」)。
+  順帶補上該行從未索引到的 **SessionStart hook 守門**——`git-hygiene` 先前也完全沒有細節,
+  等於這兩塊的覆蓋範圍讀不出來
 - [ ] Scenario 11 的「merge 但無 PR」分支只在 SKILL body 一行指標帶到 ship-paths,GREEN 實測中
   弱模型未展開讀——非違規故未補;重現才加明示(Iron Law)
 - [ ] pressure-tests S8/S9/S12 沙盒未納入 `claude/evals/setup-sandboxes.sh`;S10(transfer
