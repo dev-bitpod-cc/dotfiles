@@ -12,16 +12,18 @@ Include ~/.ssh/config.local
 Host github.com
     HostName github.com
     User git
-    IdentityFile ~/.ssh/id_github_work
+    IdentityFile ~/.ssh/id_github_com
     AddKeysToAgent yes
     IdentitiesOnly yes
 
 # 私人帳號 (dev-bitpod-cc)，少數 repo 明示走這條。
 # 這個 alias **不可約**——GitHub 一把 SSH key 只能綁一個帳號，兩個身分必須有區分方式。
+# key 叫 id_personal 而非 id_github_me：同一把私鑰也是各內網主機 authorized_keys 的
+# fallback（CA cert 那條路失效時的後路），用 id_github_* 命名會把那個角色藏起來。
 Host github-me
     HostName github.com
     User git
-    IdentityFile ~/.ssh/id_github
+    IdentityFile ~/.ssh/id_personal
     AddKeysToAgent yes
     IdentitiesOnly yes
 

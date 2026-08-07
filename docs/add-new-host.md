@@ -19,7 +19,7 @@
 腳本自動完成：
 
 1. **Phase A（metadata）**：驗證 → 寫入 `inventory.conf` → 重生 `ssh/config` → 套用 `~/.ssh/config` → 更新本機 `/etc/hosts`（需 sudo）→ git commit（不 push）
-2. **Phase B（金鑰部署 + CA 簽署）**：部署 `id_github` / `id_github_work` / `authorized_keys` / `ssh/config` / `known_hosts` 到新主機 → `sign-host-keys.sh` → `sign-user-key.sh`
+2. **Phase B（金鑰部署 + CA 簽署）**：部署 `id_personal` / `id_github_com` / `authorized_keys` / `ssh/config` / `known_hosts` 到新主機 → `sign-host-keys.sh` → `sign-user-key.sh`
 
 Phase B 結束後，手動完成 Phase C：
 
