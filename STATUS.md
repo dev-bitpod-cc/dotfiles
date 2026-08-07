@@ -181,6 +181,7 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
 - ✅ 2026-08-07 squash-merge 殘留偵測 + `cleanup-stale-branch.sh` 安全清除（#53，699 PASS）
 - ✅ 2026-08-07 Scenario 15 補測：`BLOCKED` 不得自動 `--admin`，正反兩向 PASS（#54）
 - ✅ 2026-08-07 ready4quit 強化 + 四輪第三方審查修復：證據語彙拆兩軸（強度 × 殘留）、Step 2 memory/dossier 雙出口、背景任務證據來源改 `tasks/` 且 liveness 不得由 `.output` 推斷、`git-hygiene.sh` 補遠端事實與多 remote 一致性、hook 增報 worktree 雙寫入者；**eval 從零 GREEN 到 8 條 PASS**，其中 Q4a/Q5 是 eval 自己抓出、四輪第三方審查都沒看到的規格缺口（#59，754 PASS；Q4c 未驗見「已知缺口」）
+- ✅ 2026-08-07 `brewup`/`sysup` 從 rc alias 抽成 `scripts/*.sh`（雙平台單一來源，消除兩份複本的漂移風險）+ 新增 `brewfix` 復原入口；`all-up.sh` 改直接呼叫腳本、去掉 `bash -ic`（`no job control` 雜訊隨之消失）；`ensure-rc-source.sh` 增舊 alias 清理（**刪行而非 unalias**——14 台巡檢實測 rc 內 alias 與 source 的相對順序因機器而異，macmini 反向，`unalias` 會多數生效少數靜默失效）（787 PASS）
 
 ## 已知缺口
 
@@ -237,11 +238,31 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   形狀同 `dossier-flag`;或要求 fixer 每輪寫出「本輪抽象出的規則 + `rg` 命中數」)。做不成
   exit-code gate——規則是語意抽象出來的,機器不知道要 grep 什麼。現有防線只有第三方審查。
 
-- **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper 首次執行核可)**:cask 首次 exec quarantine 過的
-  新 binary,同步等系統核可對話框(常沒搶到焦點,看似卡死在 `Linking Binary`)。解法:對話框按允許
-  (誤按取消→系統設定「仍要允許」)→ `brew reinstall --cask codex` 補完並清 `*.upgrading`。
-  **勿用 xattr 除 quarantine 或 --no-quarantine**(不必要的安全弱化)。僅 codex 實際升版時發生;
-  經 SSH 的 allup 對話框只出現在實體螢幕,該 Mac 須先本機核可過該版。
+- **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper 首次執行核可)**:2026-08-07 第三次發作,機制已
+  完整證實——**exec 者是 brew 自己**:codex cask 帶 `generate_completions_from_executable`,其
+  `install_phase` 對 **bash/zsh/fish 各 exec 一次**剛解壓、仍帶 quarantine 的 271MB binary 來產生
+  completion,首次 exec 即觸發核可對話框。看似卡在 `Linking Binary` 是因為那是**前一個** artifact
+  的訊息;brew 的 `rescue => e` 只攔例外、攔不住 hang,故 brew 自己也不會跳過。無官方開關可停用該
+  artifact(sandbox 路徑一樣 exec,只多 `deny_all_network`)。
+  **卡住有兩條路徑**:(a) 對話框在等人按——8/7 經 SSH 跑 allup 時實地確認(Jump Desktop 連進 console
+  才看到,SSH 結構上看不到 GUI);(b) **無可見對話框也會卡**——在本機 console 開 terminal 跑 brewup
+  也遇過卡在 `Linking Binary`、對彈窗無印象。故 **ssh 不是必要條件、「去 console 按對話框」不是可靠
+  處置**;(b) 成因未定(沒搶到焦點/在別的 Space,或 271MB 首次驗證本身卡住),勿當定論。
+  解法:**`brewfix`**(2026-08-07 新增,`scripts/brewfix.sh`;預設唯讀診斷,`--fix` 才動手)。
+  等價手動序列:`sudo killall syspolicyd` + 清 `Caskroom/codex/<old>.upgrading`(`brew cleanup` 只清
+  cache tar.gz、不碰它),實證有效且比 reinstall 快——`brew reinstall` 路徑不變、多半無效。
+  鑑別法(`sample` 卡 `_dyld_start`、`lsof` 零 dylib)見 `claude/CLAUDE.md`「已知地雷」。
+  **確切觸發條件仍未知,且事後無法重現**:8/7 把同一份 binary 複製到全新路徑、SSH 下帶 quarantine
+  立即執行 → 3 秒正常完成。逐一排除 SSH session／首次評估／quarantine 無 0x0040／檔案大小 271MB／
+  notarization 與簽章差異(同機 agy 162MB 各項相同卻從不卡)。推測 Gatekeeper 的**成功評估以 cdhash
+  快取、卡死的 pending 記錄才以路徑為 key**,故同版本內容事後永遠重現不了,要重現只能等真正出新版。
+  **預防手段三條都不通**(勿重走):① 事後手動先跑一次——brew 在你之前就 exec 了;② `--no-quarantine`
+  ——Homebrew 6.x **已移除該旗標**;③ Homebrew 內建核可繼承——`cask/upgrade.rb` 兩處都是
+  `grep(Artifact::App)`,只服務 `.app`,binary cask 拿不到,`USER_APPROVED_FLAG` 永遠不會被設。
+  **未決**:xattr 預先設 0x0040(fetch 與 upgrade 之間有時間窗,propagate 只動 bit 8 會把核可位帶進
+  staged)技術上可行,但**前提是「首次核可流程確為卡住主因」而該前提已被上述負面結果動搖**,且代價確定
+  (拿不到 tarball 的簽章身分、無法做 Homebrew 對 App 才做的 signer 比對)。用確定的代價換不確定的效果
+  ——暫不做。復原路徑已實證,優先靠它。
 
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,
   改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。

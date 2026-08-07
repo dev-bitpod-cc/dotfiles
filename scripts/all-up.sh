@@ -65,29 +65,48 @@ else
 fi
 
 # 更新腳本片段：在目標端（本機或遠端）判斷 OS 後執行對應更新。
-# 以互動 shell（zsh -ic / bash -ic）載入 brewup / sysup 這兩個 alias。
+#
+# brewup / sysup 已從 rc 的 alias 抽成 scripts/*.sh，所以直接呼叫腳本即可——不再需要
+# `zsh -ic` / `bash -ic`。少掉 `-i` 的附帶好處：無 TTY 時 bash 會因為互動初始化去呼叫
+# tcsetpgrp() 而噴 `cannot set terminal process group` / `no job control in this shell`，
+# 那兩行雜訊隨之消失。
+#
+# fallback 的必要性：本片段在**目標端**執行，而目標端要跑完 brewup.sh 才會 pull 到
+# 含該檔的版本——尚未同步的主機上腳本並不存在。故保留一條走舊 alias 的退路，
+# 待各主機都同步過後可移除（屆時 rc 裡的 alias 也已被 ensure-rc-source.sh 清掉，
+# fallback 會自然失效，因此它只在遷移窗口內有意義）。
+#
 # ALLUP_GUARD_SUDO=1 時，sysup 前先探測免密 sudo，非免密則略過（避免非互動卡死）。
 # 注意：本片段以單引號賦值，內含的 $os 等變數保持字面值，於「目標端」才展開。
 # shellcheck disable=SC2016  # 變數刻意不在本機展開，於目標端執行時才展開
 REMOTE_SNIPPET='
+BREWUP="$HOME/.dotfiles/scripts/brewup.sh"
+SYSUP="$HOME/.dotfiles/scripts/sysup.sh"
 os=$(uname -s)
-case "$os" in
-  Darwin)
-    zsh -ic "brewup"
-    ;;
-  *)
-    bash -ic "brewup"
-    if [ "${ALLUP_GUARD_SUDO:-1}" = "1" ]; then
-      if sudo -n true 2>/dev/null; then
-        bash -ic "sysup"
-      else
-        echo "WARN: 略過 sysup — 此主機 sudo 需密碼，非互動無法執行"
-      fi
+
+run_sysup() {
+  if [ -x "$SYSUP" ]; then bash "$SYSUP"; else bash -ic "sysup"; fi
+}
+
+if [ -x "$BREWUP" ]; then
+  bash "$BREWUP"
+elif [ "$os" = "Darwin" ]; then
+  zsh -ic "brewup"
+else
+  bash -ic "brewup"
+fi
+
+if [ "$os" != "Darwin" ]; then
+  if [ "${ALLUP_GUARD_SUDO:-1}" = "1" ]; then
+    if sudo -n true 2>/dev/null; then
+      run_sysup
     else
-      bash -ic "sysup"
+      echo "WARN: 略過 sysup — 此主機 sudo 需密碼，非互動無法執行"
     fi
-    ;;
-esac
+  else
+    run_sysup
+  fi
+fi
 '
 
 indent() { while IFS= read -r line; do printf '    %s\n' "$line"; done; }
