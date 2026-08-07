@@ -71,17 +71,6 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   branch」都有零提問說法,「開 PR 然後停」卻只能靠回答選單。flag 與裸說法**共用同一張表**、不得
   各自演化;prose 路徑刻意沒有 flag 形式(說法可以三輪之後才補一句,flag 只存在於引數裡)。
 
-- **2026-08-07 squash-merge 殘留改比對 merged PR,判準是 `headRefOid` 相等而非同名**:
-  `branch --merged` 判祖先關係,squash-merge 在 default 上產生全新 commit、無祖先鏈,**結構上
-  看不到**;而本 repo 家規正是 squash-merge,等於該訊號對主要情境無效(舊 fixture 用「branch 不加
-  commit」才會綠——測試綠、功能無效)。**headRefOid 必須等於本地 tip** 才算數:不符代表同名 branch
-  事後又有新工作、那些 commit 不在 default 上,列進清單就是誘導刪掉唯一副本 → 只印診斷。fork 同理
-  不採信。**達查詢上限一律標 `partial`、絕不印 `none`**——截斷處靜默等於謊報「掃完了、沒有」。
-- **2026-08-07 破壞性刪除下沉成腳本,expected SHA 綁「執行當下」而非偵測當下**:偵測與刪除之間有
-  TOCTOU 窗口(另一 session/主機可能又 commit),照抄的 `-D` 對此無感,而 branch 是那些 commit 的
-  唯一 ref。訊號產生時驗過那次是**舊資訊**。remote 另加 `ls-remote` 重驗 + lease 雙重比對。
-  **副作用判準**:lease 是第二道防線,拿掉前置比對它照樣會擋 → 前置比對必須**另立斷言**,
-  否則整段可被刪光而測試全綠(本批實地驗到)。
 - **2026-08-07 Step 4 從「逐批出題」改「說法即授權」,拆掉的守衛另補一道**:使用者實地回報「說了
   ship 還被問四次」是摩擦。改為送出說法(merge／bypass merge／只推 branch…)出現在本輪訊息裡就
   印完摘要做到底、零提問;沒說法才問一題。**但這拆掉的是「push 前你一定會看到摘要並有機會攔」**,
@@ -91,25 +80,6 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   「壓不壓沒有預設值,不能猜」;使用者給了預設(不同目的的 commit 預設保留)之後,歧義本身消失,
   詢問的理由跟著消失。**那條規則從未實測就被推翻**,故無實測結論被推翻。review 痕跡則相反——
   **壓得掉的一律壓、不問**,它不是偏好而是不變式;唯一的自由度是「壓不壓得掉」(buried 壓不掉)。
-- **2026-08-07 skill-authoring 變更走一次診斷,切的是 autofix loop、不是 correctness bar**:
-  可觀察的 RED 只有一個——同一批 skill 變更被對抗式重審失控(12 小時、兩場完整 deep-review
-  加三輪 codex 未收斂),且第一場 R5 終止後又開新一場、外層重置了輪次上限。**初稿寫成
-  「prose findings 一律降建議」是錯的**:當天四條高風險 finding 全在 `.md` 裡、全屬「照做會
-  錯」。**判準:診斷本身有價值、失控的是修復循環,要切就切循環。**
-- **2026-08-07 該 gate 的兩處設計由第三方審查打掉**:①「prose 佔多數」分流會讓
-  `src/*.py + README.md` 這種正常 PR 也關掉 autofix(無 RED)→ 改按**工作類型**判定,副檔名
-  不是工作類型的代理;② escape hatch 若寫成「使用者明說 autofix 就照跑」會被合理化成「已經
-  明說了」→ 改為獨立 token `force-skill-loop`,且**不接受從自然語言推斷等價詞**。
-- **2026-08-07 R5 終止改顯式 terminal state,因為 `cycle` 不是可觀察條件**:`cycle` 只表示
-  anchor 未 clear,成因混雜(R5 終止／中途停止／crash／刻意稍後續跑),據此擋新 cycle 會誤傷
-  後三者。改為 `terminate --reason r5-blocking` 寫入 anchor,`record` **在解析與寫檔之前**
-  檢查它。**只做 `r5-blocking` 一種**:`codex-c3` 會立刻引入不同的 resume 語意(anchor 已有
-  `codex_round=3`),依 Iron Law 等真 RED 再設計。`resume` 刻意**不塞進 `record`**——record 的
-  既有契約是「重新解析、無條件覆寫」,與「保留 base」語意相反。
-- **2026-08-07 eval 寫完必須實跑,四條裡三條首次執行就見紅**:一條是 SKILL.md 措辭誘發
-  oracle leak(寫了 `F10` 這個只存在於 `evals.md` 的情境編號,受測 agent 直接把它抄進
-  reviewer prompt)、另兩條是 fixture 自身不自洽。**判準:eval 是 oracle,未跑過的 eval 不是
-  證據、是意圖。** 與上面三種「假綠」形狀同源,只是發生在行為層而非腳本層。
 
 ## 死路(試過但放棄——防重工)
 
@@ -238,31 +208,15 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   形狀同 `dossier-flag`;或要求 fixer 每輪寫出「本輪抽象出的規則 + `rg` 命中數」)。做不成
   exit-code gate——規則是語意抽象出來的,機器不知道要 grep 什麼。現有防線只有第三方審查。
 
-- **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper 首次執行核可)**:2026-08-07 第三次發作,機制已
-  完整證實——**exec 者是 brew 自己**:codex cask 帶 `generate_completions_from_executable`,其
-  `install_phase` 對 **bash/zsh/fish 各 exec 一次**剛解壓、仍帶 quarantine 的 271MB binary 來產生
-  completion,首次 exec 即觸發核可對話框。看似卡在 `Linking Binary` 是因為那是**前一個** artifact
-  的訊息;brew 的 `rescue => e` 只攔例外、攔不住 hang,故 brew 自己也不會跳過。無官方開關可停用該
-  artifact(sandbox 路徑一樣 exec,只多 `deny_all_network`)。
-  **卡住有兩條路徑**:(a) 對話框在等人按——8/7 經 SSH 跑 allup 時實地確認(Jump Desktop 連進 console
-  才看到,SSH 結構上看不到 GUI);(b) **無可見對話框也會卡**——在本機 console 開 terminal 跑 brewup
-  也遇過卡在 `Linking Binary`、對彈窗無印象。故 **ssh 不是必要條件、「去 console 按對話框」不是可靠
-  處置**;(b) 成因未定(沒搶到焦點/在別的 Space,或 271MB 首次驗證本身卡住),勿當定論。
-  解法:**`brewfix`**(2026-08-07 新增,`scripts/brewfix.sh`;預設唯讀診斷,`--fix` 才動手)。
-  等價手動序列:`sudo killall syspolicyd` + 清 `Caskroom/codex/<old>.upgrading`(`brew cleanup` 只清
-  cache tar.gz、不碰它),實證有效且比 reinstall 快——`brew reinstall` 路徑不變、多半無效。
-  鑑別法(`sample` 卡 `_dyld_start`、`lsof` 零 dylib)見 `claude/CLAUDE.md`「已知地雷」。
-  **確切觸發條件仍未知,且事後無法重現**:8/7 把同一份 binary 複製到全新路徑、SSH 下帶 quarantine
-  立即執行 → 3 秒正常完成。逐一排除 SSH session／首次評估／quarantine 無 0x0040／檔案大小 271MB／
-  notarization 與簽章差異(同機 agy 162MB 各項相同卻從不卡)。推測 Gatekeeper 的**成功評估以 cdhash
-  快取、卡死的 pending 記錄才以路徑為 key**,故同版本內容事後永遠重現不了,要重現只能等真正出新版。
-  **預防手段三條都不通**(勿重走):① 事後手動先跑一次——brew 在你之前就 exec 了;② `--no-quarantine`
-  ——Homebrew 6.x **已移除該旗標**;③ Homebrew 內建核可繼承——`cask/upgrade.rb` 兩處都是
-  `grep(Artifact::App)`,只服務 `.app`,binary cask 拿不到,`USER_APPROVED_FLAG` 永遠不會被設。
-  **未決**:xattr 預先設 0x0040(fetch 與 upgrade 之間有時間窗,propagate 只動 bit 8 會把核可位帶進
-  staged)技術上可行,但**前提是「首次核可流程確為卡住主因」而該前提已被上述負面結果動搖**,且代價確定
-  (拿不到 tarball 的簽章身分、無法做 Homebrew 對 App 才做的 signer 比對)。用確定的代價換不確定的效果
-  ——暫不做。復原路徑已實證,優先靠它。
+- **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper)**:2026-08-07 第三次發作。**復原已有入口**:
+  `brewfix`(`scripts/brewfix.sh`,預設唯讀、`--fix` 才動手)。機制、鑑別法、三條走不通的預防路徑
+  (事後手動先跑／`--no-quarantine` 已從 Homebrew 6.x 移除／內建核可繼承只服務 `.app`)全文見
+  `claude/CLAUDE.md`「已知地雷」,**此處不重述**。
+  **仍未解的部分**:確切觸發條件未知且**事後無法重現**(同版本內容複製到新路徑執行正常,推測成功
+  評估以 cdhash 快取、卡死記錄才以路徑為 key),要重現只能等真正出新版。**未決**:xattr 預先設
+  `0x0040` 技術上可行(fetch 與 upgrade 之間有時間窗,propagate 只動 bit 8),但前提「首次核可流程確為
+  主因」已被上述負面結果動搖,代價卻是確定的(拿不到 tarball 簽章身分、做不了 signer 比對)。
+  **用確定的代價換不確定的效果——暫不做**,優先靠已實證的復原路徑。
 
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,
   改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
