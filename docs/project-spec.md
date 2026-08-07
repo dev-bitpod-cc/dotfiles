@@ -26,6 +26,10 @@
 3. **transfer（移交）**——檢查 dossier 完整度、產出移交指南，供專案換 owner。
 
 使用方式：使用者輸入 `/project [spec|log|transfer] [repo|.] [module...]`。
+> ⚠️ **本條的 `[module...]` 已被推翻**（2026-08-07，見 `claude/skills/project/SKILL.md` Step 0
+> 「引數前處理（依形狀分類）」）：裸字不再被當成 module 過濾——它會在打錯字時靜默縮小
+> Step 2 的掃描範圍。**module 一律走路徑形式**（`./docs/plans`）。同時新增 `--` flag 形式
+> （`--merge` / `--pr` / `--no-pr` / `--spec|--log|--transfer`），與裸說法等價。
 無模式引數 → 預設 log（與歷史指令 `/uap [repo|.] [module...]` 的肌肉記憶相容）。
 
 ## 功能需求
