@@ -221,6 +221,15 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,
   改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
 - biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+credentials 明文散於三台。
+- **`agy`(Antigravity CLI)只手動裝在 macs,未寫進 `setup-mac-env.sh`**:2026-08-07 因 gemini-cli
+  已於 2026-06-18 停服而改裝其後繼(`brew install --cask antigravity-cli`,binary 名 `agy`)。
+  後果:新機器跑 setup 不會裝、macmini/m4mini 目前也沒有。該 cask 標 `auto_updates`,故 `brewup`
+  不會升它(除非 `--greedy`)。**它沒有 `generate_completions_from_executable`,不會踩 codex 那個
+  Gatekeeper 坑**,但首次執行仍會走核可流程——要裝就在該機 console 前跑一次。
+- **使用者的 MacBook 不在 `inventory.conf`**,故 `dotsync` / `allup` 都涵蓋不到,dotfiles 更新需
+  手動(`cd ~/.dotfiles && git pull && bash scripts/ensure-rc-source.sh`)。歷來如此、非本次造成
+  ——以前 `brewup` 自帶 `git pull` 讓它看起來像自動的。**待確認是刻意(終端設備不入清單)還是缺口**;
+  要納管走 `./scripts/add-new-host.sh <alias> <ip>`。
 
 ## 移交準備度
 
