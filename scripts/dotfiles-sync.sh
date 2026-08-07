@@ -99,11 +99,14 @@ sync_remote() {
             fi
             # 重新套用 SSH config
             if [ -f ssh/config ]; then
-                SCRIPT_DIR="$(pwd)"
-                cat > ~/.ssh/config << SSHEOF
-# 此檔案由 dotfiles sync 產生
-$(cat ssh/config)
-SSHEOF
+                # 不用 heredoc 灌檔：不帶引號的 heredoc 會對內容做命令替換與變數展開，
+                # 而 ssh/config 是**會長註解的檔案**，註解裡寫一組行內 code 的反引號就足以
+                # 讓那段被當指令執行、毀損的 config 直接部署到全機隊（2026-08-07 在加
+                # github-me 註解時當場撞到）。改成 echo + cat：內容完全不經 shell。
+                {
+                    echo "# 此檔案由 dotfiles sync 產生"
+                    cat ssh/config
+                } > ~/.ssh/config
                 chmod 600 ~/.ssh/config
             fi
             # 覆蓋 known_hosts
