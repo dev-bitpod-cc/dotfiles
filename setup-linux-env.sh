@@ -925,13 +925,15 @@ mkdir -p ~/.ssh && chmod 700 ~/.ssh
 
 # 3b. SSH config
 if [ -f "$SCRIPT_DIR/ssh/config" ]; then
-    cat > ~/.ssh/config << SSHEOF
-# 此檔案由 dotfiles setup 腳本產生
-# 共用設定來自 $SCRIPT_DIR/ssh/config
-# 機器特定設定請編輯 ~/.ssh/config.local
-
-$(cat "$SCRIPT_DIR/ssh/config")
-SSHEOF
+    # 不用 heredoc 灌檔：理由同 setup-mac-env.sh 同段（ssh/config 註解裡的反引號會被
+    # 當命令替換執行，毀損的 config 直接落地）
+    {
+        echo "# 此檔案由 dotfiles setup 腳本產生"
+        echo "# 共用設定來自 ${SCRIPT_DIR}/ssh/config"
+        echo "# 機器特定設定請編輯 ~/.ssh/config.local"
+        echo
+        cat "$SCRIPT_DIR/ssh/config"
+    } > ~/.ssh/config
     chmod 600 ~/.ssh/config
     print_success "SSH config 已設定"
 fi

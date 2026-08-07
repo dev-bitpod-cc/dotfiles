@@ -815,13 +815,16 @@ mkdir -p ~/.ssh && chmod 700 ~/.ssh
 
 # 4c. SSH config
 if [ -f "$SCRIPT_DIR/ssh/config" ]; then
-    cat > ~/.ssh/config << SSHEOF
-# 此檔案由 dotfiles setup 腳本產生
-# 共用設定來自 $SCRIPT_DIR/ssh/config
-# 機器特定設定請編輯 ~/.ssh/config.local
-
-$(cat "$SCRIPT_DIR/ssh/config")
-SSHEOF
+    # 不用 heredoc 灌檔：不帶引號的 heredoc 會對內容做命令替換，而 ssh/config 是**會長註解
+    # 的檔案**——註解裡一組行內 code 的反引號就足以讓那段被當指令執行（見 claude/CLAUDE.md
+    # 已知地雷）。echo + cat 讓內容完全不經 shell；只有 header 需要展開變數。
+    {
+        echo "# 此檔案由 dotfiles setup 腳本產生"
+        echo "# 共用設定來自 ${SCRIPT_DIR}/ssh/config"
+        echo "# 機器特定設定請編輯 ~/.ssh/config.local"
+        echo
+        cat "$SCRIPT_DIR/ssh/config"
+    } > ~/.ssh/config
     chmod 600 ~/.ssh/config
     print_success "SSH config 已設定"
 fi
