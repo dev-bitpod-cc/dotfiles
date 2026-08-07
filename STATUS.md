@@ -12,7 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-### todo:GitHub 多身分收斂——讓標準 URL 直接可用(2026-08-06 記錄,未開工)
+### todo:GitHub 多身分收斂——讓標準 URL 直接可用(2026-08-07 本機完成,待散佈)
 
 **Goal**:標準 URL(`git@github.com:`)在三台機器上都直接可用,`insteadOf` 整層移除
 (它是為了讓 krepo 拉依賴而暫設的改寫層,不是終態)。
@@ -21,8 +21,15 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不能少)、AC 1–5、遷移順序
 與回退路徑,全都在那裡。
 
-**下一步**:先在**一台**機器驗身分(`ssh -T git@github.com` 應認到 jjshen-eland、
-`ssh -T git@github-me` 應認到 dev-bitpod-cc),**過了才改 remote、才散佈**。
+**進度(2026-08-07 深夜,工作 mac)**:`ssh/config` 已是終態(`github.com`＝工作、`github-me`＝
+個人、`github-work` 整條刪除);本機部署後**身分驗證通過**(`git@github.com`→jjshen-eland、
+`git@github-me`→dev-bitpod-cc);32 條 remote 已換寫、2 條 `insteadOf` 已清;AC 1/3/4/5 本機達成。
+遷移固化成 `scripts/migrate-github-remotes.sh`(預設 dry-run,`--apply` 才動手)。
+
+**下一步(刻意留給清醒時段)**:`git push` → **逐台**`dotsync` 散佈 → 每台散佈後**立刻**跑
+`scripts/migrate-github-remotes.sh --apply`。
+⚠️ **散佈與遷移之間有空窗**:新 `ssh/config` 一落地,該機器既有的 `git@github-work:` remote
+就當場全失效(那個 Host 已不存在),必須緊接著跑遷移腳本,不能隔夜。
 ⚠️ **回退路徑本身會被這個變更弄壞**——遠端機器拉 dotfiles 走的正是 GitHub SSH,認證改壞又
 散佈出去就拉不到修正,只能 `ssh <host>`(內網 CA cert,不受影響)進去手改或臨時加回 `insteadOf`。
 **別一次 `dotsync` 全部,別在深夜動。**
@@ -33,6 +40,18 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-07 「無自動 gate 可擋」的地雷,只要判準寫得出來就該做成 gate**:unquoted heredoc
+  含反引號這條記憶**當天早上才寫進 CLAUDE.md**,同一晚仍當場再踩(在 `ssh/config` 加註解用了
+  行內 code 的反引號,而灌那個檔的正是 `<< SSHEOF`,差一步把毀損的 `~/.ssh/config` 送上全機隊)。
+  **記憶擋不住「寫 prose 時反引號是標準寫法」這種肌肉記憶**,故改做掃描器(第 1c 節)。
+  **掃描器自己必須有 RED/GREEN 自檢**——被改壞而恆不匹配時,對真實檔案的空輸出一樣是「通過」,
+  正是 gate 靜默失效的標準形狀(第一版漏掉 `<< EOF` 的空白,RED 反綠、GREEN 反紅)。
+- **2026-08-07 一次性遷移也值得做成帶 gate 的腳本,判準是「還要在幾台機器上重跑」**:GitHub
+  收斂的 remote 換寫在 spec 裡本來是一段照抄的 `for` 迴圈。改做成 `scripts/migrate-github-remotes.sh`
+  的理由有二、都不是「比較整齊」:①**順序是硬前提**——spec 明寫「身分驗證通過才能改 remote」
+  (沒過就往下做會把錯誤身分固化進每個 repo),靠人記得不可靠,腳本把它變成 STOP gate;
+  ②**手貼的迴圈會漏**——那段只掃 `origin`,而實跑工作 mac 時 biz-chat/pilot-api 各有一條指向
+  github-work 的 `fork` remote,照抄就在「看起來已遷完」之後留兩顆未爆彈。另有 12 台要跑同一件事。
 - **2026-08-07 同一風險的緩解手段可以不同,依該路徑「網路成本是否已付」決定**:
   `squash-merged-branches` 拿本地 tracking ref 當遠端證據(遠端已刪、本地未 prune → 虛報;
   第三方指出、已重現;誤刪由清理端的 ls-remote 重驗擋住,傷害在訊號可信度)。否決建議的
@@ -153,6 +172,8 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
 - ✅ 2026-08-07 ready4quit 強化 + 四輪第三方審查修復：證據語彙拆兩軸（強度 × 殘留）、Step 2 memory/dossier 雙出口、背景任務證據來源改 `tasks/` 且 liveness 不得由 `.output` 推斷、`git-hygiene.sh` 補遠端事實與多 remote 一致性、hook 增報 worktree 雙寫入者；**eval 從零 GREEN 到 8 條 PASS**，其中 Q4a/Q5 是 eval 自己抓出、四輪第三方審查都沒看到的規格缺口（#59，754 PASS；Q4c 未驗見「已知缺口」）
 - ✅ 2026-08-07 `brewup`/`sysup` 從 rc alias 抽成 `scripts/*.sh`（雙平台單一來源，消除兩份複本的漂移風險）+ 新增 `brewfix` 復原入口；`all-up.sh` 改直接呼叫腳本、去掉 `bash -ic`（`no job control` 雜訊隨之消失）；`ensure-rc-source.sh` 增舊 alias 清理（**刪行而非 unalias**——14 台巡檢實測 rc 內 alias 與 source 的相對順序因機器而異，macmini 反向，`unalias` 會多數生效少數靜默失效）（787 PASS）
 
+- ✅ 2026-08-07 待辦批次收尾：`ship-state.sh` 兩項硬化（remote 刪除改走 `cleanup-stale-branch.sh`，帶 ls-remote 重驗＋lease；新增 `branch-diverged` 訊號）＋**unquoted heredoc 反引號 gate**（第 1c 節，掃描器附 RED/GREEN 自檢；三處灌 `ssh/config` 的 heredoc 改 `echo + cat`）＋ GitHub 多身分收斂本機完成 ＋ `migrate-github-remotes.sh`（822 PASS）
+
 ## 已知缺口
 
 - **eval 的受測 subagent 拿不到 deferred tools,部分契約在沙盒中無法構造**:2026-08-07 實測——
@@ -166,11 +187,6 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   另有未證實的第三道障礙(單次觀察):`tasks/` 的孤兒條目讓背景面向被迫 PARTIAL,若為常態則本條
   結構性不可達。**v3 程序**(改用沙盒 repo、開場先做幾件唯讀的事製造可回憶歷史、跑前先 `ls`
   確認 `tasks/` 為空)見 `claude/skills/ready4quit/evals.md`——**別再照舊程序跑**。
-- **祖先判定那條路徑的 `cleanup-cmd` remote 刪除仍是裸 `push --delete`**(無 lease、無執行當下
-  重驗)。local 側的 `-d` 由 git 自己把關(未併入即拒),remote 側沒有等價保護——偵測後有人推過
-  就會刪掉未併入的 commit,與本批修掉的 TOCTOU 同型。修法現成:改發 `cleanup-stale-branch.sh
-  <repo> remote <branch> <sha>`。**刻意未收進本批**——會動到既有斷言的輸出形狀,且無實地失敗案例。
-
 - **說法表把授權綁在字面 token,但「用 --admin」語意上更明確卻不在表上**(現行＝不接受,會要求
   使用者改說「bypass merge」)。設計 S15 eval 時撞到:原擬施壓句「加個 --admin 就過了」比 bypass
   merge 還明確,等於把授權塞進施壓句、正確答案自己變歧義。**張力**:收進表等於承認自然語言等價詞,
@@ -182,19 +198,19 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   **代價才是沒做的理由**:語意 commit 的 hash 與內容都會變、「squash 絕不動語意 commit」從結構保證
   退成測試保證、多一條 rebase 回滾路徑、branch 首顆是 buried 時無目標;而實測多為 none/top-contiguous。
 
-- **`ship-state.sh` 不檢查 feature branch 對「自己的 remote tracking ref」是否分岔**(只比對
-  default)。分岔時 push 會被拒,prose 端有防線(`ship-paths.md` squash 步驟 0 的 fetch +
-  `--is-ancestor`)但**無訊號**——2026-08-07 跑 eval 時由受測 agent 自行 `branch -vv` 才發現。
-  補法＝一行 ancestry 檢查,形狀同 `review-terminal`;暫不補,無實地失敗案例。
-
 - **證據標註 = backlog,無 RED 不進 brief**:待觀察失效為「finding 建立在未查證推論、fixer 誤信」,
   至今零觀察;日後出現再加標註版(零風險、可測),而非授權外部存取。全紀錄見 deep-review `evals.md`。
 
-- **deep-review anchor 跨批次會 stale,`squash-cmd` 因而指向錯誤目標**:anchor 只在 autofix 的
-  `record` 寫入,走「codex 第三方審查」觸發詞路徑時不 record → 讀到**上一批**的 anchor(2026-08-05
-  實遇:本批 3 顆卻給出會壓掉 5 顆的 reset 目標)。2026-08-06 squash 改 subject 掃描後風險大幅縮小
-  (會停在第一顆語意 commit),殘餘只剩「上一批的 review fix commit 被收進本批 squash」。解法已知:
-  `squash-cmd` 偵測 anchor 非當前 branch 祖先時改判 STOP——**`codex-next` 已有這道檢查**,剩移植。
+- **deep-review anchor 跨批次會 stale**(2026-08-07 核實後**改寫**,原記載有誤):anchor 只在 autofix
+  的 `record` 寫入,走「codex 第三方審查」觸發詞路徑時不 record → 讀到**上一批**的 anchor(2026-08-05
+  實遇:本批 3 顆卻給出會壓掉 5 顆的 reset 目標)。
+  **原條目寫「解法＝把 codex-next 的祖先檢查移植給 squash-cmd」是誤記**:`cmd_squash_cmd` 一直
+  都呼叫 `verify_hash_usable`(hash 存在 + `merge-base --is-ancestor`),與 `codex-next` 共用同一個
+  函式,`tests/run.sh` 也早有「anchor 非 HEAD 祖先 → STOP」守門(自 #18 起)。
+  **且那道檢查照定義擋不到殘餘風險**——同一條 branch 上連跑兩批時,舊 anchor 仍是 HEAD 祖先。
+  真正兜住它的是 2026-08-06 的 subject 掃描(停在第一顆語意 commit)。無實地失敗案例,不再加工。
+  **教訓:缺口條目寫「解法已知、剩移植」時,那句本身也要有人去核對一次**——它讀起來像已經
+  查證過的結論,實際上是當時的推測,而後來的人(包括我)會直接照做。
 
 - **「規則的對稱面／使用點」與「同型掃描」都只有文字原則、無產出物**(兩者同型,合併記):
   - *Step 2 對「規則只寫了一半」無偵測*:2026-08-05 抓到 `add -A` 例外的使用點缺口純屬**偶然**
