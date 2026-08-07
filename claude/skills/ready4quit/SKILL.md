@@ -26,15 +26,20 @@ disable-model-invocation: true
 - **Only `VERIFIED + ✓` may be reported as GREEN.**
 - `RECALLED + ✓` → 只能說「沒有已知殘留」，**不可**說成「已驗證乾淨」。
 - **任何 `⚠` → 有殘留，verdict 一律 NOT READY**，與證據強度無關（RECALLED 找到的殘留一樣是殘留）。
+- **`⚠` means residue was actually FOUND. Being unable to check is NOT residue.** 查不到 → 把**證據強度**降成 `PARTIAL`，殘留欄仍是 `✓`（確實沒找到東西）。`⚠` 後面永遠接得出具體項目；接不出來就不是 `⚠`。
 - 任何 `PARTIAL` → 明說哪一項查不到、為什麼，由使用者決定要不要帶著它退出。
+
+兩軸會朝**兩個方向**塌陷，都要防：把找到的殘留說成沒有（證據不足 → 標 `✓`），以及把查不到說成有殘留（不確定 → 標 `⚠`）。後者產出的報告會宣告 NOT READY 卻指不出任何待辦，一樣是 verdict 與證據對不上。
 
 ## 動作邊界（什麼可以直接做）
 
 三類，界線**不可互相滲透**：
 
 - **NEVER — 無論是否同意都不在這裡做**：`commit`、`push`、開 PR、merge；**rewriting, deleting, moving, or compacting an existing dossier entry**。Git 殘留永遠只有一個建議：跑 `/project log`。**使用者說「你直接 commit 吧」也不做**——那是 `/project log` 的權責，不是一句同意就能移轉過來的；dossier 的改寫與整理同理，權責在 `/project log` Step 2，**consent does NOT move it here**。
-- **需明確同意才做**：kill 背景任務、刪 ScheduleWakeup/cron、刪除或覆寫既有 memory 檔。一律先列出、等點頭。
-- **Additive 且可逆 → 可直接做**：新增 memory 檔、補 STATUS.md 漏記的決策／死路條目。但**必須在報告中逐筆列出做了什麼、跳過什麼**。
+- **需明確同意才做**：kill 背景任務、刪 ScheduleWakeup/cron、**刪除既有 memory 檔，或以會抹掉既有內容的方式改寫它**。一律先列出、等點頭。
+- **Additive 且可逆 → 可直接做**：新增 memory 檔、**對既有 memory 檔同主題純附加**（既有內容一字不動，新條目追加在後；`MEMORY.md` 索引行就地補述同屬此類）、補 STATUS.md 漏記的決策／死路條目。但**必須在報告中逐筆列出做了什麼、跳過什麼**。
+
+判準是**既有內容有沒有被抹掉**，不是「檔案存不存在」——對既有檔純附加沒有損失任何東西，逼一輪往返只是把 additive 出口切成兩半（新增免問、更新要問），而兩者的可逆性相同。
 
 `report-first` 約束的是前兩類：**不在使用者看到報告前做任何對外或破壞性動作**。第三類可以先做——單一份報告即為完整交代，不需要兩階段往返。
 
@@ -57,8 +62,8 @@ Ready4Quit 進度：
 
 - **Report-first for outward / destructive actions.** 那些動作一律先出現在報告裡等你點頭；additive 寫入可先做，但必須逐筆列出（範圍見〈動作邊界〉，單一來源）。
 - **NEVER push / open PR here.** Git 殘留只**建議** `/project log`，本 skill 不 commit、不 push、不開 PR、不 merge。Ship 是 `/project log` 的事。
-- **Outward / destructive flush needs explicit confirmation.** Kill 背景任務、刪 ScheduleWakeup/cron、刪除既有 memory 檔——一律先列出、等明確同意，沒同意 → 不做。
-- **Memory writes are additive but still surface them.** 新增 memory 檔是可逆的附加動作，可直接寫，但**必須在報告中列出寫了什麼、跳過什麼**，不靜默塞。
+- **Outward / destructive flush needs explicit confirmation.** Kill 背景任務、刪 ScheduleWakeup/cron、刪除既有 memory 檔或抹掉其既有內容——一律先列出、等明確同意，沒同意 → 不做。
+- **Memory writes are additive but still surface them.** 新增 memory 檔、或對既有檔同主題純附加，都是可逆的附加動作，可直接寫，但**必須在報告中列出寫了什麼、跳過什麼**，不靜默塞。
 - **Dossier writes are additive and stop at the working tree.** 補寫 STATUS.md 漏記的決策/死路同屬可逆附加動作，可直接寫；但 **writing the working tree is NOT shipping** —— 本 skill 仍不 commit、不 push，且不改寫既有條目、不整理 dossier。
 - **Don't rubber-stamp.** 每個面向都要**實際跑指令/掃描**才能標 GREEN。沒查就說「應該沒問題」= 違規。
 
@@ -67,6 +72,7 @@ Ready4Quit 進度：
 - Declaring any dimension GREEN you never actually inspected (no `git-hygiene.sh` output, no `tasks/` listing, no `CronList` check, no scan).
 - Reporting RECALLED as GREEN. "I didn't see any" is not "I verified there are none" — name which one it is, every time.
 - Marking a dimension `✓` while listing an actual open item under it. Evidence strength and residue are separate axes: RECALLED still takes `⚠` the moment you find something.
+- Marking a dimension `⚠` when you found nothing, because the check could not be completed. Uncertainty belongs on the evidence axis (`PARTIAL`), never on the residue axis. Writing "⚠ 沒有殘留，但查不到" contradicts itself and forces a NOT READY that names no actual to-do.
 - Inferring a background task's liveness from its `.output` size or contents. A silent command leaves an empty file too.
 - Treating a `git-hygiene.sh` CLEAN as proof the remote agrees when the same output says `remote: UNKNOWN`. A stale tracking ref makes `unpushed: none` meaningless.
 - Reading `TaskList` as the background-task check. It lists `TaskCreate` to-dos, not background shells or subagents — an empty result proves nothing about what is still running.
@@ -128,7 +134,7 @@ Do not re-run the underlying git commands one by one — the script IS the check
 - 只對本次對話有意義的 → **不存**。
 - 存之前先比對既有 memory 檔，覆蓋同一主題就**更新該檔**，不要建重複檔。
 
-新增 memory 檔是可逆附加動作，可直接寫（依記憶系統 frontmatter 格式 + 在 `MEMORY.md` 補一行索引）。**刪除/覆寫既有 memory 屬破壞性** → 先確認。
+新增 memory 檔是可逆附加動作，可直接寫（依記憶系統 frontmatter 格式 + 在 `MEMORY.md` 補一行索引）。**同主題更新既有檔時只附加、不動既有內容**（`MEMORY.md` 已有的索引行就地補述，不新增重複列）——同屬 additive，可直接寫。**刪除既有 memory 檔，或改寫／移除其既有內容，屬破壞性** → 先確認。
 
 ### dossier 出口
 
