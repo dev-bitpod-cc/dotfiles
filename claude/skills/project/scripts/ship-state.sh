@@ -313,15 +313,19 @@ detect_dossier() {
             # b > 0 而非 sec != ""：第一個 ## 之前的前言（檔頭註解 + H1 + 定位句）與空名
             # 章節原本被靜默丟棄，表格會把 agent 導向錯的地方——殘量要現身、空節不佔位
             function emit() { if (b > 0) printf "%d\t%s\n", b, (sec == "" ? "(前言/未分節)" : sec) }
-            /^##[[:space:]]/ { emit(); sec = $0; sub(/^##[[:space:]]+/, "", sec); b = 0; next }
+            # 標題行本身計入它開啟的那一節（b 從標題長度起算、不是 0）：歸零會讓各節加總
+            # 系統性少掉每個標題的長度，佔比表恆略低於 100%，讀的人會以為有一塊沒被算到
+            /^##[[:space:]]/ { emit(); sec = $0; sub(/^##[[:space:]]+/, "", sec); l = $0; sub(/^\001/, "", l); b = length(l) + 1; next }
             { l = $0; sub(/^\001/, "", l); b += length(l) + 1 }
             END { emit() }' <<< "$unfenced" | LC_ALL=C sort -rn | head -n "$DOSSIER_SECTIONS_TOP_N" | LC_ALL=C awk -v total="$bytes" -F'\t' '
             { printf "%s%s %d (%d%%)", (NR > 1 ? " / " : ""), $2, $1, ($1 * 100 / total) }
             END { printf "\n" }')"
-        [ -n "$sections" ] && echo "dossier-sections: ${sections}（前 ${DOSSIER_SECTIONS_TOP_N} 大；先量再決定動哪節）"
+        # 百分比分母是全檔 bytes，而各節量的是剝掉 fenced 區塊後的內容——故加總必然 <100%，
+        # 差額就是 code fence。明寫出來，免得讀的人以為漏算了哪一節
+        [ -n "$sections" ] && echo "dossier-sections: ${sections}（前 ${DOSSIER_SECTIONS_TOP_N} 大，佔全檔 bytes；不含 fenced 區塊，故加總 <100%。先量再決定動哪節）"
     fi
     if [ "$maxlen" -gt "$DOSSIER_MAX_LINE_BYTES" ]; then
-        echo "dossier-flag: 最長行 ${maxlen} bytes > ${DOSSIER_MAX_LINE_BYTES}（巨型單行——rewrap 後仍超標者需蒸餾，不是只換行）"
+        echo "dossier-flag: 最長行 ${maxlen} bytes > ${DOSSIER_MAX_LINE_BYTES}（巨型單行——**風格訊號、非硬門檻**：不必當次收斂，下次編到該段時順手 rewrap 即可；但 rewrap 後仍超標者需蒸餾，不是只換行）"
     fi
     # 決策/里程碑條目蒸餾上限：以頂層「- 」bullet 為條目邊界、續行（含縮排子彈）併入條目，
     # 量 bytes（LC_ALL=C 下 awk length 即 bytes）防巨型單行繞過行數。只掃這兩節——
@@ -334,7 +338,10 @@ detect_dossier() {
     local entry_out max_entry max_entry_line
     entry_out="$(LC_ALL=C awk '
         function flush() { if (cur > max) { max = cur; maxline = curline } cur = 0 }
-        /^##[[:space:]]/ { flush(); insec = ($0 ~ /決策|里程碑|已完成/); next }
+        # 節名錨在標題開頭，不用子字串比對：`## 進行中（已完成 M1）` 這種寫法含「已完成」
+        # 三個字，子字串版會把整個進行中章節當成里程碑節掃進條目尺寸判定（進行中的 spec 區
+        # 合法偏大，於是恆誤報）。錨定後只有真的以那些節名開頭的標題才算。
+        /^##[[:space:]]/ { flush(); insec = ($0 ~ /^##[[:space:]]*(關鍵決策|已完成|里程碑)/); next }
         insec && /^-[[:space:]]/ { flush(); cur = length($0); curline = NR; next }
         insec && cur { l = $0; sub(/^\001/, "", l); cur += length(l) + 1 }
         END { flush(); printf "%d\t%d\n", max + 0, maxline + 0 }' <<< "$unfenced")"
@@ -348,7 +355,8 @@ detect_dossier() {
     # 少了那條會出現兩個方向的誤報：①圍欄內貼的測試輸出（滿是 ✅）被當成未移走的完成項
     # ②哨兵讓圍欄內的假標題不再切節，in_sec 一路開著，圍欄內的 ✅ 全算進「進行中」
     # （②是加哨兵後才出現的回歸——改動前假標題會把 in_sec 關掉，反而歪打正著）
-    if awk '/^\001/ { next } /^##[[:space:]]/{ in_sec = ($0 ~ /進行中/) } in_sec && /✅/ { found=1 } END { exit !found }' <<< "$unfenced"; then
+    # 節名同樣錨在標題開頭（理由見上方條目 awk）：`## 已完成（進行中殘項）` 含「進行中」
+    if awk '/^\001/ { next } /^##[[:space:]]/{ in_sec = ($0 ~ /^##[[:space:]]*進行中/) } in_sec && /✅/ { found=1 } END { exit !found }' <<< "$unfenced"; then
         echo "dossier-flag: 「進行中」含 ✅ 完成項（Step 2 當場移入里程碑）"
     fi
     # herestring 同上：避免大輸入下 grep -q 早退觸發 SIGPIPE + pipefail 的偽陰性

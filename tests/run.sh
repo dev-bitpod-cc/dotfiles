@@ -81,6 +81,7 @@ if shellcheck -x -P "SCRIPTDIR:$ROOT/scripts" \
     "$ROOT"/codex/skills/*/scripts/*.sh \
     "$ROOT/shell/functions.sh" \
     "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh" \
+    "$ROOT"/claude/evals/*.sh \
     "$ROOT/tests/run.sh"; then
     ok "shellcheck 全部通過"
 else
@@ -103,6 +104,7 @@ fullwidth_hits="$(LC_ALL=C grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^[:print:][:space:
     "$ROOT"/claude/skills/*/scripts/*.sh "$ROOT"/claude/skills/*/scripts/lib/*.sh \
     "$ROOT"/codex/skills/*/scripts/*.sh \
     "$ROOT/shell/functions.sh" \
+    "$ROOT"/claude/evals/*.sh \
     "$ROOT/tests/run.sh")"
 fullwidth_rc=$?
 # grep 的 exit：0=有命中、1=無命中、>1=執行錯誤（後者必須大聲失敗，不可當成乾淨）
@@ -180,7 +182,8 @@ for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
          "$ROOT"/claude/skills/*/scripts/*.sh "$ROOT"/claude/skills/*/scripts/lib/*.sh \
          "$ROOT"/codex/skills/*/scripts/*.sh \
          "$ROOT/shell/functions.sh" \
-         "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh"; do
+         "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh" \
+         "$ROOT"/claude/evals/*.sh; do
     bash -n "$f" || { syntax_fail=1; echo "     syntax fail: $f"; }
 done
 if [ "$syntax_fail" -eq 0 ]; then ok "bash -n 全部通過"; else bad "bash -n 有語法錯誤"; fi
@@ -1482,6 +1485,19 @@ if [ -n "$maxpct" ] && [ "$maxpct" -le 100 ]; then ok "分節佔比不破 100%�
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
 if echo "$out" | grep -qE "^dossier-sections: \(前言/未分節\) [0-9]{4,}"; then ok "前言殘量現身於分節表（不靜默丟棄）"; else bad "前言 bytes 被丟棄，表格會誤導收斂對象（實得：$(echo "$out" | grep dossier-sections)）"; fi
 
+# 分節 bytes 必須把**標題行本身**算進它開啟的那一節：歸零會讓各節加總系統性少掉每個標題
+# 的長度，讀表的人會以為有一塊沒被算到。此 fixture 無 fence、節數 < TOP_N，故加總應**恰好**
+# 等於檔案 bytes（差額只可能來自標題行被漏計）。
+{ echo "# 測試專案 STATUS"
+  awk 'BEGIN { s = "前言填充"; for (i = 0; i < 20; i++) s = s "內容"; for (r = 0; r < 300; r++) print s }'
+  echo; echo "## 進行中"; echo "- x"
+  echo; echo "## 關鍵決策（附理由）"; echo "- y"
+  echo; echo "## 已完成（里程碑）"; echo "- z"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+sec_sum="$(echo "$out" | grep '^dossier-sections:' | grep -oE ' [0-9]+ \([0-9]+%\)' | grep -oE '[0-9]+ ' | LC_ALL=C awk '{ t += $1 } END { print t+0 }')"
+file_bytes="$(LC_ALL=C wc -c < "$TMP/ds-work/STATUS.md" | tr -d ' ')"
+if [ "${sec_sum:-0}" = "$file_bytes" ]; then ok "分節 bytes 加總 == 檔案 bytes（標題行已計入所屬節）"; else bad "分節加總 ${sec_sum:-0} ≠ 檔案 ${file_bytes}（標題行未計入，佔比表恆偏低）"; fi
+
 # 行號 vs fenced block：剝 code fence 時若「丟棄」該行而非**前綴 \001 哨兵保留原行**，後續行號
 # 全數位移、flag 指向錯的地方。fixture 讓真條目落在第 12 行、其前有 4 行 fenced（含假標題）
 # ——完全丟棄式剝除會報第 8 行。本條守的是**行號對齊**；長度保留（分節佔比不被低估）由上面
@@ -1508,6 +1524,22 @@ if echo "$out" | grep -q "dossier-flag:.*最大條目"; then ok "里程碑節散
   echo; echo "## 已完成（里程碑）"; echo "- ✅ 無"; } > "$TMP/ds-work/STATUS.md"
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
 if echo "$out" | grep -q "dossier-flag:.*最大條目"; then bad "進行中的大條目誤觸發條目 flag（作用域應限決策/里程碑）"; else ok "進行中大條目未誤觸發（spec 區合法偏大）"; fi
+
+# 作用域比對必須**錨在標題開頭**，不是子字串：`## 進行中（已完成 M1）` 含「已完成」三個字，
+# 子字串版會把整個進行中章節當里程碑節掃進來——而 spec 區合法偏大，於是恆誤報。
+# 這種標題是自然寫法（記錄里程碑進度），不是刻意刁難的 fixture。
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中（已完成 M1）"
+  awk 'BEGIN { s = "- 工作項 spec："; for (i = 0; i < 70; i++) s = s "合約細節"; print s }'
+  echo; echo "## 已完成（里程碑）"; echo "- ✅ 無"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*最大條目"; then bad "標題含「已完成」的進行中章節被當成里程碑節（作用域用子字串比對，未端錨定）"; else ok "節名端錨定：`## 進行中（已完成 M1）` 不被當成里程碑節"; fi
+
+# ✅ 掃描同型：`## 已完成（進行中殘項）` 含「進行中」，子字串版會把里程碑的 ✅ 當成
+# 「進行中章節有已完成項」而誤報。此處進行中章節本身沒有 ✅，故不得印該 flag。
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 還在做的事"
+  echo; echo "## 已完成（進行中殘項）"; echo "- ✅ 2026-07-01 某里程碑"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*✅"; then bad "標題含「進行中」的里程碑節，其 ✅ 被當成進行中章節的（✅ 掃描未端錨定）"; else ok "✅ 掃描節名端錨定（不被標題內的「進行中」三字騙到）"; fi
 
 # 簽章不符：STATUS.md 存在但非 dossier（撞名領域產物，無「進行中」章節）→ flag
 cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
