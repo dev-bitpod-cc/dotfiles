@@ -12,38 +12,27 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-### todo:GitHub 多身分收斂——讓標準 URL 直接可用(2026-08-07 本機完成,待散佈)
+### todo:GitHub 多身分收斂——**14 台已全數完成,只剩清舊 key 檔**(2026-08-08)
 
-**Goal**:標準 URL(`git@github.com:`)在三台機器上都直接可用,`insteadOf` 整層移除
-(它是為了讓 krepo 拉依賴而暫設的改寫層,不是終態)。
+**Goal 已達成**:標準 URL(`git@github.com:`)在全機隊直接可用,`insteadOf` 整層移除。
+spec 定稿見 `docs/plans/2026-08-06-github-identity-consolidation.md`(AC 1–5、遷移順序、
+回退路徑;**檔名記的是舊的**,定稿寫後不改)。
 
-**spec 定稿**:`docs/plans/2026-08-06-github-identity-consolidation.md`——現況盤點(三台機器的
-repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不能少)、AC 1–5、遷移順序
-與回退路徑,全都在那裡。
+**完成狀態(14 台逐台驗過)**:`github.com`→jjshen-eland、`github-me`→dev-bitpod-cc;
+殘留換寫 0、`insteadOf` 0;每台都拉得動 dotfiles(回退路徑完好)。db01 另驗 **AC4**——
+`git+ssh://git@github.com/elandcomtw/krepo-common.git` 在無改寫層下直接可達,那正是整件事的起因。
 
-**進度(工作 mac 已完成)**:`ssh/config` 已是終態(`github.com`＝工作、`github-me`＝個人、
-`github-work` 整條刪除);身分驗證通過;32 條 remote 已換寫、2 條 `insteadOf` 已清;
-AC 1/3/4/5 本機達成。遷移固化成 `scripts/migrate-github-remotes.sh`(預設 dry-run)。
+**唯一剩餘**:各台的**舊 key 檔**(`id_github_work{,.pub}`、`id_github{,.pub,-cert.pub}`)仍留著,
+待使用者確認後才刪——刻意留的,它是這次遷移的回退點。
 
-**2026-08-08 併入 key 檔名收斂**:`id_github_work`→`id_github_com`、`id_github`→**`id_personal`**。
-後者刻意不叫 `id_github_me`——**同一把私鑰也是各主機 `authorized_keys` 的 fallback**
-(CA cert 失效時的後路,由 `add-new-host.sh` 部署),用 `id_github_*` 命名會把那個角色藏起來。
-`authorized_keys` 存的是公鑰**內容**不是檔名,故改本地檔名不影響 fallback。
-**一律 `cp` 不 `mv`**:新舊並存,任一步失敗都不斷線——遠端拉 dotfiles 靠的正是 GitHub SSH。
-`docs/plans/` 的 spec 定稿**刻意未改**(寫後不改),它記的是當時檔名。
-
-**14 台已完成前置**:兩把新 key + `.pub` 全數就位(5 台無 `id_personal-cert.pub`,因為本來就
-沒有 `id_github-cert.pub`——那是早期用它簽的內網 cert、遺留物,無功能影響)。
-
-**下一步**:**新 config 必須先進 `origin/main`,遠端 `dotsync` 才拉得到**(踩過:遠端 pull 的是
-main,本地 branch 未 push 時散佈等於沒散) → **逐台**`dotsync` → 每台散佈後**立刻**跑
-`migrate-github-remotes.sh --apply`(共 48 條 remote 分佈在 8 台;eagle03 15、eagle06 11、
-db01 10、eagle07/08/09 各 3、macmini 2、ap01 1) → 逐台驗身分 → **全數確認後才刪舊 key 檔**。
-⚠️ **散佈與遷移之間有空窗**:新 `ssh/config` 一落地,該機器既有的 `git@github-work:` remote
-就當場全失效(那個 Host 已不存在),必須緊接著跑遷移腳本,不能隔夜。
-⚠️ **回退路徑本身會被這個變更弄壞**——遠端機器拉 dotfiles 走的正是 GitHub SSH,認證改壞又
-散佈出去就拉不到修正,只能 `ssh <host>`(內網 CA cert,不受影響)進去手改或臨時加回 `insteadOf`。
-**別一次 `dotsync` 全部,別在深夜動。**
+**過程中值得留下的三件事**:
+- **`cp` 不 `mv`**:新舊並存,任一步失敗都不斷線。遠端拉 dotfiles 靠的正是 GitHub SSH,
+  認證改壞又散佈出去就拉不到修正(只能 `ssh <host>` 走內網 CA cert 進去手改)。
+- **散佈的前提是變更已進 `origin/main`**:遠端 `dotsync` 拉的是 main,本地 branch 未 push 時
+  散佈等於空轉。實地踩過一次。
+- **散佈與遷移之間有空窗**:新 `ssh/config` 一落地,該機器的 `git@github-work:` remote 就當場
+  全失效(Host 已不存在),必須緊接著跑 `migrate-github-remotes.sh --apply`,不能隔夜。
+  實際做法是先散 db01 一台走完全程驗證,再放其餘 13 台。
 
 ---
 
@@ -168,6 +157,7 @@ db01 10、eagle07/08/09 各 3、macmini 2、ap01 1) → 逐台驗身分 → **�
 - ✅ 2026-08-07 `brewup`/`sysup` 從 rc alias 抽成 `scripts/*.sh`（雙平台單一來源，消除兩份複本的漂移風險）+ 新增 `brewfix` 復原入口；`all-up.sh` 改直接呼叫腳本、去掉 `bash -ic`（`no job control` 雜訊隨之消失）；`ensure-rc-source.sh` 增舊 alias 清理（**刪行而非 unalias**——14 台巡檢實測 rc 內 alias 與 source 的相對順序因機器而異，macmini 反向，`unalias` 會多數生效少數靜默失效）（787 PASS）
 
 - ✅ 2026-08-07 待辦批次收尾：`ship-state.sh` 兩項硬化（remote 刪除改走 `cleanup-stale-branch.sh`，帶 ls-remote 重驗＋lease；新增 `branch-diverged` 訊號）＋**unquoted heredoc 反引號 gate**（第 1c 節，掃描器附 RED/GREEN 自檢；灌 `ssh/config` 那三處同批改 `echo + cat`，但**當時給的理由是錯的**，見決策節首條）＋ GitHub 多身分收斂本機完成 ＋ `migrate-github-remotes.sh`（822 PASS）
+- ✅ 2026-08-08 **GitHub 多身分收斂 14 台全數上線**：`github.com`＝工作、`github-me`＝個人、`github-work` 與 `insteadOf` 整層消滅；key 檔名同批對齊 Host（`id_github_com` / `id_personal`）。48 條 remote 換寫、2 條 `insteadOf` 清除，逐台驗過身分與 dotfiles 拉取；db01 另驗 AC4（`krepo-common` 標準 URL 直接可達）。**先散 db01 一台走完全程再放其餘 13 台**（#68，823 PASS）
 
 ## 已知缺口
 
