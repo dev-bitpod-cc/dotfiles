@@ -222,7 +222,10 @@ phase_b() {
     ok "SSH 連線 OK"
 
     # 2. 部署 GitHub keys（若本機有）
-    for key in id_github id_github_work; do
+    # 命名對應 ssh/config 的 Host：id_github_com ↔ Host github.com（工作）、
+    # id_personal ↔ Host github-me（個人）。後者刻意不叫 id_github_*——它同時是下一段
+    # authorized_keys fallback 用的私鑰，角色不只 GitHub。
+    for key in id_personal id_github_com; do
         if [ -f "$HOME/.ssh/$key" ]; then
             run scp -q "$HOME/.ssh/$key" "$HOME/.ssh/$key.pub" "$ALIAS:~/.ssh/"
         fi
@@ -231,9 +234,9 @@ phase_b() {
 
     # 3. 設定 authorized_keys（fallback）
     # 透過 scp + 遠端讀檔，避免把 key 內容經過本地 shell 展開（防 injection）
-    if [ -f "$HOME/.ssh/id_github.pub" ]; then
+    if [ -f "$HOME/.ssh/id_personal.pub" ]; then
         if [ "$DRY_RUN" -eq 0 ]; then
-            scp -q "$HOME/.ssh/id_github.pub" "$ALIAS:/tmp/.add-new-host.authkey.pub"
+            scp -q "$HOME/.ssh/id_personal.pub" "$ALIAS:/tmp/.add-new-host.authkey.pub"
             ssh "$ALIAS" bash -s <<'REMOTE_AUTHKEYS'
 set -e
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
@@ -245,7 +248,7 @@ fi
 rm -f /tmp/.add-new-host.authkey.pub
 REMOTE_AUTHKEYS
         else
-            echo "    [dry-run] scp id_github.pub 到 ${ALIAS}，遠端合併到 authorized_keys"
+            echo "    [dry-run] scp id_personal.pub 到 ${ALIAS}，遠端合併到 authorized_keys"
         fi
         ok "authorized_keys fallback 已部署"
     fi

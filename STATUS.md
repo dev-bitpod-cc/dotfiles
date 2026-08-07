@@ -21,13 +21,24 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不能少)、AC 1–5、遷移順序
 與回退路徑,全都在那裡。
 
-**進度(2026-08-07 深夜,工作 mac)**:`ssh/config` 已是終態(`github.com`＝工作、`github-me`＝
-個人、`github-work` 整條刪除);本機部署後**身分驗證通過**(`git@github.com`→jjshen-eland、
-`git@github-me`→dev-bitpod-cc);32 條 remote 已換寫、2 條 `insteadOf` 已清;AC 1/3/4/5 本機達成。
-遷移固化成 `scripts/migrate-github-remotes.sh`(預設 dry-run,`--apply` 才動手)。
+**進度(工作 mac 已完成)**:`ssh/config` 已是終態(`github.com`＝工作、`github-me`＝個人、
+`github-work` 整條刪除);身分驗證通過;32 條 remote 已換寫、2 條 `insteadOf` 已清;
+AC 1/3/4/5 本機達成。遷移固化成 `scripts/migrate-github-remotes.sh`(預設 dry-run)。
 
-**下一步(刻意留給清醒時段)**:`git push` → **逐台**`dotsync` 散佈 → 每台散佈後**立刻**跑
-`scripts/migrate-github-remotes.sh --apply`。
+**2026-08-08 併入 key 檔名收斂**:`id_github_work`→`id_github_com`、`id_github`→**`id_personal`**。
+後者刻意不叫 `id_github_me`——**同一把私鑰也是各主機 `authorized_keys` 的 fallback**
+(CA cert 失效時的後路,由 `add-new-host.sh` 部署),用 `id_github_*` 命名會把那個角色藏起來。
+`authorized_keys` 存的是公鑰**內容**不是檔名,故改本地檔名不影響 fallback。
+**一律 `cp` 不 `mv`**:新舊並存,任一步失敗都不斷線——遠端拉 dotfiles 靠的正是 GitHub SSH。
+`docs/plans/` 的 spec 定稿**刻意未改**(寫後不改),它記的是當時檔名。
+
+**14 台已完成前置**:兩把新 key + `.pub` 全數就位(5 台無 `id_personal-cert.pub`,因為本來就
+沒有 `id_github-cert.pub`——那是早期用它簽的內網 cert、遺留物,無功能影響)。
+
+**下一步**:**新 config 必須先進 `origin/main`,遠端 `dotsync` 才拉得到**(踩過:遠端 pull 的是
+main,本地 branch 未 push 時散佈等於沒散) → **逐台**`dotsync` → 每台散佈後**立刻**跑
+`migrate-github-remotes.sh --apply`(共 48 條 remote 分佈在 8 台;eagle03 15、eagle06 11、
+db01 10、eagle07/08/09 各 3、macmini 2、ap01 1) → 逐台驗身分 → **全數確認後才刪舊 key 檔**。
 ⚠️ **散佈與遷移之間有空窗**:新 `ssh/config` 一落地,該機器既有的 `git@github-work:` remote
 就當場全失效(那個 Host 已不存在),必須緊接著跑遷移腳本,不能隔夜。
 ⚠️ **回退路徑本身會被這個變更弄壞**——遠端機器拉 dotfiles 走的正是 GitHub SSH,認證改壞又

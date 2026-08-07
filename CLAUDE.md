@@ -89,17 +89,20 @@ glog=git log --oneline --graph --decorate
 ### 認證架構
 
 - **內網伺服器**：SSH CA certificate 認證（`id_autogen` + cert）
-- **GitHub 工作**（預設）：`id_github_work`（Host `github.com`）——標準 URL `git@github.com:` 直接可用，
+- **GitHub 工作**（預設）：`id_github_com`（Host `github.com`）——標準 URL `git@github.com:` 直接可用，
   `gh` 也才對得上（**gh 完全不看 SSH alias**，那是 alias 方案永遠解不掉的一半）
-- **GitHub 個人**：`id_github`（Host `github-me`）——少數個人 repo 明示走這條。
-  這個 alias 不可約：GitHub 一把 key 只能綁一個帳號，兩個身分必須有區分方式
+- **GitHub 個人**：`id_personal`（Host `github-me`）——少數個人 repo 明示走這條。
+  這個 alias 不可約：GitHub 一把 key 只能綁一個帳號，兩個身分必須有區分方式。
+  **key 名刻意不帶 `github`**：同一把私鑰也是下面那條 `authorized_keys` fallback 用的私鑰，
+  叫 `id_github_*` 會把那個角色藏起來（`id_personal-cert.pub` 是早期用它簽的內網 cert，遺留物）
 - ⚠️ 兩個 Host 的 `IdentitiesOnly yes` **一行都不能少**：少了它 ssh 會把 agent 裡的 key 逐一送出、
   GitHub 收下第一把有效的 → 認到**錯誤帳號**，長相是「連得上但權限不對」，比連不上更難查
 - 舊寫法 `github-work` 與 `~/.gitconfig` 的 `insteadOf` 改寫層**已移除**。某台機器部署新 `ssh/config`
   後，該機器要跑一次 `scripts/migrate-github-remotes.sh --apply`（預設 dry-run），否則它既有的
   `git@github-work:` remote 會當場全部失效。該腳本以身分驗證為硬前提、掃**每個** remote（不只
   `origin`——工作 mac 上就有兩條 `fork` remote 走 github-work）、順帶清 `insteadOf`
-- **終端設備 fallback**：伺服器 `authorized_keys` 保留舊公鑰
+- **終端設備 fallback**：伺服器 `authorized_keys` 保留 `id_personal.pub`（CA cert 那條路失效時的後路，
+  由 `add-new-host.sh` 部署）。**存的是公鑰內容、不是檔名**，所以本地改 key 檔名不影響它
 
 ### 管理的檔案
 
@@ -159,7 +162,7 @@ scripts/dotfiles-sync.sh     # 同步 dotfiles 到所有主機
 4. **PATH 已包含**：`~/.local/bin`（uv、Claude Code 安裝於此）
 5. **API Keys**：存放於 `~/.env`（權限 600，會自動載入）
 6. **Git 設定**：透過 `include.path` 引入 `git/config`，`user.name`/`email` 在各機器的 `~/.gitconfig` 設定
-7. **SSH keys**：`id_github_work`（GitHub 工作＝`github.com` 預設）、`id_github`（GitHub 個人＝`github-me`）、`id_autogen`（內網 cert）
+7. **SSH keys**：`id_github_com`（GitHub 工作＝`github.com` 預設）、`id_personal`（GitHub 個人＝`github-me`，兼 `authorized_keys` fallback）、`id_autogen`（內網 cert）
 
 ## 開發環境
 
