@@ -39,6 +39,19 @@ repo 分佈)、`ssh/config` 方案(含 `IdentitiesOnly yes` 為何一行都不�
   「該歸檔而非再壓」的訊號。`references/dossier.md` 的檔案分工表本來就指定 `docs/plans/*.md`
   存放 spec 定稿(寫後不改),STATUS.md 留就地演化的進度與下一步。**指標須帶回退風險警語**——
   那是行動前最需要看到的一句,不能只留在定稿裡。
+- **2026-08-07 引數判定改「形狀規則」,不用優先序規則**:起因是「`/project log pr` 會停在開 PR 嗎」
+  ——查下來 `pr` 會被判成 module 過濾詞;而 `merge` 更早就有雙重身分(引數位當 module、同時被 Step 4
+  當說法),**當下我靜默挑了說法那個讀法往下做**(碰巧對,過程不對)。改法不是加「先查說法表再
+  resolve」,而是依形狀分類:`--` 開頭＝flag、裸字命中說法表＝說法、路徑形式＝repo/module。
+  **判準:形狀規則不需要記「誰先誰後」;優先序規則要記、會漂。**
+- **2026-08-07 module 過濾收緊為只接受路徑形式**:舊規則「`resolve: UNKNOWN` 且 basename 不命中
+  → 該 token 也當 module」會在**打錯字時靜默縮小 Step 2 的掃描範圍**——掃不到的文檔不會報錯,
+  只是沒被同步,是安靜的失效。改為停下問。**判準:會讓覆蓋範圍變小的預設,必須是明說的、不能是
+  fallback。**
+- **2026-08-07 `--pr` 成為獨立終點(開完 PR 即止、零提問)**:補上原本的不對稱——merge 與「只推
+  branch」都有零提問說法,「開 PR 然後停」卻只能靠回答選單。flag 與裸說法**共用同一張表**、不得
+  各自演化;prose 路徑刻意沒有 flag 形式(說法可以三輪之後才補一句,flag 只存在於引數裡)。
+
 - **2026-08-07 squash-merge 殘留改比對 merged PR,判準是 `headRefOid` 相等而非同名**:
   `branch --merged` 判祖先關係,squash-merge 在 default 上產生全新 commit、無祖先鏈,**結構上
   看不到**;而本 repo 家規正是 squash-merge,等於該訊號對主要情境無效(舊 fixture 用「branch 不加
