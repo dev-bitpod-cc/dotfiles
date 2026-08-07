@@ -18,7 +18,9 @@
 #   resolve: REPO <toplevel>   token 解析為 repo 根（兩端 realpath 正規化後相等；'.' 恆為
 #                              pwd 所屬 repo 根）
 #   resolve: MODULE（...）      解析到 repo 但非根（子路徑 scope）→ 當 module 過濾
-#   resolve: UNKNOWN（...）     非 git repo 路徑 → 交回 session 記憶 basename 比對
+#                              （module 過濾**只能**由路徑形式產生，見 SKILL Step 0 形狀規則）
+#   resolve: UNKNOWN（...）     非 git repo 路徑 → 交回 session 記憶 basename 比對；
+#                              不命中即**停下問**，NEVER 當成 module 過濾（靜默縮小掃描範圍）
 # 注意：第一引數 `resolve` 為子指令保留字——repo 目錄字面名為 resolve 時以路徑形式
 # （./resolve）傳入偵測模式即可。
 #
@@ -64,7 +66,7 @@ if [ "$1" = "resolve" ]; then
     token="$1"
     top="$(git -C "$token" rev-parse --show-toplevel 2>/dev/null)" || top=""
     if [ -z "$top" ]; then
-        echo "resolve: UNKNOWN（${token} 非 git repo 路徑——交回 session 記憶 basename 比對，不命中則當 module）"
+        echo "resolve: UNKNOWN（${token} 非 git repo 路徑——交回 session 記憶 basename 比對；不命中即停下問，勿當 module）"
         exit 0
     fi
     # '.' 恆指 pwd 所屬 repo 根（舊 SKILL.md 契約）——在子目錄下也鎖定所屬 repo，
@@ -79,7 +81,7 @@ if [ "$1" = "resolve" ]; then
     # cd 失敗（權限/競態）→ real 留空走 UNKNOWN，不謊稱 MODULE
     real="$(CDPATH='' cd -- "$token" 2>/dev/null && pwd -P)" || real=""
     if [ -z "$real" ]; then
-        echo "resolve: UNKNOWN（${token} 無法進入（cd 失敗）——交回 session 記憶 basename 比對，不命中則當 module）"
+        echo "resolve: UNKNOWN（${token} 無法進入（cd 失敗）——交回 session 記憶 basename 比對；不命中即停下問，勿當 module）"
     elif [ "$real" = "$top" ]; then
         echo "resolve: REPO ${top}"
     else

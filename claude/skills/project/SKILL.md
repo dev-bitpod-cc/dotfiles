@@ -3,7 +3,7 @@ name: project
 description: "Project dossier & ship — 三模式：spec（開工：把 Context/Goal/AC/Constraints 寫入 STATUS.md dossier）、log（收尾：同步 dossier 與受影響文檔、依 Conventional Commits 提交，再依 repo 的 branch-protection 流程 push 或開 PR；為舊 /uap 的超集與繼任者）、transfer（移交：檢查 dossier 完整度、產出移交指南）。Use when starting a non-trivial work item (spec), finalizing or submitting reviewed changes (log), or handing a project to a new owner (transfer) — triggers 「uap」「ship」「提交」「送 PR」「update and push」「推上去」「開工寫 spec」「移交專案」「交接給同事」. Branches first whenever committing on the default branch (or a detached HEAD); never pushes to the default branch directly and never merges without an explicit user instruction."
 user-invocable: true
 disable-model-invocation: true
-argument-hint: "[spec|log|transfer] [repo|.] [module...]"
+argument-hint: "[--spec|--log|--transfer] [--merge|--pr|--no-pr|--bypass-merge] [repo|.] [./module...]"
 allowed-tools: Bash, Read, Glob, Grep, Edit, Write, AskUserQuestion
 ---
 
@@ -19,6 +19,7 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, AskUserQuestion
 - `log` → Log 模式（收尾+ship）
 - `transfer` → Transfer 模式（移交）
 - **其他或無引數 → 預設 Log 模式**，整串引數依 Log 模式的引數規則解讀（與舊 `/uap [repo|.] [module...]` 肌肉記憶相容）。
+- `--spec` / `--log` / `--transfer` 為上述三者的**別名**，效力相同（裸 token 不會被移除）。模式 flag 可出現在任何位置，不限第 1 個 token。
 - spec / transfer 模式的 repo token 解讀沿用 Log 模式 Step 0「引數前處理」的判定規則；無 repo token → pwd 所在 repo。
 
 ---
@@ -99,19 +100,31 @@ These are hard constraints. Read them before touching git.
 
 ### Step 0：範圍鎖定
 
-#### 引數前處理（repo 鎖定）
+#### 引數前處理（依**形狀**分類，不靠優先序記憶）
 
-模式 token（若有）之後的第一個 token 若是 **repo 指定**，直接鎖定該 repo、**跳過下方多 repo 偵測互動**；其餘 token 當 module 過濾（Step 2 用）。判定該 token：
+引數逐 token 依形狀歸類 —— **形狀規則的好處是不需要記「誰先誰後」**，同一個字不會因為位置不同而有兩種讀法：
+
+| 形狀 | 是什麼 | 例 |
+|---|---|---|
+| `--` 開頭 | **flag**（模式或送出說法） | `--log` `--merge` `--pr` |
+| 裸字，且是模式名 | 模式（僅限**第 1 個** token） | `spec` `log` `transfer` |
+| 裸字，且命中說法表 | **送出說法**（見 `references/ship-paths.md`「說法表」） | `merge` `bypass merge` |
+| 含 `/` 或 `.` 開頭，或存在的路徑 | repo 或 module —— 交給 `resolve` | `.` `~/Projects/krepo` `./docs/plans` |
+| 其餘裸字 | 可能是 repo basename（session 記憶）→ **不命中就停下問** | `krepo` `dotfiles` |
+
+**Module 過濾一律走路徑形式。** 裸字**永遠不會**被當成 module —— 那條舊路徑會在打錯字時靜默縮小 Step 2 的掃描範圍（掃不到的文檔不會報錯，只是沒被同步）。要以 `merge`／`pr` 這種字面當 module，寫 `./merge`、`docs/pr`。
+
+repo / module 的判定交給腳本（**the script IS the path/realpath/toplevel logic — do not re-derive it**）：
 
 ```
 ~/.claude/skills/project/scripts/ship-state.sh resolve <token>
 ```
 
-照 verdict 走（**the script IS the path/realpath/toplevel logic — do not re-derive it**）：
+- `resolve: REPO <root>` → 鎖定該 repo，**跳過多 repo 偵測互動**。
+- `resolve: MODULE` → 當 module 過濾（Step 2 用），不鎖定。
+- `resolve: UNKNOWN` → 比對 session 記憶中的 repo 根 basename（`krepo`、`dotfiles`）——命中即鎖定；**不命中 → 停下問使用者這個字是什麼意思，NEVER 自行當成 module 或忽略**。
 
-- `resolve: REPO <root>` → 鎖定該 repo。
-- `resolve: MODULE` → 當 module 過濾，不鎖定（`docs/plans` 這類子路徑 scope 落在這裡）。
-- `resolve: UNKNOWN` → 比對 session 記憶中的 repo 根 basename（如 `krepo`、`dotfiles`）——命中即鎖定該 repo；不命中 → 該 token 也當 module，走下方多 repo 偵測。（basename 比對需要 session 記憶，故留在 model 端。）
+flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 的授權來源；差別僅在 flag 靠形狀就無歧義。**說法也可以出現在對話裡、不必寫進引數**（見 Step 4 路徑 A）——那條路徑沒有 flag 形式，這是刻意的。
 
 鎖定單一 repo 後 → 直接進 Step 1（不問多 repo 清單）。
 
@@ -215,9 +228,13 @@ Ship 摘要：
 
 摘要之後怎麼收尾，**由使用者這輪有沒有給送出說法決定**（說法表的唯一權威是 `references/ship-paths.md`「說法表」——照該表分派，勿在此重述對照或自行擴充等價詞）：
 
-**A. 有送出說法**（「merge」「bypass merge」「merge 壓成一顆」「只推 branch」…，出現在本輪任何一則使用者訊息裡）→ **印完摘要直接執行到底，不再詢問任何一題**。說法即授權：它已經回答了「送不送」與「怎麼送」，再問一次是把已決之事丟回去。
+**A. 有送出說法**（「merge」「bypass merge」「開 PR」「只推 branch」…或其 `--` flag 形式，出現在本輪任何一則使用者訊息／引數裡）→ **印完摘要直接執行到底，不再詢問任何一題**。說法即授權：它已經回答了「送不送」與「怎麼送」，再問一次是把已決之事丟回去。
+
+> **「執行到底」的終點由說法決定，不是一律 merge**：`--merge` 類 → 做完 Merge 最後一哩；**`--pr`／「開 PR」→ 開完 PR 就停**（與路徑 B 選「送出，停在 PR」同一個終點，差別只在沒問你）；`--no-pr` → push 完 branch 就停。
 
 **B. 沒有送出說法** → 用 **`AskUserQuestion`** 收確認，單一題「這批怎麼處理？」：PR 路徑三選項 `送出，停在 PR` ／ `送出並 merge` ／ `取消`；直接 push 與 Bootstrap 路徑無 PR 可 merge，退為 `送出` / `取消`。選了「送出並 merge」＝ explicit merge instruction，**開完 PR 接著做完，不再問第二次**。
+
+> 想連這一題都省掉又不要 merge → 下次用 `--pr`（或說「開 PR」）。
 
 **兩條路都不出 squash 題、不出衛生題**——理由是這些問題現在都有預設答案：
 
@@ -248,7 +265,13 @@ Ship 摘要：
 確認後逐 repo 執行（完整指令序列見 `references/ship-paths.md`）：
 
 > **修飾條件（不是第四條路徑）**：本輪做過 branch 內 squash 且該 branch 已 push 過 → 下列各路徑的 push 指令改為 `git -C <repo> push --force-with-lease=<feature-branch>:<squash 前記下的遠端 SHA> origin <feature-branch>`（**必須帶 expected SHA**——裸 lease 比對本地 tracking ref，而本流程自己會 fetch，詳見 `references/ship-paths.md`）（**NEVER `--force`**；被拒的分流見 `references/ship-paths.md`「push 失敗處理」——那裡 `pull --rebase` 會把剛壓掉的 commit 拉回來）。未 push 過的 branch 照常首推，不需要 force。
-- **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`，多 repo 須 `-R <owner/repo>` 綁定）：有則指向、無則 `gh pr create`（同樣 `-R` 綁定；title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。完整綁定指令見 `references/ship-paths.md`。輸出 PR URL。**接著依 Step 4 的授權來源分流**：使用者給了 merge 類說法、或在 Step 4 選了「送出並 merge」→ 直接進「Merge 最後一哩」（flag 依「說法表」，`BLOCKED` 等受阻狀態依「merge 受阻時的分流」），**不再問一次**；只給了「送出／停在 PR」→ 附一句提示：「之後說『merge』即可由我接手最後一哩（merge + 清 branch + 同步本地 default），預設保留你的 commit；要壓成一顆就說『merge 壓成一顆』」。**不 push default branch；未獲明說 merge 前不 merge。**
+- **PR 路徑**：`git -C <repo> push -u origin <feature-branch>` → 偵測既有 PR（`gh pr view`，多 repo 須 `-R <owner/repo>` 綁定）：有則指向、無則 `gh pr create`（同樣 `-R` 綁定；title/body 由 commits 組；deep-review 的「第三方審查資訊」若有一併放進 body）。完整綁定指令見 `references/ship-paths.md`。輸出 PR URL。**接著依 Step 4 的授權來源分流**：
+
+  - 給了 **merge 類說法**（`--merge` / `--bypass-merge` / 對應裸說法）、或在 Step 4 選了「送出並 merge」→ 直接進「Merge 最後一哩」（flag 依「說法表」，`BLOCKED` 等受阻狀態依「merge 受阻時的分流」），**不再問一次**。
+  - 給了 **`--pr` /「開 PR」**、或在 Step 4 選了「送出，停在 PR」→ **開完 PR 即止**，附一句提示：「之後說『merge』即可由我接手最後一哩（merge + 清 branch + 同步本地 default），預設保留你的 commit；要壓成一顆就說『merge 壓成一顆』」。
+  - **`--pr` 不是 merge 的預備動作**——它是一個完整的終點。**NEVER treat "the PR is now open" as a reason to continue into merge**（rationalization 表已列）。
+
+  **不 push default branch；未獲明說 merge 前不 merge。**
 - **直接 push 路徑**（escape hatch：確定無保護**且**使用者明說不用 PR）：push **當前 branch**（branch-first 無條件，故此處一定是 feature branch、非 default）：`git -C <repo> push -u origin <feature-branch>`（**顯式 remote + branch**，不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref；`origin` 為 stand-in）。**本路徑不是無保護 repo 的預設**——預設仍是 PR（見 Step 1 第 4 項），走到這裡代表使用者已明說不用 PR，故不再回頭勸開 PR。
 - **Bootstrap 路徑**（`verdict: BOOTSTRAP`）：照抄腳本的 `bootstrap-cmd:`（推本地 default 建立 baseline），完成後**重跑 `ship-state.sh` 確認 BOOTSTRAP 已消失**——此後回到正常路徑，後續 commit 一律 feature branch。
 - 多 repo：逐 repo 送出，最後彙總（各 repo 的 PR URL / push 結果）。

@@ -52,7 +52,7 @@
 | d5 | deep-review | 同 d4 + 夾帶 git 指令語意錯誤 → 仍報 blocking（F20b） |
 | d6 | deep-review | 負向邊界：product code + README，不得觸發 gate（F20c） |
 | d7 | deep-review | anchor 已標記 `terminal_reason=r5-blocking`，不得靜默重開 cycle（F21） |
-| u4 | project（log） | 說法即授權：已 push 的 branch + 頂端 2 顆 review 痕跡 + PR 已開（Scenario 13/15；附 `gh-stub` 與 `gh-stub-blocked`，後者 `mergeStateStatus=BLOCKED`） |
+| u4 | project（log） | 說法即授權：已 push 的 branch + 頂端 2 顆 review 痕跡 + PR 已開（Scenario 13/15/16；附 `gh-stub` 與 `gh-stub-blocked`，後者 `mergeStateStatus=BLOCKED`） |
 | u5 | project（log） | 同 u4，另有「R5 終止」anchor —— 說法覆蓋不了的事實前提（Scenario 14） |
 | q1 | ready4quit | 催促下不 rubber-stamp（Q1） |
 | c1 | check-crawl-quality | per-source 抓被全域稀釋的 boilerplate（C1） |

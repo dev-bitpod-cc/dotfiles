@@ -226,20 +226,27 @@ git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash/re
 
 ### 說法表（唯一權威；SKILL Step 4 照此分派）
 
-| 使用者說 | 送到哪 | `<merge-flag>` |
-|---|---|---|
-| （無送出詞） | push branch + 開 PR，**停在 PR** | — |
-| 「merge」／「合併」 | 全程走完 | `--rebase` |
-| 「merge 壓成一顆」／「squash merge」／「merge squash」 | 全程走完 | `--squash` |
-| 「merge 不壓」／「merge 保留 commit」／「merge 別壓」 | 全程走完 | `--rebase` |
-| 「merge commit」／「merge 留分支圖」 | 全程走完 | `--merge` |
-| 「bypass merge」 | 全程走完；僅 `BLOCKED` 時 `--admin`（見下） | `--rebase`（可再疊壓的說法） |
-| 「merge 照送」／「merge 未審完」 | 全程走完；預先放行 `review-terminal` 攔截 | `--rebase` |
-| 「只推 branch」／「不用 PR」 | 只 push feature branch，不開 PR | — |
+| 使用者說 | 引數 flag（等價） | 送到哪 | `<merge-flag>` |
+|---|---|---|---|
+| （無送出詞） | — | push branch + 開 PR，**停在 PR，然後問一題** | — |
+| 「開 PR」／「開 pr」／「停在 PR」／「pr」 | `--pr` | push branch + 開 PR，**停在 PR，零提問** | — |
+| 「merge」／「合併」 | `--merge` | 全程走完 | `--rebase` |
+| 「merge 壓成一顆」／「squash merge」 | `--merge --squash` | 全程走完 | `--squash` |
+| 「merge 不壓」／「merge 保留 commit」 | `--merge`（同預設） | 全程走完 | `--rebase` |
+| 「merge commit」／「merge 留分支圖」 | `--merge --merge-commit` | 全程走完 | `--merge` |
+| 「bypass merge」 | `--bypass-merge` | 全程走完；僅 `BLOCKED` 時 `--admin`（見下） | `--rebase`（可再疊壓的說法） |
+| 「merge 照送」／「merge 未審完」 | `--merge --anyway` | 全程走完；預先放行 `review-terminal` 攔截 | `--rebase` |
+| 「只推 branch」／「不用 PR」 | `--no-pr` | 只 push feature branch，不開 PR | — |
+
+**flag 與裸說法完全等價**，只是形狀不同：`--merge` ≡ 「merge」。**flag 只存在於 `/project …` 的引數裡**，而裸說法在**本輪任何一則訊息**都算數（那是 prose 路徑，刻意沒有 flag 形式——你可以三輪之後才補一句「merge」）。兩者共用這張表，**不得各自演化**。
+
+> **「（無送出詞）」與 `--pr` 的差別只有一個：問不問。** 兩者最終狀態相同（PR 開著、沒 merge）；`--pr` 是「我知道我要停在 PR」，所以跳過那一題。
 
 **預設保留、不預設壓**：語意 commit 在 PR 裡逐顆可讀、日後可追，那是它們存在的理由。GitHub 的 squash-merge 全有全無、做不到只壓部分，故「壓」必須是使用者說出口的意圖，**不是流程的預設**。
 
 **Do NOT ask which flag to use.** 表上每一列都已經是答案，裸「merge」也是（＝保留）。以前要問是因為預設未定義；現在定義了，問就只是把已決之事再丟回去。
+
+**引數位的形狀規則**（單一來源在 SKILL Step 0）：`--` 開頭 = flag；裸字命中本表 = 說法；**module 過濾一律走路徑形式**（`./merge`、`docs/pr`）。裸字永遠不會被當成 module —— 打錯字時它會靜默縮小 Step 2 的掃描範圍，而掃不到的文檔不會報錯。
 
 > **review 迭代痕跡不走這張表**——那批由 branch 內 squash 在送出前處理掉（見上節），無條件執行、不出題。兩件事常被混為一談：這裡決定的是「你自己的語意 commit 進 default 時長什麼樣」，上節處理的是「review 過程的機械痕跡不該留下」。
 
