@@ -237,10 +237,16 @@ db01 10、eagle07/08/09 各 3、macmini 2、ap01 1) → 逐台驗身分 → **�
   後果:新機器跑 setup 不會裝、macmini/m4mini 目前也沒有。該 cask 標 `auto_updates`,故 `brewup`
   不會升它(除非 `--greedy`)。**它沒有 `generate_completions_from_executable`,不會踩 codex 那個
   Gatekeeper 坑**,但首次執行仍會走核可流程——要裝就在該機 console 前跑一次。
-- **使用者的 MacBook 不在 `inventory.conf`**,故 `dotsync` / `allup` 都涵蓋不到,dotfiles 更新需
-  手動(`cd ~/.dotfiles && git pull && bash scripts/ensure-rc-source.sh`)。歷來如此、非本次造成
-  ——以前 `brewup` 自帶 `git pull` 讓它看起來像自動的。**待確認是刻意(終端設備不入清單)還是缺口**;
-  要納管走 `./scripts/add-new-host.sh <alias> <ip>`。
+- **使用者的個人 MacBook 不在 `inventory.conf`**(家中經 VPN ssh 進 macs),故 `dotsync` / `allup`
+  都涵蓋不到。歷來如此、非本次造成——以前 `brewup` 自帶 `git pull` 讓它看起來像自動的。
+  **2026-08-08 更正**:原記的手動指令 `git pull && ensure-rc-source.sh` **不會更新 `~/.ssh/config`**
+  ——`ensure-rc-source.sh` 只補 rc 的 source 行、完全不碰 ssh(grep 命中 0)。所以那台的
+  `~/.ssh/config` 自上次跑 `setup-mac-env.sh` 後就沒動過。要重生得自己灌:
+  `{ echo "# 此檔案由 dotfiles setup 腳本產生"; cat ssh/config; } > ~/.ssh/config`。
+  **它連 macs 的能力與 key 改名無關**:macs 的 `authorized_keys` 那把指紋 `SHA256:7QdI3DDka…`
+  == `id_personal.pub`,而改名只改本地檔名、公鑰內容一個 byte 沒動;macs 的 sshd 另外吃 CA
+  (`TrustedUserCAKeys`)。**待確認是刻意(終端設備不入清單)還是缺口**;納管走 `add-new-host.sh`
+  ——但浮動 VPN IP 未必適合 inventory 的 `<alias> <ip>` 形式。
 
 ## 移交準備度
 
