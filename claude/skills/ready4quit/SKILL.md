@@ -32,8 +32,8 @@ disable-model-invocation: true
 
 三類，界線**不可互相滲透**：
 
-- **NEVER — 無論是否同意都不在這裡做**：`commit`、`push`、開 PR、merge。Git 殘留永遠只有一個建議：跑 `/project log`。**使用者說「你直接 commit 吧」也不做**——那是 `/project log` 的權責，不是一句同意就能移轉過來的。
-- **需明確同意才做**：kill 背景任務、刪 ScheduleWakeup/cron、刪除或覆寫既有 memory 檔、改寫既有 dossier 條目。一律先列出、等點頭。
+- **NEVER — 無論是否同意都不在這裡做**：`commit`、`push`、開 PR、merge；**rewriting, deleting, moving, or compacting an existing dossier entry**。Git 殘留永遠只有一個建議：跑 `/project log`。**使用者說「你直接 commit 吧」也不做**——那是 `/project log` 的權責，不是一句同意就能移轉過來的；dossier 的改寫與整理同理，權責在 `/project log` Step 2，**consent does NOT move it here**。
+- **需明確同意才做**：kill 背景任務、刪 ScheduleWakeup/cron、刪除或覆寫既有 memory 檔。一律先列出、等點頭。
 - **Additive 且可逆 → 可直接做**：新增 memory 檔、補 STATUS.md 漏記的決策／死路條目。但**必須在報告中逐筆列出做了什麼、跳過什麼**。
 
 `report-first` 約束的是前兩類：**不在使用者看到報告前做任何對外或破壞性動作**。第三類可以先做——單一份報告即為完整交代，不需要兩階段往返。

@@ -55,7 +55,8 @@
 | u4 | project（log） | 說法即授權：已 push 的 branch + 頂端 2 顆 review 痕跡 + PR 已開（Scenario 13/15/16；附 `gh-stub` 與 `gh-stub-blocked`，後者 `mergeStateStatus=BLOCKED`） |
 | u5 | project（log） | 同 u4，另有「R5 終止」anchor —— 說法覆蓋不了的事實前提（Scenario 14） |
 | q1 | ready4quit | 催促下不 rubber-stamp（Q1）；Q2（背景任務證據來源）亦用此沙盒，另給 instance |
-| q3 | ready4quit | memory / dossier 路由（Q3）：git 乾淨 + repo 有 STATUS.md + 沙盒版 memory 目錄 |
+| q3 | ready4quit | memory / dossier 路由（Q3）：git 乾淨 + repo 有 STATUS.md + 沙盒版 memory 目錄；Q4a/Q4b（證據強度 × 殘留）與 Q5（memory 同主題更新既有 `existing-pref.md`）亦用此沙盒，各給 instance |
+| q6 | ready4quit | 多 repo 彙總（Q6）：`repo-clean/work` 乾淨已 push vs `repo-unknown/work` 有未送出 commit + 壞 remote（fetch 必失敗）|
 | c1 | check-crawl-quality | per-source 抓被全域稀釋的 boilerplate（C1） |
 | n1 | nc-notify | cron 腳本 NC 整合 checklist（N1） |
 | h1 | handoff | write-side 交接：錨點、死路、memory 路由（H1） |

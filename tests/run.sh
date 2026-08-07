@@ -489,9 +489,14 @@ git init -q -b main "$TMP/slow-work"
 slow_start="$(date +%s)"
 out="$(GIT_HYGIENE_FETCH_TIMEOUT=2 "$GH_SCRIPT" "$TMP/slow-work" 2>/dev/null)"
 slow_elapsed=$(( $(date +%s) - slow_start ))
-if [ "$slow_elapsed" -lt 15 ]; then
-    ok "fetch 卡住 → 在上限內放棄（實測 ${slow_elapsed}s）"
-else bad "fetch 卡住未被中斷（${slow_elapsed}s，宣告的上限不存在）"; fi
+#     界線由契約推導，不是拍腦袋的寬鬆值：每個 fetch 目標最多 FETCH_TIMEOUT + KILL_GRACE
+#     秒，本 fixture 只有 origin 一個目標 → 2+1=3s，再給 3s 餘裕吸收 process 啟動（實測 2s）。
+#     放寬到十幾秒等於讓「每個 repo 卡 10 秒」的 regression 照樣綠，多 repo 時還會累加。
+#     改 fixture 的 remote 數時照 (timeout+grace)×目標數 重算，不要直接調大這個數字。
+slow_budget=6
+if [ "$slow_elapsed" -lt "$slow_budget" ]; then
+    ok "fetch 卡住 → 在上限內放棄（實測 ${slow_elapsed}s，界線 ${slow_budget}s）"
+else bad "fetch 卡住未被中斷（${slow_elapsed}s ≥ ${slow_budget}s，宣告的上限不存在）"; fi
 if grep -q "remote: UNKNOWN" <<< "$out"; then
     ok "fetch 逾時 → remote 標 UNKNOWN"
 else bad "fetch 逾時未標 remote UNKNOWN：$out"; fi
@@ -504,6 +509,55 @@ fast_elapsed=$(( $(date +%s) - fast_start ))
 if [ "$fast_elapsed" -lt 4 ]; then
     ok "本地 remote fetch 成功 → 立刻返回（實測 ${fast_elapsed}s，上限 6s）"
 else bad "fetch 成功仍等滿 watchdog timeout（${fast_elapsed}s）"; fi
+
+# (i) 多 repo 單次呼叫：SKILL.md Step 1 要求一次帶完所有 session repo。彙總有兩個失效
+#     方向——漏印某個 repo 的區段，或讓某個 repo 的 RESIDUE/UNKNOWN 被另一個的 CLEAN
+#     蓋掉（exit 0 = 全 CLEAN，是使用者唯一會看的那個數字）。此前所有呼叫都是單 repo，
+#     聚合迴圈與 overall exit code 完全沒有覆蓋。
+git init --bare -q -b main "$TMP/mrepo-o1.git"
+git init --bare -q -b main "$TMP/mrepo-o2.git"
+git init -q -b main "$TMP/mrepo-clean"
+(cd "$TMP/mrepo-clean" && echo a > a.txt && "${GITC[@]}" add a.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/mrepo-o1.git" && git push -q -u origin main)
+git init -q -b main "$TMP/mrepo-residue"
+(cd "$TMP/mrepo-residue" && echo a > a.txt && "${GITC[@]}" add a.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/mrepo-o2.git" && git push -q -u origin main \
+    && echo wip > untracked.txt)
+git init -q -b main "$TMP/mrepo-unknown"
+(cd "$TMP/mrepo-unknown" && echo a > a.txt && "${GITC[@]}" add a.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/mrepo-nonexistent.git")
+
+# 前置：三個 repo 單獨跑時各自是 CLEAN / RESIDUE / UNKNOWN——沒有這條，下面的彙總
+# 斷言可能只是因為 fixture 根本沒造出三種狀態而「剛好對」
+for mrepo_case in "clean:CLEAN" "residue:RESIDUE" "unknown:UNKNOWN"; do
+    mrepo_name="${mrepo_case%%:*}"; mrepo_want="${mrepo_case##*:}"
+    mrepo_one="$(GIT_HYGIENE_GH=/usr/bin/false "$GH_SCRIPT" "$TMP/mrepo-${mrepo_name}" 2>/dev/null)"
+    if grep -q "verdict: ${mrepo_want}" <<< "$mrepo_one"; then
+        ok "fixture 前置：mrepo-${mrepo_name} 單獨跑為 ${mrepo_want}"
+    else bad "fixture 前置不成立：mrepo-${mrepo_name} 不是 ${mrepo_want}：$mrepo_one"; fi
+done
+
+# CLEAN 排最前面：先看到 CLEAN 不能讓後面的殘留被吞掉
+mrepo_out="$(GIT_HYGIENE_GH=/usr/bin/false "$GH_SCRIPT" \
+    "$TMP/mrepo-clean" "$TMP/mrepo-residue" "$TMP/mrepo-unknown" 2>/dev/null)"
+mrepo_rc=$?
+assert_rc "多 repo：任一 RESIDUE/UNKNOWN → exit 1" 1 "$mrepo_rc"
+mrepo_sections="$(grep -c '^=== ' <<< "$mrepo_out")"
+assert_eq "多 repo：三個 repo 的區段都印出（不漏 repo）" "3" "$mrepo_sections"
+assert_eq "多 repo：verdict 逐 repo 各自成立（1 CLEAN / 1 RESIDUE / 1 UNKNOWN）" \
+    "1 1 1" \
+    "$(grep -c 'verdict: CLEAN' <<< "$mrepo_out") $(grep -c 'verdict: RESIDUE' <<< "$mrepo_out") $(grep -c 'verdict: UNKNOWN' <<< "$mrepo_out")"
+
+# CLEAN 排最後面：反方向再測一次，擋「用最後一個 repo 的結果覆寫 overall」這種寫法
+mrepo_out="$(GIT_HYGIENE_GH=/usr/bin/false "$GH_SCRIPT" \
+    "$TMP/mrepo-residue" "$TMP/mrepo-unknown" "$TMP/mrepo-clean" 2>/dev/null)"
+mrepo_rc=$?
+assert_rc "多 repo：CLEAN 排最後仍 exit 1（overall 不被最後一個覆寫）" 1 "$mrepo_rc"
+
+# 全 CLEAN 才是 exit 0——否則上面兩條可能只是「永遠回 1」
+mrepo_out="$(GIT_HYGIENE_GH=/usr/bin/false "$GH_SCRIPT" "$TMP/mrepo-clean" "$TMP/mrepo-clean" 2>/dev/null)"
+mrepo_rc=$?
+assert_rc "多 repo：全部 CLEAN → exit 0" 0 "$mrepo_rc"
 
 echo "▶ 9. ship-state.sh 偵測與 protection 判定"
 SS_SCRIPT="$ROOT/claude/skills/project/scripts/ship-state.sh"
@@ -2322,6 +2376,44 @@ spc_out="$(cd "$spc/d" && bash "$SPC")"
 if grep -q "base 用 head" <<< "$spc_out" && ! grep -q "可能已過期" <<< "$spc_out"; then
     bad "fetch 別的 remote 後仍給無警告的 base 建議（stale origin/<default>）：$spc_out"
 else ok "多 remote：未實際 fetch baseline remote → base 建議不出現或帶過期警告"; fi
+
+# (15) 多 remote 的落後偵測：剛 fetch 過別的 remote 會讓 repo-global 的 FETCH_HEAD 變新鮮，
+#      但 upstream（origin/main）的 tracking ref 仍是舊的。拿快取當「upstream 已刷新」的
+#      證據 → 真正落後的 clone 完全不出聲。這是 false negative，配上 hook「失敗一律靜默」
+#      的契約更難察覺——(14) 只保護 base 建議那一半，這條保護落後偵測那一半。
+git init --bare -q -b main "$spc/mr2-other.git"
+git clone -q "$spc/origin.git" "$spc/e" 2>/dev/null
+(cd "$spc/e" && git config user.name t && git config user.email t@t.local \
+  && git remote add other "$spc/mr2-other.git" && git push -q other main)
+spc_e_old="$(git -C "$spc/e" rev-parse HEAD)"
+(cd "$spc/e" && echo behind > behind.txt && git add behind.txt && git commit -qm c4 && git push -q origin main)
+# 本機退回舊 commit，並把 tracking ref 一起退回 → 不 fetch 就看不出落後
+(cd "$spc/e" && git reset -q --hard "$spc_e_old")
+git -C "$spc/e" update-ref refs/remotes/origin/main "$spc_e_old"
+git -C "$spc/e" fetch -q other        # 只碰 other，卻讓 repo-global FETCH_HEAD 變新鮮
+assert_eq "fixture 前置：stale 的 origin/main 看不出落後（behind=0）" \
+    "0" "$(git -C "$spc/e" rev-list --count HEAD..origin/main 2>/dev/null)"
+assert_eq "fixture 前置：origin 端實際已前進 1 個 commit" \
+    "1" "$(git -C "$spc/origin.git" rev-list --count "${spc_e_old}..refs/heads/main" 2>/dev/null)"
+spc_out="$(cd "$spc/e" && bash "$SPC")"
+if grep -q "落後" <<< "$spc_out"; then
+    ok "多 remote：fetch other 不會讓落後偵測改用 stale upstream 判定"
+else bad "多 remote：真實落後的 clone 未提醒（fetch other 讓 FETCH_HEAD 假新鮮）：$spc_out"; fi
+
+# (16) fetch 真的失敗（單 remote，快取不介入）→ base 建議仍要出，但必須帶過期警告。
+#      (14) 在多 remote 快取失效後走的是「建議不出現」那一臂，這條把「出現且帶警告」
+#      那一臂釘住，否則 stale_note 整段會變成沒有測試覆蓋的死碼。
+git clone -q "$spc/origin.git" "$spc/f" 2>/dev/null
+(cd "$spc/f" && git config user.name t && git config user.email t@t.local \
+  && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main \
+  && git switch -qc feat/stale && echo s > s.txt && git add s.txt && git commit -qm "feat: stale")
+(cd "$spc/f" && git remote set-url origin "$spc/nonexistent.git")
+rm -f "$spc/f/.git/FETCH_HEAD"        # 強制真的去 fetch（而且會失敗）
+spc_out="$(cd "$spc/f" && bash "$SPC")"
+assert_rc "fetch 失敗 + feature branch → exit 0" 0 $?
+if grep -q "base 用 head" <<< "$spc_out" && grep -q "可能已過期" <<< "$spc_out"; then
+    ok "fetch 失敗 → base 建議帶「可能已過期」警告"
+else bad "fetch 失敗後的 base 建議未標示 ref 可能過期：$spc_out"; fi
 
 echo "▶ 17. codex-exec-review.sh（deep-review skill script）exit 契約與 job 產物"
 CER="$ROOT/claude/skills/deep-review/scripts/codex-exec-review.sh"
