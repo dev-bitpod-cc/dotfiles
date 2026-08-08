@@ -310,6 +310,24 @@
   (對稱於 Host `github-me`),使用者指出它同時是各主機 `authorized_keys` 的 fallback 私鑰,
   故定為 `id_personal`。**判準:命名跟著角色集合走,不跟著最常用的那個場景走**——叫 `id_github_*`
   會讓後來的人以為「不用 GitHub 就能刪」,而那把 key 是 CA cert 失效時進遠端機器的唯一後路。
+- **2026-08-09 錨點 sha 判準用 canonical OID 比對,不硬編雜湊長度**:判準是
+  `rev-parse --verify "<sha>^{commit}"` 的解析結果 == 記錄值。**不寫 40 hex** ——SHA-256 repo 的
+  OID 是 64 hex(實測),寫死會錯殺整個 sha256 repo;而這個判準同時擋掉 `HEAD`／branch 名／短 sha
+  且與演算法無關。副作用是收緊(手寫短 sha 的舊檔變 BAD-ANCHOR):查過實檔 55 份 76 條錨點全是
+  完整 sha,production 零衝擊,故接受。
+- **2026-08-09 handoff 的 frontmatter `slug:` 是否決權、不是索引**:第三方審查建議「查 frontmatter
+  slug 也應命中」,但那是行為變更——既有斷言明文釘住「手改過的殘檔不得被撿」。改以 frontmatter 為
+  身分的話,survey 會宣傳一條 `find-predecessor` 拒絕採用的工作線,兩個消費端對同一份檔案給出相反
+  答案。改採「以檔名歸戶 + 標註不可達」:不動已釘住的語意,又把隱形殘檔變可見。**正反兩面都要有
+  斷言**——只釘一面的話,改用 frontmatter 當索引照樣全綠。
+- **2026-08-09 不強制 handoff resume 呼叫 `branch-first.sh`**:resume 開工的正解是 `git switch -c`
+  (情況 A),該腳本的價值在情況 B 的救援序列;強制呼叫等於把 ship pipeline 的一角搬進 handoff。
+  R4 只留一行 branch 紀律 + 指標,約束力由 H6 新增的 oracle 擔任(首跑實測 commit 落在 main、
+  同輪 repo-b 卻開了 branch——行為分歧就是加這條 oracle 的證據)。
+- **2026-08-08 跨機隊的破壞性收尾,要把前提檢查放進每台自己的執行裡**:刪 14 台的舊 key 時,
+  每台先自檢「config 指向新檔名／新檔存在／兩個身分認得對」三道,任一不成立即跳過該台、
+  零刪除。**判準:前提由執行端當場驗,不由發起端事先假設**——發起端的「我剛剛驗過了」
+  在並行散佈裡是舊資訊。形狀同 `cleanup-stale-branch.sh` 的執行當下重驗。
 
 ## 死路(試過但放棄——防重工)
 

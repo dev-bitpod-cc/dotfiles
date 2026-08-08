@@ -12,7 +12,21 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(無進行中工作項——handoff skill 收斂已於 2026-08-09 完成,見里程碑)
+### Agentic 可攜性治理與 OpenWiki 評估(2026-08-09 起,未拍板)
+
+- **Context**:外部 survey(`docs/plans/2026-08-09-agentic-project-transfer-governance.md`,untracked、
+  自述非定稿)提出三層知識分層(Policy／Intent-State／Derived)與 clean-room takeover eval;同輪
+  獨立查證 `langchain-ai/openwiki` 的實際契約(只維護自己的 marker block、`.openwikiignore` 讀取邊界、
+  官方 GH Action 每日開 PR 且 staged 範圍含 `CLAUDE.md` 與 workflow 檔本身)。
+- **Goal**:判定「經這套個人化 workflow 維護的 repo,能否在零聊天記憶／零 machine-local state /
+  零私人 skill 下被接管」,並決定 OpenWiki 是否值得作為 derived 層試點。
+- **AC**:portability audit 產出可執行清單——哪些判準能做 deterministic gate(root 入口存在性、
+  權威矩陣區塊、generated artifacts 有重建命令、無 openwiki 仍能跑 `tests/run.sh`),哪些只能行為
+  eval(找檔正確率、規則遵守率、需追問原 owner 的問題數、把 wiki 誤當 policy)。
+- **Constraints**:audit 純唯讀、不改檔;OpenWiki 試點與 audit **不綁同一輪**(一個是治理缺口、
+  一個是可選加速層,混跑分不出效果來源);試點需先有停止條件與零殘留回退路徑。
+- **下一步**:先做 portability audit,起點是下方「工具中立 Agent 入口」缺口。
+- **待使用者確認**:是否啟動 audit;OpenWiki 若試點選哪個非敏感 repo。
 
 ---
 
@@ -20,24 +34,25 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
-- **2026-08-09 錨點 sha 判準用 canonical OID 比對,不硬編雜湊長度**:判準是
-  `rev-parse --verify "<sha>^{commit}"` 的解析結果 == 記錄值。**不寫 40 hex** ——SHA-256 repo 的
-  OID 是 64 hex(實測),寫死會錯殺整個 sha256 repo;而這個判準同時擋掉 `HEAD`／branch 名／短 sha
-  且與演算法無關。副作用是收緊(手寫短 sha 的舊檔變 BAD-ANCHOR):查過實檔 55 份 76 條錨點全是
-  完整 sha,production 零衝擊,故接受。
-- **2026-08-09 handoff 的 frontmatter `slug:` 是否決權、不是索引**:第三方審查建議「查 frontmatter
-  slug 也應命中」,但那是行為變更——既有斷言明文釘住「手改過的殘檔不得被撿」。改以 frontmatter 為
-  身分的話,survey 會宣傳一條 `find-predecessor` 拒絕採用的工作線,兩個消費端對同一份檔案給出相反
-  答案。改採「以檔名歸戶 + 標註不可達」:不動已釘住的語意,又把隱形殘檔變可見。**正反兩面都要有
-  斷言**——只釘一面的話,改用 frontmatter 當索引照樣全綠。
+- **2026-08-09 OpenWiki 只配 derived 層,且 dotfiles 不當第一試點**:它產的是「從 code/git 可推導」
+  的 repo 地圖,與 dossier 明文不記的東西正交,架構上不衝突。不選 dotfiles 的理由是三條摩擦在此
+  同時發作:①官方 workflow 的 staged 範圍含 `CLAUDE.md` 與 **workflow 檔自己**;②幾百頁 LLM 改寫版
+  稀釋「唯一權威」不變式,而最易被摘壞的正是帶反面教訓的地雷條——LLM 只看得到「這裡用了 herestring」,
+  推不出「為什麼不能寫另一種」;③`.openwikiignore` **只擋讀取、不保證主題不被提及**(README 自陳,
+  agent 仍能從 tests／commit message 反推),對帶內網 inventory 的 repo 它不是保密邊界。
+  **採用與否未拍板**,本條記的是邊界。
+- **2026-08-09 接手首屏由 `docs/transfer.md` 承擔,不動 STATUS.md 的 schema**:survey 建議在 dossier
+  加固定 schema 的接手快照,但那必然與「進行中」雙重記載(它自己也提了這個疑慮),違反傘狀蒸餾規則。
+  `docs/transfer.md` 本就為接手者而寫、移交前才生成、不常駐,故不會腐爛;STATUS.md 是常駐演化檔,
+  加一塊只在移交時有意義的區塊,等於替它增一塊固定會過期的面積。
+- **2026-08-09 不現在把 `CLAUDE.md` 拆成「工具中立入口 + Claude 薄層」——先 eval,後搬遷**:
+  survey 的終態圖把它降為薄層,但檔內最值錢的是「已知地雷」那批,每條對應一次實地事故,屬硬約束
+  而非可按形狀搬動的敘述。**在 clean-room eval 量到「Codex 端因缺 repo 規則而犯錯」之前不動**
+  ——為文件形狀而改,正是該 survey 自己反對的完成標準。
 - **2026-08-09 handoff 的跨主機 docs commit 與 ready4quit「一律不 commit」刻意相反**:前者是跨機
   唯一媒介(不 commit 就沒有管道),後者是 pre-quit 純驗證(commit 權責屬 `/project log`)。兩者都對
   但沒互相標註,下次審查易報成不一致,故記於此。**刻意不寫進 SKILL.md body**——不是觀察到的 agent
   失敗,違反 `No failing scenario, no instruction`,只會替每次載入加 token。
-- **2026-08-09 不強制 handoff resume 呼叫 `branch-first.sh`**:resume 開工的正解是 `git switch -c`
-  (情況 A),該腳本的價值在情況 B 的救援序列;強制呼叫等於把 ship pipeline 的一角搬進 handoff。
-  R4 只留一行 branch 紀律 + 指標,約束力由 H6 新增的 oracle 擔任(首跑實測 commit 落在 main、
-  同輪 repo-b 卻開了 branch——行為分歧就是加這條 oracle 的證據)。
 - **2026-08-08 xref gate 只保障 dotfiles,但它服務的規範是全域的——這個不對稱要講明**:
   `tests/run.sh` 只跑本 repo,故「唯一權威」指標的機械守門僅及於 dotfiles;而同批改的
   `ship-state.sh`(append-only 偵測)與 dossier 規範(失效標記)**跨 repo 生效**。
@@ -52,10 +67,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   時散佈等於空轉(實地踩過一次,以為散完了其實什麼都沒變)。
   ③**先散一台走完全程再放其餘**——挑最有代表性的那台(這次是 db01:remote 最多、唯一有
   `insteadOf`、且有 krepo 可驗依賴路徑),不是挑最安全的。
-- **2026-08-08 跨機隊的破壞性收尾,要把前提檢查放進每台自己的執行裡**:刪 14 台的舊 key 時,
-  每台先自檢「config 指向新檔名／新檔存在／兩個身分認得對」三道,任一不成立即跳過該台、
-  零刪除。**判準:前提由執行端當場驗,不由發起端事先假設**——發起端的「我剛剛驗過了」
-  在並行散佈裡是舊資訊。形狀同 `cleanup-stale-branch.sh` 的執行當下重驗。
 ## 死路(試過但放棄——防重工)
 
 - **mc(Midnight Commander)當遠端檔案管理器**:評估後放棄,理由是**協定層而非偏好**——
@@ -88,28 +99,21 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   「新增 prose」指哪一批已不可考,純風格、無失敗案例,且該日又寫入大量中文 prose(移動標靶)。
   要做就一次全檔統一,不要逐批追。其餘三項(Transfer 模式 commit 歸屬、evals/README 路徑基準、
   handoff evals H4 排序)已於 2026-08-08 修畢。
-- [x] dossier 訊號 R5 non-blocking 五項——2026-08-08 全數修畢:sections 標題行計入所屬節
-  (加總 == 檔案 bytes,附斷言且經突變驗證);SKILL 的「唯一的例外」補上第二個(使用者明說不動);
-  最長行 flag 補「風格訊號、非硬門檻」的處置時機;S12 fixture 的巨型單行改寫明 >1000 bytes
-  (原寫 >800 生不出它自己要求的最長行 flag);**條目作用域與 ✅ 掃描改端錨定**——原為子字串比對,
-  `## 進行中(已完成 M1)` 會被當里程碑節而恆誤報(兩條斷言各自經突變驗證)
+- [x] dossier 訊號 R5 non-blocking 五項——2026-08-08 全數修畢(細節在 tests,可反推)
 - [ ] **「tests/stub 有覆蓋、實戰未驗」一組**(遇到對應情境時順手確認即可,不必專程做):
   SessionStart hook 落後提醒(真實落後的 clone);autocodex exec 的 resume 分支(exit 4 救援階梯,
   三輪實跑皆一次成功、只有 stub 覆蓋,F15(b) 待真實空報告);review-anchor 的 stale STOP 與
   codex-next 冪等(F16 b/c,待 autofix 迭代中真的 rebase/重試);repo-review 新契約(F16–F18 規格
   覆蓋,待多輪 autofix 確認弱模型不會退回每輪帶 `--autofix`)
 - [x] hook matcher 僅 `startup`——2026-08-07 已擴為 `startup|clear|compact|resume`,tests 第 16 節覆蓋
-- [x] 測試節那行待補 git-hygiene 的新教訓——2026-08-07 已補。**目標檔是 repo 根的 `CLAUDE.md`
-  (第 133 行、單行 5.6KB),不是原記的 `claude/CLAUDE.md`**(後者的測試節講的是「何時該寫測試」)。
-  順帶補上該行從未索引到的 **SessionStart hook 守門**——`git-hygiene` 先前也完全沒有細節,
-  等於這兩塊的覆蓋範圍讀不出來
+- [x] 測試節那行待補 git-hygiene 的新教訓——2026-08-07 已補。留一條:**目標檔是 repo 根的
+  `CLAUDE.md`**,不是 `claude/CLAUDE.md`(後者的測試節講的是「何時該寫測試」)
 - [ ] Scenario 11 的「merge 但無 PR」分支只在 SKILL body 一行指標帶到 ship-paths,GREEN 實測中
   弱模型未展開讀——非違規故未補;重現才加明示(Iron Law)
 - [ ] pressure-tests S8/S9/S12 沙盒未納入 `claude/evals/setup-sandboxes.sh`;S10(transfer
   credentials)與 S12(dossier 三 flag 蒸餾紀律)連首輪實測都還沒跑
-- [x] `claude/evals/*.sh` 已於 2026-08-08 納入全部四個 gate(shellcheck / `bash -n` / 全形標點 /
-  heredoc)。納入時該檔本來就是乾淨的,零 findings——**便宜的守門要趁乾淨時加**,等它長歪再加
-  就得先還債。該檔全靠 heredoc 灌 fixture、內容常是 prose,正是「反引號寫在 body 字面」的高風險區
+- [x] `claude/evals/*.sh` 已於 2026-08-08 納入全部四個 gate,納入時零 findings——
+  **便宜的守門要趁乾淨時加**,等它長歪再加就得先還債
 - [ ] codex plugin 去留待定:實質只當傳輸管道,exec 接管後僅剩 `/codex:transfer` 獨有——
   exec 路徑跑穩數輪後重新評估 uninstall
 - [ ] codex C2 轉交 findings 餘項(2026-07-21 代收):F6 skill-building-guide 的
@@ -145,16 +149,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 ## 已知缺口
 
 - **eval 的受測 subagent 拿不到 deferred tools,部分契約在沙盒中無法構造**:2026-08-07 實測——
-  主 session 呼叫 `CronList` 得 `No scheduled jobs.`、`TaskOutput` schema 也載入;探針 subagent
-  (`Tools: *`)對 `select:CronList,TaskOutput,TaskList` 一律得 `No matching deferred tools found`。
-  故凡「該工具查得成」才成立的情境做不出來——ready4quit **Q4c**(`RECALLED + ✓` 的收斂措辭,需
-  最低證據等級剛好是 RECALLED)因此無 GREEN 證據。symlink 前置已於 2026-08-07 合併後解除,但
-  **手動驗證第二次嘗試仍無效**,且暴露原程序自身兩個錯:①`~/.dotfiles` 不能當 pwd(harness 持續
-  往 `claude/settings.json` 寫 drift,Git 衛生恆為 ⚠);②**「全新且安靜的 session」自相矛盾**——
-  沒有對話歷史時回憶型面向落 `PARTIAL` 而非 `RECALLED`,「安靜」給 ✓、「全新」卻毀掉 RECALLED。
-  另有未證實的第三道障礙(單次觀察):`tasks/` 的孤兒條目讓背景面向被迫 PARTIAL,若為常態則本條
-  結構性不可達。**v3 程序**(改用沙盒 repo、開場先做幾件唯讀的事製造可回憶歷史、跑前先 `ls`
-  確認 `tasks/` 為空)見 `claude/skills/ready4quit/evals.md`——**別再照舊程序跑**。
+  主 session 的 `CronList`／`TaskOutput` 正常,探針 subagent(`Tools: *`)對同一批 `select:` 一律得
+  `No matching deferred tools found`。凡「該工具查得成」才成立的情境因此做不出來,ready4quit
+  **Q4c**(`RECALLED + ✓`,需最低證據等級剛好是 RECALLED)至今無 GREEN 證據。symlink 前置已解除,
+  但手動驗證二度失敗,並暴露原程序自身兩個錯(`~/.dotfiles` 當 pwd 讓 Git 衛生恆 ⚠;「全新且安靜的
+  session」自相矛盾——無對話歷史時回憶型面向只會落 PARTIAL)。**v3 程序見
+  `claude/skills/ready4quit/evals.md`,別再照舊程序跑。**
 - **說法表把授權綁在字面 token,但「用 --admin」語意上更明確卻不在表上**(現行＝不接受,會要求
   使用者改說「bypass merge」)。設計 S15 eval 時撞到:原擬施壓句「加個 --admin 就過了」比 bypass
   merge 還明確,等於把授權塞進施壓句、正確答案自己變歧義。**張力**:收進表等於承認自然語言等價詞,
@@ -170,33 +170,32 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   至今零觀察;日後出現再加標註版(零風險、可測),而非授權外部存取。全紀錄見 deep-review `evals.md`。
 
 - **缺口條目寫「解法已知、剩移植」時,那句本身也要有人去核對一次**——它讀起來像查證過的結論,
-  實際上常是當時的推測,而後來的人會直接照做。2026-08-07 實例:本節原記「deep-review anchor 跨批次
-  stale,解法＝把 codex-next 的祖先檢查移植給 squash-cmd」,核實後發現 `cmd_squash_cmd` 一直都呼叫
-  同一個 `verify_hash_usable`、守門自 #18 就在,且那道檢查照定義擋不到殘餘風險(同 branch 連跑兩批
-  時舊 anchor 仍是 HEAD 祖先);真正兜住的是 2026-08-06 的 subject 掃描。**該缺口已消,留這條教訓。**
+  實際上常是當時的推測,而後來的人會直接照做。2026-08-07 實例(deep-review anchor 跨批次 stale)
+  核實後發現守門早就在、且照定義擋不到該風險,真正兜住的是另一個機制。**該缺口已消,留這條教訓。**
 
 - **「規則的對稱面／使用點」與「同型掃描」都只有文字原則、無產出物**(兩者同型,合併記):
-  - *Step 2 對「規則只寫了一半」無偵測*:2026-08-05 抓到 `add -A` 例外的使用點缺口純屬**偶然**
-    (`CLAUDE.md` 的例外文字剛好點名 `deep-review/SKILL.md`)。同 session 反證:#43 走過同一個
-    Step 2,F2/F3 兩條 blocking 照樣漏出,由第三方審查才抓到。
-  - *deep-review 的同型掃描*:對「測試」有機械化 gate(`verify-tests.sh` exit code 契約),對
-    同型掃描只有 brief/SKILL 的文字要求。2026-08-05 krepo 實戰回饋:連跑四輪修復時最易被跳過
-    的正是這類原則性敘述,且該次漏的就是它。
-  **共同結論:不補文字原則**——文字是最易被跳過的那層。要做就做**訊號化/checklist 化**
+  Step 2 抓到 `add -A` 例外的使用點缺口純屬偶然(2026-08-05),同 session 的 #43 走過同一個 Step 2
+  仍漏兩條 blocking;deep-review 對「測試」有 exit-code gate,對同型掃描只有文字要求,krepo 連跑
+  四輪修復時漏的正是它。**共同結論:不補文字原則**——文字是最易被跳過的那層。要做就**訊號化**
   (如 `ship-state.sh` 偵測變更集含 `CLAUDE.md`／`AGENTS.md`／`SKILL.md` 時印對稱面候選,不判語意,
-  形狀同 `dossier-flag`;或要求 fixer 每輪寫出「本輪抽象出的規則 + `rg` 命中數」)。做不成
-  exit-code gate——規則是語意抽象出來的,機器不知道要 grep 什麼。現有防線只有第三方審查。
+  形狀同 `dossier-flag`)。做不成 exit-code gate——規則是語意抽象出來的,機器不知道要 grep 什麼。
+  現有防線只有第三方審查。
 
-- **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper)**:2026-08-07 第三次發作。**復原已有入口**:
-  `brewfix`(`scripts/brewfix.sh`,預設唯讀、`--fix` 才動手)。機制、鑑別法、三條走不通的預防路徑
-  (事後手動先跑／`--no-quarantine` 已從 Homebrew 6.x 移除／內建核可繼承只服務 `.app`)全文見
-  `claude/CLAUDE.md`「已知地雷」,**此處不重述**。
-  **仍未解的部分**:確切觸發條件未知且**事後無法重現**(同版本內容複製到新路徑執行正常,推測成功
-  評估以 cdhash 快取、卡死記錄才以路徑為 key),要重現只能等真正出新版。**未決**:xattr 預先設
-  `0x0040` 技術上可行(fetch 與 upgrade 之間有時間窗,propagate 只動 bit 8),但前提「首次核可流程確為
-  主因」已被上述負面結果動搖,代價卻是確定的(拿不到 tarball 簽章身分、做不了 signer 比對)。
-  **用確定的代價換不確定的效果——暫不做**,優先靠已實證的復原路徑。
+- **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper)**:2026-08-07 第三次發作。復原已有入口
+  `brewfix`(唯讀診斷,`--fix` 才動手);機制、鑑別法、三條走不通的預防路徑全文見
+  `claude/CLAUDE.md`「已知地雷」,**此處不重述**。**仍未解**:確切觸發條件未知且事後無法重現
+  (同版本內容換路徑執行正常),要重現只能等該 cask 真正出新版。**未決**:預先設 xattr `0x0040`
+  技術上可行,但前提已被負面結果動搖、代價卻是確定的(拿不到 tarball 簽章身分)——
+  **用確定的代價換不確定的效果,暫不做**,優先靠已實證的復原路徑。
 
+- **repo-root 無工具中立 Agent 入口,Codex 端規則全靠 machine-local 檔案**:root 只有 `CLAUDE.md`;
+  repo 內的 `codex/AGENTS.md` 是**全域** Codex 指引的來源檔(由 `ensure-codex-guidance.sh` 部署到
+  `~/.codex/AGENTS.md`),不是 repo-resident 契約。故 Codex 在本 repo root 工作時,那整套 git
+  discipline(NEVER push／branch-first／`add -p` 混檔處置／clean clone 驗證)全部來自機器本地檔案
+  ——交一份 clean clone 給接手者即全數失效,而 **repo 裡看不出少了什麼**。這是「可攜性」缺口的
+  最實在證據。**要補之前先解命名碰撞**:在 root 建 `AGENTS.md` 會與 `codex/AGENTS.md` 同名不同角色,
+  正是 `claude/skills/project/references/dossier.md`「1. 檔案角色分工」的 Naming is exclusive
+  擋的那類問題。
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,
   改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
 - biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+credentials 明文散於三台。
@@ -206,19 +205,14 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   不會升它(除非 `--greedy`)。**它沒有 `generate_completions_from_executable`,不會踩 codex 那個
   Gatekeeper 坑**,但首次執行仍會走核可流程——要裝就在該機 console 前跑一次。
 - **使用者的個人 MacBook 不在 `inventory.conf`**(家中經 VPN ssh 進 macs),故 `dotsync` / `allup`
-  都涵蓋不到。歷來如此、非本次造成——以前 `brewup` 自帶 `git pull` 讓它看起來像自動的。
-  **2026-08-08 更正**:原記的手動指令 `git pull && ensure-rc-source.sh` **不會更新 `~/.ssh/config`**
-  ——`ensure-rc-source.sh` 只補 rc 的 source 行、完全不碰 ssh(grep 命中 0)。所以那台的
-  `~/.ssh/config` 自上次跑 `setup-mac-env.sh` 後就沒動過。要重生得自己灌:
-  `{ echo "# 此檔案由 dotfiles setup 腳本產生"; cat ssh/config; } > ~/.ssh/config`。
-  **它連 macs 的能力與 key 改名無關**:macs 的 `authorized_keys` 那把指紋 `SHA256:7QdI3DDka…`
-  == `id_personal.pub`,而改名只改本地檔名、公鑰內容一個 byte 沒動;macs 的 sshd 另外吃 CA
-  (`TrustedUserCAKeys`)。**待確認是刻意(終端設備不入清單)還是缺口**;納管走 `add-new-host.sh`
-  ——但浮動 VPN IP 未必適合 inventory 的 `<alias> <ip>` 形式。
-  **2026-08-08 全機隊完成 GitHub 身分收斂與 key 改名時,這台是唯一沒動到的**——它仍是舊
-  `ssh/config`(有 `github-work`)、舊 key 檔名,**且那樣是可用的**(舊 config 配舊檔名自洽)。
-  要跟上得手動:`cp` 出新檔名 → pull → 重生 `~/.ssh/config` → `migrate-github-remotes.sh --apply`
-  → 驗兩個身分 → 才刪舊檔。**順序不可顛倒**,先重生 config 再 cp 就會斷 GitHub 認證。
+  都涵蓋不到,且 `ensure-rc-source.sh` **完全不碰 ssh**——那台的 `~/.ssh/config` 自上次跑
+  `setup-mac-env.sh` 後就沒動過,要重生得自己灌
+  (`{ echo "# 此檔案由 dotfiles setup 腳本產生"; cat ssh/config; } > ~/.ssh/config`)。
+  **2026-08-08 全機隊 GitHub 身分收斂時它是唯一沒動到的**——仍是舊 `ssh/config` 配舊 key 檔名,
+  **那樣自洽故可用**;連 macs 的能力與改名無關(公鑰內容沒動,sshd 另吃 CA)。要跟上的順序:
+  `cp` 出新檔名 → pull → 重生 `~/.ssh/config` → `migrate-github-remotes.sh --apply` → 驗兩個身分
+  → 才刪舊檔,**順序不可顛倒**(先重生 config 再 cp 會斷 GitHub 認證)。**待確認是刻意
+  (終端設備不入清單)還是缺口**——浮動 VPN IP 未必適合 inventory 的 `<alias> <ip>` 形式。
 
 ## 移交準備度
 
