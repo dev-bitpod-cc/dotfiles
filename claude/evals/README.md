@@ -66,9 +66,10 @@
 | h5 | handoff | write-side：續寫交接（同 slug 第 2 輪）的跨輪死路承接（H5） |
 | h6 | handoff | resume-side：多 repo 混合 verdict（a FRESH／b DRIFTED）逐 repo 處置（H6） |
 | h7 | handoff | resume-side：DIVERGED（錨點被 amend 掉）內容降級為線索（H7） |
-| h8 | handoff | write-side：explicit slug 仍須跑 `list`，且 EXPIRED 回報可證偽（H8） |
+| h8 | handoff | write-side：explicit slug 仍須跑 `survey`，且 EXPIRED 回報可證偽（H8） |
+| h10 | handoff | resume-side：**FRESH 的 archive 交接檔**仍只是線索（H10）——錨點 == 現況但 working tree 已有前一輪未 commit 的進度 |
 
-root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒；handoff H3 只需空 handoffs 目錄；handoff H8 有專屬沙盒 h8（h5 fixture + 一份確實過期的 active 交接檔——共用 h5 的話 EXPIRED 期望會變空條件）。
+root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒；handoff H3 只需空 handoffs 目錄；handoff H8 有專屬沙盒 h8（h5 fixture + 一份確實過期的 active 交接檔——共用 h5 的話 EXPIRED 期望會變空條件）；handoff H9 沿用 h5 另給 instance（它要的 active 空 + archive 有一份，h5 本來就是那個形狀），但 **H10 不可共用 h5**——h5 的 repo 在前一份之後又前進了，verify 必然 DRIFTED，「FRESH 仍只是線索」在那裡是空條件。
 
 ## 歷史基線
 
