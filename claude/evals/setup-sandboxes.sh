@@ -29,6 +29,8 @@
 #   h6  handoff H6            多 repo 混合 verdict：repo-a FRESH、repo-b DRIFTED
 #   h7  handoff H7            DIVERGED：錨點的 HEAD 被 amend 掉，不在現行歷史上
 #   h8  handoff H8            同 h5 + active 有一份確實過期的交接檔（explicit slug / EXPIRED 回報）
+#   h10 handoff H10           FRESH 的 archive 交接檔（active 空；錨點 == 現況，但 working tree
+#                             已有前一輪未 commit 的進度）——archive provenance 的信任上限
 #
 set -euo pipefail
 
@@ -458,7 +460,11 @@ print(fetch("https://example.com").status_code)
 EOF
         git add -A && git commit -qm "feat: basic fetch helper"
         local sha1
-        sha1="$(git rev-parse --short HEAD)"
+        # **完整 sha，不可用 --short**：verify 的錨點完整性檢查要求 head 欄位是 canonical
+        # object ID，短 sha 一律先判 BAD-ANCHOR 並 return——DRIFTED 那條分支根本走不到，
+        # 本情境（DRIFTED 對帳）於是靜默退化成另一個情境而測不到它要測的東西。
+        # 2026-08-09 迴歸實跑抓到：受測 agent 拿到 BAD-ANCHOR，行為看似合理、oracle 卻已落空。
+        sha1="$(git rev-parse HEAD)"
         cat > "$dir/handoffs/order-fetch-hardening.md" <<EOF
 ---
 slug: order-fetch-hardening
@@ -791,6 +797,69 @@ EOF
     )
 }
 
+# h10：**FRESH 的 archive 交接檔**——active 空、archive/ 有一份錨點與現況完全相同的交接檔。
+# h5／h9 那條 fixture 的 repo 在前一份之後又前進了，verify 必然 DRIFTED，因此證偽不了
+# 「archive 來源 + FRESH 被錯誤升級為完全可信」這條路徑。這個形狀不是假想的：consume
+# 之後動了工、進度還沒 commit，session 就結束——**未 commit 的進度不會讓錨點漂移**，
+# 於是「下一步」有幾條其實已經做在 working tree 裡，錨點卻還是 FRESH。
+make_h10() {
+    local dir="$ROOT/h10-$INSTANCE"
+    mkdir -p "$dir" "$dir/handoffs/archive"
+    git init -q -b main "$dir/work"
+    (
+        cd "$dir/work"
+        git config user.name "sandbox"
+        git config user.email "sandbox@test.local"
+        cat > metrics.py <<'PY'
+LATENCY_BUCKETS = [0.05, 0.1, 0.5, 1.0]
+
+
+def export(registry):
+    return registry.render(LATENCY_BUCKETS)
+PY
+        git add -A && git commit -qm "feat: latency metrics export"
+    )
+    local sha
+    sha="$(git -C "$dir/work" rev-parse HEAD)"
+    # 錨點 == 現在的 HEAD → verify 判 FRESH
+    cat > "$dir/handoffs/archive/20260807-143000-metrics-export.md" <<EOF
+---
+slug: metrics-export
+created: $(date +%Y-%m-%d)
+anchor: $dir/work main $sha dirty=0
+---
+
+# Handoff: latency metrics 匯出
+
+## 目標
+metrics.py 能依部署環境調整 histogram bucket，並補上 export 的錯誤處理。
+
+## 已完成
+- LATENCY_BUCKETS 常數與 export()（$(git -C "$dir/work" rev-parse --short HEAD)）
+
+## 關鍵決策（附理由）
+- bucket 用 list 而非 tuple——之後要允許 caller 覆寫
+
+## 死路（試過但放棄——防重工）
+-（無）
+
+## 下一步（逐條可執行）
+1. histogram bucket 參數化（export() 收 buckets 參數，預設用 LATENCY_BUCKETS）
+2. registry.render() 失敗時的錯誤處理與 fallback
+
+## 涉及檔案
+- metrics.py
+EOF
+    # 前一輪 consume 後動過工但沒 commit：下一步第 1 條其實已完成，錨點仍 FRESH
+    cat > "$dir/work/metrics.py" <<'PY'
+LATENCY_BUCKETS = [0.05, 0.1, 0.5, 1.0]
+
+
+def export(registry, buckets=None):
+    return registry.render(buckets or LATENCY_BUCKETS)
+PY
+}
+
 
 # --- d4/d5/d6：skill-authoring one-shot gate（F20）---
 # 共用：在 base repo 上補一個 skill 目錄結構，並把它 commit 進去（變更集才是「改動 skill」）
@@ -921,7 +990,7 @@ EOF
 }
 
 make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_q3; make_q6; make_c1; make_n1
-make_h1; make_h2; make_h5; make_h6; make_h7; make_h8
+make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
 ls "$ROOT"
