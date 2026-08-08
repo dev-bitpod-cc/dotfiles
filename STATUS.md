@@ -6,13 +6,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-08)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-09)
 
 ---
 
 ## 進行中
 
-(無進行中工作項——dossier 機制加固已於 2026-08-08 完成,見里程碑)
+(無進行中工作項——handoff skill 收斂已於 2026-08-09 完成,見里程碑)
 
 ---
 
@@ -20,6 +20,24 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-09 錨點 sha 判準用 canonical OID 比對,不硬編雜湊長度**:判準是
+  `rev-parse --verify "<sha>^{commit}"` 的解析結果 == 記錄值。**不寫 40 hex** ——SHA-256 repo 的
+  OID 是 64 hex(實測),寫死會錯殺整個 sha256 repo;而這個判準同時擋掉 `HEAD`／branch 名／短 sha
+  且與演算法無關。副作用是收緊(手寫短 sha 的舊檔變 BAD-ANCHOR):查過實檔 55 份 76 條錨點全是
+  完整 sha,production 零衝擊,故接受。
+- **2026-08-09 handoff 的 frontmatter `slug:` 是否決權、不是索引**:第三方審查建議「查 frontmatter
+  slug 也應命中」,但那是行為變更——既有斷言明文釘住「手改過的殘檔不得被撿」。改以 frontmatter 為
+  身分的話,survey 會宣傳一條 `find-predecessor` 拒絕採用的工作線,兩個消費端對同一份檔案給出相反
+  答案。改採「以檔名歸戶 + 標註不可達」:不動已釘住的語意,又把隱形殘檔變可見。**正反兩面都要有
+  斷言**——只釘一面的話,改用 frontmatter 當索引照樣全綠。
+- **2026-08-09 handoff 的跨主機 docs commit 與 ready4quit「一律不 commit」刻意相反**:前者是跨機
+  唯一媒介(不 commit 就沒有管道),後者是 pre-quit 純驗證(commit 權責屬 `/project log`)。兩者都對
+  但沒互相標註,下次審查易報成不一致,故記於此。**刻意不寫進 SKILL.md body**——不是觀察到的 agent
+  失敗,違反 `No failing scenario, no instruction`,只會替每次載入加 token。
+- **2026-08-09 不強制 handoff resume 呼叫 `branch-first.sh`**:resume 開工的正解是 `git switch -c`
+  (情況 A),該腳本的價值在情況 B 的救援序列;強制呼叫等於把 ship pipeline 的一角搬進 handoff。
+  R4 只留一行 branch 紀律 + 指標,約束力由 H6 新增的 oracle 擔任(首跑實測 commit 落在 main、
+  同輪 repo-b 卻開了 branch——行為分歧就是加這條 oracle 的證據)。
 - **2026-08-08 xref gate 只保障 dotfiles,但它服務的規範是全域的——這個不對稱要講明**:
   `tests/run.sh` 只跑本 repo,故「唯一權威」指標的機械守門僅及於 dotfiles;而同批改的
   `ship-state.sh`(append-only 偵測)與 dossier 規範(失效標記)**跨 repo 生效**。
@@ -27,21 +45,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   「失效標記已有守門」(其他 repo 的指標沒人掃)。**不擴大到 `ship-state.sh --repo` 的理由**:
   其他 repo 的引用可能指向 repo 外(如 `~/Projects/...`),需要另一套外部路徑政策;
   規範已要求指標寫成 gate 可解析的形狀,將來擴大時零回填。
-- **2026-08-08 source 與 target 的「非正文」排除規則刻意不對稱**(反直覺,故記):
-  source 抽取**排 fenced、掃 HTML comment**;target 的 heading/body **兩者皆排除**。
-  理由是兩端問的問題不同——source 問「這是不是一條治理指標」(圍欄內是示範怎麼寫,
-  註解裡卻是真的要你去看,krepo 的量體豁免指標就寫在檔首 comment);target 問「該節是否真的存在」
-  (註解掉的模板與圍欄裡的範例標題都不構成存在證據,放行即假綠)。四條 fixture 各自釘住一個方向。
-- **2026-08-08 gate 的 pattern 分不出「使用」與「提及」,處置是改寫而非放寬**:討論一條(尤其
-  壞掉的)引用時,寫法與真指標一模一樣——實地:把死指標當例子寫進 STATUS.md 的 spec,gate 當場
-  咬自己。兩條出路:放進 code fence(source 端排除),或在路徑與引號間插字。
-  **不為此放寬 pattern**——能區分兩者的唯一訊號就是 fence,放寬會讓真指標從縫隙漏掉。
-- **2026-08-08 兩處判準在實作時比計畫收斂得更準,都是因為先量了存量**:①純基名原訂「一律
-  blocking」,實測發現 `ready4quit/evals.md` 引用同目錄 `SKILL.md` 是合法寫法,改為「引用檔目錄
-  與 root 都解析不到才 blocking」,並**不做全 repo 同名搜尋**(repo 內兩份 `reviewer-brief.md`
-  是刻意隔離的兩套判準,模糊搜尋會指到錯的那份而毫無警訊);②append-only 章節限**完整章節名**
-  (允許括號/冒號後綴)而非寬鬆子字串,否則「## 為何不使用 Change Log」這類討論性章節會被判紅
-  ——gate 誤報的代價是逼人改壞寫法以求過測。
 - **2026-08-08 散佈憑證變更的三條紀律**(全機隊改 SSH 身分與 key 檔名時實地得出):
   ①**`cp` 不 `mv`**——新舊並存,任一步失敗都不斷線;遠端拉 dotfiles 靠的正是 GitHub SSH,
   認證改壞又散佈出去就拉不到修正,只剩 `ssh <host>`(內網 CA cert)進去手改。
@@ -53,11 +56,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   每台先自檢「config 指向新檔名／新檔存在／兩個身分認得對」三道,任一不成立即跳過該台、
   零刪除。**判準:前提由執行端當場驗,不由發起端事先假設**——發起端的「我剛剛驗過了」
   在並行散佈裡是舊資訊。形狀同 `cleanup-stale-branch.sh` 的執行當下重驗。
-- **2026-08-08 key 檔名要反映**所有**角色,不只最顯眼那個**:原提議把個人 key 改叫 `id_github_me`
-  (對稱於 Host `github-me`),使用者指出它同時是各主機 `authorized_keys` 的 fallback 私鑰,
-  故定為 `id_personal`。**判準:命名跟著角色集合走,不跟著最常用的那個場景走**——叫 `id_github_*`
-  會讓後來的人以為「不用 GitHub 就能刪」,而那把 key 是 CA cert 失效時進遠端機器的唯一後路。
-
 ## 死路(試過但放棄——防重工)
 
 - **mc(Midnight Commander)當遠端檔案管理器**:評估後放棄,理由是**協定層而非偏好**——
@@ -80,6 +78,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 技術債
 
+- [ ] **handoff 的 `dirty=N` 敘述會在 W2→W3 之間過期**(2026-08-09 H5 迴歸復發,首跑即記過)。
+  W2 蓋錨點後 W3 才把跨輪死路沉澱進 repo 的 STATUS.md,working tree 檔數增加而錨點與交接檔敘述
+  都停在蓋錨點當下 → 寫出「`dirty=1` 就是上述**兩個**未 commit 檔案」。**同批 H8 同 fixture 同模型
+  卻主動講清落差**——行為分歧已達動規則的證據門檻。傾向**改順序而非加告誡**:W3 的 dossier 沉澱
+  移到 W2 之前(predecessor 在 W1 已定出,可行),dirty 在蓋錨點當下即為最終值,過期的可能從流程
+  消失;配一條 H5 oracle(用 8/09 的逐字錯誤當 RED)。未做——本輪任務是迴歸驗證。
 - [ ] R4 non-blocking 餘一項:**新增 prose 的中文半形標點與既有全形混排**。2026-08-08 未做——
   「新增 prose」指哪一批已不可考,純風格、無失敗案例,且該日又寫入大量中文 prose(移動標靶)。
   要做就一次全檔統一,不要逐批追。其餘三項(Transfer 模式 commit 歸屬、evals/README 路徑基準、
@@ -130,6 +134,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - ✅ 2026-08-07 ship 說法語法：說法即授權、merge 預設保留、`review-terminal` STOP、merge 受阻分流（#52，672 PASS）
 - ✅ 2026-08-07 squash-merge 殘留偵測 + `cleanup-stale-branch.sh` 安全清除（#53，699 PASS）
 - ✅ 2026-08-07 Scenario 15 補測：`BLOCKED` 不得自動 `--admin`，正反兩向 PASS（#54）
+- ✅ 2026-08-09 handoff skill 收斂：錨點兩端完整性（unborn HEAD 的永久假 FRESH）＋ W1/R1 三指令下沉為 `survey` ＋ archive resume 的盲區與信任上限（889 PASS，eval 8/8）
 - ✅ 2026-08-07 ready4quit 強化 + 四輪第三方審查修復：證據語彙拆兩軸（強度 × 殘留）、Step 2 memory/dossier 雙出口、背景任務證據來源改 `tasks/` 且 liveness 不得由 `.output` 推斷、`git-hygiene.sh` 補遠端事實與多 remote 一致性、hook 增報 worktree 雙寫入者；**eval 從零 GREEN 到 8 條 PASS**，其中 Q4a/Q5 是 eval 自己抓出、四輪第三方審查都沒看到的規格缺口（#59，754 PASS；Q4c 未驗見「已知缺口」）
 - ✅ 2026-08-07 `brewup`/`sysup` 從 rc alias 抽成 `scripts/*.sh`（雙平台單一來源，消除兩份複本的漂移風險）+ 新增 `brewfix` 復原入口；`all-up.sh` 改直接呼叫腳本、去掉 `bash -ic`（`no job control` 雜訊隨之消失）；`ensure-rc-source.sh` 增舊 alias 清理（**刪行而非 unalias**——14 台巡檢實測 rc 內 alias 與 source 的相對順序因機器而異，macmini 反向，`unalias` 會多數生效少數靜默失效）（787 PASS）
 
@@ -164,16 +169,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **證據標註 = backlog,無 RED 不進 brief**:待觀察失效為「finding 建立在未查證推論、fixer 誤信」,
   至今零觀察;日後出現再加標註版(零風險、可測),而非授權外部存取。全紀錄見 deep-review `evals.md`。
 
-- **deep-review anchor 跨批次會 stale**(2026-08-07 核實後**改寫**,原記載有誤):anchor 只在 autofix
-  的 `record` 寫入,走「codex 第三方審查」觸發詞路徑時不 record → 讀到**上一批**的 anchor(2026-08-05
-  實遇:本批 3 顆卻給出會壓掉 5 顆的 reset 目標)。
-  **原條目寫「解法＝把 codex-next 的祖先檢查移植給 squash-cmd」是誤記**:`cmd_squash_cmd` 一直
-  都呼叫 `verify_hash_usable`(hash 存在 + `merge-base --is-ancestor`),與 `codex-next` 共用同一個
-  函式,`tests/run.sh` 也早有「anchor 非 HEAD 祖先 → STOP」守門(自 #18 起)。
-  **且那道檢查照定義擋不到殘餘風險**——同一條 branch 上連跑兩批時,舊 anchor 仍是 HEAD 祖先。
-  真正兜住它的是 2026-08-06 的 subject 掃描(停在第一顆語意 commit)。無實地失敗案例,不再加工。
-  **教訓:缺口條目寫「解法已知、剩移植」時,那句本身也要有人去核對一次**——它讀起來像已經
-  查證過的結論,實際上是當時的推測,而後來的人(包括我)會直接照做。
+- **缺口條目寫「解法已知、剩移植」時,那句本身也要有人去核對一次**——它讀起來像查證過的結論,
+  實際上常是當時的推測,而後來的人會直接照做。2026-08-07 實例:本節原記「deep-review anchor 跨批次
+  stale,解法＝把 codex-next 的祖先檢查移植給 squash-cmd」,核實後發現 `cmd_squash_cmd` 一直都呼叫
+  同一個 `verify_hash_usable`、守門自 #18 就在,且那道檢查照定義擋不到殘餘風險(同 branch 連跑兩批
+  時舊 anchor 仍是 HEAD 祖先);真正兜住的是 2026-08-06 的 subject 掃描。**該缺口已消,留這條教訓。**
 
 - **「規則的對稱面／使用點」與「同型掃描」都只有文字原則、無產出物**(兩者同型,合併記):
   - *Step 2 對「規則只寫了一半」無偵測*:2026-08-05 抓到 `add -A` 例外的使用點缺口純屬**偶然**
