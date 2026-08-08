@@ -175,6 +175,130 @@ else
     printf '%s\n' "$hd_hits" | sed 's/^/     /'
 fi
 
+echo "▶ 1d. 交叉引用完整性 gate"
+# repo 的規範網靠「唯一權威」維持：同一主題只有一處定義，別處寫「見 `X 檔`「Y 節」，此處不
+# 重述」。那個不變式原本**全靠散文**。指標斷掉的後果不是不整潔——claude/CLAUDE.md 要求
+# 「勿憑記憶重組」，指標斷掉時重組就是唯一選擇。首次掃描實測：1 條真死指標、2 條指向
+# repo 內有兩份同名檔的基名引用（reviewer-brief.md 有 Claude／Codex 兩份，刻意隔離的兩套
+# 判準，指錯即破壞 blind review）。判準與輸出契約見 tests/xref-gate.py 檔頭。
+XREF_GATE="$ROOT/tests/xref-gate.py"
+XR="$TMP/xref"
+mkdir -p "$XR/sub"
+# 共用 target：heading 帶括號補充（釘 G1 的子字串比對）、一條含 ** 修飾的內文規則（G2）、
+# 一個只活在 fence 內的節名（R2）、一個只活在 HTML comment 內的節名（R3）。
+cat > "$XR/target.md" <<'XREFFIX'
+# 目標檔
+
+## 說法表（唯一權威；照此分派）
+
+- 存之前先比對既有項目，覆蓋同一主題就**更新該檔**，不要建重複檔。
+
+```markdown
+## 只活在圍欄裡的節
+```
+
+<!--
+## 只活在註解裡的節
+-->
+XREFFIX
+cat > "$XR/sub/dup.md" <<'XREFFIX'
+# 同名檔（放在 root 底下的別處，不在引用檔目錄，也不在 root 直下）
+## 某節
+XREFFIX
+xref_run() { python3 "$XREF_GATE" --root "$XR" "$@" 2>/dev/null; }
+# 掃描器自檢在前：少了 RED，掃描器被改壞而恆不匹配時，對真實檔案的空輸出一樣是「通過」。
+cat > "$XR/r1.md" <<'XREFFIX'
+見 `target.md`「這個節名根本不存在於任何地方」。
+XREFFIX
+cat > "$XR/r2.md" <<'XREFFIX'
+見 `target.md`「只活在圍欄裡的節」。
+XREFFIX
+cat > "$XR/r3.md" <<'XREFFIX'
+見 `target.md`「只活在註解裡的節」。
+XREFFIX
+cat > "$XR/r4.md" <<'XREFFIX'
+見 `dup.md`「某節」。
+XREFFIX
+cat > "$XR/r5.md" <<'XREFFIX'
+見 `target.md`「**」。
+XREFFIX
+cat > "$XR/r7.md" <<'XREFFIX'
+<!--
+維護提示：豁免條件見 `target.md`「這個節名同樣不存在」。
+-->
+XREFFIX
+cat > "$XR/g1.md" <<'XREFFIX'
+見 `target.md`「說法表」。
+XREFFIX
+cat > "$XR/g2.md" <<'XREFFIX'
+見 `target.md`「覆蓋同一主題就更新該檔，不要建重複檔」。
+XREFFIX
+cat > "$XR/g3.md" <<'XREFFIX'
+報告模板範例（fenced，示範怎麼寫，不是治理指標）：
+
+```markdown
+見 `target.md`「範例用的假節名」。
+```
+XREFFIX
+# G5：外層四反引號、內層三反引號。內層若被當 closer，fence 會提前關欄，
+# 後面那條假引用就會被誤報。
+cat > "$XR/g5.md" <<'XREFFIX'
+````markdown
+```
+見 `target.md`「巢狀圍欄裡的假節名」。
+```
+````
+XREFFIX
+# G6：四格縮排的字面 ``` 不是 fence opener（CommonMark 上限 3 格）。若誤判為 opener，
+# 後面那條**真的壞掉**的引用會被吞掉而漏報——所以這條的期望是「必須命中」。
+cat > "$XR/g6.md" <<'XREFFIX'
+    ```
+    這是四格縮排的字面內容，不是圍欄。
+
+見 `target.md`「縮排誤判就會漏掉這條」。
+XREFFIX
+# G7：fence 內的 ```text 不是 closer（closer 後只允許空白）。若誤判為 closer，
+# 圍欄提前結束 → 圍欄內那條假引用被誤報，且真正的 closer 之後那條壞引用反被吞掉。
+cat > "$XR/g7.md" <<'XREFFIX'
+```
+```text
+見 `target.md`「圍欄內的假節名」。
+```
+
+見 `target.md`「圍欄外必須抓到的節名」。
+XREFFIX
+if [ -n "$(xref_run "$XR/r1.md")" ]; then ok "gate 自檢：節名與內文皆無 → 命中"; else bad "gate 失效（RED 沒被抓，真實掃描的空輸出不可信）"; fi
+if [ -n "$(xref_run "$XR/r2.md")" ]; then ok "gate 自檢：目標節名只在 fenced block → 仍是死指標"; else bad "target 端未剝 fence（圍欄裡的範例標題被當成節存在 → 假綠）"; fi
+if [ -n "$(xref_run "$XR/r3.md")" ]; then ok "gate 自檢：目標節名只在 HTML comment → 仍是死指標"; else bad "target 端未剝 comment（註解掉的模板被當成節存在 → 假綠）"; fi
+if [ -n "$(xref_run "$XR/r4.md")" ]; then ok "gate 自檢：同名檔在 root 別處但引用處解析不到 → 命中（不做全 repo 模糊搜尋）"; else bad "gate 用基名模糊搜尋放行了——repo 內兩份 reviewer-brief.md 是刻意隔離的判準，指錯無警訊"; fi
+if [ -n "$(xref_run "$XR/r5.md")" ]; then ok "gate 自檢：節名 normalize 後為空 → 命中"; else bad "空節名放行（空字串是任何字串的子字串，會恆假綠）"; fi
+if [ -n "$(xref_run "$XR/r7.md")" ]; then ok "gate 自檢：source 的 HTML comment 內死指標 → 命中"; else bad "source 端漏掃 comment（krepo 的豁免指標就寫在 comment 裡）"; fi
+xref_missing_rc=0
+xref_run "$XR/nosuch-file.md" >/dev/null 2>&1 || xref_missing_rc=$?
+if [ "$xref_missing_rc" -eq 2 ]; then ok "gate 自檢：不存在的輸入檔 → exit 2（錯誤不得冒充零命中）"; else bad "scanner 失敗未走 exit 2（實得 ${xref_missing_rc}）——run.sh 無 set -e，空 stdout 會被判成乾淨"; fi
+if [ -z "$(xref_run "$XR/g1.md")" ]; then ok "gate 自檢：節名前綴對上帶括號補充的 heading → 不報"; else bad "子字串比對失效（heading 帶括號補充是常態寫法，會全面誤紅）"; fi
+if [ -z "$(xref_run "$XR/g2.md")" ]; then ok "gate 自檢：引用內文一行（原文含 ** 修飾）→ 不報"; else bad "normalize 未剝 inline 修飾（合法的規則引用被判紅）"; fi
+if [ -z "$(xref_run "$XR/g3.md")" ]; then ok "gate 自檢：source 的 fenced 範例 → 不報"; else bad "source 端未剝 fence（報告模板的範例被當治理指標，逼人改模板文字）"; fi
+if [ -z "$(xref_run "$XR/g5.md")" ]; then ok "gate 自檢：巢狀圍欄（4 反引號包 3）不提前關欄"; else bad "closer 未檢查同字元與長度 → 圍欄提前關，內層範例被誤報"; fi
+if [ -n "$(xref_run "$XR/g6.md")" ]; then ok "gate 自檢：四格縮排的圍欄標記不是 opener（後續正文照掃）"; else bad "縮排無上限 → 四格縮排被當 opener，後面的真死指標被吞掉"; fi
+xref_g7="$(xref_run "$XR/g7.md")"
+if [ -n "$xref_g7" ] && ! grep -q '圍欄內的假節名' <<< "$xref_g7"; then
+    ok "gate 自檢：fence 內的 \`\`\`text 不是 closer（圍欄內不誤報、圍欄外照抓）"
+else
+    bad "closer 後未限定只允許空白 → 圍欄提前結束，內文被當正文誤報／圍欄外的死指標漏抓"
+fi
+# 真實掃描：本 repo 的治理指標必須全部可解析
+xref_hits="$(python3 "$XREF_GATE" --root "$ROOT")"
+xref_rc=$?
+if [ "$xref_rc" -ne 0 ]; then
+    bad "xref-gate 掃描器執行失敗（exit ${xref_rc}）——空輸出不可信"
+elif [ -z "$xref_hits" ]; then
+    ok "無斷掉的交叉引用"
+else
+    bad "有斷掉的交叉引用（節名改過就要同步指標；權威搬家要改指向）"
+    printf '%s\n' "$xref_hits" | sed 's/^/     /'
+fi
+
 echo "▶ 2. bash -n 語法 gate"
 syntax_fail=0
 for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
@@ -1364,6 +1488,29 @@ cat > "$TMP/ds-work/STATUS.md" <<'DOSSIER'
 DOSSIER
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
 if echo "$out" | grep -q "dossier-flag:.*Session Log"; then ok "Session Log 章節 → flag"; else bad "Session Log 未偵測"; fi
+
+# append-only 章節的**別名家族**：規範是「NEVER add an append-only log section」，不是
+# 「不要叫 Session Log」——只認一個字面時，換個名字就整個漏掉。訊息須附**實際命中的
+# heading**，否則別名命中卻回報 Session Log，處置會指向錯的章節。
+for ao_name in "變更紀錄" "變更記錄" "工作日誌" "開發日誌" "CHANGELOG" "Change Log" "Session Log（2026-08）"; do
+    { echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 項目"; echo; echo "## ${ao_name}"; echo "- 條目"; } > "$TMP/ds-work/STATUS.md"
+    out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+    if echo "$out" | grep -q "dossier-flag:.*append-only log：## ${ao_name}"; then
+        ok "append-only 別名「${ao_name}」→ flag（訊息附實際 heading）"
+    else
+        bad "append-only 別名「${ao_name}」未偵測或訊息未附實際 heading"
+    fi
+done
+# 負向：討論性章節不得誤報——gate 誤報的代價是逼人把安全寫法改壞以求過測
+for ao_safe in "為何不使用 Change Log" "Session Log 的替代方案" "已完成(里程碑)"; do
+    { echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 項目"; echo; echo "## ${ao_safe}"; echo "- 條目"; } > "$TMP/ds-work/STATUS.md"
+    out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+    if echo "$out" | grep -q "dossier-flag:.*append-only log"; then
+        bad "討論性章節「${ao_safe}」被誤報成 append-only log"
+    else
+        ok "討論性章節「${ao_safe}」→ 不誤報"
+    fi
+done
 
 # 全檔 > 300 行 → flag
 { echo "# 測試專案 STATUS"; echo; echo "## 進行中"; seq 1 310 | sed 's/^/- filler /'; } > "$TMP/ds-work/STATUS.md"

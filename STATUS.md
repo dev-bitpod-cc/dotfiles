@@ -12,7 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(無進行中工作項——上一項 GitHub 多身分收斂已於 2026-08-08 全數完成,見里程碑)
+(無進行中工作項——dossier 機制加固已於 2026-08-08 完成,見里程碑)
 
 ---
 
@@ -20,6 +20,28 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-08 xref gate 只保障 dotfiles,但它服務的規範是全域的——這個不對稱要講明**:
+  `tests/run.sh` 只跑本 repo,故「唯一權威」指標的機械守門僅及於 dotfiles;而同批改的
+  `ship-state.sh`(append-only 偵測)與 dossier 規範(失效標記)**跨 repo 生效**。
+  故不得說「其他 repo 零影響」(它們未來的 `/project log` 行為確實變了),也不得說
+  「失效標記已有守門」(其他 repo 的指標沒人掃)。**不擴大到 `ship-state.sh --repo` 的理由**:
+  其他 repo 的引用可能指向 repo 外(如 `~/Projects/...`),需要另一套外部路徑政策;
+  規範已要求指標寫成 gate 可解析的形狀,將來擴大時零回填。
+- **2026-08-08 source 與 target 的「非正文」排除規則刻意不對稱**(反直覺,故記):
+  source 抽取**排 fenced、掃 HTML comment**;target 的 heading/body **兩者皆排除**。
+  理由是兩端問的問題不同——source 問「這是不是一條治理指標」(圍欄內是示範怎麼寫,
+  註解裡卻是真的要你去看,krepo 的量體豁免指標就寫在檔首 comment);target 問「該節是否真的存在」
+  (註解掉的模板與圍欄裡的範例標題都不構成存在證據,放行即假綠)。四條 fixture 各自釘住一個方向。
+- **2026-08-08 gate 的 pattern 分不出「使用」與「提及」,處置是改寫而非放寬**:討論一條(尤其
+  壞掉的)引用時,寫法與真指標一模一樣——實地:把死指標當例子寫進 STATUS.md 的 spec,gate 當場
+  咬自己。兩條出路:放進 code fence(source 端排除),或在路徑與引號間插字。
+  **不為此放寬 pattern**——能區分兩者的唯一訊號就是 fence,放寬會讓真指標從縫隙漏掉。
+- **2026-08-08 兩處判準在實作時比計畫收斂得更準,都是因為先量了存量**:①純基名原訂「一律
+  blocking」,實測發現 `ready4quit/evals.md` 引用同目錄 `SKILL.md` 是合法寫法,改為「引用檔目錄
+  與 root 都解析不到才 blocking」,並**不做全 repo 同名搜尋**(repo 內兩份 `reviewer-brief.md`
+  是刻意隔離的兩套判準,模糊搜尋會指到錯的那份而毫無警訊);②append-only 章節限**完整章節名**
+  (允許括號/冒號後綴)而非寬鬆子字串,否則「## 為何不使用 Change Log」這類討論性章節會被判紅
+  ——gate 誤報的代價是逼人改壞寫法以求過測。
 - **2026-08-08 散佈憑證變更的三條紀律**(全機隊改 SSH 身分與 key 檔名時實地得出):
   ①**`cp` 不 `mv`**——新舊並存,任一步失敗都不斷線;遠端拉 dotfiles 靠的正是 GitHub SSH,
   認證改壞又散佈出去就拉不到修正,只剩 `ssh <host>`(內網 CA cert)進去手改。
@@ -151,6 +173,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 - ✅ 2026-08-07 待辦批次收尾：`ship-state.sh` 兩項硬化（remote 刪除改走 `cleanup-stale-branch.sh`，帶 ls-remote 重驗＋lease；新增 `branch-diverged` 訊號）＋**unquoted heredoc 反引號 gate**（第 1c 節，掃描器附 RED/GREEN 自檢；灌 `ssh/config` 那三處同批改 `echo + cat`，但**當時給的理由是錯的**，見決策節首條）＋ GitHub 多身分收斂本機完成 ＋ `migrate-github-remotes.sh`（822 PASS）
 - ✅ 2026-08-08 **GitHub 多身分收斂 14 台全數上線、舊 key 已清**：`github-work` 與 `insteadOf` 整層消滅，key 檔名對齊 Host（`id_github_com` / `id_personal`）；48 條 remote 換寫、2 條 `insteadOf` 清除；db01 另驗 AC4（`krepo-common` 標準 URL 無改寫層直接可達）。執行紀律見決策節同日條目（#68，823 PASS）
+- ✅ 2026-08-08 **dossier 機制加固**：新增 `tests/xref-gate.py` + 第 1d 節（13 條 fixture，含掃描器自檢）——把「唯一權威」從散文換成 gate；首次掃描實測抓出 1 條真死指標與 2 條指向雙份同名檔的基名引用，皆已修；`ship-state.sh` 的 append-only 偵測從單一字面擴為別名家族（附實際命中 heading，另有 3 條討論性章節的負向守門）；`dossier.md` 的決策生命週期從「直接刪」改為**保留原文 + 失效標記**，與 `docs/project-spec.md` 檔首早已自行採用的寫法收斂為一（850 PASS）
 
 ## 已知缺口
 
