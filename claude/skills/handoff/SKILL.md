@@ -11,12 +11,12 @@ argument-hint: "[resume] [slug]"
 
 - 存放：`~/.claude/handoffs/<slug>.md`（machine-local；**不放 repo 內**——不污染 git status，跨 repo 工作也只需一份檔多條錨點）
 - 已消費：`~/.claude/handoffs/archive/YYYYMMDD-HHMMSS-<原檔名>`（秒級前綴——同日同 slug 二次消費不可互相覆蓋，archive 是 audit trail）
-- 機制腳本：`~/.claude/skills/handoff/scripts/handoff-anchor.sh`（`anchors` / `verify` / `consume` / `list`；EXPIRE_DAYS、ARCHIVE_KEEP_DAYS 常數以腳本為單一來源）
+- 機制腳本：`~/.claude/skills/handoff/scripts/handoff-anchor.sh`（`survey` / `anchors` / `verify` / `consume`；EXPIRE_DAYS、ARCHIVE_KEEP_DAYS 常數以腳本為單一來源。`list` 與 `find-predecessor` 是 `survey` 的底層原語，本 skill 一律走 `survey`）
 
 ## 引數
 
 - **`/handoff [slug]`** — write mode：寫交接檔。無 slug 就依工作線自取（kebab-case，如 `dotfiles-handoff-skill`）。
-- **`/handoff resume [slug]`** — resume mode：接續交接。無 slug → `list` 只有一份就直接用，多份列給使用者選。
+- **`/handoff resume [slug]`** — resume mode：接續交接。無 slug → `survey` 只列到一份 active 就直接用，多份列給使用者選。
 
 ## Critical — Guardrails
 
@@ -41,6 +41,9 @@ argument-hint: "[resume] [slug]"
 - Dropping earlier rounds' dead-ends when re-handing off the same slug because "they're in archive/ anyway" — nothing reads archive/ on resume. Carry them forward, or sink them into STATUS.md (see W3 續寫交接).
 - Concluding "no active handoff with this slug, so this is round 1" — a consumed handoff sits in archive/, which is exactly where round 2+ normally finds its predecessor. Check archive before deciding (W1).
 - Treating the aggregate `verdict:` line as the verdict for every repo in a multi-anchor handoff. It is a rollup; reconcile per repo (R3).
+- Reporting "no handoff exists" when `survey` listed the workline under `archive/`. It was consumed, not absent (R1).
+- Treating a FRESH verdict on an archive-sourced handoff as permission to act on it directly. Archive provenance caps it at clue (R3).
+- Pasting `anchors` output into the frontmatter after a non-zero exit. It prints nothing on failure — whatever you are looking at is from an earlier run (W2).
 
 ## Write mode（/clear 前交接）
 
@@ -48,22 +51,20 @@ argument-hint: "[resume] [slug]"
 
 依 session 記憶列出本次工作涉及的 repo（同跨 repo 工作流原則，**不掃 `~/Projects/`**；context 被壓縮就以 pwd 的 repo 為底請使用者補充）。多 repo = 同一份交接檔、多條錨點。
 
-接著**定 slug 並判定首輪或續寫**。**不論使用者有沒有指定 slug，slug 定出後都要跑一次 `find-predecessor` 才能斷定是首輪**：
+接著**定 slug 並判定首輪或續寫**。一律先跑一次 `survey`——**不論使用者有沒有指定 slug**：
 
 ```
-~/.claude/skills/handoff/scripts/handoff-anchor.sh find-predecessor <slug>   # 精確定位前一份
-~/.claude/skills/handoff/scripts/handoff-anchor.sh list                      # 有哪些 active（含標題）
-ls -1 ~/.claude/handoffs/archive/ | tail -20                                 # slug 未定時：瀏覽近期工作線
+~/.claude/skills/handoff/scripts/handoff-anchor.sh survey [--slug <slug>]
 ```
 
-`list` **兩種情況都要跑**——W4 的 housekeeping 用的就是它這次的輸出，且它會順帶清掉過保留期的 archive；跳過它等於整個 housekeeping 沉默失效。
+單一呼叫涵蓋四件事：清掉過保留期的 archive（先做）、`active:` 清單（含 EXPIRED，**W4 的 housekeeping 吃的就是這份輸出**）、`workline:` 既有工作線（archive 依 slug 聚合，附輪數與最近日期）、以及給了 `--slug` 時的 `predecessor:` 判定。
 
-- **使用者指定了 slug**（含 `/handoff <slug>`）→ `list` + `find-predecessor`。
-- **未指定** → `list` + archive 瀏覽看既有工作線：本次工作屬其中一條就**沿用該 slug**，確定是全新工作線才自取；定出後同樣跑 `find-predecessor` 確認。
+- **slug 已定**（含 `/handoff <slug>`）→ 直接 `survey --slug <slug>`。
+- **slug 未定** → 先不帶 `--slug` 跑，從 `workline:` 看本次工作屬不屬於既有工作線：屬於就**沿用該 slug**、確定是全新工作線才自取；定出後再跑一次帶 `--slug` 確認。
 
 `predecessor:` 有值（不是 `NONE`）→ **續寫**，把該路徑帶進 W3 的「續寫交接」；本 session 稍早 resume 過同一條工作線亦然。
 
-兩個誤判方向都要防：只查 active 會把第 N 輪當成首輪（前一份通常已被消費進 archive）；不看既有工作線就自取新 slug，等於讓同一條工作線改名重啟。**定位一律用 `find-predecessor`，不要自己拼 glob**——`archive/*-<slug>.md` 看似尾錨定，`*` 卻吃得下中間的工作線名（查 `foo` 會撈到 `bar-foo` 且時戳較新時剛好選中它）；子指令改用精確判準：**active 比對完整檔名、archive 才剝歸檔前綴**（active 檔名就是 `<slug>.md`，一併剝前綴會讓以日期開頭的合法 slug 失配）；檔內 `slug:` **存在時**須相符，沒有該欄位的舊手寫檔仍採用（刻意的向後相容）。archive 瀏覽的 20 份只是視窗，會被別的工作線刷掉，只服務「還不知道 slug」的階段。
+兩個誤判方向都要防：只查 active 會把第 N 輪當成首輪（前一份通常已被消費進 archive）；不看既有工作線就自取新 slug，等於讓同一條工作線改名重啟。**定位一律走 `survey`，不要自己拼 glob**——`archive/*-<slug>.md` 看似尾錨定，`*` 卻吃得下中間的工作線名（查 `foo` 會撈到 `bar-foo`）。精確判準與 archive 檔名的身分解析政策以腳本檔頭為準，勿在此重組。
 
 ### W2：蓋錨點
 
@@ -71,7 +72,7 @@ ls -1 ~/.claude/handoffs/archive/ | tail -20                                 # s
 ~/.claude/skills/handoff/scripts/handoff-anchor.sh anchors <repo1> <repo2> ...
 ```
 
-輸出的 `created:` + `anchor:` 行原樣放進 frontmatter。錨點含 `dirty=N`：N>0 時在報告提醒「未 commit 內容只存在 working tree，/clear 不影響它、但它不受錨點保護」——建議先 commit（ship 走 `/project log`），本 skill 不代為 commit **code**（唯一例外：Critical 的跨主機 STATUS.md 分流 docs commit，見該節；仍不 push）。
+輸出的 `created:` + `anchor:` 行原樣放進 frontmatter。`anchors` 是**全有或全無**：任一 repo 的前提不成立（路徑不是 repo、含空白、repo 尚無 commit、status 讀不到）就一行都不印、exit 非零——**非零退出時不得使用本次任何輸出**，依 stderr 修正該 repo 的前提後重跑。錨點含 `dirty=N`：N>0 時在報告提醒「未 commit 內容只存在 working tree，/clear 不影響它、但它不受錨點保護」——建議先 commit（ship 走 `/project log`），本 skill 不代為 commit **code**（唯一例外：Critical 的跨主機 STATUS.md 分流 docs commit，見該節；仍不 push）。
 
 ### W3：寫檔
 
@@ -118,17 +119,19 @@ slug: <slug>
 
 ### W4：收尾報告
 
-報告：檔案路徑、錨點摘要（含 dirty 提醒）、durable 事實路由結果（寫了哪些 memory / 無）。拿 W1 那次 `list` 的輸出做 housekeeping（不必重跑）——有 EXPIRED 的舊交接檔就列出，建議處置（resume 重驗或確認無用後刪；**刪除先經使用者同意**）。最後提醒：新 session 開場說「接續交接 <slug>」或 `/handoff resume <slug>`。
+報告：檔案路徑、錨點摘要（含 dirty 提醒）、durable 事實路由結果（寫了哪些 memory / 無）。拿 W1 那次 `survey` 的 `active:` 區段做 housekeeping（不必重跑）——有 EXPIRED 的舊交接檔就列出，建議處置（resume 重驗或確認無用後刪；**刪除先經使用者同意**）。最後提醒：新 session 開場說「接續交接 <slug>」或 `/handoff resume <slug>`。
 
 ## Resume mode（新 session 接續）
 
 ### R1：定位
 
 ```
-~/.claude/skills/handoff/scripts/handoff-anchor.sh list
+~/.claude/skills/handoff/scripts/handoff-anchor.sh survey [--slug <slug>]
 ```
 
-指定了 slug 就用它；未指定且僅一份 active → 直接用；多份 → 列給使用者選；零份 → 明說沒有交接檔，請使用者指路（不要憑空猜工作內容）。`list` 每份會印 `path:`（完整路徑，直接餵給下一步的 verify/consume）與 `title:`（多份時辨識工作線）。
+指定了 slug 就用它；未指定且僅一份 active → 直接用；多份 → 列給使用者選。每份 `active:` 會附 `path:`（完整路徑，直接餵給下一步的 verify/consume）與 `title:`（多份時辨識工作線）。
+
+**零份 active 不等於沒有交接檔。** `workline:` 或 `predecessor: …（archive）` 命中，代表這條工作線的前一份**已經被消費過**（前一個 session 載入它並開工，之後 session 才結束）。此時：報告它何時被消費、內容依 R3 的信任上限當**線索**、**不要對它呼叫 `consume`**（consume-once 會機械拒絕），並問使用者是要據此接續、還是這是新一輪。active 與 archive **都**零命中，才是真的沒有交接檔——明說並請使用者指路（不要憑空猜工作內容）。
 
 ### R2：驗證
 
@@ -150,25 +153,34 @@ slug: <slug>
 
 檔案級的 **EXPIRED**（超過 EXPIRE_DAYS）與 **UNVERIFIABLE**（無錨點）不分 repo，**整份**降級為線索。
 
+**Archive provenance caps trust; verify can only lower it, never raise it.** 交接檔來自 `archive/`（R1 的 archive 命中）時，**即使 verify 判 FRESH 也只是線索**，不得套用上表 FRESH 列的「直接接續」。它已經被消費過——前一個 session 載入它並開始動工，而**未 commit 的進度不會讓錨點漂移**：FRESH 只證明沒有新 commit，不證明沒人動過。依賴的每一條都要對 repo 現況重新核對。
+
 ### R4：消費歸檔，然後開工
 
-計畫確立後、動工前，歸檔（消費）交接檔：
+計畫確立後、動工前，依交接檔的來源分流：
 
-```
-~/.claude/skills/handoff/scripts/handoff-anchor.sh consume <handoff.md>
-```
+- **來自 active** → 歸檔（消費）後才開工：
 
-位置驗證、archive 建立、時戳前綴、重複消費拒絕都在子指令內——**do not hand-type the mkdir/mv sequence**。照 `archived:` 行回報「交接檔已消費歸檔」，然後才開始執行工作。若中途發現還需要它，archive/ 內在保留期內都找得回（超過 ARCHIVE_KEEP_DAYS 由 `list` 自動清）。
+  ```
+  ~/.claude/skills/handoff/scripts/handoff-anchor.sh consume <handoff.md>
+  ```
+
+  位置驗證、archive 建立、時戳前綴、重複消費拒絕都在子指令內——**do not hand-type the mkdir/mv sequence**。照 `archived:` 行回報「交接檔已消費歸檔」，然後才開始執行工作。若中途發現還需要它，archive/ 內在保留期內都找得回（超過 ARCHIVE_KEEP_DAYS 由 `survey` 自動清）。
+
+- **來自 archive**（R1 的 archive 命中）→ **NEVER consume it again.** 它已經是消費過的稽核紀錄，`consume` 會機械拒絕。verify 與對帳照做（受 R3 的信任上限約束），然後直接開工。
+
+開工後動手實作時，**commit 前先開 feature branch**、不要落在 default branch；若已經誤 commit 在 default，走 `~/.claude/skills/project/references/ship-paths.md` 的 branch-first 救援序列（該檔為權威，本節不重述）。Ship 走 `/project log`，**本 skill 不 push**。
 
 ## 生命週期總覽
 
 ```
 write（蓋錨點）→ ACTIVE（~/.claude/handoffs/*.md）
-                    │ 超過 EXPIRE_DAYS 未消費 → list/verify 標 EXPIRED（重驗或確認後刪）
+                    │ 超過 EXPIRE_DAYS 未消費 → survey/verify 標 EXPIRED（重驗或確認後刪）
                     ▼ resume 消費（verify → reconcile → consume）
                  ARCHIVE（archive/YYYYMMDD-HHMMSS-*.md）
+                    │ survey 仍列為 workline：已消費的線索，不再 consume
                     ▼ 超過 ARCHIVE_KEEP_DAYS
-                 由 list 自動刪除
+                 由 survey 自動刪除
 ```
 
 失效內容的三道防線：錨點讓過時**可偵測**（DRIFTED/DIVERGED）、消費即歸檔讓已用內容**不佔檯面**、TTL 讓被遺忘的檔**有期限**。

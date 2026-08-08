@@ -2189,6 +2189,74 @@ if ! echo "$out" | grep -q "^anchor: " && echo "$out" | grep -q "含空白"; the
     ok "含空白 toplevel 經相對路徑輸入仍被擋"
 else bad "相對路徑繞過了 toplevel 空白檢查（${out}）"; fi
 
+# --- 錨點完整性：寫入端原子輸出 ---
+# 部分失敗仍印 created:/anchor: 的話，agent 會把「少一條錨點」的半成品貼進 frontmatter，
+# 而 cmd_verify 只在**完全無錨點**時才判 UNVERIFIABLE——少一條時它什麼都不說，那個 repo
+# 的交接內容從此沒有 checksum。stdout/stderr 必須分開捕捉：用 2>&1 驗原子輸出契約等於自廢武功
+git init -q -b main "$TMP/ha-work2"
+(cd "$TMP/ha-work2" && echo v1 > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init)
+
+out="$("$HA_SCRIPT" anchors "$TMP/ha-work" "$TMP/not-a-repo" 2>/dev/null)"
+assert_rc "anchors 混合 good/bad → exit 1" 1 $?
+if [ -z "$out" ]; then ok "混合 good/bad → stdout 全空（不留半成品錨點）"
+else bad "部分失敗仍輸出錨點行（${out}）"; fi
+
+# unborn HEAD：合法 repo 但尚無 commit（新 repo 剛 git init 正是會寫交接檔的時機）。
+# `rev-parse HEAD` 失敗卻沒被檢查時，字面字串 "HEAD" 被寫進 sha 欄位且 rc=0，之後
+# verify 拿 HEAD^{commit} 解析永遠等於當下 HEAD → **永久判 FRESH**，比沒有錨點更糟
+git init -q -b main "$TMP/ha-empty"
+out="$("$HA_SCRIPT" anchors "$TMP/ha-work" "$TMP/ha-empty" 2>/dev/null)"
+assert_rc "anchors 遇 unborn HEAD → exit 1" 1 $?
+if [ -z "$out" ]; then ok "unborn HEAD → stdout 全空"
+else bad "unborn HEAD 仍輸出錨點（${out}）"; fi
+
+err="$("$HA_SCRIPT" anchors "$TMP/ha-empty" 2>&1 >/dev/null)"
+if grep -q "尚無 commit" <<< "$err"; then ok "unborn HEAD 錯誤訊息點名「尚無 commit」（可操作）"
+else bad "unborn HEAD 錯誤訊息不可操作（${err}）"; fi
+
+# 成功路徑不得被原子化改壞
+out="$("$HA_SCRIPT" anchors "$TMP/ha-work" "$TMP/ha-work2")"
+assert_rc "anchors 兩個好 repo → exit 0" 0 $?
+assert_eq "多 repo 恰一行 created" "1" "$(grep -c '^created: ' <<< "$out")"
+assert_eq "多 repo 恰兩行 anchor" "2" "$(grep -c '^anchor: ' <<< "$out")"
+
+# --- 錨點完整性：驗證端 canonical object ID ---
+# 只修寫入端擋不住**既存**的壞錨點：手寫 head=HEAD 的檔案照樣會被判 FRESH。
+# 判準用「解析結果 == 記錄值」而非硬編長度——SHA-1 是 40 hex、SHA-256 是 64 hex
+mkdir -p "$TMP/ha-oid"
+printf -- '---\ncreated: %s\nanchor: %s/ha-work main HEAD dirty=0\n---\n' \
+    "$(date +%Y-%m-%d)" "$HA_REAL" > "$TMP/ha-oid/head-literal.md"
+out="$("$HA_SCRIPT" verify "$TMP/ha-oid/head-literal.md")"
+assert_rc "verify head=HEAD 的錨點 → exit 1" 1 $?
+if grep -q "BAD-ANCHOR" <<< "$out" && ! grep -q "status: FRESH" <<< "$out"; then
+    ok "head=HEAD → BAD-ANCHOR（不得判 FRESH）"
+else bad "head=HEAD 被當成有效錨點（${out}）"; fi
+
+# 短 sha 同理——腳本檔頭早就警告它會隨物件增長變 ambiguous，這裡把警告變成守門
+ha_short="$(git -C "$TMP/ha-work" rev-parse --short HEAD)"
+printf -- '---\ncreated: %s\nanchor: %s/ha-work main %s dirty=0\n---\n' \
+    "$(date +%Y-%m-%d)" "$HA_REAL" "$ha_short" > "$TMP/ha-oid/short-sha.md"
+out="$("$HA_SCRIPT" verify "$TMP/ha-oid/short-sha.md")"
+assert_rc "verify 短 sha 錨點 → exit 1" 1 $?
+if grep -q "BAD-ANCHOR" <<< "$out"; then ok "短 sha → BAD-ANCHOR（刻意收緊）"
+else bad "短 sha 未被判 BAD-ANCHOR（${out}）"; fi
+
+# SHA-256 repo 的正常路徑：長度期望由該 repo 的 rev-parse 推導，不在測試裡再硬編一次數字
+if git init -q -b main --object-format=sha256 "$TMP/ha-256" 2>/dev/null; then
+    (cd "$TMP/ha-256" && echo v1 > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init)
+    ha256_sha="$(git -C "$TMP/ha-256" rev-parse HEAD)"
+    out="$("$HA_SCRIPT" anchors "$TMP/ha-256")"
+    assert_rc "anchors SHA-256 repo → exit 0" 0 $?
+    assert_eq "SHA-256 錨點記完整 OID" "$ha256_sha" "$(awk '/^anchor: /{print $4}' <<< "$out")"
+    { echo "---"; printf '%s\n' "$out"; echo "---"; } > "$TMP/ha-oid/sha256.md"
+    out="$("$HA_SCRIPT" verify "$TMP/ha-oid/sha256.md")"
+    assert_rc "verify SHA-256 repo 未動 → exit 0" 0 $?
+    if grep -q "verdict: FRESH" <<< "$out"; then ok "SHA-256 repo 判 FRESH（判準不綁 40 hex）"
+    else bad "SHA-256 repo 被誤判（${out}）"; fi
+else
+    bad "本機 git 不支援 --object-format=sha256——64 位 OID 守門未執行（git ≥ 2.29 才有）"
+fi
+
 # verify：FRESH
 mkdir -p "$TMP/ha-handoffs"
 { echo "---"; "$HA_SCRIPT" anchors "$TMP/ha-work"; echo "---"; echo "# Handoff: test"; } > "$TMP/ha-handoffs/t.md"
@@ -2387,6 +2455,114 @@ assert_rc "find-predecessor 目錄不存在 → exit 0" 0 $?
 out="$("$HA_SCRIPT" list "$TMP/no-such-dir")"
 assert_rc "list 目錄不存在 → exit 0（回報 NONE）" 0 $?
 if echo "$out" | grep -q "handoffs: NONE"; then ok "list 無目錄 → NONE"; else bad "list 無目錄輸出錯誤"; fi
+
+# --- survey（W1／R1 單一入口：清理 → active → worklines → predecessor）---
+# 存在理由是機制取代散文契約：W1 曾把 `list` 寫成「只在未指定 slug 時跑」，W4 的 EXPIRED 回報
+# 與 archive 保留期清理在 `/handoff <slug>` 路徑上雙雙沉默失效。單一無條件呼叫讓該分支不存在。
+SV="$TMP/ha-sv"; mkdir -p "$SV/archive"
+sv_mk() { printf -- '---\nslug: %s\ncreated: %s\n---\n# Handoff: %s\n' "$2" "$3" "$2" > "$SV/$1"; }
+sv_mk "cur.md" "cur" "$(date +%Y-%m-%d)"
+sv_mk "old.md" "old" "2026-01-01"
+sv_mk "archive/20260801-101500-pipe.md" "pipe" "2026-08-01"
+sv_mk "archive/20260803-090000-pipe.md" "pipe" "2026-08-03"
+sv_mk "archive/20260802-120000-gate.md" "gate" "2026-08-02"
+
+out="$("$HA_SCRIPT" survey "$SV")"
+assert_rc "survey → exit 0" 0 $?
+# active 區段必須與 list 逐字等價——兩個入口對同一份 active 目錄給出不同答案的話，
+# 「SKILL.md 一律走 survey」就成了行為變更而非單純收斂
+assert_eq "survey 的 active 區段與 list 逐字等價" \
+    "$("$HA_SCRIPT" list "$SV" | grep -E '^(active: |  path: |  title: )')" \
+    "$(grep -E '^(active: |  path: |  title: )' <<< "$out")"
+if grep -q "^active: old.md — .* — EXPIRED" <<< "$out"; then ok "survey active 標 EXPIRED"
+else bad "survey 未標 EXPIRED"; fi
+
+assert_eq "worklines 依 slug 聚合輪數與最近日期" \
+    "workline: pipe — 2 輪 — 最近 2026-08-03" "$(grep '^workline: pipe ' <<< "$out")"
+assert_eq "worklines 依最近時戳新到舊排序" "pipe gate" \
+    "$(awk '/^workline: /{printf "%s%s", sep, $2; sep=" "}' <<< "$out")"
+if ! grep -q '^predecessor: ' <<< "$out"; then ok "未給 --slug → 不印 predecessor 區段"
+else bad "未給 --slug 卻印了 predecessor"; fi
+
+out="$("$HA_SCRIPT" survey --slug pipe "$SV")"
+assert_eq "--slug 命中 archive 最新一輪" \
+    "$HA_REAL/ha-sv/archive/20260803-090000-pipe.md" "$(sed -n 's/^predecessor: //p' <<< "$out")"
+
+# --- archive parser 的三條身分解析政策（predecessor 與 worklines 共用同一份解析）---
+printf -- '---\ncreated: 2026-08-04\n---\n' > "$SV/archive/20260804-110000-nofm.md"
+printf -- '---\nslug: someone-else\n---\n' > "$SV/archive/20260805-110000-mism.md"
+printf -- 'handwritten\n' > "$SV/archive/manual-drop.md"
+out="$("$HA_SCRIPT" survey "$SV")"
+
+# ① 歧義檔名 + 無 frontmatter：兩種解讀都合法，標出來讓讀取端先確認內容
+if grep -q '^workline: nofm — 1 輪 — 最近 2026-08-04（檔名格式歧義' <<< "$out"; then
+    ok "parser ①：歧義檔名 + 無 frontmatter → 標歧義"
+else bad "歧義檔名未標記（$(grep '^workline: nofm' <<< "$out")）"; fi
+
+# ② frontmatter 與所有候選都不符：**以檔名歸戶 + 標不可達**，不讓 frontmatter 當索引。
+# 這種殘檔 find-predecessor 兩個方向都撈不到（檔名閘門擋 frontmatter 值、frontmatter 閘門
+# 擋檔名值），本來完全隱形；正反兩面都要釘，只釘一面會讓「改用 frontmatter 當索引」照樣全綠
+if grep -q '^workline: mism — 1 輪 — 最近 2026-08-05（檔內 slug=someone-else' <<< "$out"; then
+    ok "parser ②：frontmatter 不符 → 以檔名歸戶並標不可達"
+else bad "fm-mismatch 未以檔名歸戶或未標註（$(grep '^workline: mism' <<< "$out")）"; fi
+if "$HA_SCRIPT" find-predecessor mism "$SV" | grep -q 'predecessor: NONE' \
+    && "$HA_SCRIPT" find-predecessor someone-else "$SV" | grep -q 'predecessor: NONE'; then
+    ok "fm-mismatch 檔：查檔名與查 frontmatter 值皆 NONE（frontmatter 是否決權不是索引）"
+else bad "fm-mismatch 檔被某個方向撿走了"; fi
+
+# ③ 無歸檔前綴的手工檔：沒有日期來源，但不得因此從清單消失
+if grep -q '^workline: manual-drop — 1 輪 — 最近 —（有手工放入' <<< "$out"; then
+    ok "parser ③：無歸檔前綴 → 日期印「—」且仍列出"
+else bad "無前綴手工檔遺失或格式錯（$(grep '^workline: manual-drop' <<< "$out")）"; fi
+assert_eq "無前綴檔排序視為最舊（排在最後，但不得消失）" "manual-drop" \
+    "$(awk '/^workline: /{last=$2} END{print last}' <<< "$out")"
+
+# --- worklines 顯示上限：只截顯示並印出略過筆數，不靜默截斷 ---
+SVC="$TMP/ha-sv-cap"; mkdir -p "$SVC/archive"
+for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+    printf -- '---\nslug: wl%s\n---\n' "$i" > "$SVC/archive/202608${i}-120000-wl${i}.md"
+done
+out="$("$HA_SCRIPT" survey "$SVC")"
+assert_eq "worklines 顯示上限 10 條" "10" "$(grep -c '^workline: ' <<< "$out")"
+if grep -q '^…（其餘 2 條工作線略）' <<< "$out"; then ok "超出上限印出略過筆數（不靜默截斷）"
+else bad "超出上限未印略過筆數"; fi
+
+# --- survey 的 archive 過期清理：**獨立 fixture** ---
+# 沿用 list 已清過的目錄會讓斷言變空條件（清過的目錄裡沒東西可清），與 h5/h8 沙盒同一個教訓
+SVP="$TMP/ha-sv-prune"; mkdir -p "$SVP/archive"
+printf 'consumed\n' > "$SVP/archive/20260101-120000-dead.md"
+touch -t 202601011200 "$SVP/archive/20260101-120000-dead.md"
+printf 'consumed\n' > "$SVP/archive/20260807-120000-alive.md"
+out="$("$HA_SCRIPT" survey "$SVP")"
+if [ ! -f "$SVP/archive/20260101-120000-dead.md" ] && [ -f "$SVP/archive/20260807-120000-alive.md" ]; then
+    ok "survey 清掉過保留期的已消費交接檔、保留期內的不動"
+else bad "survey 的 archive 清理失效"; fi
+if grep -q '^archive: 已清 1 份' <<< "$out"; then ok "survey 印出清理摘要"
+else bad "survey 未印清理摘要"; fi
+
+# --- TTL × predecessor：清理必須先於任何 archive 衍生輸出 ---
+# 某工作線唯一一份 archive 剛好過 TTL 時，先印後刪會讓讀取端拿到 dangling 的
+# workline/predecessor 路徑——連「把內容當線索讀」都做不到
+SVT="$TMP/ha-sv-ttl"; mkdir -p "$SVT/archive"
+printf 'consumed\n' > "$SVT/archive/20260101-120000-gone.md"
+touch -t 202601011200 "$SVT/archive/20260101-120000-gone.md"
+out="$("$HA_SCRIPT" survey --slug gone "$SVT")"
+if ! grep -q '^workline: gone' <<< "$out" && grep -q '^predecessor: NONE' <<< "$out"; then
+    ok "唯一一份 archive 過 TTL → 清理先行，不輸出隨即失效的 workline/predecessor"
+else bad "survey 印出了會被自己刪掉的 archive 路徑（${out}）"; fi
+
+# --- survey 介面守門 ---
+"$HA_SCRIPT" survey "$SV" --slug >/dev/null 2>&1
+assert_rc "survey --slug 缺值 → exit 2" 2 $?
+"$HA_SCRIPT" survey --slug "" "$SV" >/dev/null 2>&1
+assert_rc "survey --slug 空值 → exit 2（不得靜默當成沒給 slug）" 2 $?
+"$HA_SCRIPT" survey --bogus "$SV" >/dev/null 2>&1
+assert_rc "survey 未知 flag → exit 2" 2 $?
+"$HA_SCRIPT" survey "$SV" "$SV" >/dev/null 2>&1
+assert_rc "survey 多餘位置參數 → exit 2" 2 $?
+out="$("$HA_SCRIPT" survey "$TMP/no-such-dir")"
+assert_rc "survey 目錄不存在 → exit 0" 0 $?
+if grep -q "handoffs: NONE" <<< "$out"; then ok "survey 無目錄 → NONE"; else bad "survey 無目錄輸出錯誤"; fi
 
 # --- consume 子指令（R4 消費歸檔：驗位置 → mkdir archive → mv 加秒級時戳前綴 → 印 archived:）---
 
