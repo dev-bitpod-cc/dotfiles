@@ -274,7 +274,7 @@ eval 結構（JSON）：`{skills, query, files, expected_behavior[]}`。platform
 
 能用，但限縮：**只跑一次診斷**。deep-review 偵測到 skill-authoring batch 時會自動這樣做（見其 Step 1 分流），帶 `autofix` 也不生效——唯一的推翻方式是字面 token `force-skill-loop`。
 
-**「只跑一次」不等於「findings 全是建議」**——severity 照 `reviewer-brief.md`「Completeness 深井」節的分級（其驗收情境是 `deep-review/evals.md` 的 F10；**指涉判準時用節名、不要把 evals 編號寫進會進 runtime 的檔案**）：
+**「只跑一次」不等於「findings 全是建議」**——severity 照 `claude/skills/deep-review/references/reviewer-brief.md`「Completeness 深井」節的分級（其驗收情境是 `deep-review/evals.md` 的 F10；**指涉判準時用節名、不要把 evals 編號寫進會進 runtime 的檔案**）：
 
 - 措辭清晰度、「還能更完整」→ non-blocking，順手收或丟掉；
 - **prose 裡「夾帶指令會 misbehave」「步驟自相矛盾」→ 仍是 blocking**。skill 文件裡的錯誤 git 指令會被 agent 照做，那是真 bug，不因為它寫在 `.md` 裡就降級（2026-08-06 一批四條高風險 finding 全在 `.md` 裡）。

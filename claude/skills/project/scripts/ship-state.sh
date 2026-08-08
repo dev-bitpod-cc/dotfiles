@@ -359,9 +359,17 @@ detect_dossier() {
     if awk '/^\001/ { next } /^##[[:space:]]/{ in_sec = ($0 ~ /^##[[:space:]]*進行中/) } in_sec && /✅/ { found=1 } END { exit !found }' <<< "$unfenced"; then
         echo "dossier-flag: 「進行中」含 ✅ 完成項（Step 2 當場移入里程碑）"
     fi
-    # herestring 同上：避免大輸入下 grep -q 早退觸發 SIGPIPE + pipefail 的偽陰性
-    if grep -qE '^#{1,6}[[:space:]].*Session Log' <<< "$unfenced"; then
-        echo "dossier-flag: 規範外章節（Session Log）——git history 才是 log，蒸餾後歸檔"
+    # herestring 同上：避免大輸入下 grep 早退觸發 SIGPIPE + pipefail 的偽陰性
+    # 別名家族：規範說的是「NEVER add an append-only log section」，不是「不要叫 Session Log」
+    # ——只認那一個字面時，換個名字（變更紀錄／工作日誌／CHANGELOG）就整個漏掉。
+    # ASCII 走 -i（涵蓋 CHANGELOG／change log）；中文含記/紀異體。
+    # **限完整章節名（允許括號或冒號後綴）**，不做寬鬆子字串——否則「## 為何不使用 Change Log」
+    # 這類討論性章節會被判紅，而 gate 誤報的代價是逼人改壞寫法以求過測。
+    # 訊息附**實際命中的 heading**：硬寫「Session Log」會讓別名命中時的處置指向錯的章節。
+    local ao_hit
+    ao_hit="$(grep -iEm1 '^#{1,6}[[:space:]]+(Session[[:space:]]*Log|Change[[:space:]]*Log|變更記錄|變更紀錄|工作日誌|開發日誌)([[:space:]]*[（(：:].*)?[[:space:]]*$' <<< "$unfenced")" || ao_hit=""
+    if [ -n "$ao_hit" ]; then
+        echo "dossier-flag: 規範外章節（append-only log：${ao_hit}）——git history 才是 log，蒸餾後歸檔"
     fi
     # 過期：STATUS.md 最後 commit 落後 repo 最新活動的天數（%ct = committer time）
     local st_ct head_ct lag
