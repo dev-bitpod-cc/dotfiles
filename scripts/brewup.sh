@@ -23,6 +23,7 @@ DOTFILES="${DOTFILES_DIR:-$HOME/.dotfiles}"
 #     （ensure-codex-skills.sh 檔頭記載過實例：某台的 repo-review 停在四個月前的實體目錄）。
 #     helper 失敗不中止更新，但**必須反映進終判**——不可誤報完成（同 dotfiles-sync.sh 的 codex C2）。
 helper_warn=0
+[ -f "${DOTFILES}/scripts/ensure-ssh-config.sh" ] && { bash "${DOTFILES}/scripts/ensure-ssh-config.sh" 2>/dev/null || helper_warn=1; } || true
 [ -f "${DOTFILES}/scripts/ensure-rc-source.sh" ] && { bash "${DOTFILES}/scripts/ensure-rc-source.sh" 2>/dev/null || helper_warn=1; } || true
 [ -f "${DOTFILES}/scripts/ensure-codex-skills.sh" ] && { bash "${DOTFILES}/scripts/ensure-codex-skills.sh" 2>/dev/null || helper_warn=1; } || true
 [ -f "${DOTFILES}/scripts/ensure-codex-guidance.sh" ] && { bash "${DOTFILES}/scripts/ensure-codex-guidance.sh" 2>/dev/null || helper_warn=1; } || true
