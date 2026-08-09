@@ -3517,6 +3517,58 @@ for bup_h in ensure-rc-source ensure-codex-skills ensure-codex-guidance ensure-l
     if [ -f "$bup/marks/${bup_h}.log" ]; then ok "brewup 呼叫了 ${bup_h}"; else bad "brewup 未呼叫 ${bup_h}"; fi
 done
 
+# pull 換掉 brewup.sh 自己 → 必須用新版重跑。執行中的 bash 會繼續跑舊內容（git 是 unlink +
+# 新建，process 握著舊 inode），不重跑的話「pull 進新版、卻用舊版跑完這一輪」，本次新增的
+# pull 後段動作全部延後一個週期且無聲。實地觸發過（落後的 MacBook 要跑兩次才部署到 helper）。
+rm -f "$bup/marks/"*.log
+bup_make_helpers ""
+cp "$BUP" "$bup/self.sh"
+# git stub 在 pull 時把「本腳本」換掉，模擬 pull 帶進新版。
+# **必須 rm 之後再寫（unlink + 新建）**——那才是 git checkout 的實際行為，正在執行的 process
+# 握著舊 inode、會把舊內容跑完。若改成 `>` 原地截斷（同 inode），正在跑的 bash 從舊 offset
+# 讀到 EOF 會**整支靜默中止**，那是另一種失效、不是這裡要模擬的情境（2026-08-09 實測分辨）。
+# stub 每次 pull 都讓 self.sh 換一個新 checksum，且**換上去的仍是 brewup.sh 本身**——
+# 迴圈防護若失效，子行程會再偵測到變更、再 exec，無限下去。用「換成惰性 stub」測不出這件事
+# （那種替身不會再重跑，有沒有防護結果都一樣＝虛設斷言）。
+cat > "$bup/bin/git" <<'GITSTUB'
+#!/usr/bin/env bash
+echo "$0 $*" >> "$GIT_STUB_LOG"
+if [ "$1" = pull ]; then
+    n=$(( $(cat "$GIT_STUB_COUNTER" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$GIT_STUB_COUNTER"
+    # 封頂：迴圈防護失效時要能自然收斂，不能讓測試掛死。
+    # 不用 `timeout` —— macOS 沒有它（實測 `command -v timeout gtimeout` 皆空），
+    # 依賴它會讓整段變成 exit 127 的假紅／假綠。
+    if [ "$n" -le 5 ]; then
+        rm -f "$GIT_STUB_SELF"
+        { cat "$GIT_STUB_SRC"; echo "# pull-generation $n"; } > "$GIT_STUB_SELF"
+        chmod +x "$GIT_STUB_SELF"
+    fi
+fi
+exit 0
+GITSTUB
+chmod +x "$bup/bin/git"
+export GIT_STUB_LOG="$bup/marks/git.log" GIT_STUB_SELF="$bup/self.sh" \
+       GIT_STUB_SRC="$BUP" GIT_STUB_COUNTER="$bup/marks/gen"
+bup_out="$(DOTFILES_DIR="$bup/dotfiles" HOME="$bup/home" PATH="$bup/bin:$PATH" bash "$bup/self.sh" 2>&1)"
+bup_rc=$?
+assert_rc "自身被 pull 換掉 → exit 0" 0 "$bup_rc"
+# 迴圈防護生效時剛好 pull 兩次：父行程一次、重跑的子行程一次
+assert_eq "只重跑一次（迴圈防護；否則 pull 次數會失控）" 2 "$(cat "$bup/marks/gen" 2>/dev/null || echo 0)"
+bup_reexec_n=$(grep -c '↻' <<< "$bup_out") || bup_reexec_n=0
+if [ "$bup_reexec_n" -eq 1 ]; then
+    ok "偵測到自身更新並用新版重跑，且明確告知一次"
+else
+    bad "重跑次數異常（↻ 出現 ${bup_reexec_n} 次）——0＝沿用舊版跑完（新增的 pull 後段動作延後一週期且無聲）"
+fi
+# 還原 git stub 供後續斷言
+cat > "$bup/bin/git" <<'GITSTUB2'
+#!/usr/bin/env bash
+echo "$0 $*" >> "$GIT_STUB_LOG"
+exit 0
+GITSTUB2
+chmod +x "$bup/bin/git"
+
 # GREEN 臂：全部成功 → 不得出現警告（否則警告變雜訊、下次真失敗時沒人看）
 rm -f "$bup/marks/"*.log
 bup_make_helpers ""
