@@ -169,7 +169,7 @@ slug: <slug>
 
 - **來自 archive**（R1 的 archive 命中）→ **NEVER consume it again.** 它已經是消費過的稽核紀錄，`consume` 會機械拒絕。verify 與對帳照做（受 R3 的信任上限約束），然後直接開工。
 
-開工後動手實作時，**commit 前先開 feature branch**、不要落在 default branch；若已經誤 commit 在 default，走 `~/.claude/skills/project/references/ship-paths.md` 的 branch-first 救援序列（該檔為權威，本節不重述）。Ship 走 `/project log`，**本 skill 不 push**。
+開工後若誤 commit 在 default branch，走 `~/.claude/skills/project/references/ship-paths.md`「Branch-first 與誤 commit 搬移」的救援序列（該檔為權威，本節不重述）。「commit 前先開 feature branch」本身已是全域規則、不隨 skill 載入與否而變，故此處不重述。Ship 走 `/project log`，**本 skill 不 push**。
 
 ## 生命週期總覽
 
