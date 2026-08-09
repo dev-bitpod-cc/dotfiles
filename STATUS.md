@@ -22,9 +22,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   目標是契約層 repo-resident 且工具中立,三份複本由機械 gate 擋漂移,私人 skill 維持私人。
 - **AC / Constraints**:見計畫檔「驗證」與「執行順序與回滾」兩節。要點:每個含 dotsync 的 phase
   都走「commit → 授權 → 驗 `origin/main` → 單機驗 → 才散佈」;外部 repo 只允許 `--check`。
-- **進度**:Phase 1 已完成(見里程碑)。Phase 0 的 behavior eval 尚未跑。
-- **下一步**:Phase 1 進 `origin/main` 後 `dotsync` 全機隊(Phase 3 改名的硬前提);
-  Phase 2(契約檔本體 + 兩個 gate)不依賴散佈,可先做。
+- **進度**:Phase 1 已完成並散佈(14 台逐台驗過 brewup 帶了 helper)。Phase 0 的 behavior eval 未跑。
+- **下一步**:Phase 2(契約檔本體 + 兩個 gate),不依賴散佈。**Phase 3 改名仍卡著**——硬前提是
+  「無已知不可達主機」,而兩部個人 MacBook 尚未補齊(見已知缺口的兩機清單)。
 
 ---
 
@@ -150,18 +150,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 ## 已完成(里程碑)
 
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
-> 2026-08-05／08-06 各批已歸檔至 `docs/archive/milestones-2026-08.md`。
+> 2026-08-05／08-06／08-07 各批已歸檔至 `docs/archive/milestones-2026-08.md`。
 
-- ✅ 2026-08-07 deep-review skill-authoring one-shot gate + R5 terminal state（#51，665 PASS）
-- ✅ 2026-08-07 ship 說法語法：說法即授權、merge 預設保留、`review-terminal` STOP、merge 受阻分流（#52，672 PASS）
-- ✅ 2026-08-07 squash-merge 殘留偵測 + `cleanup-stale-branch.sh` 安全清除（#53，699 PASS）
-- ✅ 2026-08-07 Scenario 15 補測：`BLOCKED` 不得自動 `--admin`，正反兩向 PASS（#54）
 - ✅ 2026-08-09 handoff skill 收斂：錨點兩端完整性（unborn HEAD 的永久假 FRESH）＋ W1/R1 三指令下沉為 `survey` ＋ archive resume 的盲區與信任上限（889 PASS，eval 8/8）
+- ✅ 2026-08-09 `ensure-ssh-config.sh`：四份行內複本收斂成一支並接進 `brewup`，不在 inventory 的機器從此能自己跟上；加原子寫入＋完整性驗證＋**key 缺席守門**（擋自動重生把可用認證換成壞的）。過程被自己的測試抓到 `$(wc -c < 讀不到的檔)` 回空、`$(( ))` 當 0 的假綠（941 PASS）
 - ✅ 2026-08-09 契約層抽取 Phase 1：`brewup` 補四個 ensure helper（補上「allup 走 brewup 而 helper 只掛 dotsync」的散佈窗口，含不誤報完成的兩層 warn）＋ branch-first 提升到 always-on ＋ 新增 `tests/run.sh` §18d 全隔離 fixture（902 PASS，兩個突變各驗過會紅）
-- ✅ 2026-08-07 ready4quit 強化 + 四輪第三方審查修復：證據語彙拆兩軸（強度 × 殘留）、Step 2 memory/dossier 雙出口、背景任務證據來源改 `tasks/` 且 liveness 不得由 `.output` 推斷、`git-hygiene.sh` 補遠端事實與多 remote 一致性、hook 增報 worktree 雙寫入者；**eval 從零 GREEN 到 8 條 PASS**，其中 Q4a/Q5 是 eval 自己抓出、四輪第三方審查都沒看到的規格缺口（#59，754 PASS；Q4c 未驗見「已知缺口」）
-- ✅ 2026-08-07 `brewup`/`sysup` 從 rc alias 抽成 `scripts/*.sh`（雙平台單一來源，消除兩份複本的漂移風險）+ 新增 `brewfix` 復原入口；`all-up.sh` 改直接呼叫腳本、去掉 `bash -ic`（`no job control` 雜訊隨之消失）；`ensure-rc-source.sh` 增舊 alias 清理（**刪行而非 unalias**——14 台巡檢實測 rc 內 alias 與 source 的相對順序因機器而異，macmini 反向，`unalias` 會多數生效少數靜默失效）（787 PASS）
 
-- ✅ 2026-08-07 待辦批次收尾：`ship-state.sh` 兩項硬化（remote 刪除改走 `cleanup-stale-branch.sh`，帶 ls-remote 重驗＋lease；新增 `branch-diverged` 訊號）＋**unquoted heredoc 反引號 gate**（第 1c 節，掃描器附 RED/GREEN 自檢；灌 `ssh/config` 那三處同批改 `echo + cat`，但**當時給的理由是錯的**，理由更正見 `docs/archive/decisions-2026-08.md`「符合已知地雷的形狀」）＋ GitHub 多身分收斂本機完成 ＋ `migrate-github-remotes.sh`（822 PASS）
 - ✅ 2026-08-08 **GitHub 多身分收斂 14 台全數上線、舊 key 已清**：`github-work` 與 `insteadOf` 整層消滅，key 檔名對齊 Host（`id_github_com` / `id_personal`）；48 條 remote 換寫、2 條 `insteadOf` 清除；db01 另驗 AC4（`krepo-common` 標準 URL 無改寫層直接可達）。執行紀律見決策節同日條目（#68，823 PASS）
 - ✅ 2026-08-08 **dossier 機制加固**：新增 `tests/xref-gate.py` + 第 1d 節（13 條 fixture，含掃描器自檢）——把「唯一權威」從散文換成 gate；首次掃描實測抓出 1 條真死指標與 2 條指向雙份同名檔的基名引用，皆已修；`ship-state.sh` 的 append-only 偵測從單一字面擴為別名家族（附實際命中 heading，另有 3 條討論性章節的負向守門）；`dossier.md` 的決策生命週期從「直接刪」改為**保留原文 + 失效標記**，與 `docs/project-spec.md` 檔首早已自行採用的寫法收斂為一（850 PASS）
 
