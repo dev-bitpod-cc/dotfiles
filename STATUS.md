@@ -12,21 +12,19 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-### Agentic 可攜性治理與 OpenWiki 評估(2026-08-09 起,未拍板)
+### Repo 契約層抽取(2026-08-09 起;計畫已核准,Phase 1 完成)
 
-- **Context**:外部 survey(`docs/plans/2026-08-09-agentic-project-transfer-governance.md`,untracked、
-  自述非定稿)提出三層知識分層(Policy／Intent-State／Derived)與 clean-room takeover eval;同輪
-  獨立查證 `langchain-ai/openwiki` 的實際契約(只維護自己的 marker block、`.openwikiignore` 讀取邊界、
-  官方 GH Action 每日開 PR 且 staged 範圍含 `CLAUDE.md` 與 workflow 檔本身)。
-- **Goal**:判定「經這套個人化 workflow 維護的 repo,能否在零聊天記憶／零 machine-local state /
-  零私人 skill 下被接管」,並決定 OpenWiki 是否值得作為 derived 層試點。
-- **AC**:portability audit 產出可執行清單——哪些判準能做 deterministic gate(root 入口存在性、
-  權威矩陣區塊、generated artifacts 有重建命令、無 openwiki 仍能跑 `tests/run.sh`),哪些只能行為
-  eval(找檔正確率、規則遵守率、需追問原 owner 的問題數、把 wiki 誤當 policy)。
-- **Constraints**:audit 純唯讀、不改檔;OpenWiki 試點與 audit **不綁同一輪**(一個是治理缺口、
-  一個是可選加速層,混跑分不出效果來源);試點需先有停止條件與零殘留回退路徑。
-- **下一步**:先做 portability audit,起點是下方「工具中立 Agent 入口」缺口。
-- **待使用者確認**:是否啟動 audit;OpenWiki 若試點選哪個非敏感 repo。
+**計畫全文(已凍結)**:`docs/plans/2026-08-09-repo-contract-extraction.md`——四個 phase 的內容、
+驗證方案、回滾與「不改什麼」清單都在該檔,此處只記狀態與下一步。
+
+- **Context / Goal**:通用工程契約的實體條文住在私人 skill 的 `ship-paths.md`,不載入 `/project`
+  就讀不到(RED 見決策節同日條目);協作情境把同一個洞放大——clean clone 交出去對方完全沒有契約。
+  目標是契約層 repo-resident 且工具中立,三份複本由機械 gate 擋漂移,私人 skill 維持私人。
+- **AC / Constraints**:見計畫檔「驗證」與「執行順序與回滾」兩節。要點:每個含 dotsync 的 phase
+  都走「commit → 授權 → 驗 `origin/main` → 單機驗 → 才散佈」;外部 repo 只允許 `--check`。
+- **進度**:Phase 1 已完成(見里程碑)。Phase 0 的 behavior eval 尚未跑。
+- **下一步**:Phase 1 進 `origin/main` 後 `dotsync` 全機隊(Phase 3 改名的硬前提);
+  Phase 2(契約檔本體 + 兩個 gate)不依賴散佈,可先做。
 
 ---
 
@@ -45,10 +43,29 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   加固定 schema 的接手快照,但那必然與「進行中」雙重記載(它自己也提了這個疑慮),違反傘狀蒸餾規則。
   `docs/transfer.md` 本就為接手者而寫、移交前才生成、不常駐,故不會腐爛;STATUS.md 是常駐演化檔,
   加一塊只在移交時有意義的區塊,等於替它增一塊固定會過期的面積。
-- **2026-08-09 不現在把 `CLAUDE.md` 拆成「工具中立入口 + Claude 薄層」——先 eval,後搬遷**:
+- ~~**2026-08-09 不現在把 `CLAUDE.md` 拆成「工具中立入口 + Claude 薄層」——先 eval,後搬遷**:
   survey 的終態圖把它降為薄層,但檔內最值錢的是「已知地雷」那批,每條對應一次實地事故,屬硬約束
   而非可按形狀搬動的敘述。**在 clean-room eval 量到「Codex 端因缺 repo 規則而犯錯」之前不動**
-  ——為文件形狀而改,正是該 survey 自己反對的完成標準。
+  ——為文件形狀而改,正是該 survey 自己反對的完成標準。~~
+  **已失效(2026-08-09,同日)**:門檻找錯地方——洞在 Claude 端一樣存在且早有 RED(H6),不必等
+  clean-room eval(該 eval 仍未跑,照實記)。現行決策與完整理由見
+  `docs/plans/2026-08-09-repo-contract-extraction.md`「生效模型（兩輪 P0 的裁決，先讀這節）」。
+- **2026-08-09 通用契約不得只活在延遲載入的檔案裡**:branch-first 原本只在 `ship-paths.md`,
+  全域檔僅側面提及「不得放寬」→ 不載入 `/project` 就沒有這條規則,H6 首跑即實測 commit 落在 main。
+  **判準:規則的生效範圍不能小於它要防的失敗範圍**;per-skill 補丁蓋系統性缺口,只會讓下一個
+  未覆蓋的路徑再踩一次。修法是 promotion + dedup,淨變動 +1 行。
+- **2026-08-09 契約分兩層:safety floor 不可放寬,fallback conventions 由 repo 勝出**:外部 repo
+  可能要求 `JIRA-123:` 或 gitmoji(與 Conventional Commits **互斥**,不是更嚴或更鬆),也可能沒有
+  決策存放處。**分界判準:錯了會產出什麼**——多開一條本地 branch 完全可逆;用錯 commit 格式則
+  直接產出必須重寫的東西。
+- **2026-08-09 kernel 用三份逐字複本 + identity gate,不用純指標**:純指標**已被 H6 證偽**
+  (換個名字仍是延遲載入,且 repo 沒契約時全域完全空手),三份都必須自足,故改用機械手段擋漂移
+  ——形狀同 `tests/xref-gate.py` 把「唯一權威」從散文換成 gate。**代價明記**:`tests/run.sh` 只跑
+  本 repo,裝到其他 repo 的複本沒有守門,與 2026-08-08 那條不對稱同型。
+- **2026-08-09 本輪範圍界線:無 RED 者一律 DEFER 並記觸發條件**(防下一個 session 的對抗式 review
+  原樣再提一次):①`transfer onboard` 子形狀 → 等第一個真實協作者(**已存在的模板比空白頁更容易被
+  照填**,會鎖死第一次真實情境的形狀);②`contract-flag:` 訊號 → 等「缺契約沒人發現」的實例;
+  ③skill 可攜化 → 等真實需求;④全域檔與契約 Working discipline 的措辭重複 → 等實測到行為分歧。
 - **2026-08-09 handoff 的跨主機 docs commit 與 ready4quit「一律不 commit」刻意相反**:前者是跨機
   唯一媒介(不 commit 就沒有管道),後者是 pre-quit 純驗證(commit 權責屬 `/project log`)。兩者都對
   但沒互相標註,下次審查易報成不一致,故記於此。**刻意不寫進 SKILL.md body**——不是觀察到的 agent
@@ -139,6 +156,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - ✅ 2026-08-07 squash-merge 殘留偵測 + `cleanup-stale-branch.sh` 安全清除（#53，699 PASS）
 - ✅ 2026-08-07 Scenario 15 補測：`BLOCKED` 不得自動 `--admin`，正反兩向 PASS（#54）
 - ✅ 2026-08-09 handoff skill 收斂：錨點兩端完整性（unborn HEAD 的永久假 FRESH）＋ W1/R1 三指令下沉為 `survey` ＋ archive resume 的盲區與信任上限（889 PASS，eval 8/8）
+- ✅ 2026-08-09 契約層抽取 Phase 1：`brewup` 補四個 ensure helper（補上「allup 走 brewup 而 helper 只掛 dotsync」的散佈窗口，含不誤報完成的兩層 warn）＋ branch-first 提升到 always-on ＋ 新增 `tests/run.sh` §18d 全隔離 fixture（902 PASS，兩個突變各驗過會紅）
 - ✅ 2026-08-07 ready4quit 強化 + 四輪第三方審查修復：證據語彙拆兩軸（強度 × 殘留）、Step 2 memory/dossier 雙出口、背景任務證據來源改 `tasks/` 且 liveness 不得由 `.output` 推斷、`git-hygiene.sh` 補遠端事實與多 remote 一致性、hook 增報 worktree 雙寫入者；**eval 從零 GREEN 到 8 條 PASS**，其中 Q4a/Q5 是 eval 自己抓出、四輪第三方審查都沒看到的規格缺口（#59，754 PASS；Q4c 未驗見「已知缺口」）
 - ✅ 2026-08-07 `brewup`/`sysup` 從 rc alias 抽成 `scripts/*.sh`（雙平台單一來源，消除兩份複本的漂移風險）+ 新增 `brewfix` 復原入口；`all-up.sh` 改直接呼叫腳本、去掉 `bash -ic`（`no job control` 雜訊隨之消失）；`ensure-rc-source.sh` 增舊 alias 清理（**刪行而非 unalias**——14 台巡檢實測 rc 內 alias 與 source 的相對順序因機器而異，macmini 反向，`unalias` 會多數生效少數靜默失效）（787 PASS）
 
