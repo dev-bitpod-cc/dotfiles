@@ -27,9 +27,13 @@ import os
 import re
 import sys
 
-# 帶 kernel block 的三個檔。⚠️ Phase 3 會把 codex/AGENTS.md 改名為 codex/global-guidance.md，
+# 帶 kernel block 的四個檔。⚠️ Phase 3 會把 codex/AGENTS.md 改名為 codex/global-guidance.md，
 # 屆時這裡要同步——名字寫死是刻意的：漏改會讓 gate 找不到檔而判紅，比靜默略過安全。
-KERNEL_FILES = ("AGENTS.md", "claude/CLAUDE.md", "codex/AGENTS.md")
+#
+# root CLAUDE.md 為什麼也要有一份：2026-08-10 實測，Claude Code **自動載入 root CLAUDE.md、
+# 但不自動載入 root AGENTS.md**（後者只在 agent 剛好探索 repo 時才被 cat 到）。只放在
+# AGENTS.md 的話，「修個 typo 並 commit」這類任務整輪都不會讀到契約。
+KERNEL_FILES = ("AGENTS.md", "CLAUDE.md", "claude/CLAUDE.md", "codex/AGENTS.md")
 
 # 只有契約檔帶 portable block（權威矩陣 + working discipline）——那層不進全域檔，
 # 因為全域檔服務所有 repo、不該替別的 repo 宣告它的文件權威。

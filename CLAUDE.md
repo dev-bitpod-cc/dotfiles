@@ -1,8 +1,32 @@
 # Shell 環境配置指引
 
-> **行為契約在 `AGENTS.md`「Kernel」**（repo 根，工具中立）——git 紀律、文件權威矩陣、
-> generated docs 不得覆蓋權威檔，都在那裡。本檔是**本專案的事實**（工具、腳本、SSH 架構、
-> 主機清單），不重述契約。
+本檔是**本專案的事實**（工具、腳本、SSH 架構、主機清單）。行為契約的 kernel 逐字內嵌在下方；
+權威矩陣與 working discipline 見 `AGENTS.md`「Documentation authority」。
+
+> **為什麼 kernel 要在這裡再放一份而不是只寫指標**：2026-08-10 實測（clean room，不帶全域
+> `CLAUDE.md`）——root `CLAUDE.md` 會被**自動載入**（瑣碎問題也遵守其中的 sentinel，2/2），
+> 而 root `AGENTS.md` **不會**（同一 sentinel 只在 agent 剛好探索 repo 時才生效：需理解 repo
+> 的問題 3/3、瑣碎問題 0/2，且 stream-json 顯示是探索時 `cat` 讀到的）。指標也救不了——
+> 指標只是告訴你契約在別處，瑣碎任務照樣不會去讀。**Claude 端要綁得住，kernel 就得在
+> 自動載入的檔案裡。** Codex 端不受影響（原生讀 `AGENTS.md`）。
+
+<!-- agent-contract:kernel:start v1 -->
+## Kernel
+
+### Safety floor — never relaxed by any repo
+
+- **NEVER commit onto the default branch** (`main`/`master`). If `HEAD` is on it — or detached — create a feature branch first: `git switch -c <type>/<slug>`. This holds regardless of protection state and regardless of which tooling is loaded.
+- **NEVER push on your own.** Commit, then stop and report. An instruction to implement, fix, or "ship" does not authorize pushing.
+- **NEVER merge on your own.** "push" or "open a PR" alone does NOT include merge. Only an explicit merge instruction does.
+- **NEVER `git add -A` / `git add .` / `commit -a`.** Stage explicit paths.
+- **If the working tree holds changes you did not make, STOP and report before staging, committing, or building on top of them.** Whether two sessions may share one tree is a dispatch decision made above you — never resolve it locally by guessing which changes are yours. Once authorized, explicit paths are still whole-file: stage verified hunks with `git add -p`.
+- **Inspect `git diff --cached` before every commit.** After splitting a mixed file, verify from a clean clone — `git clone --no-local <repo> <tmpdir>`. "I checked the working tree" is not evidence.
+
+### Fallback conventions — this repo's own convention wins where it has one
+
+- Conventional Commits: `<type>: <short desc>`, type is one of `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`. **If this repo mandates another commit format, follow the repo.**
+- Record non-obvious trade-offs, rejected alternatives, and dead ends **where this repo already keeps them**. Skip whenever the diff alone recovers the rationale — a rejected path leaves no trace in the diff, an added gate does. **If the repo has no such store, do NOT create one; list them in your report instead.**
+<!-- agent-contract:kernel:end -->
 
 此環境已透過標準化腳本配置，你可以直接使用以下現代化工具。
 
