@@ -12,7 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-### Repo 契約層抽取(2026-08-09 起;計畫已核准,Phase 1 完成)
+### Repo 契約層抽取(2026-08-09 起;計畫已核准,Phase 1–2 完成)
 
 **計畫全文(已凍結)**:`docs/plans/2026-08-09-repo-contract-extraction.md`——四個 phase 的內容、
 驗證方案、回滾與「不改什麼」清單都在該檔,此處只記狀態與下一步。
@@ -22,9 +22,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   目標是契約層 repo-resident 且工具中立,三份複本由機械 gate 擋漂移,私人 skill 維持私人。
 - **AC / Constraints**:見計畫檔「驗證」與「執行順序與回滾」兩節。要點:每個含 dotsync 的 phase
   都走「commit → 授權 → 驗 `origin/main` → 單機驗 → 才散佈」;外部 repo 只允許 `--check`。
-- **進度**:Phase 1 已完成並散佈(14 台逐台驗過 brewup 帶了 helper)。Phase 0 的 behavior eval 未跑。
-- **下一步**:Phase 2(契約檔本體 + 兩個 gate),不依賴散佈。**Phase 3 改名仍卡著**——硬前提是
-  「無已知不可達主機」,而兩部個人 MacBook 尚未補齊(見已知缺口的兩機清單)。
+- **進度**:Phase 1 已完成並散佈(14 台逐台驗過)。Phase 2 已完成(契約檔 + kernel identity gate
+  + 可攜性 gate)。Phase 0 的 behavior eval 未跑。
+- **下一步**:Phase 4 的 installer 之前要先跑 Phase 0 的 **G1b**(成對實驗,判定 Claude 是否原生讀
+  root `AGENTS.md`)——它決定 installer 要不要寫 `CLAUDE.md` pointer。**Phase 3 改名仍卡著**:
+  硬前提是「無已知不可達主機」,公司那部 MacBook 未補齊(見已知缺口)。
 
 ---
 
@@ -60,14 +62,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   全域檔僅側面提及「不得放寬」→ 不載入 `/project` 就沒有這條規則,H6 首跑即實測 commit 落在 main。
   **判準:規則的生效範圍不能小於它要防的失敗範圍**;per-skill 補丁蓋系統性缺口,只會讓下一個
   未覆蓋的路徑再踩一次。修法是 promotion + dedup,淨變動 +1 行。
-- **2026-08-09 契約分兩層:safety floor 不可放寬,fallback conventions 由 repo 勝出**:外部 repo
-  可能要求 `JIRA-123:` 或 gitmoji(與 Conventional Commits **互斥**,不是更嚴或更鬆),也可能沒有
-  決策存放處。**分界判準:錯了會產出什麼**——多開一條本地 branch 完全可逆;用錯 commit 格式則
-  直接產出必須重寫的東西。
-- **2026-08-09 kernel 用三份逐字複本 + identity gate,不用純指標**:純指標**已被 H6 證偽**
-  (換個名字仍是延遲載入,且 repo 沒契約時全域完全空手),三份都必須自足,故改用機械手段擋漂移
-  ——形狀同 `tests/xref-gate.py` 把「唯一權威」從散文換成 gate。**代價明記**:`tests/run.sh` 只跑
-  本 repo,裝到其他 repo 的複本沒有守門,與 2026-08-08 那條不對稱同型。
 - **2026-08-09 本輪範圍界線:無 RED 者一律 DEFER 並記觸發條件**(防下一個 session 的對抗式 review
   原樣再提一次):①`transfer onboard` 子形狀 → 等第一個真實協作者(**已存在的模板比空白頁更容易被
   照填**,會鎖死第一次真實情境的形狀);②`contract-flag:` 訊號 → 等「缺契約沒人發現」的實例;
@@ -158,6 +152,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-08-05／08-06／08-07 各批已歸檔至 `docs/archive/milestones-2026-08.md`。
 
 - ✅ 2026-08-09 handoff skill 收斂：錨點兩端完整性（unborn HEAD 的永久假 FRESH）＋ W1/R1 三指令下沉為 `survey` ＋ archive resume 的盲區與信任上限（889 PASS，eval 8/8）
+- ✅ 2026-08-09 契約層抽取 Phase 2：repo 根 `AGENTS.md`（kernel：safety floor 6 + fallback conventions 2；portable：權威矩陣 + working discipline）＋ 三份 kernel 逐字複本 ＋ `tests/kernel-gate.py`（漂移／掏空／缺份／marker／canary／可攜性，含 10 條自檢 fixture）。`claude/CLAUDE.md` 與 `codex/AGENTS.md` 交出被 kernel 承接的條文（956 PASS；四個突變各驗過會紅，含真實 repo 改一個字的漂移）
 - ✅ 2026-08-09 `brewup` 自我更新偵測：pull 換掉自己就 `exec` 新版重跑（`BREWUP_REEXEC` 迴圈防護），消掉「pull 進新版卻用舊版跑完」的一輪延遲。**這顆修正本身仍要被它修的 bug 咬最後一次**——各機第一次跑到的是修正前的 brewup，`dotsync` 不受影響（它以路徑逐支呼叫 helper）（944 PASS）
 - ✅ 2026-08-09 `ensure-ssh-config.sh`：四份行內複本收斂成一支並接進 `brewup`，不在 inventory 的機器從此能自己跟上；加原子寫入＋完整性驗證＋**key 缺席守門**（擋自動重生把可用認證換成壞的）。過程被自己的測試抓到 `$(wc -c < 讀不到的檔)` 回空、`$(( ))` 當 0 的假綠（941 PASS）
 - ✅ 2026-08-09 契約層抽取 Phase 1：`brewup` 補四個 ensure helper（補上「allup 走 brewup 而 helper 只掛 dotsync」的散佈窗口，含不誤報完成的兩層 warn）＋ branch-first 提升到 always-on ＋ 新增 `tests/run.sh` §18d 全隔離 fixture（902 PASS，兩個突變各驗過會紅）
@@ -228,9 +223,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   `ensure-ssh-config.sh` 並接進 `brewup`,所以**跟上一次之後就不必再手動補齊**;補齊程序(含
   「打 `brewup` 沒用、必須用絕對路徑繞過舊 alias」)見 repo 根 `CLAUDE.md`「系統更新與同步」。
   兩機狀態(處理完就在此改):
-  - [ ] 家裡那部——**2026-08-08 全機隊 GitHub 身分收斂時唯一沒動到的**,仍是舊 `ssh/config` 配舊
-    key 檔名,**那樣自洽故可用**(連 macs 的能力與改名無關:公鑰內容沒動、sshd 另吃 CA)。
-  - [ ] 公司那部——狀態未查,同樣按補齊程序走。
+  - [x] 家裡那部——2026-08-09 補齊完成(使用者回報;該機從 macs 連不到,未由本 session 獨立複驗)。
+    補齊前是舊 `ssh/config` 配舊 key 檔名、自洽故可用,是 2026-08-08 全機隊身分收斂唯一沒動到的。
+  - [ ] 公司那部——狀態未查,同樣按補齊程序走。**Phase 3 改名卡在這一項**:改名後若它在「pull 到
+    新檔名」與「跑 ensure helper」之間有時間差(例如打舊 alias `brewup`),`~/.codex/AGENTS.md` 會
+    靜默變 dangling。照補齊序列走則無此窗口(pull 與 helper 同一指令)。
   **待確認是刻意(終端設備不入清單)還是缺口**;Tailscale 上目前也沒有它們(2026-08-09 查 tailnet
   只有 mis-mac-studio／db01／一支 iPhone／一台離線 19 天的 tony-mbp),故加入 inventory 這條路
   今天不可用,且加了之後兩部常離線的筆電會讓每次 dotsync 都帶 ❌ 雜訊——訊號會被稀釋。

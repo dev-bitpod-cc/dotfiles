@@ -2,6 +2,30 @@
 
 > Hard constraints. Violations have real consequences.
 
+## Repo contract precedence
+
+在任何 repo 開工前，先看根目錄有無 `AGENTS.md`（其次 `CLAUDE.md`）——**有就以它為該 repo 的慣例權威**。
+下面這個 kernel 是你在**任何** repo 的行為下限：safety floor 不因任何 repo 的慣例而放寬（更嚴的往上疊），
+fallback conventions 則由該 repo 自己的規定勝出。Repo 沒有契約檔時，這裡就是全部。
+
+<!-- agent-contract:kernel:start v1 -->
+## Kernel
+
+### Safety floor — never relaxed by any repo
+
+- **NEVER commit onto the default branch** (`main`/`master`). If `HEAD` is on it — or detached — create a feature branch first: `git switch -c <type>/<slug>`. This holds regardless of protection state and regardless of which tooling is loaded.
+- **NEVER push on your own.** Commit, then stop and report. An instruction to implement, fix, or "ship" does not authorize pushing.
+- **NEVER merge on your own.** "push" or "open a PR" alone does NOT include merge. Only an explicit merge instruction does.
+- **NEVER `git add -A` / `git add .` / `commit -a`.** Stage explicit paths.
+- **If the working tree holds changes you did not make, STOP and report before staging, committing, or building on top of them.** Whether two sessions may share one tree is a dispatch decision made above you — never resolve it locally by guessing which changes are yours. Once authorized, explicit paths are still whole-file: stage verified hunks with `git add -p`.
+- **Inspect `git diff --cached` before every commit.** After splitting a mixed file, verify from a clean clone — `git clone --no-local <repo> <tmpdir>`. "I checked the working tree" is not evidence.
+
+### Fallback conventions — this repo's own convention wins where it has one
+
+- Conventional Commits: `<type>: <short desc>`, type is one of `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`. **If this repo mandates another commit format, follow the repo.**
+- Record non-obvious trade-offs, rejected alternatives, and dead ends **where this repo already keeps them**. Skip whenever the diff alone recovers the rationale — a rejected path leaves no trace in the diff, an added gate does. **If the repo has no such store, do NOT create one; list them in your report instead.**
+<!-- agent-contract:kernel:end -->
+
 ## Think Before Implementing
 
 - Ambiguous task: NEVER silently pick one reading. List the plausible interpretations and let the user choose before writing anything.（自主執行時的 fallback 見下方「Uncertain?」條）
@@ -12,15 +36,12 @@
 
 ## PR / Git
 
-- **NEVER merge on your own** — only when the user explicitly says merge / bypass merge（不論在哪一輪說的，`/project log` 的引數或事後另說皆算）。"push" or "open a PR" alone does NOT include merge.
+- merge 的授權來源（補充 kernel 的 merge 條）：使用者明說 merge / bypass merge——**不論在哪一輪說的**，`/project log` 的引數或事後另說皆算。
 - 使用者明說 merge 後的標準收尾：merge PR → 清 remote/本地 branch → 同步本地 default，**一路做完不再回問**。**壓不壓由說法決定、預設保留**（裸「merge」＝保留語意 commit）。說法表與完整序列見 `~/.claude/skills/project/references/ship-paths.md`「說法表」＋「Merge 最後一哩」（唯一權威，勿在此重述對照）。
 - **說法授權的是「怎麼送」，never whether an unreviewed batch may ship.** `ship-state.sh` 印 `verdict: STOP`（含 `review-terminal:` 上一場審查未修完就終止）→ 停下處置，關鍵字不得覆蓋。
-- **Solo repo is not a lighter process** — "It's just me" / "no protection anyway" is never a reason to relax branch-first, the PR default, or explicit merge（理由與完整條文見 `ship-paths.md` 檔首，勿在此重述）。
-- **NEVER commit onto the default branch** (`main`/`master`). If `HEAD` is on it — or detached — create a feature branch **before** committing: `git switch -c <type>/<slug>`. This holds regardless of protection state and **regardless of whether any skill is loaded**（實測失效面：`claude/skills/handoff/evals.md` H6 首跑，同一輪 repo-a 的 commit 落在 main、repo-b 才開 branch——當時的規則只存在於 `/project` 載入後才讀得到的檔案裡）。誤 commit 已發生時的救援序列見 `~/.claude/skills/project/references/ship-paths.md`「Branch-first 與誤 commit 搬移」（唯一權威，本檔不重述）。
-- **NEVER push on your own** — after finishing an issue implementation or review fixes, commit and STOP; wait for the user's next instruction.
-- **NEVER `git add -A` / `git add .` / `commit -a`**——顯式路徑 stage，且**顯式路徑仍是整檔**：同一檔混了他人 session 的區段時改用 `add -p` 只 stage 驗過的 hunk（或把他人區段移出、commit 完最後放回），commit 前看 `git diff --cached`。三次誤收皆在磁碟上恆綠，**只有乾淨 clone 看得見**（`git clone --no-local <repo> <tmpdir>`）——人工看 staged diff 已實證失敗三次，不能取代它。
-  - 唯一例外：`/deep-review` 的 **WIP snapshot**（`deep-review/SKILL.md` 明列，本地暫存、終態會 squash），它要的正是「使用者原始變更的完整快照」。**但執行前須確認 working tree 全屬本次工作**——混了他人 in-flight 變更就停下問，別指望 snapshot 之後再拆（squash 終態一樣會把它送進 PR）。
-- Conventional Commits: `<type>: <short desc>`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
+- **Solo repo is not a lighter process** — "It's just me" / "no protection anyway" is never a reason to relax the kernel's safety floor, the PR default, or explicit merge（後兩者是個人流程、不在契約裡；理由與完整條文見 `ship-paths.md` 檔首，勿在此重述）。
+- 誤 commit 已落在 default branch 時的救援序列見 `~/.claude/skills/project/references/ship-paths.md`「Branch-first 與誤 commit 搬移」（唯一權威，本檔不重述）。**規則本體在 kernel**——它不隨 skill 是否載入而變（實測失效面：`claude/skills/handoff/evals.md` H6 首跑，同一輪 repo-a 的 commit 落在 main、repo-b 才開 branch，因為當時規則只存在於 `/project` 載入後才讀得到的檔案裡）。
+- kernel 廣義 staging 禁令的**唯一例外**：`/deep-review` 的 **WIP snapshot**（`deep-review/SKILL.md` 明列，本地暫存、終態會 squash），它要的正是「使用者原始變更的完整快照」。**但執行前須確認 working tree 全屬本次工作**——混了他人 in-flight 變更就停下問，別指望 snapshot 之後再拆（squash 終態一樣會把它送進 PR）。
 
 ## Third-party Review Verification
 
