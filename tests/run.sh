@@ -300,6 +300,100 @@ else
     printf '%s\n' "$xref_hits" | sed 's/^/     /'
 fi
 
+echo "▶ 1e. agent contract kernel block 完整性 gate"
+# 契約的 kernel 必須在三處逐字存在（repo 根 AGENTS.md／全域 Claude 檔／全域 Codex 檔）——
+# 純指標方案已被 H6 實測證偽（規則不在 always-on context 就不生效）。三份自足的代價是漂移，
+# 這支 gate 就是把那個代價換成機檢。判準與輸出契約見 tests/kernel-gate.py 檔頭。
+KERNEL_GATE="$ROOT/tests/kernel-gate.py"
+KG="$TMP/kernel"
+
+kg_make() {   # $1=fixture 根；$2=kernel body（三份共用）；$3=覆寫給 codex 的 body（可省）
+    local d="$1" body="$2" codex_body="${3:-$2}"
+    mkdir -p "$d/claude" "$d/codex"
+    {
+        echo "# Agent Contract"
+        echo "<!-- agent-contract:kernel:start v1 -->"
+        printf '%s\n' "$body"
+        echo "<!-- agent-contract:kernel:end -->"
+        echo "<!-- agent-contract:portable:start v1 -->"
+        echo "## Documentation authority"
+        echo "- Generated docs never win."
+        echo "<!-- agent-contract:portable:end -->"
+        echo "## Repo specifics"
+        echo "- 本節可以出現 ~/.dotfiles 與 dotsync，因為它逐 repo 重填、不會被複製走"
+    } > "$d/AGENTS.md"
+    for f in "$d/claude/CLAUDE.md" "$d/codex/AGENTS.md"; do
+        b="$body"; [ "$f" = "$d/codex/AGENTS.md" ] && b="$codex_body"
+        {
+            echo "# 全域規則"
+            echo "<!-- agent-contract:kernel:start v1 -->"
+            printf '%s\n' "$b"
+            echo "<!-- agent-contract:kernel:end -->"
+        } > "$f"
+    done
+}
+
+kg_run() { python3 "$KERNEL_GATE" --root "$1" 2>/dev/null; }
+
+# 八條規則的合法 body（GREEN 基準）
+kg_body="$(for i in 1 2 3 4 5 6 7 8; do echo "- rule ${i}"; done)"
+
+rm -rf "$KG"; kg_make "$KG/green" "$kg_body"
+kg_out="$(kg_run "$KG/green")"; kg_rc=$?
+assert_rc "gate 自檢：合法 fixture → exit 0" 0 "$kg_rc"
+assert_eq "gate 自檢：合法 fixture 無 findings" "" "$kg_out"
+
+# 漂移：其中一份的 body 不同
+kg_make "$KG/drift" "$kg_body" "$(printf '%s\n' "$kg_body" | sed 's/rule 8/rule 8 （偷改）/')"
+if kg_run "$KG/drift" | grep -q '漂移'; then ok "gate 自檢：複本漂移 → 命中"; else bad "gate 自檢：複本漂移未命中"; fi
+
+# 三份都被掏空 → 「空 == 空」會相等，靠條目數下限擋
+kg_make "$KG/hollow" "- rule 1"
+if kg_run "$KG/hollow" | grep -q '規則行'; then ok "gate 自檢：三份同時掏空 → 命中（空==空 的假綠）"; else bad "gate 自檢：掏空未命中——這是最關鍵的假綠"; fi
+
+# 缺一份
+kg_make "$KG/missing" "$kg_body"; rm -f "$KG/missing/codex/AGENTS.md"
+if kg_run "$KG/missing" | grep -q '檔案不存在'; then ok "gate 自檢：缺一份 → 命中"; else bad "gate 自檢：缺一份未命中"; fi
+
+# marker 不成對
+kg_make "$KG/unpaired" "$kg_body"
+sed -i.bak 's|<!-- agent-contract:kernel:end -->||' "$KG/unpaired/claude/CLAUDE.md" && rm -f "$KG/unpaired/claude/CLAUDE.md.bak"
+if kg_run "$KG/unpaired" | grep -q 'marker'; then ok "gate 自檢：marker 不成對 → 命中"; else bad "gate 自檢：marker 不成對未命中"; fi
+
+# canary：規則本體在 block 之外又出現一份
+kg_make "$KG/canary" "$kg_body"
+# shellcheck disable=SC2016  # 反引號是 markdown 行內 code 的字面內容，單引號內不展開（正是要餵給 gate 的 canary）
+echo '- 另外提醒一下：NEVER `git add -A`' >> "$KG/canary/claude/CLAUDE.md"
+if kg_run "$KG/canary" | grep -q '指紋'; then ok "gate 自檢：block 外的複本 → 命中"; else bad "gate 自檢：block 外的複本未命中"; fi
+
+# 可攜性：managed block 內出現私人路徑
+kg_make "$KG/private" "$(printf '%s\n- 詳見 ~/.claude/skills/project 的說明\n' "$kg_body")"
+if kg_run "$KG/private" | grep -q '私人路徑'; then ok "gate 自檢：block 內私人路徑 → 命中"; else bad "gate 自檢：block 內私人路徑未命中"; fi
+
+# 可攜性：Repo specifics 節（block 外）出現私人路徑 → **不得**命中，否則本 repo 那節無法寫
+if kg_run "$KG/green" | grep -q '私人路徑'; then bad "gate 自檢：誤報 block 外的私人路徑（Repo specifics 是逐 repo 重填的）"; else ok "gate 自檢：block 外的私人路徑不誤報"; fi
+
+# 可攜性：跨檔指標句型（在 dotfiles 內 xref-gate 判它活著，裝到別的 repo 就是死的）
+# shellcheck disable=SC2016  # 同上：要構造的就是「指標句型」這個字面，不是命令替換
+kg_make "$KG/xref" "$(printf '%s\n- 完整條文見 `ship-paths.md`「說法表」\n' "$kg_body")"
+if kg_run "$KG/xref" | grep -q '跨檔指標'; then ok "gate 自檢：block 內跨檔指標 → 命中"; else bad "gate 自檢：block 內跨檔指標未命中"; fi
+
+# scanner 自身失敗必須 exit 2（不可與「內容乾淨」的 exit 0 混用）
+python3 "$KERNEL_GATE" --root "$KG/does-not-exist" >/dev/null 2>&1
+assert_rc "gate 自檢：--root 不存在 → exit 2（不與乾淨混用）" 2 $?
+
+# 真實 repo
+kernel_hits="$(python3 "$KERNEL_GATE" --root "$ROOT" 2>/dev/null)"
+kernel_rc=$?
+if [ "$kernel_rc" -ne 0 ]; then
+    bad "kernel-gate 掃描器執行失敗（exit ${kernel_rc}）——空輸出不可信"
+elif [ -z "$kernel_hits" ]; then
+    ok "kernel block 三份逐字一致、契約檔可攜"
+else
+    bad "kernel block 有問題（複本漂移／被掏空／混入私人路徑）"
+    printf '%s\n' "$kernel_hits" | sed 's/^/     /'
+fi
+
 echo "▶ 2. bash -n 語法 gate"
 syntax_fail=0
 for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \

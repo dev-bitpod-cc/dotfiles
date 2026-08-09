@@ -335,6 +335,14 @@
   推不出「為什麼不能寫另一種」;③`.openwikiignore` **只擋讀取、不保證主題不被提及**(README 自陳,
   agent 仍能從 tests／commit message 反推),對帶內網 inventory 的 repo 它不是保密邊界。
   **採用與否未拍板**,本條記的是邊界。
+- **2026-08-09 契約分兩層:safety floor 不可放寬,fallback conventions 由 repo 勝出**:外部 repo
+  可能要求 `JIRA-123:` 或 gitmoji(與 Conventional Commits **互斥**,不是更嚴或更鬆),也可能沒有
+  決策存放處。**分界判準:錯了會產出什麼**——多開一條本地 branch 完全可逆;用錯 commit 格式則
+  直接產出必須重寫的東西。
+- **2026-08-09 kernel 用三份逐字複本 + identity gate,不用純指標**:純指標**已被 H6 證偽**
+  (換個名字仍是延遲載入,且 repo 沒契約時全域完全空手),三份都必須自足,故改用機械手段擋漂移
+  ——形狀同 `tests/xref-gate.py` 把「唯一權威」從散文換成 gate。**代價明記**:`tests/run.sh` 只跑
+  本 repo,裝到其他 repo 的複本沒有守門,與 2026-08-08 那條不對稱同型。
 
 ## 死路(試過但放棄——防重工)
 
