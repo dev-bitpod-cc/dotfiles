@@ -3532,6 +3532,17 @@ else
     ok "真實 \$HOME 無 known_hosts（無可觸碰之物）"
 fi
 
+# all-up.sh 以 `[ -x "$BREWUP" ]` 決定要直接跑腳本還是退回 `zsh -ic "brewup"`（互動 alias 路徑，
+# 正是當初為了消掉 job control 雜訊而繞開的那條，且在 rc 尚未清理的機器上會跑到不含 helper 的舊
+# alias）。執行位是個容易在編輯檔案時靜默掉的屬性——2026-08-09 實地掉過一次，故釘住。
+for xbit_script in scripts/brewup.sh scripts/sysup.sh; do
+    if [ -x "$ROOT/$xbit_script" ]; then
+        ok "$xbit_script 保有執行位（all-up 的 -x 分支才走得到）"
+    else
+        bad "$xbit_script 失去執行位——allup 會退回互動 alias fallback"
+    fi
+done
+
 echo "▶ 18e. ensure-ssh-config.sh 幂等重生 ~/.ssh/config（原子寫入 + 完整性驗證）"
 ESC="$ROOT/scripts/ensure-ssh-config.sh"
 esc="$TMP/esc"
