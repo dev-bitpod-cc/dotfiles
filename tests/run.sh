@@ -25,6 +25,7 @@
 #  18. ensure-codex-skills.sh 幂等連結 ~/.codex/skills → dotfiles
 # 18b. ensure-codex-guidance.sh 幂等連結全域 ~/.codex/AGENTS.md → dotfiles
 # 18c. ensure-lftprc.sh 幂等連結 ~/.lftprc → dotfiles（含 .lftprc.local 保證存在且不覆寫）
+# 18d. brewup.sh helper 部署與失敗告知（temp HOME + PATH stub 全隔離；不得碰真實環境）
 #  19. review-anchor.sh（deep-review skill script）錨點生命週期 / squash-cmd / codex-next
 #  20. verify-tests.sh（deep-review skill script）框架偵測與 exit 契約（uv/bun stub）
 #  21. crawl-quality-scan.py（check-crawl-quality skill script）確定性掃描 / 扣分帳目 / --classify 覆核
@@ -3366,7 +3367,9 @@ else
     bad "ln 失敗後原檔消失（僅剩備份）"
 fi
 
-for wiring_file in setup-mac-env.sh setup-linux-env.sh scripts/dotfiles-sync.sh; do
+# brewup 也必須接上：allup 走的是 brewup 而非 dotsync，只掛 dotfiles-sync 等於
+# 「日常全機隊更新」不重建 symlink，來源檔改名時該連結靜默失效。
+for wiring_file in setup-mac-env.sh setup-linux-env.sh scripts/dotfiles-sync.sh scripts/brewup.sh; do
     if grep -q 'ensure-codex-guidance.sh' "$ROOT/$wiring_file"; then
         ok "$wiring_file 已接上 Codex guidance helper"
     else
@@ -3447,7 +3450,7 @@ else
     bad "ln 失敗後原 lftprc 消失（僅剩備份）"
 fi
 
-for wiring_file in setup-mac-env.sh setup-linux-env.sh scripts/dotfiles-sync.sh; do
+for wiring_file in setup-mac-env.sh setup-linux-env.sh scripts/dotfiles-sync.sh scripts/brewup.sh; do
     if grep -q 'ensure-lftprc.sh' "$ROOT/$wiring_file"; then
         ok "$wiring_file 已接上 lftprc helper"
     else
@@ -3465,6 +3468,69 @@ for setup_file in setup-mac-env.sh setup-linux-env.sh; do
         bad "$setup_file 未把實際 clone 路徑傳給 lftprc helper"
     fi
 done
+
+echo "▶ 18d. brewup.sh helper 部署與失敗告知（全隔離）"
+# brewup 除了 helper 還會跑 git / brew / claude / jq 與 cp known_hosts。fixture 必須同時
+# 隔離 DOTFILES_DIR、HOME 與 PATH——否則這節測試本身會去動真的 repo、真的 Homebrew 與真的 $HOME。
+BUP="$ROOT/scripts/brewup.sh"
+bup="$TMP/bup"
+bup_real_home="$HOME"
+bup_real_kh_sum=""
+[ -f "$bup_real_home/.ssh/known_hosts" ] && bup_real_kh_sum="$(cksum < "$bup_real_home/.ssh/known_hosts")"
+mkdir -p "$bup/dotfiles/scripts" "$bup/dotfiles/claude" "$bup/dotfiles/ssh" "$bup/home/.ssh" "$bup/bin" "$bup/marks"
+
+# 受控 stub：只記錄被呼叫，不做任何真事
+for bup_cmd in git brew claude jq; do
+    {
+        echo '#!/usr/bin/env bash'
+        echo "echo \"\$0 \$*\" >> \"$bup/marks/$bup_cmd.log\""
+        echo 'exit 0'
+    } > "$bup/bin/$bup_cmd"
+    chmod +x "$bup/bin/$bup_cmd"
+done
+echo '{}' > "$bup/dotfiles/claude/settings.json"
+echo "# fixture known_hosts" > "$bup/dotfiles/ssh/known_hosts"
+
+bup_make_helpers() {   # $1=失敗的 helper 名（空字串＝全部成功）
+    for bup_h in ensure-rc-source ensure-codex-skills ensure-codex-guidance ensure-lftprc; do
+        {
+            echo '#!/usr/bin/env bash'
+            echo "echo ran >> \"$bup/marks/${bup_h}.log\""
+            if [ "$bup_h" = "$1" ]; then echo 'exit 1'; else echo 'exit 0'; fi
+        } > "$bup/dotfiles/scripts/${bup_h}.sh"
+        chmod +x "$bup/dotfiles/scripts/${bup_h}.sh"
+    done
+}
+
+# RED 臂：guidance helper 失敗
+bup_make_helpers ensure-codex-guidance
+bup_out="$(DOTFILES_DIR="$bup/dotfiles" HOME="$bup/home" PATH="$bup/bin:$PATH" bash "$BUP" 2>&1)"
+assert_rc "helper 失敗 → brewup 仍 exit 0（不擋套件更新）" 0 $?
+if printf '%s\n' "$bup_out" | grep -q '⚠️'; then
+    ok "helper 失敗 → 終判印出警告（不誤報完成）"
+else
+    bad "helper 失敗被靜默——symlink 未更新卻顯示正常完成"
+fi
+# 失敗不得中斷：下游的 Homebrew 段仍須執行，否則 helper 一失敗就整台不再更新套件
+if [ -f "$bup/marks/brew.log" ]; then ok "helper 失敗後下游 brew 段仍執行"; else bad "helper 失敗中斷了後續更新"; fi
+for bup_h in ensure-rc-source ensure-codex-skills ensure-codex-guidance ensure-lftprc; do
+    if [ -f "$bup/marks/${bup_h}.log" ]; then ok "brewup 呼叫了 ${bup_h}"; else bad "brewup 未呼叫 ${bup_h}"; fi
+done
+
+# GREEN 臂：全部成功 → 不得出現警告（否則警告變雜訊、下次真失敗時沒人看）
+rm -f "$bup/marks/"*.log
+bup_make_helpers ""
+bup_out="$(DOTFILES_DIR="$bup/dotfiles" HOME="$bup/home" PATH="$bup/bin:$PATH" bash "$BUP" 2>&1)"
+assert_rc "全部成功 → exit 0" 0 $?
+if printf '%s\n' "$bup_out" | grep -q '⚠️'; then bad "全部成功卻仍印警告"; else ok "全部成功 → 無警告"; fi
+
+# 隔離自證：cp 落在沙盒 HOME，真實 $HOME/.ssh/known_hosts 一個 byte 未動
+if [ -f "$bup/home/.ssh/known_hosts" ]; then ok "known_hosts 寫進沙盒 HOME"; else bad "known_hosts 未寫進沙盒——隔離可能失效"; fi
+if [ -n "$bup_real_kh_sum" ]; then
+    assert_eq "真實 \$HOME/.ssh/known_hosts 未被觸碰" "$bup_real_kh_sum" "$(cksum < "$bup_real_home/.ssh/known_hosts")"
+else
+    ok "真實 \$HOME 無 known_hosts（無可觸碰之物）"
+fi
 
 echo "▶ 19. review-anchor.sh（deep-review skill script）錨點生命週期 / squash-cmd / codex-next"
 RA_SCRIPT="$ROOT/claude/skills/deep-review/scripts/review-anchor.sh"
