@@ -923,18 +923,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # 3a. 確保 ~/.ssh 存在
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
 
-# 3b. SSH config
-if [ -f "$SCRIPT_DIR/ssh/config" ]; then
-    # 灌檔用 echo + cat 而非 heredoc：理由同 setup-mac-env.sh 同段（少一層展開語意；
-    # 那裡也記了「以為在修 bug、實測發現兩種寫法等價」的澄清）
-    {
-        echo "# 此檔案由 dotfiles setup 腳本產生"
-        echo "# 共用設定來自 ${SCRIPT_DIR}/ssh/config"
-        echo "# 機器特定設定請編輯 ~/.ssh/config.local"
-        echo
-        cat "$SCRIPT_DIR/ssh/config"
-    } > ~/.ssh/config
-    chmod 600 ~/.ssh/config
+# 3b. SSH config（下沉為 helper，理由見該腳本檔頭）
+if DOTFILES_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/ensure-ssh-config.sh"; then
     print_success "SSH config 已設定"
 fi
 

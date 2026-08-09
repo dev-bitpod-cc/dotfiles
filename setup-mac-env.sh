@@ -813,19 +813,9 @@ fi
 # 4b. 確保 ~/.ssh 存在
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
 
-# 4c. SSH config
-if [ -f "$SCRIPT_DIR/ssh/config" ]; then
-    # 灌檔用 echo + cat 而非 heredoc：少一層展開語意，讀的人不必判斷 body 會被怎麼處理。
-    # ⚠ 2026-08-07 曾誤判成「heredoc 會執行 ssh/config 註解裡的反引號」而當作修 bug——
-    # 實測澄清：命令替換的結果不會被重新掃描，兩種寫法功能等價。重構保留，但它不修任何東西。
-    {
-        echo "# 此檔案由 dotfiles setup 腳本產生"
-        echo "# 共用設定來自 ${SCRIPT_DIR}/ssh/config"
-        echo "# 機器特定設定請編輯 ~/.ssh/config.local"
-        echo
-        cat "$SCRIPT_DIR/ssh/config"
-    } > ~/.ssh/config
-    chmod 600 ~/.ssh/config
+# 4c. SSH config（下沉為 helper：原本四份行內複本只掛在 setup 與 dotsync，
+#     不在 inventory 的機器因此永遠拿不到更新——見該腳本檔頭）
+if DOTFILES_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/ensure-ssh-config.sh"; then
     print_success "SSH config 已設定"
 fi
 

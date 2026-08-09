@@ -3532,6 +3532,106 @@ else
     ok "真實 \$HOME 無 known_hosts（無可觸碰之物）"
 fi
 
+echo "▶ 18e. ensure-ssh-config.sh 幂等重生 ~/.ssh/config（原子寫入 + 完整性驗證）"
+ESC="$ROOT/scripts/ensure-ssh-config.sh"
+esc="$TMP/esc"
+mkdir -p "$esc/src" "$esc/home"
+printf 'Host example\n  User demo\n' > "$esc/src/config"
+
+esc_run() { SOURCE_FILE="$esc/src/config" TARGET_HOME="$1" BACKUP_ROOT="$esc/backup" bash "$ESC"; }
+
+esc_out="$(esc_run "$esc/home")"; esc_rc=$?
+assert_rc "首次部署 → exit 0" 0 "$esc_rc"
+if [ -f "$esc/home/.ssh/config" ]; then ok "config 已產生"; else bad "config 未產生"; fi
+assert_eq "權限 600" "600" "$(stat -f '%Lp' "$esc/home/.ssh/config" 2>/dev/null || stat -c '%a' "$esc/home/.ssh/config")"
+if grep -q 'Host example' "$esc/home/.ssh/config"; then ok "來源內容已灌入"; else bad "來源內容遺失"; fi
+# config.local 是 setup 的職責——這裡先生一個空檔會讓 setup 的 `[ ! -f ]` 永遠跳過真內容
+if [ -e "$esc/home/.ssh/config.local" ]; then bad "不該建立 config.local（會讓 setup 跳過真內容）"; else ok "不建立 config.local"; fi
+
+esc_out="$(esc_run "$esc/home")"
+assert_rc "二次跑 → exit 0" 0 $?
+assert_eq "內容相同時靜默（無輸出，避免每次 brewup 都噪音）" "" "$esc_out"
+
+printf 'Host example\n  User demo2\n' > "$esc/src/config"
+esc_out="$(esc_run "$esc/home")"
+if grep -q 'demo2' "$esc/home/.ssh/config"; then ok "來源變更 → 重生"; else bad "來源變更未反映"; fi
+
+# 既有「非本腳本產生」的手寫 config：必須先備份才接管
+mkdir -p "$esc/handwritten/.ssh"
+printf '# my own config\nHost secret\n' > "$esc/handwritten/.ssh/config"
+esc_run "$esc/handwritten" >/dev/null
+assert_rc "接管手寫 config → exit 0" 0 $?
+if grep -rq 'my own config' "$esc/backup" 2>/dev/null; then ok "手寫 config 已備份"; else bad "手寫 config 未備份即被覆蓋"; fi
+if grep -q 'Host example' "$esc/handwritten/.ssh/config"; then ok "接管後內容為 dotfiles 版"; else bad "接管失敗"; fi
+# 本腳本產生的檔不得每次都再備份一次——否則備份目錄無限膨脹、真正的手寫檔淹沒其中
+esc_backup_n="$(find "$esc/backup" -type f | wc -l | tr -d ' ')"
+printf 'Host example\n  User demo3\n' > "$esc/src/config"
+esc_run "$esc/handwritten" >/dev/null
+assert_eq "已受管的檔重生時不再備份" "$esc_backup_n" "$(find "$esc/backup" -type f | wc -l | tr -d ' ')"
+
+# 來源缺席 → 早退且不建檔（新機器 clone 前、或路徑打錯時不得留半成品）
+mkdir -p "$esc/nosrc"
+SOURCE_FILE="$esc/src/missing" TARGET_HOME="$esc/nosrc" BACKUP_ROOT="$esc/backup" bash "$ESC" >/dev/null 2>&1
+assert_rc "來源缺席 → exit 0（早退）" 0 $?
+if [ -e "$esc/nosrc/.ssh/config" ]; then bad "來源缺席仍建了檔"; else ok "來源缺席不建檔"; fi
+
+# 產出不完整（來源讀不到）→ 原檔一個 byte 都不能動。原本的行內版是 `> ~/.ssh/config`
+# 直接截斷寫入，這種情況會留下殘缺的 config，而殘缺的 ssh config 正是「連得上但認錯身分」
+# 那類最難查的故障。
+esc_before="$(cksum < "$esc/home/.ssh/config")"
+chmod 000 "$esc/src/config"
+esc_out="$(SOURCE_FILE="$esc/src/config" TARGET_HOME="$esc/home" BACKUP_ROOT="$esc/backup" bash "$ESC" 2>&1)"
+esc_rc=$?
+chmod 644 "$esc/src/config"
+assert_rc "產出不完整 → exit 1" 1 "$esc_rc"
+# 兩道防線任一先攔到都可以（cat 失敗 / bytes 不符），但**不得靜默**——
+# 靜默失敗會讓 dotsync 的 helper warn 有理由、使用者卻看不到是哪一項壞了
+if printf '%s\n' "$esc_out" | grep -q '⚠️'; then ok "失敗有明確訊息"; else bad "失敗卻靜默"; fi
+assert_eq "不完整時原檔未動" "$esc_before" "$(cksum < "$esc/home/.ssh/config")"
+if find "$esc/home/.ssh" -name '.config.dotfiles.*' | grep -q .; then bad "殘留暫存檔"; else ok "暫存檔已清"; fi
+
+# key 檔名落後的機器：拿「可用的舊 config」換成「指向不存在的 key」＝當場斷認證，
+# 而修正要靠 GitHub 拉回來。本 helper 讓重生變自動，這道守門是配套。
+mkdir -p "$esc/legacy/.ssh"
+printf 'Host github.com\n  IdentityFile ~/.ssh/id_old\n' > "$esc/legacy/.ssh/config"
+touch "$esc/legacy/.ssh/id_old"
+printf 'Host github.com\n  IdentityFile ~/.ssh/id_new\n' > "$esc/src/config"
+esc_before="$(cksum < "$esc/legacy/.ssh/config")"
+esc_out="$(SOURCE_FILE="$esc/src/config" TARGET_HOME="$esc/legacy" BACKUP_ROOT="$esc/backup" bash "$ESC" 2>&1)"
+assert_rc "新 config 的 key 缺席且舊 key 仍在 → 拒絕（exit 1）" 1 $?
+assert_eq "拒絕時原 config 一個 byte 未動" "$esc_before" "$(cksum < "$esc/legacy/.ssh/config")"
+if printf '%s\n' "$esc_out" | grep -q 'id_new'; then ok "訊息點名缺席的 key"; else bad "沒說是哪一把 key 缺席"; fi
+if printf '%s\n' "$esc_out" | grep -q 'cp'; then ok "訊息給出處置（cp 不 mv）"; else bad "訊息無處置指引"; fi
+# 補上新 key 之後就該放行——守門不能變成永久卡死
+touch "$esc/legacy/.ssh/id_new"
+SOURCE_FILE="$esc/src/config" TARGET_HOME="$esc/legacy" BACKUP_ROOT="$esc/backup" bash "$ESC" >/dev/null 2>&1
+assert_rc "補上新 key 後放行" 0 $?
+if grep -q 'id_new' "$esc/legacy/.ssh/config"; then ok "放行後已換成新 config"; else bad "放行後未更新"; fi
+# 全新機器（尚無 config、也還沒放 key）不得被自己擋住——否則 setup 首跑就死在這裡
+mkdir -p "$esc/fresh"
+SOURCE_FILE="$esc/src/config" TARGET_HOME="$esc/fresh" BACKUP_ROOT="$esc/backup" bash "$ESC" >/dev/null 2>&1
+assert_rc "全新機器（無既有 config）照常部署" 0 $?
+if [ -f "$esc/fresh/.ssh/config" ]; then ok "全新機器有拿到 config"; else bad "全新機器被守門擋住"; fi
+printf 'Host example\n  User demo3\n' > "$esc/src/config"
+
+# 五個消費端都必須改呼叫 helper，且行內複本要真的消失——留一份沒改就會漂移
+for esc_wiring in setup-mac-env.sh setup-linux-env.sh scripts/dotfiles-sync.sh scripts/brewup.sh scripts/add-new-host.sh; do
+    if grep -q 'ensure-ssh-config.sh' "$ROOT/$esc_wiring"; then
+        ok "$esc_wiring 已接上 ssh-config helper"
+    else
+        bad "$esc_wiring 未接上 ssh-config helper"
+    fi
+    if grep -q '} > ~/.ssh/config' "$ROOT/$esc_wiring"; then
+        bad "$esc_wiring 仍留著行內生成複本（dedup 未完成）"
+    else
+        ok "$esc_wiring 行內複本已移除"
+    fi
+done
+# dotfiles-sync 需本機段與遠端段都呼叫，否則遠端主機的 config 從此不再更新。
+# 數「實際呼叫」而非「提及」——註解也會寫到腳本名，光數字面會把註解算進去。
+assert_eq "dotfiles-sync 本機+遠端兩處都呼叫 ssh-config helper" 2 \
+    "$(grep -c 'bash .*ensure-ssh-config.sh' "$ROOT/scripts/dotfiles-sync.sh")"
+
 echo "▶ 19. review-anchor.sh（deep-review skill script）錨點生命週期 / squash-cmd / codex-next"
 RA_SCRIPT="$ROOT/claude/skills/deep-review/scripts/review-anchor.sh"
 

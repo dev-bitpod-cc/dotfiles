@@ -43,28 +43,16 @@ fi
 echo -e "${BLUE}▶ 本機同步${NC}"
 (cd "$DOTFILES_DIR" && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1) || true
 
-# 重新套用 SSH config + known_hosts
-if [ -f "$DOTFILES_DIR/ssh/config" ]; then
-    # 灌檔用 echo + cat 而非 heredoc：少一層展開語意，讀的人不必去判斷 body 會被怎麼處理。
-    # ⚠ 2026-08-07 曾誤判：以為 heredoc 版會執行 ssh/config 註解裡的反引號。**實測澄清——
-    # 命令替換的結果不會被重新掃描**，`$(cat 檔)` 注入的反引號不會執行，兩種寫法功能等價。
-    # 重構保留（確實比較直白），但它不是在修 bug。危險的只有「反引號寫在 body 字面」那種。
-    {
-        echo "# 此檔案由 dotfiles setup 腳本產生"
-        echo "# 共用設定來自 ${DOTFILES_DIR}/ssh/config"
-        echo "# 機器特定設定請編輯 ~/.ssh/config.local"
-        echo
-        cat "$DOTFILES_DIR/ssh/config"
-    } > ~/.ssh/config
-    chmod 600 ~/.ssh/config
-fi
-
+# SSH config 的重生已下沉為 ensure-ssh-config.sh（見下方 helper 段）——原本四份行內複本
+# 都只掛在 dotsync 與 setup，不在 inventory 的機器因此永遠拿不到更新。
 if [ -f "$DOTFILES_DIR/ssh/known_hosts" ]; then
     cp "$DOTFILES_DIR/ssh/known_hosts" ~/.ssh/known_hosts
 fi
 
 # helper 部署失敗不中止同步，但必須反映進本機終判——不可誤報完成（codex C2）
 local_helper_warn=0
+# 重生 ~/.ssh/config（幂等；原子寫入 + 完整性驗證，取代原本的行內截斷寫入）
+[ -f "$DOTFILES_DIR/scripts/ensure-ssh-config.sh" ] && { bash "$DOTFILES_DIR/scripts/ensure-ssh-config.sh" 2>/dev/null || local_helper_warn=1; } || true
 # 確保互動 rc 有 source shell/functions.sh（幂等；讓便利函數免重跑 setup 即散佈）
 [ -f "$DOTFILES_DIR/scripts/ensure-rc-source.sh" ] && { bash "$DOTFILES_DIR/scripts/ensure-rc-source.sh" 2>/dev/null || local_helper_warn=1; } || true
 
@@ -101,22 +89,15 @@ sync_remote() {
                 echo "PULL_FAILED"
                 exit 0
             fi
-            # 重新套用 SSH config
-            if [ -f ssh/config ]; then
-                # 灌檔用 echo + cat 而非 heredoc：理由同本檔上方本機段（少一層展開語意）。
-                # ⚠ 不是在修 bug——`$(cat 檔)` 注入的反引號不會被執行，見上方註解的實測澄清。
-                {
-                    echo "# 此檔案由 dotfiles sync 產生"
-                    cat ssh/config
-                } > ~/.ssh/config
-                chmod 600 ~/.ssh/config
-            fi
+            # SSH config 的重生已下沉為 ensure-ssh-config.sh（見下方 helper 段）
             # 覆蓋 known_hosts
             if [ -f ssh/known_hosts ]; then
                 cp ssh/known_hosts ~/.ssh/known_hosts
             fi
             # helper 部署失敗不中止同步，但必須反映進終判——不可誤報 OK（codex C2）
             helper_warn=0
+            # 重生 ~/.ssh/config（幂等；原子寫入 + 完整性驗證）
+            [ -f scripts/ensure-ssh-config.sh ] && { bash scripts/ensure-ssh-config.sh 2>/dev/null || helper_warn=1; } || true
             # 確保互動 rc 有 source shell/functions.sh（幂等）
             [ -f scripts/ensure-rc-source.sh ] && { bash scripts/ensure-rc-source.sh 2>/dev/null || helper_warn=1; } || true
             # 確保 ~/.codex/skills 指向 dotfiles（幂等；免重跑 setup 即拿到最新 codex skill）

@@ -51,7 +51,7 @@ glog=git log --oneline --graph --decorate
 
 ### 系統更新與同步
 
-- macOS: `brewup`（brew update/upgrade + dotfiles pull + Claude plugins + known_hosts 同步）
+- macOS: `brewup`（brew update/upgrade + dotfiles pull + **ensure helper 部署** + Claude plugins + known_hosts 同步）
 - Linux: `brewup`（同 macOS）+ `sysup`（apt update/upgrade）
 - macOS: `brewfix`（cask 升版被 Gatekeeper 卡死時的診斷與復原；**預設唯讀**，`brewfix --fix` 才動手。病灶與鑑別法見 `claude/CLAUDE.md`「已知地雷」）
 
@@ -70,6 +70,27 @@ glog=git log --oneline --graph --decorate
 > 真正屬於單機的 key 放 `~/.claude/settings.local.json`（untracked、harness 不寫、優先級高於 settings.json）。
 > Caveat：在權威機器上要先 `commit` 再跑 `brewup`，否則未提交的刻意改動會被丟棄。
 - `dotsync` - 同步 dotfiles 到所有遠端主機（並行 SSH pull + 重新套用 config）
+
+> **不在 `inventory.conf` 的機器（個人 MacBook）怎麼跟上**——`dotsync` 涵蓋不到它們，而且**打 `brewup` 沒有用**：
+> 那些機器的 rc 裡還留著舊的 `brewup` alias，而 alias 展開優先於 function 查找，跑到的是不含 helper 的舊一行版。
+> 補齊一律**用絕對路徑呼叫腳本**繞過 alias：
+>
+> ```bash
+> # ① 只有「從未跟上 2026-08-08 GitHub 身分收斂」的機器需要這步，而且必須在 ② 之前。
+> #    cp 不要 mv——新舊並存，任一步失敗都不會斷線。
+> cp ~/.ssh/id_github_work ~/.ssh/id_github_com   # 舊名 → 新名
+> cp ~/.ssh/id_github      ~/.ssh/id_personal
+> # ② pull + 部署（brewup.sh 會跑 ensure-ssh-config / rc-source / codex-skills / codex-guidance / lftprc）
+> git -C ~/.dotfiles pull && bash ~/.dotfiles/scripts/brewup.sh
+> # ③ 把該機器上所有 repo 的 remote 換成標準 URL（預設 dry-run，確認後才 --apply）
+> bash ~/.dotfiles/scripts/migrate-github-remotes.sh --apply
+> # ④ 驗兩個身分都認得對，才刪舊 key（順序不可顛倒）
+> ssh -T git@github.com; ssh -T git@github-me
+> ```
+>
+> ② 跑完之後 rc 的舊 alias 已由 `ensure-rc-source.sh` 移除，之後打 `brewup` 就是 functions.sh 的版本、會自己帶 helper——
+> **這台機器從此不需要再手動補齊**。若 ① 漏做，`ensure-ssh-config.sh` 會擋下並印出缺哪一把 key（它拒絕拿可用的
+> 認證換成壞的），不會把機器弄斷。
 - `dotsync eagle03 db01` - 只同步指定主機
 - `tmuxls` - 列出各主機的 tmux session（`tmuxls eagle03 db01` 只看指定主機）
 - `allup` - 批次系統更新：各主機依 OS 跑 `brewup`（Linux 另加 `sysup`）。無引數＝本機＋全部遠端（本機若在 inventory 清單則自動以 IP 比對扣除，避免重複）；`allup eagle03 db01` 只跑指定主機（不含本機）；`ALLUP_DRYRUN=1 allup` 只預覽計畫不執行

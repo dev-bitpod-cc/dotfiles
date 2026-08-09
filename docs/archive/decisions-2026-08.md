@@ -328,6 +328,13 @@
   每台先自檢「config 指向新檔名／新檔存在／兩個身分認得對」三道,任一不成立即跳過該台、
   零刪除。**判準:前提由執行端當場驗,不由發起端事先假設**——發起端的「我剛剛驗過了」
   在並行散佈裡是舊資訊。形狀同 `cleanup-stale-branch.sh` 的執行當下重驗。
+- **2026-08-09 OpenWiki 只配 derived 層,且 dotfiles 不當第一試點**:它產的是「從 code/git 可推導」
+  的 repo 地圖,與 dossier 明文不記的東西正交,架構上不衝突。不選 dotfiles 的理由是三條摩擦在此
+  同時發作:①官方 workflow 的 staged 範圍含 `CLAUDE.md` 與 **workflow 檔自己**;②幾百頁 LLM 改寫版
+  稀釋「唯一權威」不變式,而最易被摘壞的正是帶反面教訓的地雷條——LLM 只看得到「這裡用了 herestring」,
+  推不出「為什麼不能寫另一種」;③`.openwikiignore` **只擋讀取、不保證主題不被提及**(README 自陳,
+  agent 仍能從 tests／commit message 反推),對帶內網 inventory 的 repo 它不是保密邊界。
+  **採用與否未拍板**,本條記的是邊界。
 
 ## 死路(試過但放棄——防重工)
 

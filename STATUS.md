@@ -32,13 +32,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
-- **2026-08-09 OpenWiki 只配 derived 層,且 dotfiles 不當第一試點**:它產的是「從 code/git 可推導」
-  的 repo 地圖,與 dossier 明文不記的東西正交,架構上不衝突。不選 dotfiles 的理由是三條摩擦在此
-  同時發作:①官方 workflow 的 staged 範圍含 `CLAUDE.md` 與 **workflow 檔自己**;②幾百頁 LLM 改寫版
-  稀釋「唯一權威」不變式,而最易被摘壞的正是帶反面教訓的地雷條——LLM 只看得到「這裡用了 herestring」,
-  推不出「為什麼不能寫另一種」;③`.openwikiignore` **只擋讀取、不保證主題不被提及**(README 自陳,
-  agent 仍能從 tests／commit message 反推),對帶內網 inventory 的 repo 它不是保密邊界。
-  **採用與否未拍板**,本條記的是邊界。
 - **2026-08-09 接手首屏由 `docs/transfer.md` 承擔,不動 STATUS.md 的 schema**:survey 建議在 dossier
   加固定 schema 的接手快照,但那必然與「進行中」雙重記載(它自己也提了這個疑慮),違反傘狀蒸餾規則。
   `docs/transfer.md` 本就為接手者而寫、移交前才生成、不常駐,故不會腐爛;STATUS.md 是常駐演化檔,
@@ -50,6 +43,14 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   **已失效(2026-08-09,同日)**:門檻找錯地方——洞在 Claude 端一樣存在且早有 RED(H6),不必等
   clean-room eval(該 eval 仍未跑,照實記)。現行決策與完整理由見
   `docs/plans/2026-08-09-repo-contract-extraction.md`「生效模型（兩輪 P0 的裁決，先讀這節）」。
+- **2026-08-09 判斷一條部署路徑夠不夠,看它涵蓋的機器集合,不是看它跑幾次**:`~/.ssh/config` 的重生
+  原本有四份行內複本,卻全掛在 dotsync 與 setup ——兩部個人 MacBook 因此永遠拿不到更新,實地後果
+  是 2026-08-08 全機隊身分收斂它們完全沒跟上,**而且從外面看不出來**。下沉為 `ensure-ssh-config.sh`
+  並接進 `brewup` 後,任何機器跑過 brewup 就自己跟上。
+- **2026-08-09 把重生自動化,就必須同時擋住「拿可用的換成壞的」**:自動重生會讓 key 檔名落後的機器
+  在第一次 brewup 把可用的舊 config 換成指向不存在的 key → 認證斷掉,**而修正要靠 GitHub 拉回來**
+  (散佈紀律①的新形態)。故替換前檢查新 config 指到的 key 是否存在,**判準收窄成「新的缺席且舊的
+  還在」**——全新機器不受影響,否則 setup 首跑被自己擋住。**這種順序陷阱要由腳本擋,寫散文不夠。**
 - **2026-08-09 通用契約不得只活在延遲載入的檔案裡**:branch-first 原本只在 `ship-paths.md`,
   全域檔僅側面提及「不得放寬」→ 不載入 `/project` 就沒有這條規則,H6 首跑即實測 commit 落在 main。
   **判準:規則的生效範圍不能小於它要防的失敗範圍**;per-skill 補丁蓋系統性缺口,只會讓下一個
@@ -222,15 +223,17 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   後果:新機器跑 setup 不會裝、macmini/m4mini 目前也沒有。該 cask 標 `auto_updates`,故 `brewup`
   不會升它(除非 `--greedy`)。**它沒有 `generate_completions_from_executable`,不會踩 codex 那個
   Gatekeeper 坑**,但首次執行仍會走核可流程——要裝就在該機 console 前跑一次。
-- **使用者的個人 MacBook 不在 `inventory.conf`**(家中經 VPN ssh 進 macs),故 `dotsync` / `allup`
-  都涵蓋不到,且 `ensure-rc-source.sh` **完全不碰 ssh**——那台的 `~/.ssh/config` 自上次跑
-  `setup-mac-env.sh` 後就沒動過,要重生得自己灌
-  (`{ echo "# 此檔案由 dotfiles setup 腳本產生"; cat ssh/config; } > ~/.ssh/config`)。
-  **2026-08-08 全機隊 GitHub 身分收斂時它是唯一沒動到的**——仍是舊 `ssh/config` 配舊 key 檔名,
-  **那樣自洽故可用**;連 macs 的能力與改名無關(公鑰內容沒動,sshd 另吃 CA)。要跟上的順序:
-  `cp` 出新檔名 → pull → 重生 `~/.ssh/config` → `migrate-github-remotes.sh --apply` → 驗兩個身分
-  → 才刪舊檔,**順序不可顛倒**(先重生 config 再 cp 會斷 GitHub 認證)。**待確認是刻意
-  (終端設備不入清單)還是缺口**——浮動 VPN IP 未必適合 inventory 的 `<alias> <ip>` 形式。
+- **兩部個人 MacBook 不在 `inventory.conf`**(一部公司、一部家中,經 VPN ssh 進 macs),`dotsync` /
+  `allup` 都涵蓋不到,且**一次只能處理一部**。2026-08-09 已把 `~/.ssh/config` 的重生下沉成
+  `ensure-ssh-config.sh` 並接進 `brewup`,所以**跟上一次之後就不必再手動補齊**;補齊程序(含
+  「打 `brewup` 沒用、必須用絕對路徑繞過舊 alias」)見 repo 根 `CLAUDE.md`「系統更新與同步」。
+  兩機狀態(處理完就在此改):
+  - [ ] 家裡那部——**2026-08-08 全機隊 GitHub 身分收斂時唯一沒動到的**,仍是舊 `ssh/config` 配舊
+    key 檔名,**那樣自洽故可用**(連 macs 的能力與改名無關:公鑰內容沒動、sshd 另吃 CA)。
+  - [ ] 公司那部——狀態未查,同樣按補齊程序走。
+  **待確認是刻意(終端設備不入清單)還是缺口**;Tailscale 上目前也沒有它們(2026-08-09 查 tailnet
+  只有 mis-mac-studio／db01／一支 iPhone／一台離線 19 天的 tony-mbp),故加入 inventory 這條路
+  今天不可用,且加了之後兩部常離線的筆電會讓每次 dotsync 都帶 ❌ 雜訊——訊號會被稀釋。
 
 ## 移交準備度
 

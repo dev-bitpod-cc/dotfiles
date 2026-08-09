@@ -136,16 +136,9 @@ phase_a() {
     # 3. 重新生成 ssh/config
     run "$SCRIPT_DIR/render-ssh-config.sh"
 
-    # 4. 套用到 ~/.ssh/config
+    # 4. 套用到 ~/.ssh/config（下沉為 helper，理由見該腳本檔頭）
     if [ "$DRY_RUN" -eq 0 ]; then
-        {
-            echo "# 此檔案由 dotfiles setup 腳本產生"
-            echo "# 共用設定來自 $DOTFILES_DIR/ssh/config"
-            echo "# 機器特定設定請編輯 ~/.ssh/config.local"
-            echo ""
-            cat "$DOTFILES_DIR/ssh/config"
-        } > ~/.ssh/config
-        chmod 600 ~/.ssh/config
+        DOTFILES_DIR="$DOTFILES_DIR" bash "$SCRIPT_DIR/ensure-ssh-config.sh"
     fi
     ok "已套用 ~/.ssh/config"
 
