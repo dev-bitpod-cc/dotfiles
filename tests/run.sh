@@ -322,7 +322,8 @@ kg_make() {   # $1=fixture 根；$2=kernel body（三份共用）；$3=覆寫給
         echo "## Repo specifics"
         echo "- 本節可以出現 ~/.dotfiles 與 dotsync，因為它逐 repo 重填、不會被複製走"
     } > "$d/AGENTS.md"
-    for f in "$d/claude/CLAUDE.md" "$d/codex/AGENTS.md"; do
+    # root CLAUDE.md 也要有一份——Claude Code 自動載入它、但不自動載入 AGENTS.md（2026-08-10 實測）
+    for f in "$d/CLAUDE.md" "$d/claude/CLAUDE.md" "$d/codex/AGENTS.md"; do
         b="$body"; [ "$f" = "$d/codex/AGENTS.md" ] && b="$codex_body"
         {
             echo "# 全域規則"

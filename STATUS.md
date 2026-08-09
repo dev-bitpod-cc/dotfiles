@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-09)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-10)
 
 ---
 
@@ -22,11 +22,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   目標是契約層 repo-resident 且工具中立,三份複本由機械 gate 擋漂移,私人 skill 維持私人。
 - **AC / Constraints**:見計畫檔「驗證」與「執行順序與回滾」兩節。要點:每個含 dotsync 的 phase
   都走「commit → 授權 → 驗 `origin/main` → 單機驗 → 才散佈」;外部 repo 只允許 `--check`。
-- **進度**:Phase 1 已完成並散佈(14 台逐台驗過)。Phase 2 已完成(契約檔 + kernel identity gate
-  + 可攜性 gate)。Phase 0 的 behavior eval 未跑。
-- **下一步**:Phase 4 的 installer 之前要先跑 Phase 0 的 **G1b**(成對實驗,判定 Claude 是否原生讀
-  root `AGENTS.md`)——它決定 installer 要不要寫 `CLAUDE.md` pointer。**Phase 3 改名仍卡著**:
-  硬前提是「無已知不可達主機」,公司那部 MacBook 未補齊(見已知缺口)。
+- **進度**:Phase 1 已完成並散佈(14 台逐台驗過)。Phase 2 已完成(契約檔 + 兩個 gate)。
+  Phase 0 的 **G1b 已跑並改變了設計**(見決策節同日兩條),kernel 因此擴為四份複本。
+- **下一步**:①補完 Phase 0 的 G1a(無契約 baseline)、G2(characterization,取逐字合理化說詞)、
+  G4/G4b(C2 過濾器的 sentinel 測試)——皆不擋任何事;②Phase 4 installer(規格已由 G1b 定案:
+  裝 kernel 本體、不是 pointer)。**Phase 3 改名仍卡著**:硬前提是「無已知不可達主機」,
+  公司那部 MacBook 未補齊(見已知缺口)。
 
 ---
 
@@ -45,19 +46,21 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   **已失效(2026-08-09,同日)**:門檻找錯地方——洞在 Claude 端一樣存在且早有 RED(H6),不必等
   clean-room eval(該 eval 仍未跑,照實記)。現行決策與完整理由見
   `docs/plans/2026-08-09-repo-contract-extraction.md`「生效模型（兩輪 P0 的裁決，先讀這節）」。
+- **2026-08-10 G1b 實測:root `CLAUDE.md` 自動載入,root `AGENTS.md` 不會**。clean room(借憑證
+  symlink、**不帶全域 CLAUDE.md**,故測到產品原生行為而非我的全域指令):`AGENTS.md` 放隨機 sentinel
+  → 需理解 repo 的問題 3/3 遵守、**瑣碎問題 0/2**,stream-json 顯示遵守那次是探索時 `cat` 讀到的;
+  同一 sentinel 改放 `CLAUDE.md` → 瑣碎問題也 2/2。**故契約 kernel 必須落在自動載入的檔案裡**
+  ——`AGENTS.md` 只在 agent 剛好探索 repo 時才綁得住。已就地套用:root `CLAUDE.md` 成為第四份逐字
+  複本(gate 的 `KERNEL_FILES` 與自檢 fixture 同步擴充)。Codex 端不受影響(原生讀 `AGENTS.md`)。
+- **2026-08-10 installer 不得只寫 pointer,必須把 kernel block 本體裝進目標 repo 的 `CLAUDE.md`**
+  (推翻計畫的 P0-2 樂觀分支)。理由見上一條:pointer 即使在自動載入的檔案裡,也只是「告訴你契約在
+  別處」,瑣碎任務照樣不會去讀它指向的檔。代價是**每個安裝過的 repo 都多一份無機械守門的複本**
+  (`tests/run.sh` 只跑本 repo),與 2026-08-08 xref gate 那條不對稱同型。
 - **2026-08-09 自我更新的部署腳本要 exec 重跑,不能只在文件寫「記得跑兩次」**:`brewup.sh` 在自己
   內部 pull,但**執行中的 bash 跑完的是舊版**(git 是 unlink+新建,舊 inode 存活)——本次更新才加進
   pull 後段的動作因此延後一個週期、無聲,`allup` 會讓它在整個機隊同時發生。使用者在落後的 MacBook
   上實地撞到(要跑兩次才部署到 helper)。修法是比對自身 checksum + `exec` 重跑 + 環境變數迴圈防護。
   **判準:凡「更新自己」的腳本,一輪之內就要收斂,不能把收斂責任丟給呼叫者的記憶。**
-- **2026-08-09 判斷一條部署路徑夠不夠,看它涵蓋的機器集合,不是看它跑幾次**:`~/.ssh/config` 的重生
-  原本有四份行內複本,卻全掛在 dotsync 與 setup ——兩部個人 MacBook 因此永遠拿不到更新,實地後果
-  是 2026-08-08 全機隊身分收斂它們完全沒跟上,**而且從外面看不出來**。下沉為 `ensure-ssh-config.sh`
-  並接進 `brewup` 後,任何機器跑過 brewup 就自己跟上。
-- **2026-08-09 把重生自動化,就必須同時擋住「拿可用的換成壞的」**:自動重生會讓 key 檔名落後的機器
-  在第一次 brewup 把可用的舊 config 換成指向不存在的 key → 認證斷掉,**而修正要靠 GitHub 拉回來**
-  (散佈紀律①的新形態)。故替換前檢查新 config 指到的 key 是否存在,**判準收窄成「新的缺席且舊的
-  還在」**——全新機器不受影響,否則 setup 首跑被自己擋住。**這種順序陷阱要由腳本擋,寫散文不夠。**
 - **2026-08-09 通用契約不得只活在延遲載入的檔案裡**:branch-first 原本只在 `ship-paths.md`,
   全域檔僅側面提及「不得放寬」→ 不載入 `/project` 就沒有這條規則,H6 首跑即實測 commit 落在 main。
   **判準:規則的生效範圍不能小於它要防的失敗範圍**;per-skill 補丁蓋系統性缺口,只會讓下一個
@@ -152,6 +155,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-08-05／08-06／08-07 各批已歸檔至 `docs/archive/milestones-2026-08.md`。
 
 - ✅ 2026-08-09 handoff skill 收斂：錨點兩端完整性（unborn HEAD 的永久假 FRESH）＋ W1/R1 三指令下沉為 `survey` ＋ archive resume 的盲區與信任上限（889 PASS，eval 8/8）
+- ✅ 2026-08-10 G1b 成對實驗：實測 root `CLAUDE.md` 自動載入、root `AGENTS.md` 不會（clean room 不帶全域檔）→ kernel 擴為四份逐字複本，並定案 installer 必須裝 kernel 本體而非 pointer（956 PASS）
 - ✅ 2026-08-09 契約層抽取 Phase 2：repo 根 `AGENTS.md`（kernel：safety floor 6 + fallback conventions 2；portable：權威矩陣 + working discipline）＋ 三份 kernel 逐字複本 ＋ `tests/kernel-gate.py`（漂移／掏空／缺份／marker／canary／可攜性，含 10 條自檢 fixture）。`claude/CLAUDE.md` 與 `codex/AGENTS.md` 交出被 kernel 承接的條文（956 PASS；四個突變各驗過會紅，含真實 repo 改一個字的漂移）
 - ✅ 2026-08-09 `brewup` 自我更新偵測：pull 換掉自己就 `exec` 新版重跑（`BREWUP_REEXEC` 迴圈防護），消掉「pull 進新版卻用舊版跑完」的一輪延遲。**這顆修正本身仍要被它修的 bug 咬最後一次**——各機第一次跑到的是修正前的 brewup，`dotsync` 不受影響（它以路徑逐支呼叫 helper）（944 PASS）
 - ✅ 2026-08-09 `ensure-ssh-config.sh`：四份行內複本收斂成一支並接進 `brewup`，不在 inventory 的機器從此能自己跟上；加原子寫入＋完整性驗證＋**key 缺席守門**（擋自動重生把可用認證換成壞的）。過程被自己的測試抓到 `$(wc -c < 讀不到的檔)` 回空、`$(( ))` 當 0 的假綠（941 PASS）
