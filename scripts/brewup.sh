@@ -11,11 +11,29 @@
 set -uo pipefail
 
 DOTFILES="${DOTFILES_DIR:-$HOME/.dotfiles}"
+SELF="${BASH_SOURCE[0]}"
 
 # 1. dotfiles 同步
 #    settings.json 為唯一權威、由選定的權威機器刻意 commit；其他機器上 harness 寫入的
 #    runtime drift 是拋棄式的，故 pull 前先丟棄。rebase.autoStash 作為其他 dirty 檔的安全網。
+self_sum_before=""
+[ -f "$SELF" ] && self_sum_before=$(cksum < "$SELF" 2>/dev/null)
 (cd "${DOTFILES}" && git checkout -- claude/settings.json 2>/dev/null; git pull --autostash 2>&1)
+
+# 1a. pull 換掉了本腳本 → 用新版重跑一次。
+#     **執行中的 bash 會繼續跑舊內容**——git checkout 是 unlink + 新建，正在執行的 process
+#     握著舊 inode，檔案被換掉也讀不到新的（2026-08-09 實測確認）。後果是「pull 進新版、卻用
+#     舊版跑完這一輪」：凡是本次更新才加進 pull 後段的動作（例如某支新的 ensure helper）
+#     全部延後一個週期才生效，而且無聲——allup 會在 14 台上同時發生。
+#     實地觸發：家裡那部落後的 MacBook 必須跑兩次 brewup 才部署到 helper。
+#     `BREWUP_REEXEC` 是迴圈防護：只重跑一次，第二輪即使 checksum 又變也照常往下。
+if [ -z "${BREWUP_REEXEC:-}" ] && [ -f "$SELF" ]; then
+    self_sum_after=$(cksum < "$SELF" 2>/dev/null)
+    if [ -n "$self_sum_before" ] && [ -n "$self_sum_after" ] && [ "$self_sum_before" != "$self_sum_after" ]; then
+        echo "↻ brewup.sh 已更新，改用新版重跑"
+        BREWUP_REEXEC=1 exec bash "$SELF" "$@"
+    fi
+fi
 
 # 1b. pull 後的幂等部署 helper（與 dotfiles-sync.sh 同一組、同一形狀）
 #     為什麼 brewup 也要跑：helper 原本只掛在 dotfiles-sync.sh，但 allup 走的是 brewup，

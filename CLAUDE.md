@@ -81,6 +81,9 @@ glog=git log --oneline --graph --decorate
 > cp ~/.ssh/id_github_work ~/.ssh/id_github_com   # 舊名 → 新名
 > cp ~/.ssh/id_github      ~/.ssh/id_personal
 > # ② pull + 部署（brewup.sh 會跑 ensure-ssh-config / rc-source / codex-skills / codex-guidance / lftprc）
+> #    ⚠ 前面那個 `git pull &&` 是功能性的、不是排版：brewup.sh 自己也會 pull，但**執行中的
+> #    bash 會跑完舊版**，落後的機器因此要跑兩次才部署到 helper。先獨立 pull 就只需一次。
+> #    （新版 brewup.sh 已會偵測自身更新並 exec 重跑，但那段程式碼要先進到機器上才有用。）
 > git -C ~/.dotfiles pull && bash ~/.dotfiles/scripts/brewup.sh
 > # ③ 把該機器上所有 repo 的 remote 換成標準 URL（預設 dry-run，確認後才 --apply）
 > bash ~/.dotfiles/scripts/migrate-github-remotes.sh --apply
