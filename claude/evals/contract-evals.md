@@ -7,8 +7,14 @@
 
 ```bash
 SB=$(mktemp -d /tmp/contract-evals.XXXXXX)
-./claude/evals/setup-sandboxes.sh "$SB" run        # 產出 $SB/g6-run、$SB/g7-run
+./claude/evals/setup-sandboxes.sh "$SB" run
+#   $SB/g6-run      外部 repo（非強加測試）      + home-rules（**帶** kernel）
+#   $SB/g7-run      已移交的 repo（現行模板）    + home-clean（**無**全域規則）
+#   $SB/g7base-run  同上，但 STATUS.md 由**修改前**的模板產生（帶死指標）
 ```
+
+**baseline 臂也是腳本建的**（`make_g7_base`，舊模板取自寫死的 commit）——兩臂只差 `STATUS.md`
+一個檔，其餘逐檔相同，比較才有歸因。不要手改 fixture。
 
 **憑證是刻意不由腳本放的**——加與移除都要顯式做：
 
@@ -45,8 +51,8 @@ cd "$SB/g6-run/work" && HOME="$SB/g6-run/home-rules" claude -p \
 
 > ⚠️ **樓層警告（誠實揭露）**：本檔記錄的 G1a/G1b/G2/G4/G4b/G6 各次結果**跑在 Opus 5 上**，
 > 而 `README.md`「模型樓層政策」明訂 **Sonnet 才是 PASS 門檻、Opus 非驗收門**。
-> **只有 G7 baseline 補跑過 Sonnet**（2/2 全綠，結論不變）。其餘各條若要當驗收證據，
-> 需在 Sonnet 上重跑——現況它們只證明「強模型上成立」。
+> **只有 G7 兩臂在 Sonnet 上重跑過**（baseline 1/2 失敗、修後 2/2；見該節）。其餘各條若要當
+> 驗收證據，需在 Sonnet 上重跑——現況它們只證明「強模型上成立」。
 
 - **直接用假 HOME 會 `Not logged in`**——憑證綁在 `$HOME`。用 symlink 借，**不要複製**（secrets 不落地），跑完移除連結。
 - **不要用真實 HOME 當對照**：全域 `claude/CLAUDE.md` 現在明文叫 agent 去看 `AGENTS.md`，那會讓「原生行為」與「遵守我的指令」混在一起。
@@ -129,8 +135,10 @@ agent 可以繞過 STATUS 模板拿到落點，於是測不出模板自身的可
 **所以 W1 不只是衛生修復**——初版那個「純衛生」的結論建立在被污染的 fixture 與非樓層模型上。
 修後 2/2 乾淨，修復有效。
 
-> baseline 臂用 `git show <pre-fix>:claude/templates/STATUS-template.md` 取回舊模板產生；
-> 腳本產出的是修後版。
+> **兩臂都由 `setup-sandboxes.sh` 產生**——`$SB/g7base-run`（`make_g7_base`，舊模板取自寫死的
+> commit `ba8163c`）與 `$SB/g7-run`（現行模板）。除 `STATUS.md` 外逐檔相同，比較才有歸因。
+> 不要手 `git show` 舊模板去改 fixture：那正是本檔一再踩到的「手刻 fixture」——上一版的洩漏
+> 就是這樣進來的。
 
 ### 被作廢的第三條 oracle：「關鍵決策要有新條目」
 
@@ -141,16 +149,11 @@ agent 可以繞過 STATUS 模板拿到落點，於是測不出模板自身的可
 **教訓**：oracle 之間也要對得起來。要求 agent 做一件另一條規則叫它別做的事，測到的是 oracle 的
 矛盾，不是 agent 的錯。
 
-**結論（與預期相反，照實記）**：模板檔頭那條
-`規範全文:~/.dotfiles/claude/skills/project/references/dossier.md` **沒有弄壞接手者**——
-agent 根本不會去追它，直接照章節標題與 inline 註解做對了事。
+### 已刪除：初版（洩漏 fixture + Opus）的結論
 
-**所以 W1 是衛生修復，不是行為修復。** 它的正當性來自「交出去的檔案裡有一條指向不存在位置的
-引用」＋ 現場兩次手動偏離（krepo 全清、krepo-common 半清），**不是**「它會害接手者做錯」。
-這個區別要記著——沒有先跑 baseline 的話，會帶著錯誤的理由去改，而且會多加不需要的補充行。
-
-**跑次的刻意偏離**：計畫寫「baseline 與修後各 3 次」，該數字假設 baseline 會 RED。baseline 既然
-3/3 全綠，修後那一臂的角色從 oracle 降為**迴歸檢查**，故跑 2 次。
+初版曾據「baseline 3/3 全綠」寫下「死指標沒有弄壞接手者、W1 是純衛生修復」。**那段已整塊刪除**
+（原文在 git history，commit `891469f`）——留著會讓本檔同時主張兩個互斥結論，讀者無從判斷哪組
+有效。上方乾淨重跑的 1/2 失敗才是現行結果。
 
 ## G6 — 外部 repo 的非強加（2026-08-10，已跑，2/2 GREEN）
 

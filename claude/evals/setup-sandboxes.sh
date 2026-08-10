@@ -35,6 +35,8 @@
 #                             Conventional Commits（非強加測試；附 home-rules＝帶全域 kernel）
 #   g7  contract G7           **已移交**的 repo：CLAUDE.md 刻意不提 dossier、STATUS.md 由模板
 #                             產生（可攜性測試；附 home-clean＝無全域規則、無 skill）
+#   g7base contract G7 baseline  同 g7，但 STATUS.md 由**修改前**的模板產生（帶死指標）——
+#                             兩臂只差模板本身，比較才有歸因
 #
 # ⚠️ g6/g7 需要 headless Claude 與**借用憑證**，兩者的 home 目錄由本腳本建骨架但**不放憑證**
 #    ——憑證連結是刻意留給執行者顯式加、跑完顯式移除的動作，見 claude/evals/contract-evals.md。
@@ -1002,23 +1004,10 @@ EOF
 #   g6 要測「帶著我的 kernel 進別人的 repo」→ home **必須**有全域 CLAUDE.md，否則被測對象被拿掉
 DOTFILES_ROOT="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 
-make_g7() {
-    local dir="$ROOT/g7-$INSTANCE"
-    mkdir -p "$dir/home-clean/.claude" "$dir/work/src" "$dir/work/docs"
-    # CLAUDE.md **刻意只含與 dossier 無關的慣例**——提到 STATUS.md 的話，agent 可以繞過
-    # 模板照樣答對，模板的可攜性就測不出來（變因只能有一個，同 G1b 的成對紀律）
-    cat > "$dir/work/CLAUDE.md" <<'EOF'
-# deploy-tool
-
-小型部署工具，把 artifact 推到目標主機。
-
-## 慣例
-
-- Python 3.11+，套件管理用 `uv`
-- 所有對外指令都要支援 `--dry-run`
-- 測試：`uv run pytest`
-EOF
-    python3 - "$DOTFILES_ROOT/claude/templates/STATUS-template.md" "$dir/work/STATUS.md" <<'PY'
+# 把模板填成一份「已在用」的 dossier。抽成函式是因為 baseline 臂要用**同一組填充**
+# 套在舊模板上——兩臂只差模板本身，變因才只有一個。
+_g7_fill_status() {   # $1=模板路徑 $2=輸出路徑
+    python3 - "$1" "$2" <<'PY'
 import sys, pathlib
 s = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 for a, b in [
@@ -1043,7 +1032,41 @@ s = s.replace("""- ~~**YYYY-MM-DD <已被推翻的決策>**:<原決策原文>~~
   **已失效(YYYY-MM-DD)**:<推翻理由>;現行決策見 `<path>`「<section>」。""", "")
 pathlib.Path(sys.argv[2]).write_text(s, encoding="utf-8")
 PY
+}
+
+make_g7() {
+    local dir="$ROOT/g7-$INSTANCE"
+    mkdir -p "$dir/home-clean/.claude" "$dir/work/src" "$dir/work/docs"
+    # CLAUDE.md **刻意只含與 dossier 無關的慣例**——提到 STATUS.md 的話，agent 可以繞過
+    # 模板照樣答對，模板的可攜性就測不出來（變因只能有一個，同 G1b 的成對紀律）
+    cat > "$dir/work/CLAUDE.md" <<'EOF'
+# deploy-tool
+
+小型部署工具，把 artifact 推到目標主機。
+
+## 慣例
+
+- Python 3.11+，套件管理用 `uv`
+- 所有對外指令都要支援 `--dry-run`
+- 測試：`uv run pytest`
+EOF
+    _g7_fill_status "$DOTFILES_ROOT/claude/templates/STATUS-template.md" "$dir/work/STATUS.md"
     printf 'def push(host, artifact):\n    """把 artifact 推到 host。"""\n    return _ssh_copy(host, artifact)\n\n\ndef _ssh_copy(host, artifact):\n    raise NotImplementedError\n' > "$dir/work/src/deploy.py"
+    # fixture 必須自洽：transfer.md 與 CLAUDE.md 都提到 README／uv sync／pytest，缺檔會讓 agent
+    # 停下或補造無關 scaffolding，污染「只想測 STATUS 模板可攜性」的 oracle（2026-08-10 審查抓到）
+    mkdir -p "$dir/work/tests"
+    # shellcheck disable=SC2016  # 反引號是 markdown 行內 code 的字面內容，單引號內不展開
+    printf '# deploy-tool\n\n把 artifact 經 SSH 推到目標主機。\n\n## 安裝\n\n`uv sync`\n\n## 用法\n\n`uv run deploy --host <host> --artifact <path>`（加 `--dry-run` 只印計畫）\n' > "$dir/work/README.md"
+    cat > "$dir/work/pyproject.toml" <<'EOF'
+[project]
+name = "deploy-tool"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+EOF
+    printf 'from src.deploy import push\n\n\ndef test_push_is_callable():\n    assert callable(push)\n' > "$dir/work/tests/test_deploy.py"
     # ⚠️ **不要直接複製 transfer-guide-template**：它逐字寫著「必讀:STATUS.md(決策與死路)」
     # 並三度提到 `/project transfer`——那正好是 O2／O3 的答案，agent 可以繞過 STATUS 模板拿到
     # 落點，G7 就測不出模板自身的可攜性了（與 CLAUDE.md 那道防洩漏同一個道理，2026-08-10 審查抓到）。
@@ -1080,6 +1103,27 @@ EOF
         && git add -A && git commit -qm "移交快照")
 }
 
+# baseline 臂：與 g7 完全相同，**只有 STATUS.md 由修改前的模板產生**。
+# 模板的可攜化在 891469f 落地，前一次改動是 ba8163c——commit 寫死是刻意的：
+# 「baseline 要用哪一版」不能靠讀計畫或猜，否則 baseline/修後的比較就無法重建。
+G7_PREFIX_TEMPLATE_COMMIT="ba8163c94ca73842511c99a6d5b60336d3ee9f0d"
+
+make_g7_base() {
+    local dir="$ROOT/g7base-$INSTANCE" old_tpl="$ROOT/.g7-old-template.md"
+    if ! git -C "$DOTFILES_ROOT" show \
+            "$G7_PREFIX_TEMPLATE_COMMIT:claude/templates/STATUS-template.md" > "$old_tpl" 2>/dev/null; then
+        echo "warn: 取不到 $G7_PREFIX_TEMPLATE_COMMIT 的舊模板（淺 clone？）——跳過 g7base" >&2
+        rm -f "$old_tpl"
+        return 0
+    fi
+    cp -R "$ROOT/g7-$INSTANCE" "$dir"
+    rm -rf "$dir/work/.git"
+    _g7_fill_status "$old_tpl" "$dir/work/STATUS.md"
+    (cd "$dir/work" && git init -qb main . && git config user.email t@t && git config user.name t \
+        && git add -A && git commit -qm "移交快照（修改前的模板）")
+    rm -f "$old_tpl"
+}
+
 make_g6() {
     local dir="$ROOT/g6-$INSTANCE"
     mkdir -p "$dir/home-rules/.claude" "$dir/work/src"
@@ -1108,7 +1152,7 @@ EOF
 
 make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10
-make_g6; make_g7
+make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
 ls "$ROOT"
