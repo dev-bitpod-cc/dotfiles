@@ -1709,6 +1709,59 @@ if echo "$out" | grep -q "dossier-flag:.*最大條目"; then bad "條目 bytes �
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
 if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then bad "「進行中」節內圍欄的 ✅ 被誤報為完成項（非錨定比對未 skip 哨兵行）"; else ok "「進行中」節內圍欄的 ✅ 不誤報（非錨定比對有 skip 哨兵）"; fi
 
+# ✅ 只在**條目形狀（list item）**上算數：表格儲存格的 ✅ 是子項狀態欄，不是「做完卻沒
+# 移走的項目」。krepo 2026-08-10 連三次 ship 都被這條誤報（進行中節的一張盤點表，4 列
+# 全綠），每次只能在 Step 4 附註寫「未處理」——flag 訊息叫人「移入里程碑」，而一列表格
+# 搬進里程碑節無處可放，訊息本身就透露判準抓錯了對象。
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 還在做的項目"; echo
+  echo "| 符號 | 現況 | 拆分處置 |"
+  echo "|---|---|---|"
+  echo "| foo | ✅ 已就位 | 已就位 |"
+  echo "| bar | ✅ 已就位 | 已就位 |"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then bad "表格儲存格的 ✅ 被誤報為完成項未移走（判準未收窄到 list item）"; else ok "表格儲存格的 ✅ 不誤報（判準限 list item）"; fi
+
+# 同一件事的完整實地形狀，釘住「把續行併入所屬條目」那個候選判準**不可行**：krepo 的表格
+# 前面隔著散文、但更前面（第 259 行）有 bullet，而條目 bytes 那套寬續行模型（bullet 之後
+# 直到下一個 bullet/標題都算續行）會把表格收回同一條目 → 照樣誤報。故只認 bullet 行本身。
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"
+  echo "- 某個 Phase：還在做"
+  echo "  - 子項說明"; echo
+  echo "它需要的外部符號，盤點結果："; echo
+  echo "| 符號 | 現況 |"
+  echo "|---|---|"
+  echo "| foo | ✅ 已就位 |"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then bad "bullet 之後、隔著散文的表格 ✅ 被算成該條目的續行而誤報（判準採了寬續行模型）"; else ok "bullet 之後隔著散文的表格 ✅ 不誤報（未採寬續行模型）"; fi
+
+# 收窄不得只認頂層 bullet：縮排子項同樣是條目形狀，`  - ✅ x` 是真的完成項未移走
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"
+  echo "- 某個 Phase：還在做"
+  echo "  - ✅ 這個子項做完了卻沒移走"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then ok "縮排 list item 的 ✅ → flag（收窄未誤殺子項）"; else bad "縮排 list item 的 ✅ 未偵測（收窄只認了頂層 bullet）"; fi
+
+# `*` / `+` 兩種 marker 同樣算條目（CommonMark 三種 bullet 都合法，只認 `-` 會漏）
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "* ✅ 做完了卻沒移走的項目"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then ok "\`*\` marker 的 ✅ → flag"; else bad "\`*\` marker 的 ✅ 未偵測"; fi
+
+# marker 後**必須**有空白，否則 `**粗體** ✅` 這種散文行會被當成 bullet 而讓收窄失效
+# （`*` 開頭 + 行內有 ✅ = 本次要排除的形狀之一，寬版 pattern 抓不出差別）
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"; echo "- 還在做的項目"; echo
+  echo "**盤點結論** ✅ 這句是散文強調，不是條目"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then bad "\`**粗體**\` 開頭的散文行被當成 bullet（marker 後未要求空白）"; else ok "marker 後要求空白：\`**粗體** ✅\` 散文行不誤報"; fi
+
+# 明示放棄的 false negative（不是 bug，改動前先讀這條）：✅ 寫在條目的**續行**上不會亮。
+# 上面那條 krepo 回歸證明了續行併入會把表格一起收回來，兩者不可兼得；選擇讓「條目內部的
+# 進度標註」漏掉，因為它與盤點表同性質——都不是「整條做完該搬去里程碑」。
+{ echo "# 測試專案 STATUS"; echo; echo "## 進行中"
+  echo "- 某個 Phase：還在做"
+  echo "  ✅ 其中一步完成了（續行標註，非條目本身）"; } > "$TMP/ds-work/STATUS.md"
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-work")"
+if echo "$out" | grep -q "dossier-flag:.*進行中.*✅"; then bad "續行 ✅ 亮了——判準比預期寬，請確認是否連帶讓表格列也回來了"; else ok "續行 ✅ 不亮（已知且刻意放棄的 false negative）"; fi
+
 # 分節 bytes 不得虛胖：剝 fence 的 \001 哨兵若在量長度時沒剝掉，每個 fenced 行多算 1 byte，
 # 短行多的 fence（YAML/JSON/log 片段）會讓單節 bytes 超過全檔總量、百分比破 100%
 # （實測曾出現 149%），兩節接近時足以造成排名倒轉——正是這功能要防的失效
