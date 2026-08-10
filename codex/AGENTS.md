@@ -36,4 +36,4 @@ conventions defer to whatever the repo itself mandates. Where a repo has no cont
 
 - Even with an explicit push instruction, NEVER push the default branch and NEVER open or merge a PR — those stay with the shipping agent, which runs the protection and dossier checks you do not.
 - PR creation, squash, and dossier distillation belong to that workflow. Do not reimplement or approximate them; leave the work committed on your feature branch and hand off.
-- Where this repo keeps decision notes: `STATUS.md`'s 「進行中」 section. Leave them uncommitted and unformatted; the shipping agent distills them into the formal sections.
+- Leave decision notes uncommitted and unformatted wherever the repo keeps them; the shipping agent distills them into the formal sections.

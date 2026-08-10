@@ -351,6 +351,19 @@
   在第一次 brewup 把可用的舊 config 換成指向不存在的 key → 認證斷掉,**而修正要靠 GitHub 拉回來**
   (散佈紀律①的新形態)。故替換前檢查新 config 指到的 key 是否存在,**判準收窄成「新的缺席且舊的
   還在」**——全新機器不受影響,否則 setup 首跑被自己擋住。**這種順序陷阱要由腳本擋,寫散文不夠。**
+- **2026-08-09 通用契約不得只活在延遲載入的檔案裡**:branch-first 原本只在 `ship-paths.md`,
+  全域檔僅側面提及「不得放寬」→ 不載入 `/project` 就沒有這條規則,H6 首跑即實測 commit 落在 main。
+  **判準:規則的生效範圍不能小於它要防的失敗範圍**;per-skill 補丁蓋系統性缺口,只會讓下一個
+  未覆蓋的路徑再踩一次。修法是 promotion + dedup,淨變動 +1 行。
+- **2026-08-09 自我更新的部署腳本要 exec 重跑,不能只在文件寫「記得跑兩次」**:`brewup.sh` 在自己
+  內部 pull,但**執行中的 bash 跑完的是舊版**(git 是 unlink+新建,舊 inode 存活)——本次更新才加進
+  pull 後段的動作因此延後一個週期、無聲,`allup` 會讓它在整個機隊同時發生。使用者在落後的 MacBook
+  上實地撞到(要跑兩次才部署到 helper)。修法是比對自身 checksum + `exec` 重跑 + 環境變數迴圈防護。
+  **判準:凡「更新自己」的腳本,一輪之內就要收斂,不能把收斂責任丟給呼叫者的記憶。**
+- **2026-08-10 契約 kernel 必須落在自動載入的檔案裡**:G1b 實測 root `CLAUDE.md` **會**被自動載入、
+  root `AGENTS.md` **不會**(後者只在 agent 剛好探索 repo 時被 `cat` 到)。已就地套用:root
+  `CLAUDE.md` 成為第四份逐字複本。Codex 端不受影響(原生讀 `AGENTS.md`)。逐項數據與 clean-room
+  構造見 `claude/evals/contract-evals.md`「G1b — root `AGENTS.md` 是否被自動載入」。
 
 ## 死路(試過但放棄——防重工)
 

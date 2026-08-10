@@ -1,7 +1,7 @@
 <!--
 STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、隨專案移交)
-維護時機:開工寫 spec(/project spec 或對話);ship 時由 /project log 同步;移交前跑 /project transfer。
-規範全文:~/.dotfiles/claude/skills/project/references/dossier.md
+維護時機:開工寫 spec;ship 時同步;移交前補齊完整度。維護者可能另有工具輔助,
+        但**規範本身在此、不在工具**——沒有那些工具也照樣維護得下去。
 -->
 
 # STATUS.md
@@ -12,22 +12,14 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-### Repo 契約層抽取(2026-08-09 起;計畫已核准,Phase 1–2 完成)
+(無進行中工作項——契約層與 dossier 可攜性兩批已收斂,見里程碑。凍結計畫:
+`docs/plans/2026-08-09-repo-contract-extraction.md`、`docs/plans/2026-08-10-dossier-portability.md`)
 
-**計畫全文(已凍結)**:`docs/plans/2026-08-09-repo-contract-extraction.md`——四個 phase 的內容、
-驗證方案、回滾與「不改什麼」清單都在該檔,此處只記狀態與下一步。
-
-- **Context / Goal**:通用工程契約的實體條文住在私人 skill 的 `ship-paths.md`,不載入 `/project`
-  就讀不到(RED 見決策節同日條目);協作情境把同一個洞放大——clean clone 交出去對方完全沒有契約。
-  目標是契約層 repo-resident 且工具中立,三份複本由機械 gate 擋漂移,私人 skill 維持私人。
-- **AC / Constraints**:見計畫檔「驗證」與「執行順序與回滾」兩節。要點:每個含 dotsync 的 phase
-  都走「commit → 授權 → 驗 `origin/main` → 單機驗 → 才散佈」;外部 repo 只允許 `--check`。
-- **進度**:Phase 1 已完成並散佈(14 台逐台驗過)。Phase 2 已完成(契約檔 + 兩個 gate)。
-  Phase 0 的 **G1b 已跑並改變了設計**(見決策節同日兩條),kernel 因此擴為四份複本。
-- **下一步**:①補完 Phase 0 的 G1a(無契約 baseline)、G2(characterization,取逐字合理化說詞)、
-  G4/G4b(C2 過濾器的 sentinel 測試)——皆不擋任何事;②Phase 4 installer(規格已由 G1b 定案:
-  裝 kernel 本體、不是 pointer)。**Phase 3 改名仍卡著**:硬前提是「無已知不可達主機」,
-  公司那部 MacBook 未補齊(見已知缺口)。
+**剩餘工作全部帶觸發條件、皆不在進行中**:①**Phase 3 改名 DROP**——Codex 進生產線再議;
+②**Phase 4 installer DEFER**——觸發是「出現第一個**自己有權安裝契約**的移交 repo」,**不是**
+「外部 repo」(那正是不得 apply 的對象);③**G5 DEFER**——隨 generated-docs 工具一起;
+④**transfer 的 portability 步驟 DEFER**——真實移交當下依實況寫,之後回灌模板
+(n=1 的一次性工作寫進 skill,成本高於手做,且自動化「剝除」比正解「具名保留」差)。
 
 ---
 
@@ -46,25 +38,22 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   **已失效(2026-08-09,同日)**:門檻找錯地方——洞在 Claude 端一樣存在且早有 RED(H6),不必等
   clean-room eval(該 eval 仍未跑,照實記)。現行決策與完整理由見
   `docs/plans/2026-08-09-repo-contract-extraction.md`「生效模型（兩輪 P0 的裁決，先讀這節）」。
-- **2026-08-10 G1b 實測:root `CLAUDE.md` 自動載入,root `AGENTS.md` 不會**。clean room(借憑證
-  symlink、**不帶全域 CLAUDE.md**,故測到產品原生行為而非我的全域指令):`AGENTS.md` 放隨機 sentinel
-  → 需理解 repo 的問題 3/3 遵守、**瑣碎問題 0/2**,stream-json 顯示遵守那次是探索時 `cat` 讀到的;
-  同一 sentinel 改放 `CLAUDE.md` → 瑣碎問題也 2/2。**故契約 kernel 必須落在自動載入的檔案裡**
-  ——`AGENTS.md` 只在 agent 剛好探索 repo 時才綁得住。已就地套用:root `CLAUDE.md` 成為第四份逐字
-  複本(gate 的 `KERNEL_FILES` 與自檢 fixture 同步擴充)。Codex 端不受影響(原生讀 `AGENTS.md`)。
+- **2026-08-10 模板可攜性的判準:「規範本身在此、不在工具」**——形狀不是設計出來的,是 krepo 現場
+  自行收斂的檔頭(krepo 全清、krepo-common 半清,**兩次獨立手動偏離就是 RED**)。**但 G7 實測證明
+  死指標並沒有弄壞接手者**(baseline 3/3 全綠:agent 根本不追那條「規範全文」)——所以這是**衛生修復
+  不是行為修復**,正當性來自「交出去的檔含指向不存在位置的引用」。**先跑 baseline 才知道這件事**:
+  否則會帶著錯理由改、還會多加不需要的補充行。全文見 `docs/plans/2026-08-10-dossier-portability.md`
+  「W0 — G7：transfer clean-room eval（先跑，它是 W1 的 oracle）」。
+- **2026-08-10 branch-first 是 Claude Code 產品原生的,所以輕量 fixture 量不到 kernel 的邊際效果**:
+  G1a/G2 成對實驗兩臂皆 3/3 另開 branch,唯一差異是命名。**這是 fixture 無鑑別力,不是 H6 被推翻**
+  ——H6 是高負載情境(多 repo／resume／指令競爭),要重現得先有帶負載的 fixture(目前沒有)。
+  **推論:kernel 的 branch-first 對 Claude 邊際價值有限,真正不可取代的是 Codex 與協作者的 clean
+  clone。** 相對地 C2(決策紀錄過濾器)沒有原生對應,G4/G4b 因此**有**鑑別力且 2/2 GREEN。
+  情境全文見 `claude/evals/contract-evals.md`「G1a / G2 — kernel 對 branch-first 的邊際效果」。
 - **2026-08-10 installer 不得只寫 pointer,必須把 kernel block 本體裝進目標 repo 的 `CLAUDE.md`**
   (推翻計畫的 P0-2 樂觀分支)。理由見上一條:pointer 即使在自動載入的檔案裡,也只是「告訴你契約在
   別處」,瑣碎任務照樣不會去讀它指向的檔。代價是**每個安裝過的 repo 都多一份無機械守門的複本**
   (`tests/run.sh` 只跑本 repo),與 2026-08-08 xref gate 那條不對稱同型。
-- **2026-08-09 自我更新的部署腳本要 exec 重跑,不能只在文件寫「記得跑兩次」**:`brewup.sh` 在自己
-  內部 pull,但**執行中的 bash 跑完的是舊版**(git 是 unlink+新建,舊 inode 存活)——本次更新才加進
-  pull 後段的動作因此延後一個週期、無聲,`allup` 會讓它在整個機隊同時發生。使用者在落後的 MacBook
-  上實地撞到(要跑兩次才部署到 helper)。修法是比對自身 checksum + `exec` 重跑 + 環境變數迴圈防護。
-  **判準:凡「更新自己」的腳本,一輪之內就要收斂,不能把收斂責任丟給呼叫者的記憶。**
-- **2026-08-09 通用契約不得只活在延遲載入的檔案裡**:branch-first 原本只在 `ship-paths.md`,
-  全域檔僅側面提及「不得放寬」→ 不載入 `/project` 就沒有這條規則,H6 首跑即實測 commit 落在 main。
-  **判準:規則的生效範圍不能小於它要防的失敗範圍**;per-skill 補丁蓋系統性缺口,只會讓下一個
-  未覆蓋的路徑再踩一次。修法是 promotion + dedup,淨變動 +1 行。
 - **2026-08-09 本輪範圍界線:無 RED 者一律 DEFER 並記觸發條件**(防下一個 session 的對抗式 review
   原樣再提一次):①`transfer onboard` 子形狀 → 等第一個真實協作者(**已存在的模板比空白頁更容易被
   照填**,會鎖死第一次真實情境的形狀);②`contract-flag:` 訊號 → 等「缺契約沒人發現」的實例;
@@ -104,6 +93,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   結論」完全同型。**正解是先合併、主 checkout pull 之後再驗。**
 - **「/project log 包裝/並存 /uap」**:disable-model-invocation 下無法鏈式呼叫,只能複製
   pressure-tested 的 ship 防護邏輯——違反 single-source;功能上與「uap 強化」完全收斂,直接取代。
+- **在移交出去的 repo 內放一份 dossier 規範精簡版(`docs/dossier.md`)**:2026-08-10 設計時提出並否決。
+  ①**G1b 實測非自動載入的檔不會被讀**,它與 `AGENTS.md` 同一失效面;②散到 N 個 repo 後零機械守門
+  (`kernel-gate.py` 只守 dotfiles 四檔),規範一改就全部 stale 而**沒人會發現**——最壞是接手者的
+  agent 照舊版把刪除線劃在失效通知上,**交出去的東西主動教錯**;③常駐檔會腐爛(`docs/transfer.md`
+  不腐爛正因它移交前才生成)。**正解是既有落點**:STATUS.md 自己的檔頭註解 + 該 repo 的 `CLAUDE.md`。
 - **repo 內放一次性交接檔(HANDOFF.md commit→刪除循環)**:實證 general-rag-cs 的已消費
   STATUS.md 腐爛數月——跨機狀態一律走 STATUS.md 就地更新,已明文禁止(dossier.md anti-patterns)。
 
@@ -152,8 +146,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 ## 已完成(里程碑)
 
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
-> 2026-08-05／08-06／08-07 各批已歸檔至 `docs/archive/milestones-2026-08.md`。
+> 2026-08-05～08-08 各批已歸檔至 `docs/archive/milestones-2026-08.md`。
 
+- ✅ 2026-08-10 dossier 可攜性收斂：G7 transfer clean-room eval（baseline 3/3、修後 2/2 全綠）＋ `STATUS-template.md` 全檔可攜化（5 增 5 刪，純置換）＋ 刪 `codex/AGENTS.md` 與 kernel C2 矛盾的全域斷言 ＋ Phase 3 DROP 四處清理 ＋ G6 非強加測試 2/2（956 PASS）
 - ✅ 2026-08-09 handoff skill 收斂：錨點兩端完整性（unborn HEAD 的永久假 FRESH）＋ W1/R1 三指令下沉為 `survey` ＋ archive resume 的盲區與信任上限（889 PASS，eval 8/8）
 - ✅ 2026-08-10 G1b 成對實驗：實測 root `CLAUDE.md` 自動載入、root `AGENTS.md` 不會（clean room 不帶全域檔）→ kernel 擴為四份逐字複本，並定案 installer 必須裝 kernel 本體而非 pointer（956 PASS）
 - ✅ 2026-08-09 契約層抽取 Phase 2：repo 根 `AGENTS.md`（kernel：safety floor 6 + fallback conventions 2；portable：權威矩陣 + working discipline）＋ 三份 kernel 逐字複本 ＋ `tests/kernel-gate.py`（漂移／掏空／缺份／marker／canary／可攜性，含 10 條自檢 fixture）。`claude/CLAUDE.md` 與 `codex/AGENTS.md` 交出被 kernel 承接的條文（956 PASS；四個突變各驗過會紅，含真實 repo 改一個字的漂移）
@@ -161,8 +156,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - ✅ 2026-08-09 `ensure-ssh-config.sh`：四份行內複本收斂成一支並接進 `brewup`，不在 inventory 的機器從此能自己跟上；加原子寫入＋完整性驗證＋**key 缺席守門**（擋自動重生把可用認證換成壞的）。過程被自己的測試抓到 `$(wc -c < 讀不到的檔)` 回空、`$(( ))` 當 0 的假綠（941 PASS）
 - ✅ 2026-08-09 契約層抽取 Phase 1：`brewup` 補四個 ensure helper（補上「allup 走 brewup 而 helper 只掛 dotsync」的散佈窗口，含不誤報完成的兩層 warn）＋ branch-first 提升到 always-on ＋ 新增 `tests/run.sh` §18d 全隔離 fixture（902 PASS，兩個突變各驗過會紅）
 
-- ✅ 2026-08-08 **GitHub 多身分收斂 14 台全數上線、舊 key 已清**：`github-work` 與 `insteadOf` 整層消滅，key 檔名對齊 Host（`id_github_com` / `id_personal`）；48 條 remote 換寫、2 條 `insteadOf` 清除；db01 另驗 AC4（`krepo-common` 標準 URL 無改寫層直接可達）。執行紀律見決策節同日條目（#68，823 PASS）
-- ✅ 2026-08-08 **dossier 機制加固**：新增 `tests/xref-gate.py` + 第 1d 節（13 條 fixture，含掃描器自檢）——把「唯一權威」從散文換成 gate；首次掃描實測抓出 1 條真死指標與 2 條指向雙份同名檔的基名引用，皆已修；`ship-state.sh` 的 append-only 偵測從單一字面擴為別名家族（附實際命中 heading，另有 3 條討論性章節的負向守門）；`dossier.md` 的決策生命週期從「直接刪」改為**保留原文 + 失效標記**，與 `docs/project-spec.md` 檔首早已自行採用的寫法收斂為一（850 PASS）
 
 ## 已知缺口
 
@@ -206,14 +199,19 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   技術上可行,但前提已被負面結果動搖、代價卻是確定的(拿不到 tarball 簽章身分)——
   **用確定的代價換不確定的效果,暫不做**,優先靠已實證的復原路徑。
 
-- **repo-root 無工具中立 Agent 入口,Codex 端規則全靠 machine-local 檔案**:root 只有 `CLAUDE.md`;
-  repo 內的 `codex/AGENTS.md` 是**全域** Codex 指引的來源檔(由 `ensure-codex-guidance.sh` 部署到
-  `~/.codex/AGENTS.md`),不是 repo-resident 契約。故 Codex 在本 repo root 工作時,那整套 git
-  discipline(NEVER push／branch-first／`add -p` 混檔處置／clean clone 驗證)全部來自機器本地檔案
-  ——交一份 clean clone 給接手者即全數失效,而 **repo 裡看不出少了什麼**。這是「可攜性」缺口的
-  最實在證據。**要補之前先解命名碰撞**:在 root 建 `AGENTS.md` 會與 `codex/AGENTS.md` 同名不同角色,
-  正是 `claude/skills/project/references/dossier.md`「1. 檔案角色分工」的 Naming is exclusive
-  擋的那類問題。
+- **另一個寫入者的筆記可能在 ship 時被蒸餾壓掉**:協作者若把粗胚寫進 STATUS.md「進行中」,那正好是
+  會被收斂的一節,而 `/project log` Step 2 的前提是「此刻 session 記憶還在」——**對別人寫的東西不成立**。
+  可能後果:決策被當雙重記載壓掉,摘要還回報「已依 flag 收斂」。同族先例:`ship-state.sh` 的行號診斷
+  就是因為多 session 並行時 agent 猜錯超標條目兩次才加的。**觸發條件:觀察到一次真的被壓掉,才動規則。**
+- **`AGENTS.md` 的 `Generated docs never win` 是已上線但從未測過的規則**(G5 隨 OpenWiki 一起 DEFER)。
+  它是 `No failing scenario, no instruction` 的存量違例——**記著,現在不刪也不為它 churn**。
+- **`codex/AGENTS.md` 與 root `AGENTS.md` 同名不同角色**(前者是全域 Codex 指引的**來源檔**,由
+  `ensure-codex-guidance.sh` 部署;後者是 repo-resident 契約)——正是
+  `claude/skills/project/references/dossier.md`「1. 檔案角色分工」的 Naming is exclusive 擋的形狀。
+  現行實害:`codex/skills/repo-review/scripts/review-context.sh` 沿改動路徑逐層收 `AGENTS.md`,
+  改 `codex/**` 時兩份都被當 guidance 餵進 reviewer(重複但無害)。**改名方案已 DROP**(2026-08-10:
+  Codex 不進生產線,價值近零而代價是全機隊 symlink 風險)——**此實害就這樣接受**。契約層本身的缺口
+  已由 Phase 1–2 補上(見里程碑)。
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,
   改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
 - biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+credentials 明文散於三台。
@@ -226,15 +224,10 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   `allup` 都涵蓋不到,且**一次只能處理一部**。2026-08-09 已把 `~/.ssh/config` 的重生下沉成
   `ensure-ssh-config.sh` 並接進 `brewup`,所以**跟上一次之後就不必再手動補齊**;補齊程序(含
   「打 `brewup` 沒用、必須用絕對路徑繞過舊 alias」)見 repo 根 `CLAUDE.md`「系統更新與同步」。
-  兩機狀態(處理完就在此改):
-  - [x] 家裡那部——2026-08-09 補齊完成(使用者回報;該機從 macs 連不到,未由本 session 獨立複驗)。
-    補齊前是舊 `ssh/config` 配舊 key 檔名、自洽故可用,是 2026-08-08 全機隊身分收斂唯一沒動到的。
-  - [ ] 公司那部——狀態未查,同樣按補齊程序走。**Phase 3 改名卡在這一項**:改名後若它在「pull 到
-    新檔名」與「跑 ensure helper」之間有時間差(例如打舊 alias `brewup`),`~/.codex/AGENTS.md` 會
-    靜默變 dangling。照補齊序列走則無此窗口(pull 與 helper 同一指令)。
-  **待確認是刻意(終端設備不入清單)還是缺口**;Tailscale 上目前也沒有它們(2026-08-09 查 tailnet
-  只有 mis-mac-studio／db01／一支 iPhone／一台離線 19 天的 tony-mbp),故加入 inventory 這條路
-  今天不可用,且加了之後兩部常離線的筆電會讓每次 dotsync 都帶 ❌ 雜訊——訊號會被稀釋。
+  兩機狀態:[x] 家裡那部 2026-08-09 補齊(使用者回報,未由本 session 獨立複驗);[ ] 公司那部未查,
+  走 `bootstrap` 那條路即可、**已不擋任何事**(原本卡的 Phase 3 已 DROP)。
+  **加進 inventory 這條路今天不可用**:2026-08-09 查 tailnet 沒有它們;且常離線的筆電會讓每次
+  dotsync 都帶 ❌,訊號被稀釋。**待確認是刻意(終端設備不入清單)還是缺口。**
 
 ## 移交準備度
 
