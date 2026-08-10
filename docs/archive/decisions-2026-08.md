@@ -367,3 +367,19 @@
 
 ## 死路(試過但放棄——防重工)
 
+
+
+## 已結案技術債（2026-08-10 歸檔）
+
+> 從 `STATUS.md`「技術債」節歸檔——**已結案的債不再影響現行排序**，機制已固化在
+> tests / 腳本 / skill 裡、從程式碼可反推。結案時留下的兩條判準仍在 STATUS.md 為 live。
+
+- [x] G 系列 eval 樓層補齊——2026-08-10 G1a/G1b/G2/G4/G4b/G6/G7 **全數在 Sonnet 重跑**,
+  fixture 一併腳本化(`make_g1b`/`make_g1a`/`make_g4`/`make_g4b`)。**不是例行迴歸**:推翻一條
+  決策(見決策節)、掀出一條新缺口(見缺口節)
+- [x] dossier 訊號 R5 non-blocking 五項——2026-08-08 全數修畢(細節在 tests,可反推)
+- [x] hook matcher 僅 `startup`——2026-08-07 已擴為 `startup|clear|compact|resume`,tests 第 16 節覆蓋
+- [x] 測試節那行待補 git-hygiene 的新教訓——2026-08-07 已補。留一條:**目標檔是 repo 根的
+  `CLAUDE.md`**,不是 `claude/CLAUDE.md`(後者的測試節講的是「何時該寫測試」)
+- [x] `claude/evals/*.sh` 已於 2026-08-08 納入全部四個 gate,納入時零 findings——
+  **便宜的守門要趁乾淨時加**,等它長歪再加就得先還債
