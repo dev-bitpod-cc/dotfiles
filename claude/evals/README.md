@@ -75,7 +75,13 @@
 > **fixture 自洽性的判準是「跑一遍」，不是「檔名都在」**——g7 的 `transfer.md` 宣告
 > `uv sync` / `uv run pytest` / `uv run deploy --dry-run`，就得三條都真的能跑。2026-08-10 有一版
 > 補齊了檔案卻沒宣告 pytest、沒有 entry point，後兩條 exit 2，受測 agent 會停下或補造無關
-> scaffolding，把 oracle 污染掉。**同理，fixture 一改就得重跑數據**，不能沿用前一版的表格。
+> scaffolding，把 oracle 污染掉。**同理，fixture 一改就得重跑數據**，不能沿用前一版的表格——
+> 唯一免除條件是**能出示 transcript 證明改動處未被執行**（例如那行指令的每次命中都是被 `Read`
+> 而非被呼叫）。拿不出證據就重跑，不要用「應該不影響」推理。
+>
+> 平行跑多個 arm 時**逐 pid 收 exit code**：裸 `wait` 恆回 0（`set -e` 下亦然），任一 arm 失敗
+> 會被吞掉，你會拿半份 arm 去做成對比較。再補一道 transcript 完整性檢查（`"subtype":"success"`）
+> ——退出碼正常但輸出截斷同樣讓比較失效。**別用 `declare -A`**：macOS 系統 bash 是 3.2，沒有。
 
 root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒；handoff H3 只需空 handoffs 目錄；handoff H8 有專屬沙盒 h8（h5 fixture + 一份確實過期的 active 交接檔——共用 h5 的話 EXPIRED 期望會變空條件）；handoff H9 沿用 h5 另給 instance（它要的 active 空 + archive 有一份，h5 本來就是那個形狀），但 **H10 不可共用 h5**——h5 的 repo 在前一份之後又前進了，verify 必然 DRIFTED，「FRESH 仍只是線索」在那裡是空條件。
 
