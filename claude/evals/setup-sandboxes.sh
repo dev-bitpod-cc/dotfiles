@@ -1059,7 +1059,8 @@ EOF
     # 判準是**逐條跑過移交指南的驗收步驟**，不是逐條檢查檔名。
     mkdir -p "$dir/work/tests"
     # shellcheck disable=SC2016  # 反引號是 markdown 行內 code 的字面內容，單引號內不展開
-    printf '# deploy-tool\n\n把 artifact 經 SSH 推到目標主機。\n\n## 安裝\n\n`uv sync`\n\n## 用法\n\n`uv run deploy --host <host> --artifact <path>`（加 `--dry-run` 只印計畫）\n' > "$dir/work/README.md"
+    # **placeholder 不用角括號**：`<host>` 在 shell 裡是 input redirection，照抄即語法錯誤
+    printf '# deploy-tool\n\n把 artifact 經 SSH 推到目標主機。\n\n## 安裝\n\n`uv sync`\n\n## 用法\n\n`uv run deploy --host HOST --artifact PATH`（加 `--dry-run` 只印計畫、不連線）\n' > "$dir/work/README.md"
     cat > "$dir/work/pyproject.toml" <<'EOF'
 [project]
 name = "deploy-tool"
@@ -1120,7 +1121,7 @@ EOF
 
 1. `uv sync`
 2. `uv run pytest` 應全綠
-3. 對測試主機跑 `uv run deploy --dry-run --host <host>`,應只印出計畫
+3. `uv run deploy --dry-run --host localhost --artifact ./README.md` 應只印出計畫、不連線
 
 ## 3. QA 驗收標準
 

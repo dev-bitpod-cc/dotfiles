@@ -45,13 +45,24 @@ cat > "$SB/prompt.txt" <<'EOF'
 EOF
 
 # G7：clean room，home-clean 沒有全域 CLAUDE.md。**兩臂用同一個 prompt**，
-# 差異只能來自 STATUS.md 模板本身
-for arm in g7-r1 g7base-r1; do
-  ( cd "$SB/$arm/work" && HOME="$SB/$arm/home-clean" claude -p "$(cat "$SB/prompt.txt")" \
+# 差異只能來自 STATUS.md 模板本身。
+# ⚠️ **裸 `wait` 恆回 0**（`(exit 7) & (exit 0) & wait` → 0，`set -e` 下亦然），任一臂
+# 認證／網路／模型失敗都會被吞掉，你會拿一個截斷的 arm 去做成對比較。**逐 pid 收**。
+# 用純量變數而非 `declare -A`——macOS 系統 bash 是 3.2，沒有 associative array。
+g7_arm() {   # $1=arm 名
+  ( cd "$SB/$1/work" && HOME="$SB/$1/home-clean" claude -p "$(cat "$SB/prompt.txt")" \
       --model sonnet --allowedTools "Bash(git *) Edit Read Write Bash(uv *)" \
-      --output-format stream-json --verbose > "$SB/$arm.jsonl" ) &
+      --output-format stream-json --verbose > "$SB/$1.jsonl" )
+}
+g7_arm g7-r1     & pid_new=$!
+g7_arm g7base-r1 & pid_base=$!
+wait $pid_new  || echo "FAILED: g7-r1 (rc=$?) —— 這批數據作廢" >&2
+wait $pid_base || echo "FAILED: g7base-r1 (rc=$?) —— 這批數據作廢" >&2
+
+# 第二道：退出碼正常但 transcript 截斷也算失敗（成對比較最怕拿半份 arm 去比）
+for arm in g7-r1 g7base-r1; do
+  grep -q '"subtype":"success"' "$SB/$arm.jsonl" || echo "INCOMPLETE: $arm" >&2
 done
-wait
 
 # G6：home-rules **帶**全域 CLAUDE.md（被測對象）
 cd "$SB/g6-r1/work" && HOME="$SB/g6-r1/home-rules" claude -p \
@@ -146,6 +157,13 @@ prompt：接手一個中等工作項（加重試 + 測試），並口述一條 d
 recall 回來，而那時已經沒有人記得它從哪來。**別把「這次沒出現在回覆裡」當成修好了。**
 
 **所以 W1 不只是衛生修復。** 修後 2/2 乾淨，修復有效。
+
+> **這批數據在其後的兩處 fixture 修正下仍然有效，附證據**：後來把 `transfer.md` 的驗收步驟 3
+> 補齊參數（原本缺 `--artifact`、且 `<host>` 會被 shell 當 input redirection）並把 README 的
+> 角括號 placeholder 換掉。四份 transcript 裡 `uv run deploy` 的**每一次命中都是檔案內容被
+> `Read`，沒有一次是實際呼叫**，故那兩行從未被觸及。四份也都有 `"subtype":"success"`，無截斷。
+> **「fixture 改了就重跑」的免除條件只有這一種**：能出示 transcript 證明改動處未被執行。
+> 拿不出證據就是重跑，不要用「應該不影響」推理。
 
 > **兩臂都由 `setup-sandboxes.sh` 產生**——`g7base-*`（`make_g7_base`，舊模板取自寫死的
 > commit `ba8163c`）與 `g7-*`（現行模板）。除 `STATUS.md` 外逐檔相同，比較才有歸因。
