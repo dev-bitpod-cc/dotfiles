@@ -49,6 +49,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   **2/2 直接 commit 到 main**、rules 臂 2/2 另開 branch——**kernel 就是 branch 有沒有被開出來的
   唯一原因**;連帶作廢「對 Claude 邊際價值有限」那句推論。判準本身(強模型兩臂沒差 ≠ 規則多餘)
   已沉為通則,見 `claude/evals/README.md`「模型樓層政策」。
+- **2026-08-10 模板只帶「做錯會壞掉」的生命週期規則**:模板帶走了結構(節名+每節放什麼),沒帶走
+  生命週期規則——盤點 `references/dossier.md`(私有、不隨 repo 走)發現同類共 6 條缺席。**補 3 條**
+  (完成即移入里程碑、死路不刪、不得加 append-only log;各有實地事故),**排除**總量門檻/事件當下
+  記錄/stale 比沒有更糟——後者是「做了比較好」,而模板刻意壓短。⚠️ **排除是刻意的,下輪審查再提
+  不是新發現。** 附帶:pattern gate 只抓列舉過的東西,綁外部生態的耦合(`.env.example`)掃不到。
 - **2026-08-10 installer 不得只寫 pointer,必須把 kernel block 本體裝進目標 repo 的 `CLAUDE.md`**
   (推翻計畫的 P0-2 樂觀分支)。理由見上一條:pointer 即使在自動載入的檔案裡,也只是「告訴你契約在
   別處」,瑣碎任務照樣不會去讀它指向的檔。代價是**每個安裝過的 repo 都多一份無機械守門的複本**
@@ -108,28 +113,22 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   卻主動講清落差**——行為分歧已達動規則的證據門檻。傾向**改順序而非加告誡**:W3 的 dossier 沉澱
   移到 W2 之前(predecessor 在 W1 已定出,可行),dirty 在蓋錨點當下即為最終值,過期的可能從流程
   消失;配一條 H5 oracle(用 8/09 的逐字錯誤當 RED)。未做——本輪任務是迴歸驗證。
-- [x] G 系列 eval 樓層補齊——2026-08-10 G1a/G1b/G2/G4/G4b/G6/G7 **全數在 Sonnet 重跑**,
-  fixture 一併腳本化(`make_g1b`/`make_g1a`/`make_g4`/`make_g4b`)。**不是例行迴歸**:推翻一條
-  決策(見決策節)、掀出一條新缺口(見缺口節)
+- [ ] **保留自已結案項的兩條判準**(本體已歸檔):①`tests/run.sh` 測試節的目標檔是 **repo 根的
+  `CLAUDE.md`**,不是 `claude/CLAUDE.md`(後者講的是「何時該寫測試」);②**便宜的守門要趁乾淨時加**
+  ——等它長歪再加就得先還債。
 - [ ] R4 non-blocking 餘一項:**新增 prose 的中文半形標點與既有全形混排**。2026-08-08 未做——
   「新增 prose」指哪一批已不可考,純風格、無失敗案例,且該日又寫入大量中文 prose(移動標靶)。
   要做就一次全檔統一,不要逐批追。其餘三項(Transfer 模式 commit 歸屬、evals/README 路徑基準、
   handoff evals H4 排序)已於 2026-08-08 修畢。
-- [x] dossier 訊號 R5 non-blocking 五項——2026-08-08 全數修畢(細節在 tests,可反推)
 - [ ] **「tests/stub 有覆蓋、實戰未驗」一組**(遇到對應情境時順手確認即可,不必專程做):
   SessionStart hook 落後提醒(真實落後的 clone);autocodex exec 的 resume 分支(exit 4 救援階梯,
   三輪實跑皆一次成功、只有 stub 覆蓋,F15(b) 待真實空報告);review-anchor 的 stale STOP 與
   codex-next 冪等(F16 b/c,待 autofix 迭代中真的 rebase/重試);repo-review 新契約(F16–F18 規格
   覆蓋,待多輪 autofix 確認弱模型不會退回每輪帶 `--autofix`)
-- [x] hook matcher 僅 `startup`——2026-08-07 已擴為 `startup|clear|compact|resume`,tests 第 16 節覆蓋
-- [x] 測試節那行待補 git-hygiene 的新教訓——2026-08-07 已補。留一條:**目標檔是 repo 根的
-  `CLAUDE.md`**,不是 `claude/CLAUDE.md`(後者的測試節講的是「何時該寫測試」)
 - [ ] Scenario 11 的「merge 但無 PR」分支只在 SKILL body 一行指標帶到 ship-paths,GREEN 實測中
   弱模型未展開讀——非違規故未補;重現才加明示(Iron Law)
 - [ ] pressure-tests S8/S9/S12 沙盒未納入 `claude/evals/setup-sandboxes.sh`;S10(transfer
   credentials)與 S12(dossier 三 flag 蒸餾紀律)連首輪實測都還沒跑
-- [x] `claude/evals/*.sh` 已於 2026-08-08 納入全部四個 gate,納入時零 findings——
-  **便宜的守門要趁乾淨時加**,等它長歪再加就得先還債
 - [ ] codex plugin 去留待定:實質只當傳輸管道,exec 接管後僅剩 `/codex:transfer` 獨有——
   exec 路徑跑穩數輪後重新評估 uninstall
 - [ ] codex C2 轉交 findings 餘項(2026-07-21 代收):F6 skill-building-guide 的
