@@ -41,9 +41,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **2026-08-10 模板可攜性判準「規範本身在此、不在工具」;死指標的危害是「往下傳」不是「卡住」**:
   形狀取自 krepo 現場自行收斂的檔頭(兩次獨立手動偏離)。G7 乾淨重跑(Sonnet)baseline **1/2 失敗**
   ——agent 沒去讀死指標,卻把它**原樣轉述給接手者**,教對方去查一個打不開的路徑;修後 2/2 乾淨。
-  ⚠️ 本條同日修正過:初版依「3/3 全綠」判為純衛生修復,那批數據因 **fixture 洩漏 + 跑在 Opus 而非
-  樓層 Sonnet** 已作廢。**教訓:防洩漏要掃 fixture 的每一個檔,不是只防你想到的那一個。**
-  數據見 `claude/evals/contract-evals.md`「G7 — 移交後接手者能否維護 dossier（2026-08-10，已跑）」。
+  第三版 fixture 重跑同結果,但**失敗落點改成 agent 的 memory 筆記**——比落在回覆更糟,它會在
+  往後每個 session 被 recall。⚠️ 本條同日修正三次(fixture 兩度作廢),數據與作廢理由見
+  `claude/evals/contract-evals.md`「G7 — 移交後接手者能否維護 dossier（2026-08-10，已跑）」。
 - **2026-08-10 branch-first 是 Claude Code 產品原生的,所以輕量 fixture 量不到 kernel 的邊際效果**:
   G1a/G2 成對實驗兩臂皆 3/3 另開 branch,唯一差異是命名。**這是 fixture 無鑑別力,不是 H6 被推翻**
   ——H6 是高負載情境(多 repo／resume／指令競爭),要重現得先有帶負載的 fixture(目前沒有)。
@@ -109,10 +109,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   卻主動講清落差**——行為分歧已達動規則的證據門檻。傾向**改順序而非加告誡**:W3 的 dossier 沉澱
   移到 W2 之前(predecessor 在 W1 已定出,可行),dirty 在蓋錨點當下即為最終值,過期的可能從流程
   消失;配一條 H5 oracle(用 8/09 的逐字錯誤當 RED)。未做——本輪任務是迴歸驗證。
-- [ ] **G 系列 eval 除 G7 baseline 外都跑在 Opus 上,不符樓層政策**(`claude/evals/README.md` 明訂
-  Sonnet 才是 PASS 門檻、Opus 非驗收門)。G7 baseline 已補跑 Sonnet(2/2,結論不變)——它是唯一
-  改變過決策的結果,故優先補。其餘(G1a/G1b/G2/G4/G4b/G6)現況只證明「強模型上成立」,要當驗收
-  證據需在 Sonnet 重跑。fixture 已可一鍵重建(`setup-sandboxes.sh` 的 `make_g6`/`make_g7`)。
+- [ ] **G 系列 eval 除 G7 外都跑在 Opus 上,不符樓層政策**(`claude/evals/README.md` 明訂
+  Sonnet 才是 PASS 門檻、Opus 非驗收門)。G7 兩臂已在 Sonnet 重跑(baseline **1/2 失敗**、修後 2/2)
+  ——它是唯一改變過決策的結果,故優先補。其餘(G1a/G1b/G2/G4/G4b/G6)現況只證明「強模型上成立」,
+  要當驗收證據需在 Sonnet 重跑。fixture 已可一鍵重建(`setup-sandboxes.sh` 的
+  `make_g6`/`make_g7`/`make_g7_base`)。
 - [ ] R4 non-blocking 餘一項:**新增 prose 的中文半形標點與既有全形混排**。2026-08-08 未做——
   「新增 prose」指哪一批已不可考,純風格、無失敗案例,且該日又寫入大量中文 prose(移動標靶)。
   要做就一次全檔統一,不要逐批追。其餘三項(Transfer 模式 commit 歸屬、evals/README 路徑基準、
@@ -152,7 +153,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-08 各批已歸檔至 `docs/archive/milestones-2026-08.md`。
 
-- ✅ 2026-08-10 dossier 可攜性收斂：G7 transfer clean-room eval（baseline 3/3、修後 2/2 全綠）＋ `STATUS-template.md` 全檔可攜化（5 增 5 刪，純置換）＋ 刪 `codex/AGENTS.md` 與 kernel C2 矛盾的全域斷言 ＋ Phase 3 DROP 四處清理 ＋ G6 非強加測試 2/2（956 PASS）
+- ✅ 2026-08-10 dossier 可攜性收斂：G7 transfer clean-room eval（Sonnet；baseline **1/2 失敗**、修後 2/2）＋ `STATUS-template.md` 全檔可攜化（5 增 5 刪，純置換）＋ 刪 `codex/AGENTS.md` 與 kernel C2 矛盾的全域斷言 ＋ Phase 3 DROP 四處清理 ＋ G6 非強加測試 2/2（956 PASS）
 - ✅ 2026-08-09 handoff skill 收斂：錨點兩端完整性（unborn HEAD 的永久假 FRESH）＋ W1/R1 三指令下沉為 `survey` ＋ archive resume 的盲區與信任上限（889 PASS，eval 8/8）
 - ✅ 2026-08-10 G1b 成對實驗：實測 root `CLAUDE.md` 自動載入、root `AGENTS.md` 不會（clean room 不帶全域檔）→ kernel 擴為四份逐字複本，並定案 installer 必須裝 kernel 本體而非 pointer（956 PASS）
 - ✅ 2026-08-09 契約層抽取 Phase 2：repo 根 `AGENTS.md`（kernel：safety floor 6 + fallback conventions 2；portable：權威矩陣 + working discipline）＋ 三份 kernel 逐字複本 ＋ `tests/kernel-gate.py`（漂移／掏空／缺份／marker／canary／可攜性，含 10 條自檢 fixture）。`claude/CLAUDE.md` 與 `codex/AGENTS.md` 交出被 kernel 承接的條文（956 PASS；四個突變各驗過會紅，含真實 repo 改一個字的漂移）

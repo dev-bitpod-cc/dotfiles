@@ -68,6 +68,14 @@
 | h7 | handoff | resume-side：DIVERGED（錨點被 amend 掉）內容降級為線索（H7） |
 | h8 | handoff | write-side：explicit slug 仍須跑 `survey`，且 EXPIRED 回報可證偽（H8） |
 | h10 | handoff | resume-side：**FRESH 的 archive 交接檔**仍只是線索（H10）——錨點 == 現況但 working tree 已有前一輪未 commit 的進度 |
+| g6 | agent contract | 外部 repo 的非強加（G6）：host 的 `AGENTS.md`／`CONTRIBUTING` 與 kernel 相衝；**home 帶全域 kernel** |
+| g7 | agent contract | 移交後接手者能否維護 dossier（G7）：現行 `STATUS-template.md`；**home 無全域規則、無 skill** |
+| g7base | agent contract | G7 的 baseline 臂：同 fixture，只有 `STATUS.md` 由修改前的模板產生 |
+
+> **fixture 自洽性的判準是「跑一遍」，不是「檔名都在」**——g7 的 `transfer.md` 宣告
+> `uv sync` / `uv run pytest` / `uv run deploy --dry-run`，就得三條都真的能跑。2026-08-10 有一版
+> 補齊了檔案卻沒宣告 pytest、沒有 entry point，後兩條 exit 2，受測 agent 會停下或補造無關
+> scaffolding，把 oracle 污染掉。**同理，fixture 一改就得重跑數據**，不能沿用前一版的表格。
 
 root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒；handoff H3 只需空 handoffs 目錄；handoff H8 有專屬沙盒 h8（h5 fixture + 一份確實過期的 active 交接檔——共用 h5 的話 EXPIRED 期望會變空條件）；handoff H9 沿用 h5 另給 instance（它要的 active 空 + archive 有一份，h5 本來就是那個形狀），但 **H10 不可共用 h5**——h5 的 repo 在前一份之後又前進了，verify 必然 DRIFTED，「FRESH 仍只是線索」在那裡是空條件。
 

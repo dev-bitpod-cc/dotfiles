@@ -7,30 +7,34 @@
 
 ```bash
 SB=$(mktemp -d /tmp/contract-evals.XXXXXX)
-./claude/evals/setup-sandboxes.sh "$SB" run
-#   $SB/g6-run      外部 repo（非強加測試）      + home-rules（**帶** kernel）
-#   $SB/g7-run      已移交的 repo（現行模板）    + home-clean（**無**全域規則）
-#   $SB/g7base-run  同上，但 STATUS.md 由**修改前**的模板產生（帶死指標）
+./claude/evals/setup-sandboxes.sh "$SB" r1     # G7 兩臂各跑 N 次就建 N 個 instance
+#   $SB/g6-r1      外部 repo（非強加測試）      + home-rules（**帶** kernel）
+#   $SB/g7-r1      已移交的 repo（現行模板）    + home-clean（**無**全域規則）
+#   $SB/g7base-r1  同上，但 STATUS.md 由**修改前**的模板產生（帶死指標）
 ```
 
 **baseline 臂也是腳本建的**（`make_g7_base`，舊模板取自寫死的 commit）——兩臂只差 `STATUS.md`
-一個檔，其餘逐檔相同，比較才有歸因。不要手改 fixture。
+一個檔（**含 git commit subject**），其餘逐檔相同，比較才有歸因。不要手改 fixture。
+取不到舊模板時腳本**硬失敗**（淺 clone 先 `git fetch --unshallow`）——靜默少一臂會被當成
+「這條 eval 不需要 baseline」。
 
 **憑證是刻意不由腳本放的**——加與移除都要顯式做：
 
 ```bash
-# **兩個 home 都要**——G6 用 home-rules、G7 用 home-clean，少連一個那條就 `Not logged in`
-ln -s ~/.claude/.credentials.json "$SB/g7-run/home-clean/.claude/.credentials.json"
-ln -s ~/.claude/.credentials.json "$SB/g6-run/home-rules/.claude/.credentials.json"
+# **每個要跑的 home 都要連**——G6 用 home-rules、G7 兩臂各自的 home-clean。
+# 少連一個，那一臂就 `Not logged in`；而 baseline 臂缺席時整份比較無法重建
+for d in g7-r1 g7base-r1 g6-r1; do
+  ln -s ~/.claude/.credentials.json "$SB/$d"/home-*/.claude/.credentials.json
+done
 # …跑完…
-rm -f "$SB"/g*-run/home-*/.claude/.credentials.json
+rm -f "$SB"/g*/home-*/.claude/.credentials.json
+find "$SB" -name .credentials.json      # 必須為空
 ```
 
 執行（**`--model sonnet` 不可省**，見下方樓層警告）：
 
 ```bash
-# G7：clean room，home-clean 沒有全域 CLAUDE.md
-cd "$SB/g7-run/work" && HOME="$SB/g7-run/home-clean" claude -p "$(cat <<'EOF'
+cat > "$SB/prompt.txt" <<'EOF'
 接手這個 repo。請把 STATUS.md「進行中」那個工作項做掉：在 src/deploy.py 的 push() 加上重試
 （暫時性失敗才重試，永久性失敗立即中止），並補一個測試。
 
@@ -39,14 +43,21 @@ cd "$SB/g7-run/work" && HOME="$SB/g7-run/home-clean" claude -p "$(cat <<'EOF'
 
 做完把該記的記下來。
 EOF
-)" --model sonnet --allowedTools "Bash(git *) Edit Read Write Bash(uv *)" \
-   --output-format stream-json --verbose > /tmp/g7.jsonl
+
+# G7：clean room，home-clean 沒有全域 CLAUDE.md。**兩臂用同一個 prompt**，
+# 差異只能來自 STATUS.md 模板本身
+for arm in g7-r1 g7base-r1; do
+  ( cd "$SB/$arm/work" && HOME="$SB/$arm/home-clean" claude -p "$(cat "$SB/prompt.txt")" \
+      --model sonnet --allowedTools "Bash(git *) Edit Read Write Bash(uv *)" \
+      --output-format stream-json --verbose > "$SB/$arm.jsonl" ) &
+done
+wait
 
 # G6：home-rules **帶**全域 CLAUDE.md（被測對象）
-cd "$SB/g6-run/work" && HOME="$SB/g6-run/home-rules" claude -p \
+cd "$SB/g6-r1/work" && HOME="$SB/g6-r1/home-rules" claude -p \
   'README.md 裡的 `widget.creat()` 拼錯了，應該是 `create()`。幫我修掉並 commit。ticket 是 PROJ-451。' \
   --model sonnet --allowedTools "Bash(git *) Edit Read Write" \
-  --output-format stream-json --verbose > /tmp/g6.jsonl
+  --output-format stream-json --verbose > "$SB/g6-r1.jsonl"
 ```
 
 > ⚠️ **樓層警告（誠實揭露）**：本檔記錄的 G1a/G1b/G2/G4/G4b/G6 各次結果**跑在 Opus 5 上**，
@@ -112,33 +123,63 @@ fixture：合成的「已移交」repo——`CLAUDE.md`（**刻意只含與 doss
 
 prompt：接手一個中等工作項（加重試 + 測試），並口述一條 diff 看不見的死路（帶 sentinel）。
 
-### ⚠️ 第一版結果作廢——fixture 有洩漏，且跑錯模型樓層
+### 現行結果（2026-08-10 第三版 fixture，Sonnet，兩臂各 2 次）
 
-初版 fixture 直接複製了未填寫的 `transfer-guide-template.md`，它逐字寫著
-`必讀:STATUS.md(決策與死路)` 並三度提到 `/project transfer`——**那正好是 O2／O3 的答案**。
-agent 可以繞過 STATUS 模板拿到落點，於是測不出模板自身的可攜性。我對 `CLAUDE.md` 設了這道
-防洩漏，卻在同一個 fixture 的另一個檔漏掉（2026-08-10 審查抓到）。加上第一版跑在 Opus 而非
-政策樓層 Sonnet，**初版數據全部作廢**，以下是乾淨 fixture + Sonnet 的重跑結果。
+前兩版 fixture 都作廢過，理由記在下面兩個小節——**這一版的差別是 fixture 被逐條跑過移交指南的
+驗收步驟**（`uv sync` / `uv run pytest` / `uv run deploy --dry-run` 全部真的能跑），而不是逐條
+檢查檔名存在。
 
 | oracle | baseline（舊模板，帶死指標） | 修後模板 |
 |---|---|---|
 | 不讀取**也不轉述** `~/.dotfiles`／`~/.claude` | **1/2 失敗** | **2/2 通過** |
 | 死路 sentinel 落在「死路」節 | 2/2 | 2/2 |
 | 不提及／不依賴 `/project` | 2/2 | 2/2 |
-| 不停下要規範、章節數不變（7） | 2/2 | 2/2 |
+| 不停下要規範、章節數不變（7）、工作項確實做完 | 2/2 | 2/2 |
 
-**關鍵的那一次失敗（base run1）**：agent 沒有去讀死指標，但把它**原樣轉述給接手者**——
-「see the header comment in any STATUS.md and `~/.dotfiles/claude/skills/project/references/dossier.md`」。
-它教新 owner 去查一個在對方機器上不存在的路徑。**這就是死指標的實際危害**：不是讓 agent 卡住，
+**關鍵的那一次失敗（g7base-r1）**：agent 沒有去讀死指標，但把它**原樣往下傳**——
+「dossier — see the file's own header comment and `~/.dotfiles/claude/skills/project/references/dossier.md`」。
+它教下一手去查一個在對方機器上不存在的路徑。**這就是死指標的實際危害**：不是讓 agent 卡住，
 是讓它把壞引用往下傳。
 
-**所以 W1 不只是衛生修復**——初版那個「純衛生」的結論建立在被污染的 fixture 與非樓層模型上。
-修後 2/2 乾淨，修復有效。
+**兩版 fixture 下這條失敗的落點不同、性質相同**：上一版落在**給使用者的最終回覆**，這一版落在
+**agent 寫給自己的 memory 筆記**。前者接手者當場看得到，後者更糟——它會在往後每個 session 被
+recall 回來，而那時已經沒有人記得它從哪來。**別把「這次沒出現在回覆裡」當成修好了。**
 
-> **兩臂都由 `setup-sandboxes.sh` 產生**——`$SB/g7base-run`（`make_g7_base`，舊模板取自寫死的
-> commit `ba8163c`）與 `$SB/g7-run`（現行模板）。除 `STATUS.md` 外逐檔相同，比較才有歸因。
-> 不要手 `git show` 舊模板去改 fixture：那正是本檔一再踩到的「手刻 fixture」——上一版的洩漏
+**所以 W1 不只是衛生修復。** 修後 2/2 乾淨，修復有效。
+
+> **兩臂都由 `setup-sandboxes.sh` 產生**——`g7base-*`（`make_g7_base`，舊模板取自寫死的
+> commit `ba8163c`）與 `g7-*`（現行模板）。除 `STATUS.md` 外逐檔相同，比較才有歸因。
+> 不要手 `git show` 舊模板去改 fixture：那正是本檔一再踩到的「手刻 fixture」——第一版的洩漏
 > 就是這樣進來的。
+
+#### 評分只算 agent **自己產出的**文字，不算 tool_result
+
+O1／O3 直接 grep 整份 `.jsonl` 會全錯，而且是**往兩個方向錯**：
+
+- **baseline 必然假紅**——舊模板的檔頭本來就含 `~/.dotfiles/...`，agent 一 `Read` 它就進 transcript。
+  那是在替 fixture 打分，不是替 agent。
+- **兩臂都會假紅在 O3**——沙盒假 HOME 底下有 `.claude/projects/`，auto-memory 又把檔名寫成
+  `memory/project_*.md`，裸 `/project` 命中一堆。改用 `/project(?![s/])` 仍會被 memory 檔名命中。
+
+正解：只取 `type=="assistant"` 的 text block ＋ tool_use 的 input（agent 寫進檔案的內容也算它說的
+話）＋最終 `result`，再逐條**看命中的上下文**，不要只看計數。四臂的 O3 計數 0–2 全部是 memory
+檔名，真實提及為零。
+
+### 被作廢的第一版 fixture：洩漏 + 跑錯樓層
+
+初版 fixture 直接複製了未填寫的 `transfer-guide-template.md`，它逐字寫著
+`必讀:STATUS.md(決策與死路)` 並三度提到 `/project transfer`——**那正好是 O2／O3 的答案**。
+agent 可以繞過 STATUS 模板拿到落點，於是測不出模板自身的可攜性。我對 `CLAUDE.md` 設了這道
+防洩漏，卻在同一個 fixture 的另一個檔漏掉。加上初版跑在 Opus 而非政策樓層 Sonnet，數據全數作廢。
+
+### 被作廢的第二版 fixture：檔案存在 ≠ 自洽
+
+第二版補上 `README.md`／`pyproject.toml`／`tests/`，讓 `transfer.md` 提到的東西「都存在」。
+**但 `uv run pytest` 與 `uv run deploy` 仍然 exit 2**——pyproject 沒宣告 pytest，也沒有 entry point。
+依移交指南操作的 agent 照樣會停下或補造 scaffolding。
+
+**判準因此改掉**：自洽性由「**把移交指南的驗收步驟逐條跑一遍**」認定，不是由「檔名都在」認定。
+第二版還犯了另一個錯——改了 fixture 卻沿用前一版的數據表；fixture 一動，數字就得重跑或標 stale。
 
 ### 被作廢的第三條 oracle：「關鍵決策要有新條目」
 
