@@ -79,9 +79,10 @@
 > 唯一免除條件是**能出示 transcript 證明改動處未被執行**（例如那行指令的每次命中都是被 `Read`
 > 而非被呼叫）。拿不出證據就重跑，不要用「應該不影響」推理。
 >
-> 平行跑多個 arm 時**逐 pid 收 exit code**：裸 `wait` 恆回 0（`set -e` 下亦然），任一 arm 失敗
-> 會被吞掉，你會拿半份 arm 去做成對比較。再補一道 transcript 完整性檢查（`"subtype":"success"`）
-> ——退出碼正常但輸出截斷同樣讓比較失效。**別用 `declare -A`**：macOS 系統 bash 是 3.2，沒有。
+> 平行跑多個 arm 時**逐 pid 收 exit code，並另驗 transcript 完整性**（`"subtype":"success"`）——
+> 兩者的坑（裸 `wait` 恆回 0、`declare -A` 在 bash 3.2 不存在、rc=0 不代表產出完整）見
+> `claude/CLAUDE.md`「已知地雷」，該條為唯一權威。成對實驗尤其致命：拿半份 arm 去比，
+> 得到的差異會被歸因到你正在測的變因。
 
 root-cause-first（R1/R2）與 send-mail（S1/S2）為純情境敘述，不需沙盒；handoff H3 只需空 handoffs 目錄；handoff H8 有專屬沙盒 h8（h5 fixture + 一份確實過期的 active 交接檔——共用 h5 的話 EXPIRED 期望會變空條件）；handoff H9 沿用 h5 另給 instance（它要的 active 空 + archive 有一份，h5 本來就是那個形狀），但 **H10 不可共用 h5**——h5 的 repo 在前一份之後又前進了，verify 必然 DRIFTED，「FRESH 仍只是線索」在那裡是空條件。
 
