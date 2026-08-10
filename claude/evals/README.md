@@ -11,6 +11,12 @@
 - **Sonnet = 目標樓層**：所有紀律型 skill 的 PASS 標準以 Sonnet 為準。
 - **Haiku PASS = 加分**：Haiku 失敗但 Sonnet 通過 → 記錄後自行判斷是否值得補（修補便宜且有失敗證據才補，遵守 Iron Law：no failing eval, no skill change）。
 - Opus/更強模型用來檢查是否「過度解釋」（指令太囉唆），非驗收門。
+- **強模型上成對實驗兩臂沒差，不能推論成「這條規則多餘」。** 強模型往往自己就補上了規則要求的
+  行為——**那恰恰是它掩蓋了規則的作用**。要判一條規則多餘，必須在**樓層**模型上兩臂沒差。
+  2026-08-10 實地：G1a/G2 在 Opus 上兩臂皆 3/3 另開 branch，據此寫下「fixture 無鑑別力、kernel
+  的 branch-first 邊際價值有限」；同一 fixture 在 Sonnet 上，**無 kernel 的那臂 2/2 直接 commit
+  到 `main`**。結論整條被推翻（`contract-evals.md` 該節）。**跑錯樓層不只是證據弱，它會給出
+  方向相反的結論。**
 
 ## 執行方式（手動，Claude A/B 法）
 
