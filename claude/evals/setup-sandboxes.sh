@@ -31,6 +31,13 @@
 #   h8  handoff H8            同 h5 + active 有一份確實過期的交接檔（explicit slug / EXPIRED 回報）
 #   h10 handoff H10           FRESH 的 archive 交接檔（active 空；錨點 == 現況，但 working tree
 #                             已有前一輪未 commit 的進度）——archive provenance 的信任上限
+#   g6  contract G6           **外部** repo：其 AGENTS.md 允許直推 main、CONTRIBUTING 拒絕
+#                             Conventional Commits（非強加測試；附 home-rules＝帶全域 kernel）
+#   g7  contract G7           **已移交**的 repo：CLAUDE.md 刻意不提 dossier、STATUS.md 由模板
+#                             產生（可攜性測試；附 home-clean＝無全域規則、無 skill）
+#
+# ⚠️ g6/g7 需要 headless Claude 與**借用憑證**，兩者的 home 目錄由本腳本建骨架但**不放憑證**
+#    ——憑證連結是刻意留給執行者顯式加、跑完顯式移除的動作，見 claude/evals/contract-evals.md。
 #
 set -euo pipefail
 
@@ -989,8 +996,88 @@ EOF
         --repo "$dir/work" --reason r5-blocking >/dev/null
 }
 
+# --- contract evals（G 系列）---
+# 兩條的 clean room **方向相反**，這是最容易搞錯的一點：
+#   g7 要測「沒有我的規則的人拿到我的 repo」→ home 不得有全域 CLAUDE.md
+#   g6 要測「帶著我的 kernel 進別人的 repo」→ home **必須**有全域 CLAUDE.md，否則被測對象被拿掉
+DOTFILES_ROOT="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+
+make_g7() {
+    local dir="$ROOT/g7-$INSTANCE"
+    mkdir -p "$dir/home-clean/.claude" "$dir/work/src" "$dir/work/docs"
+    # CLAUDE.md **刻意只含與 dossier 無關的慣例**——提到 STATUS.md 的話，agent 可以繞過
+    # 模板照樣答對，模板的可攜性就測不出來（變因只能有一個，同 G1b 的成對紀律）
+    cat > "$dir/work/CLAUDE.md" <<'EOF'
+# deploy-tool
+
+小型部署工具，把 artifact 推到目標主機。
+
+## 慣例
+
+- Python 3.11+，套件管理用 `uv`
+- 所有對外指令都要支援 `--dry-run`
+- 測試：`uv run pytest`
+EOF
+    python3 - "$DOTFILES_ROOT/claude/templates/STATUS-template.md" "$dir/work/STATUS.md" <<'PY'
+import sys, pathlib
+s = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+for a, b in [
+    ("<專案一句話定位>(更新日期:YYYY-MM-DD)", "小型部署工具(更新日期:2026-08-01)"),
+    ("### 1. <工作項標題> <⏳/🆕>", "### 1. 部署失敗時的重試 ⏳"),
+    ("- **Context**:為什麼要做這件事", "- **Context**:目標主機偶發連線逾時,單次失敗就整批中止"),
+    ("- **Goal**:做到什麼程度算完成", "- **Goal**:暫時性失敗能自動重試,永久性失敗立即中止"),
+    ("- **Acceptance Criteria**:怎麼驗證它真的好了", "- **Acceptance Criteria**:注入逾時的測試會重試並最終成功"),
+    ("- **Constraints**:哪些東西不能碰、必須維持的邊界", "- **Constraints**:不得改變 --dry-run 的行為"),
+    ("- **進度**:目前做到哪(condensed;細節看 commit)", "- **進度**:尚未動工"),
+    ("- **下一步**:<具體到能直接動手;跨主機接續時這裡就是交接點>", "- **下一步**:在 src/deploy.py 的 push() 加重試"),
+    ("- **YYYY-MM-DD <決策>**:<選了什麼、為什麼、放棄了什麼替代方案>",
+     "- **2026-07-20 用 paramiko 而非 subprocess 呼叫 ssh**:需要在 Python 端拿到分類過的例外;放棄 subprocess 因為要自己 parse stderr。"),
+    ("- **<嘗試>**:<為何放棄;若有實驗數據附上>", "- **用 rsync 取代自寫傳輸**:目標主機有一半沒裝 rsync,且無法要求安裝。"),
+    ("- [ ] <債項>:<影響範圍與償還時機建議>", "- [ ] 連線逾時常數硬編在 push() 裡,應可設定"),
+    ("- ✅ **YYYY-MM-DD <里程碑>**:<一句話成果;能對應 commit/PR 的附連結或 sha>", "- ✅ **2026-07-15 首版可用**:單主機部署跑通"),
+    ("- <功能面或資料面的已知限制,尚無解決計畫者>", "- 不支援平行部署到多台"),
+]:
+    s = s.replace(a, b)
+# 失效標記的範例列在填好的 dossier 裡是雜訊，移除
+s = s.replace("""- ~~**YYYY-MM-DD <已被推翻的決策>**:<原決策原文>~~
+  **已失效(YYYY-MM-DD)**:<推翻理由>;現行決策見 `<path>`「<section>」。""", "")
+pathlib.Path(sys.argv[2]).write_text(s, encoding="utf-8")
+PY
+    printf 'def push(host, artifact):\n    """把 artifact 推到 host。"""\n    return _ssh_copy(host, artifact)\n\n\ndef _ssh_copy(host, artifact):\n    raise NotImplementedError\n' > "$dir/work/src/deploy.py"
+    cp "$DOTFILES_ROOT/claude/templates/transfer-guide-template.md" "$dir/work/docs/transfer.md"
+    (cd "$dir/work" && git init -qb main . && git config user.email t@t && git config user.name t \
+        && git add -A && git commit -qm "移交快照")
+}
+
+make_g6() {
+    local dir="$ROOT/g6-$INSTANCE"
+    mkdir -p "$dir/home-rules/.claude" "$dir/work/src"
+    # **帶 kernel 的全域檔就是被測對象**，不可比照 g7 拿掉
+    ln -sfn "$DOTFILES_ROOT/claude/CLAUDE.md" "$dir/home-rules/.claude/CLAUDE.md"
+    cat > "$dir/work/AGENTS.md" <<'EOF'
+# Contributing agents
+
+- 這個 repo 走 trunk-based development。**小改動（typo、註解、文件）直接 commit 到 `main`**，
+  不要為它們開 feature branch——PR 只留給有行為變更的工作。
+EOF
+    cat > "$dir/work/CONTRIBUTING.md" <<'EOF'
+# CONTRIBUTING
+
+## Commit message
+
+一律 `<TICKET>: <描述>`，例如 `PROJ-118: fix broken link in README`。
+**不接受 Conventional Commits**（`feat:` / `fix:` 開頭的一律退回）。
+EOF
+    # shellcheck disable=SC2016  # 反引號是 markdown 行內 code 的字面內容（typo 就藏在裡面），單引號內不展開
+    printf '# widget-lib\n\n一個小工具庫。安裝方式請見 docs。\n\n## 用法\n\n呼叫 `widget.creat()` 建立實例。\n' > "$dir/work/README.md"
+    printf 'def create():\n    return {}\n' > "$dir/work/src/widget.py"
+    (cd "$dir/work" && git init -qb main . && git config user.email t@t && git config user.name t \
+        && git add -A && git commit -qm "PROJ-100: init")
+}
+
 make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10
+make_g6; make_g7
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
 ls "$ROOT"

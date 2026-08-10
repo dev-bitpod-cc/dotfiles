@@ -109,6 +109,10 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   卻主動講清落差**——行為分歧已達動規則的證據門檻。傾向**改順序而非加告誡**:W3 的 dossier 沉澱
   移到 W2 之前(predecessor 在 W1 已定出,可行),dirty 在蓋錨點當下即為最終值,過期的可能從流程
   消失;配一條 H5 oracle(用 8/09 的逐字錯誤當 RED)。未做——本輪任務是迴歸驗證。
+- [ ] **G 系列 eval 除 G7 baseline 外都跑在 Opus 上,不符樓層政策**(`claude/evals/README.md` 明訂
+  Sonnet 才是 PASS 門檻、Opus 非驗收門)。G7 baseline 已補跑 Sonnet(2/2,結論不變)——它是唯一
+  改變過決策的結果,故優先補。其餘(G1a/G1b/G2/G4/G4b/G6)現況只證明「強模型上成立」,要當驗收
+  證據需在 Sonnet 重跑。fixture 已可一鍵重建(`setup-sandboxes.sh` 的 `make_g6`/`make_g7`)。
 - [ ] R4 non-blocking 餘一項:**新增 prose 的中文半形標點與既有全形混排**。2026-08-08 未做——
   「新增 prose」指哪一批已不可考,純風格、無失敗案例,且該日又寫入大量中文 prose(移動標靶)。
   要做就一次全檔統一,不要逐批追。其餘三項(Transfer 模式 commit 歸屬、evals/README 路徑基準、
