@@ -1052,8 +1052,11 @@ make_g7() {
 EOF
     _g7_fill_status "$DOTFILES_ROOT/claude/templates/STATUS-template.md" "$dir/work/STATUS.md"
     printf 'def push(host, artifact):\n    """把 artifact 推到 host。"""\n    return _ssh_copy(host, artifact)\n\n\ndef _ssh_copy(host, artifact):\n    raise NotImplementedError\n' > "$dir/work/src/deploy.py"
-    # fixture 必須自洽：transfer.md 與 CLAUDE.md 都提到 README／uv sync／pytest，缺檔會讓 agent
-    # 停下或補造無關 scaffolding，污染「只想測 STATUS 模板可攜性」的 oracle（2026-08-10 審查抓到）
+    # fixture 必須自洽：transfer.md 與 CLAUDE.md 都提到 README／uv sync／pytest／`uv run deploy`，
+    # 缺一項就會讓 agent 停下或補造無關 scaffolding，污染「只想測 STATUS 模板可攜性」的 oracle。
+    # **「檔案存在」不等於自洽**——第一版補了 pyproject.toml 卻沒宣告 pytest 也沒有 entry point，
+    # `uv run pytest` 與 `uv run deploy` 照樣 exit 2（2026-08-10 兩輪審查，第二輪才抓到）。
+    # 判準是**逐條跑過移交指南的驗收步驟**，不是逐條檢查檔名。
     mkdir -p "$dir/work/tests"
     # shellcheck disable=SC2016  # 反引號是 markdown 行內 code 的字面內容，單引號內不展開
     printf '# deploy-tool\n\n把 artifact 經 SSH 推到目標主機。\n\n## 安裝\n\n`uv sync`\n\n## 用法\n\n`uv run deploy --host <host> --artifact <path>`（加 `--dry-run` 只印計畫）\n' > "$dir/work/README.md"
@@ -1063,10 +1066,41 @@ name = "deploy-tool"
 version = "0.1.0"
 requires-python = ">=3.11"
 
-[tool.pytest.ini_options]
-pythonpath = ["."]
+[project.scripts]
+deploy = "src.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+EOF
+    : > "$dir/work/src/__init__.py"
+    cat > "$dir/work/src/cli.py" <<'EOF'
+import argparse
+
+from .deploy import push
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="deploy")
+    ap.add_argument("--host", required=True)
+    ap.add_argument("--artifact", required=True)
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args()
+    if a.dry_run:
+        print(f"[dry-run] would push {a.artifact} -> {a.host}")
+        return 0
+    push(a.host, a.artifact)
+    return 0
 EOF
     printf 'from src.deploy import push\n\n\ndef test_push_is_callable():\n    assert callable(push)\n' > "$dir/work/tests/test_deploy.py"
+    # 沒有它，agent 跑完 `uv sync` 之後的 `git add` 會把整個 .venv 收進來
+    printf '.venv/\n__pycache__/\n.pytest_cache/\nuv.lock\n' > "$dir/work/.gitignore"
     # ⚠️ **不要直接複製 transfer-guide-template**：它逐字寫著「必讀:STATUS.md(決策與死路)」
     # 並三度提到 `/project transfer`——那正好是 O2／O3 的答案，agent 可以繞過 STATUS 模板拿到
     # 落點，G7 就測不出模板自身的可攜性了（與 CLAUDE.md 那道防洩漏同一個道理，2026-08-10 審查抓到）。
@@ -1110,17 +1144,24 @@ G7_PREFIX_TEMPLATE_COMMIT="ba8163c94ca73842511c99a6d5b60336d3ee9f0d"
 
 make_g7_base() {
     local dir="$ROOT/g7base-$INSTANCE" old_tpl="$ROOT/.g7-old-template.md"
+    # **取不到舊模板一律硬失敗**（淺 clone 就先 `git fetch --unshallow`）。原本這裡只 warn 然後
+    # return 0，結果是 g7base-run 靜默不存在、腳本照印 "sandboxes ready"——自動化會把不完整的
+    # setup 當成功，而 baseline 臂缺席正好長得像「這條 eval 不需要 baseline」（2026-08-10 審查抓到）。
     if ! git -C "$DOTFILES_ROOT" show \
             "$G7_PREFIX_TEMPLATE_COMMIT:claude/templates/STATUS-template.md" > "$old_tpl" 2>/dev/null; then
-        echo "warn: 取不到 $G7_PREFIX_TEMPLATE_COMMIT 的舊模板（淺 clone？）——跳過 g7base" >&2
         rm -f "$old_tpl"
-        return 0
+        echo "error: 取不到 $G7_PREFIX_TEMPLATE_COMMIT 的舊模板——G7 baseline 臂無法重建。" >&2
+        echo "       淺 clone 的話先跑：git -C $DOTFILES_ROOT fetch --unshallow" >&2
+        return 1
     fi
     cp -R "$ROOT/g7-$INSTANCE" "$dir"
     rm -rf "$dir/work/.git"
     _g7_fill_status "$old_tpl" "$dir/work/STATUS.md"
+    # commit subject **必須與 g7 逐字相同**：agent 拿得到 `git *`，subject 寫「修改前的模板」
+    # 等於直接告訴它自己在 baseline 臂，那是第二個實驗變因（2026-08-10 審查抓到）。
+    # 兩臂的區分靠沙盒目錄名，那對 agent 是無語意的代號。
     (cd "$dir/work" && git init -qb main . && git config user.email t@t && git config user.name t \
-        && git add -A && git commit -qm "移交快照（修改前的模板）")
+        && git add -A && git commit -qm "移交快照")
     rm -f "$old_tpl"
 }
 
