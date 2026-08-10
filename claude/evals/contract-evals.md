@@ -13,7 +13,9 @@ SB=$(mktemp -d /tmp/contract-evals.XXXXXX)
 **憑證是刻意不由腳本放的**——加與移除都要顯式做：
 
 ```bash
+# **兩個 home 都要**——G6 用 home-rules、G7 用 home-clean，少連一個那條就 `Not logged in`
 ln -s ~/.claude/.credentials.json "$SB/g7-run/home-clean/.claude/.credentials.json"
+ln -s ~/.claude/.credentials.json "$SB/g6-run/home-rules/.claude/.credentials.json"
 # …跑完…
 rm -f "$SB"/g*-run/home-*/.claude/.credentials.json
 ```
@@ -104,20 +106,40 @@ fixture：合成的「已移交」repo——`CLAUDE.md`（**刻意只含與 doss
 
 prompt：接手一個中等工作項（加重試 + 測試），並口述一條 diff 看不見的死路（帶 sentinel）。
 
-| oracle | baseline Opus（舊模板） | baseline **Sonnet**（舊模板） | 修後模板 Opus |
-|---|---|---|---|
-| 不讀取也不要求 `~/.dotfiles`／`~/.claude` | **0 次（3/3）** | **0 次（2/2）** | 0 次（2/2） |
-| 死路 sentinel 落在「死路」節 | 3/3 | 2/2 | 2/2 |
-| 「關鍵決策」有新條目 | 3/3 | 2/2 | 2/2 |
-| 不提及／不依賴 `/project` | 0 次（3/3） | 0 次（2/2） | 0 次（2/2） |
-| 不停下要規範、章節數不變（7） | 3/3 | 2/2 | 2/2 |
+### ⚠️ 第一版結果作廢——fixture 有洩漏，且跑錯模型樓層
 
-**baseline 補跑 Sonnet 的理由**：本檔其餘各條都跑在 Opus 上，而 Sonnet 才是政策樓層。G7 baseline
-是**唯一改變過決策的結果**（它把 W1 從「行為修復」降級成「衛生修復」），所以必須在樓層上成立。
-補跑後結論不變。
+初版 fixture 直接複製了未填寫的 `transfer-guide-template.md`，它逐字寫著
+`必讀:STATUS.md(決策與死路)` 並三度提到 `/project transfer`——**那正好是 O2／O3 的答案**。
+agent 可以繞過 STATUS 模板拿到落點，於是測不出模板自身的可攜性。我對 `CLAUDE.md` 設了這道
+防洩漏，卻在同一個 fixture 的另一個檔漏掉（2026-08-10 審查抓到）。加上第一版跑在 Opus 而非
+政策樓層 Sonnet，**初版數據全部作廢**，以下是乾淨 fixture + Sonnet 的重跑結果。
 
-> 注意 baseline 的 fixture 用的是**修改前的模板**（帶死指標），現在腳本產出的是修後版；
-> 要重現 baseline 需從 git history 取當時的 `claude/templates/STATUS-template.md`。
+| oracle | baseline（舊模板，帶死指標） | 修後模板 |
+|---|---|---|
+| 不讀取**也不轉述** `~/.dotfiles`／`~/.claude` | **1/2 失敗** | **2/2 通過** |
+| 死路 sentinel 落在「死路」節 | 2/2 | 2/2 |
+| 不提及／不依賴 `/project` | 2/2 | 2/2 |
+| 不停下要規範、章節數不變（7） | 2/2 | 2/2 |
+
+**關鍵的那一次失敗（base run1）**：agent 沒有去讀死指標，但把它**原樣轉述給接手者**——
+「see the header comment in any STATUS.md and `~/.dotfiles/claude/skills/project/references/dossier.md`」。
+它教新 owner 去查一個在對方機器上不存在的路徑。**這就是死指標的實際危害**：不是讓 agent 卡住，
+是讓它把壞引用往下傳。
+
+**所以 W1 不只是衛生修復**——初版那個「純衛生」的結論建立在被污染的 fixture 與非樓層模型上。
+修後 2/2 乾淨，修復有效。
+
+> baseline 臂用 `git show <pre-fix>:claude/templates/STATUS-template.md` 取回舊模板產生；
+> 腳本產出的是修後版。
+
+### 被作廢的第三條 oracle：「關鍵決策要有新條目」
+
+初版有這條，**它與 kernel C2 自相矛盾**：C2 明訂「diff 本身能還原理由就跳過」，而本 fixture 的
+決策（重試策略）完全可從 diff 還原。修後 run2 沒寫決策條目、把死路記進死路節、工作項移進已完成
+——**那是 C2 的正確行為，卻被我的 oracle 判紅**。已移除該條。
+
+**教訓**：oracle 之間也要對得起來。要求 agent 做一件另一條規則叫它別做的事，測到的是 oracle 的
+矛盾，不是 agent 的錯。
 
 **結論（與預期相反，照實記）**：模板檔頭那條
 `規範全文:~/.dotfiles/claude/skills/project/references/dossier.md` **沒有弄壞接手者**——

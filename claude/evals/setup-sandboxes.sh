@@ -1044,7 +1044,38 @@ s = s.replace("""- ~~**YYYY-MM-DD <已被推翻的決策>**:<原決策原文>~~
 pathlib.Path(sys.argv[2]).write_text(s, encoding="utf-8")
 PY
     printf 'def push(host, artifact):\n    """把 artifact 推到 host。"""\n    return _ssh_copy(host, artifact)\n\n\ndef _ssh_copy(host, artifact):\n    raise NotImplementedError\n' > "$dir/work/src/deploy.py"
-    cp "$DOTFILES_ROOT/claude/templates/transfer-guide-template.md" "$dir/work/docs/transfer.md"
+    # ⚠️ **不要直接複製 transfer-guide-template**：它逐字寫著「必讀:STATUS.md(決策與死路)」
+    # 並三度提到 `/project transfer`——那正好是 O2／O3 的答案，agent 可以繞過 STATUS 模板拿到
+    # 落點，G7 就測不出模板自身的可攜性了（與 CLAUDE.md 那道防洩漏同一個道理，2026-08-10 審查抓到）。
+    # 這裡放一份**已填妥、工具中立、不透露 dossier 寫入規則**的版本——真實移交的 transfer.md
+    # 本來就是填好的，模板只是鷹架。
+    cat > "$dir/work/docs/transfer.md" <<'EOF'
+# deploy-tool 移交指南
+
+> 移交人:A｜接手者:B｜目標日:2026-08-01
+
+## 1. 系統全貌
+
+- 單一 Python 套件,把 artifact 經 SSH 推到目標主機;無外部服務相依。
+- 必讀:`README.md`(安裝與用法)、`CLAUDE.md`(慣例)。
+
+## 2. 環境建置
+
+1. `uv sync`
+2. `uv run pytest` 應全綠
+3. 對測試主機跑 `uv run deploy --dry-run --host <host>`,應只印出計畫
+
+## 3. QA 驗收標準
+
+- [ ] `uv run pytest` 全綠
+- [ ] `--dry-run` 不產生任何連線
+- [ ] 能獨立完成一個小變更並過 review
+
+## 4. 已知風險與求助路徑
+
+- 目標主機作業系統不同質(約一半 macOS),任何依賴 Linux-only 元件的方案都要先確認覆蓋率。
+- 移交人可支援至 2026-09-30。
+EOF
     (cd "$dir/work" && git init -qb main . && git config user.email t@t && git config user.name t \
         && git add -A && git commit -qm "移交快照")
 }
