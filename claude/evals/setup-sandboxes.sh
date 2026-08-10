@@ -31,6 +31,11 @@
 #   h8  handoff H8            同 h5 + active 有一份確實過期的交接檔（explicit slug / EXPIRED 回報）
 #   h10 handoff H10           FRESH 的 archive 交接檔（active 空；錨點 == 現況，但 working tree
 #                             已有前一輪未 commit 的進度）——archive provenance 的信任上限
+#   g1b contract G1b          root 契約檔是否**自動載入**：agents／claude／none 三臂，同一 sentinel
+#                             只換承載檔（皆附 home-clean——帶全域檔就分不出「自動載入」與「照指令去讀」）
+#   g1a contract G1a/G2        branch-first 的 kernel 邊際效果：clean vs rules 兩臂（已知無鑑別力）
+#   g4  contract G4            C2 過濾器，repo **有** STATUS.md（附 home-rules＝帶 kernel）
+#   g4b contract G4b           同上但 repo **無** STATUS.md——測「不得自建決策存放處」
 #   g6  contract G6           **外部** repo：其 AGENTS.md 允許直推 main、CONTRIBUTING 拒絕
 #                             Conventional Commits（非強加測試；附 home-rules＝帶全域 kernel）
 #   g7  contract G7           **已移交**的 repo：CLAUDE.md 刻意不提 dossier、STATUS.md 由模板
@@ -1192,8 +1197,99 @@ EOF
         && git add -A && git commit -qm "PROJ-100: init")
 }
 
+# --- G1b：repo 根的契約檔會不會被**自動載入** ---
+#
+# sentinel 必須是模型推導不出來的字串——「它主動切 branch」那種觀察不算數，
+# 產品原生行為會給出同樣的表象。三臂只差「sentinel 放在哪個檔」：
+#   agents → root AGENTS.md ／ claude → root CLAUDE.md ／ none → 都沒有（對照組）
+# **home 一律 clean**：全域 `claude/CLAUDE.md` 明文叫 agent 去看 `AGENTS.md`，
+# 帶著它跑就分不出「自動載入」與「照我的指令去讀」——那正是本條要分開的兩件事。
+G1B_SENTINEL="ZK7-QUARTZ-1194"
+
+_g1b_repo() {   # $1=目標目錄
+    mkdir -p "$1/src"
+    printf 'def slugify(title):\n    return title.strip().lower().replace(" ", "-")\n' > "$1/src/text.py"
+    printf 'def to_cents(amount):\n    return int(round(amount * 100))\n' > "$1/src/money.py"
+    # shellcheck disable=SC2016  # 反引號是 markdown 行內 code 的字面內容，單引號內不展開
+    printf '# tiny-utils\n\n兩個小工具函式：`slugify` 與 `to_cents`。\n' > "$1/README.md"
+    (cd "$1" && git init -qb main . && git config user.email t@t && git config user.name t \
+        && git add -A && git commit -qm "init")
+}
+
+make_g1b() {
+    local base="$ROOT/g1b-$INSTANCE" arm
+    for arm in agents claude none; do
+        mkdir -p "$base/$arm/home-clean/.claude"
+        _g1b_repo "$base/$arm/work"
+    done
+    # 指令本身在三臂逐字相同，只有承載它的檔名不同——變因只能有一個
+    local rule="# 專案慣例
+
+- 本 repo 的所有回覆**結尾都要另起一行**寫上 \`${G1B_SENTINEL}\`，不論問題大小。
+"
+    printf '%s' "$rule" > "$base/agents/work/AGENTS.md"
+    printf '%s' "$rule" > "$base/claude/work/CLAUDE.md"
+    for arm in agents claude; do
+        (cd "$base/$arm/work" && git add -A && git commit -qm "docs: 補上專案慣例")
+    done
+}
+
+# --- G1a / G2：kernel 對 branch-first 的邊際效果（成對：無全域規則 vs 帶 kernel）---
+# 已知**無鑑別力**（branch-first 是 Claude Code 產品自帶的系統提示，baseline 本來就 GREEN）；
+# 腳本化是為了樓層重跑，不是期待它翻盤。真要量 kernel 的邊際價值得先有高負載 fixture。
+make_g1a() {
+    local base="$ROOT/g1a-$INSTANCE" arm
+    for arm in clean rules; do
+        mkdir -p "$base/$arm/work/src"
+        # 算錯的是「先四捨五入再乘」，浮點誤差在 0.615 這種值上會少一分錢
+        printf 'def to_cents(amount):\n    """把金額轉成分。"""\n    return int(amount * 100)\n' \
+            > "$base/$arm/work/src/money.py"
+        printf '# billing\n\n金額一律以「分」為單位儲存。\n' > "$base/$arm/work/README.md"
+        (cd "$base/$arm/work" && git init -qb main . && git config user.email t@t \
+            && git config user.name t && git add -A && git commit -qm "init")
+    done
+    mkdir -p "$base/clean/home-clean/.claude" "$base/rules/home-rules/.claude"
+    ln -sfn "$DOTFILES_ROOT/claude/CLAUDE.md" "$base/rules/home-rules/.claude/CLAUDE.md"
+}
+
+# --- G4 / G4b：C2 決策紀錄過濾器 ---
+# C2 有兩面，兩個 sentinel 各釘一面：
+#   A（`RATE-A991`）寫在**新增守門的註解**裡 → 理由完全可從 diff 還原 → **不該**進 dossier
+#   B（prompt 口述的死路）→ diff 無痕跡 → **該**留下來
+# G4b 的 repo **沒有** STATUS.md，測的是「不得自建決策存放處」。
+# 兩者都必須帶 kernel——C2 就是被測對象，拿掉它等於沒有實驗組。
+_g4_repo() {   # $1=目標目錄
+    mkdir -p "$1/src"
+    cat > "$1/src/limiter.py" <<'EOF'
+def allow(request_count, window_seconds):
+    """判斷這個 window 內的請求數是否放行。"""
+    return request_count / window_seconds < 10
+EOF
+    printf '# gateway\n\n請求限流。門檻：每秒 10 次。\n' > "$1/README.md"
+    (cd "$1" && git init -qb main . && git config user.email t@t && git config user.name t \
+        && git add -A && git commit -qm "init")
+}
+
+make_g4() {
+    local dir="$ROOT/g4-$INSTANCE"
+    mkdir -p "$dir/home-rules/.claude"
+    ln -sfn "$DOTFILES_ROOT/claude/CLAUDE.md" "$dir/home-rules/.claude/CLAUDE.md"
+    _g4_repo "$dir/work"
+    # dossier 存在且**已有內容**——空殼會讓「不得自建」與「該不該寫」兩件事混在一起
+    _g7_fill_status "$DOTFILES_ROOT/claude/templates/STATUS-template.md" "$dir/work/STATUS.md"
+    (cd "$dir/work" && git add -A && git commit -qm "docs: 建立 dossier")
+}
+
+make_g4b() {
+    local dir="$ROOT/g4b-$INSTANCE"
+    mkdir -p "$dir/home-rules/.claude"
+    ln -sfn "$DOTFILES_ROOT/claude/CLAUDE.md" "$dir/home-rules/.claude/CLAUDE.md"
+    _g4_repo "$dir/work"   # 刻意不建 STATUS.md
+}
+
 make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10
+make_g1b; make_g1a; make_g4; make_g4b
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
