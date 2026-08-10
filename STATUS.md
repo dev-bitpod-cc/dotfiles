@@ -38,12 +38,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   **已失效(2026-08-09,同日)**:門檻找錯地方——洞在 Claude 端一樣存在且早有 RED(H6),不必等
   clean-room eval(該 eval 仍未跑,照實記)。現行決策與完整理由見
   `docs/plans/2026-08-09-repo-contract-extraction.md`「生效模型（兩輪 P0 的裁決，先讀這節）」。
-- **2026-08-10 模板可攜性的判準:「規範本身在此、不在工具」**——形狀不是設計出來的,是 krepo 現場
-  自行收斂的檔頭(krepo 全清、krepo-common 半清,**兩次獨立手動偏離就是 RED**)。**但 G7 實測證明
-  死指標並沒有弄壞接手者**(baseline 3/3 全綠:agent 根本不追那條「規範全文」)——所以這是**衛生修復
-  不是行為修復**,正當性來自「交出去的檔含指向不存在位置的引用」。**先跑 baseline 才知道這件事**:
-  否則會帶著錯理由改、還會多加不需要的補充行。全文見 `docs/plans/2026-08-10-dossier-portability.md`
-  「W0 — G7：transfer clean-room eval（先跑，它是 W1 的 oracle）」。
+- **2026-08-10 模板可攜性判準「規範本身在此、不在工具」;死指標的危害是「往下傳」不是「卡住」**:
+  形狀取自 krepo 現場自行收斂的檔頭(兩次獨立手動偏離)。G7 乾淨重跑(Sonnet)baseline **1/2 失敗**
+  ——agent 沒去讀死指標,卻把它**原樣轉述給接手者**,教對方去查一個打不開的路徑;修後 2/2 乾淨。
+  ⚠️ 本條同日修正過:初版依「3/3 全綠」判為純衛生修復,那批數據因 **fixture 洩漏 + 跑在 Opus 而非
+  樓層 Sonnet** 已作廢。**教訓:防洩漏要掃 fixture 的每一個檔,不是只防你想到的那一個。**
+  數據見 `claude/evals/contract-evals.md`「G7 — 移交後接手者能否維護 dossier（2026-08-10，已跑）」。
 - **2026-08-10 branch-first 是 Claude Code 產品原生的,所以輕量 fixture 量不到 kernel 的邊際效果**:
   G1a/G2 成對實驗兩臂皆 3/3 另開 branch,唯一差異是命名。**這是 fixture 無鑑別力,不是 H6 被推翻**
   ——H6 是高負載情境(多 repo／resume／指令競爭),要重現得先有帶負載的 fixture(目前沒有)。
