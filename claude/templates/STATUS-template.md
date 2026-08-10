@@ -1,9 +1,9 @@
 <!--
 STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、隨專案移交)
 角色分工:README(對外說明)/ CLAUDE.md(慣例與指令)/ STATUS.md(本檔:狀態+決策+死路+債)
-        / docs/plans/(帶日期的設計文件)/ docs/transfer.md(移交指南,見 transfer-guide-template)
-維護時機:開工寫 spec(/project spec 或對話);ship 時由 /project log 同步;移交前跑 /project transfer。
-規範全文:~/.dotfiles/claude/skills/project/references/dossier.md
+        / docs/plans/(帶日期的設計文件)/ docs/transfer.md(移交指南,移交時才產生)
+維護時機:開工寫 spec;ship 時同步;移交前補齊完整度。維護者可能另有工具輔助,
+        但**規範本身在此、不在工具**——沒有那些工具也照樣維護得下去。
 注意:本檔名專屬 dossier——領域產物(如爬蟲配置 checklist)請改用其他檔名(如 CRAWL-CONFIG.md)。
 -->
 
@@ -33,7 +33,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **YYYY-MM-DD <決策>**:<選了什麼、為什麼、放棄了什麼替代方案>
 
 <!-- 被推翻時:保留原文 + 標記失效,不刪、不就地改寫(否則「曾經怎麼想、為什麼改」會消失,
-     而那正是防止第三次翻案的東西)。刪除線劃在原決策上,不是劃在失效通知上。規範見 dossier.md -->
+     而那正是防止第三次翻案的東西)。刪除線劃在原決策上,不是劃在失效通知上。 -->
 - ~~**YYYY-MM-DD <已被推翻的決策>**:<原決策原文>~~
   **已失效(YYYY-MM-DD)**:<推翻理由>;現行決策見 `<path>`「<section>」。
 
@@ -56,7 +56,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 移交準備度
 
-<!-- 平時可空;顯露「要上 production / 要移交」訊號時開始維護,/project transfer 會檢查 -->
+<!-- 平時可空;顯露「要上 production / 要移交」訊號時開始維護 -->
 - [ ] 關鍵決策與死路已補齊理由
 - [ ] 環境建置步驟可由第三者重現(README 或 docs/)
 - [ ] Credentials 與設定分離(.env.example 齊全、無硬編碼)

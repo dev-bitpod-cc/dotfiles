@@ -27,8 +27,8 @@ import os
 import re
 import sys
 
-# 帶 kernel block 的四個檔。⚠️ Phase 3 會把 codex/AGENTS.md 改名為 codex/global-guidance.md，
-# 屆時這裡要同步——名字寫死是刻意的：漏改會讓 gate 找不到檔而判紅，比靜默略過安全。
+# 帶 kernel block 的四個檔——名字寫死是刻意的：漏改會讓 gate 找不到檔而判紅，比靜默略過安全。
+# 三份「全域／部署來源」各一（Claude 全域、Codex 全域、repo 契約），加上 root CLAUDE.md。
 #
 # root CLAUDE.md 為什麼也要有一份：2026-08-10 實測，Claude Code **自動載入 root CLAUDE.md、
 # 但不自動載入 root AGENTS.md**（後者只在 agent 剛好探索 repo 時才被 cat 到）。只放在
