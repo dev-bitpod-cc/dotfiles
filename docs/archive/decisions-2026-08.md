@@ -365,6 +365,46 @@
   `CLAUDE.md` 成為第四份逐字複本。Codex 端不受影響(原生讀 `AGENTS.md`)。逐項數據與 clean-room
   構造見 `claude/evals/contract-evals.md`「G1b — root `AGENTS.md` 是否被自動載入」。
 
+## 2026-08-10 歸檔批次之二（兩條已失效決策 + 三條已固化 + 一條已消缺口留下的教訓）
+
+> 前四條的機制已固化在 `STATUS-template.md` / `docs/transfer.md` / `tests/xref-gate.py`，
+> 從產出物即可反推；**兩條 `~~刪除線~~` 的保存價值全在「當初為什麼這樣決定、又為什麼同日
+> 被推翻」**——那部分永遠無法從 diff 反推。最後一條原屬「已知缺口」節，缺口本身已消、
+> 留下的是方法論教訓，故隨決策一起歸檔而非留在 always-on。
+
+- **2026-08-09 接手首屏由 `docs/transfer.md` 承擔,不動 STATUS.md 的 schema**:survey 建議在 dossier
+  加固定 schema 的接手快照,但那必然與「進行中」雙重記載(它自己也提了這個疑慮),違反傘狀蒸餾規則。
+  `docs/transfer.md` 本就為接手者而寫、移交前才生成、不常駐,故不會腐爛;STATUS.md 是常駐演化檔,
+  加一塊只在移交時有意義的區塊,等於替它增一塊固定會過期的面積。
+- ~~**2026-08-09 不現在把 `CLAUDE.md` 拆成「工具中立入口 + Claude 薄層」——先 eval,後搬遷**:
+  survey 的終態圖把它降為薄層,但檔內最值錢的是「已知地雷」那批,每條對應一次實地事故,屬硬約束
+  而非可按形狀搬動的敘述。**在 clean-room eval 量到「Codex 端因缺 repo 規則而犯錯」之前不動**
+  ——為文件形狀而改,正是該 survey 自己反對的完成標準。~~
+  **已失效(2026-08-09,同日)**:門檻找錯地方——洞在 Claude 端一樣存在且早有 RED(H6),不必等
+  clean-room eval(該 eval 仍未跑,照實記)。現行決策與完整理由見
+  `docs/plans/2026-08-09-repo-contract-extraction.md`「生效模型（兩輪 P0 的裁決，先讀這節）」。
+- **2026-08-10 模板可攜性判準「規範本身在此、不在工具」;死指標的危害是「往下傳」不是「卡住」**:
+  形狀取自 krepo 現場自行收斂的檔頭(兩次獨立手動偏離)。G7 乾淨重跑(Sonnet)baseline **1/2 失敗**
+  ——agent 沒去讀死指標,卻把它**原樣轉述給接手者**,教對方去查一個打不開的路徑;修後 2/2 乾淨。
+  第三版 fixture 重跑同結果,但**失敗落點改成 agent 的 memory 筆記**——比落在回覆更糟,它會在
+  往後每個 session 被 recall。⚠️ 本條同日修正三次(fixture 兩度作廢),數據與作廢理由見
+  `claude/evals/contract-evals.md`「G7 — 移交後接手者能否維護 dossier（2026-08-10，已跑）」。
+- ~~**2026-08-10 branch-first 是 Claude Code 產品原生的,輕量 fixture 量不到 kernel 的邊際效果**~~
+  **已失效(2026-08-10,同日)**:那是 Opus 專屬觀察。樓層模型 Sonnet 上同一 fixture,clean 臂
+  **2/2 直接 commit 到 main**、rules 臂 2/2 另開 branch——**kernel 就是 branch 有沒有被開出來的
+  唯一原因**;連帶作廢「對 Claude 邊際價值有限」那句推論。判準本身(強模型兩臂沒差 ≠ 規則多餘)
+  已沉為通則,見 `claude/evals/README.md`「模型樓層政策」。
+- **2026-08-08 xref gate 只保障 dotfiles,但它服務的規範是全域的——這個不對稱要講明**:
+  `tests/run.sh` 只跑本 repo,故「唯一權威」指標的機械守門僅及於 dotfiles;而同批改的
+  `ship-state.sh`(append-only 偵測)與 dossier 規範(失效標記)**跨 repo 生效**。
+  故不得說「其他 repo 零影響」(它們未來的 `/project log` 行為確實變了),也不得說
+  「失效標記已有守門」(其他 repo 的指標沒人掃)。**不擴大到 `ship-state.sh --repo` 的理由**:
+  其他 repo 的引用可能指向 repo 外(如 `~/Projects/...`),需要另一套外部路徑政策;
+  規範已要求指標寫成 gate 可解析的形狀,將來擴大時零回填。
+- **缺口條目寫「解法已知、剩移植」時,那句本身也要有人去核對一次**——它讀起來像查證過的結論,
+  實際上常是當時的推測,而後來的人會直接照做。2026-08-07 實例(deep-review anchor 跨批次 stale)
+  核實後發現守門早就在、且照定義擋不到該風險,真正兜住的是另一個機制。**該缺口已消,留這條教訓。**
+
 ## 死路(試過但放棄——防重工)
 
 
