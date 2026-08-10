@@ -3,15 +3,48 @@
 契約 kernel 不是 skill，沒有 `SKILL.md` 可以擺 `evals.md`，情境集中在本檔。
 沙盒建置與模型樓層政策見 `claude/evals/README.md`。
 
-## Clean room 怎麼構造（三次踩過的坑都在這裡）
-
-契約類 eval 的關鍵是**排除我自己的全域規則**，否則測到的是「agent 遵守我的指令」而不是產品原生行為。
+## 怎麼重跑（fixture 由腳本建，不要手刻）
 
 ```bash
-mkdir -p "$SB/home/.claude"
-ln -s ~/.claude/.credentials.json "$SB/home/.claude/.credentials.json"   # 只借憑證
-cd "$FIXTURE" && HOME="$SB/home" claude -p "<prompt>" --allowedTools "Bash(git *) Edit Read Write"
+SB=$(mktemp -d /tmp/contract-evals.XXXXXX)
+./claude/evals/setup-sandboxes.sh "$SB" run        # 產出 $SB/g6-run、$SB/g7-run
 ```
+
+**憑證是刻意不由腳本放的**——加與移除都要顯式做：
+
+```bash
+ln -s ~/.claude/.credentials.json "$SB/g7-run/home-clean/.claude/.credentials.json"
+# …跑完…
+rm -f "$SB"/g*-run/home-*/.claude/.credentials.json
+```
+
+執行（**`--model sonnet` 不可省**，見下方樓層警告）：
+
+```bash
+# G7：clean room，home-clean 沒有全域 CLAUDE.md
+cd "$SB/g7-run/work" && HOME="$SB/g7-run/home-clean" claude -p "$(cat <<'EOF'
+接手這個 repo。請把 STATUS.md「進行中」那個工作項做掉：在 src/deploy.py 的 push() 加上重試
+（暫時性失敗才重試，永久性失敗立即中止），並補一個測試。
+
+先講一件事以免你重工：我們試過用 systemd timer 在外層排程重試，方案代號 DEAD-EA54，但目標
+主機有一半是 macOS 沒有 systemd，這條路放棄了——這件事在 diff 裡看不出來。
+
+做完把該記的記下來。
+EOF
+)" --model sonnet --allowedTools "Bash(git *) Edit Read Write Bash(uv *)" \
+   --output-format stream-json --verbose > /tmp/g7.jsonl
+
+# G6：home-rules **帶**全域 CLAUDE.md（被測對象）
+cd "$SB/g6-run/work" && HOME="$SB/g6-run/home-rules" claude -p \
+  'README.md 裡的 `widget.creat()` 拼錯了，應該是 `create()`。幫我修掉並 commit。ticket 是 PROJ-451。' \
+  --model sonnet --allowedTools "Bash(git *) Edit Read Write" \
+  --output-format stream-json --verbose > /tmp/g6.jsonl
+```
+
+> ⚠️ **樓層警告（誠實揭露）**：本檔記錄的 G1a/G1b/G2/G4/G4b/G6 各次結果**跑在 Opus 5 上**，
+> 而 `README.md`「模型樓層政策」明訂 **Sonnet 才是 PASS 門檻、Opus 非驗收門**。
+> **只有 G7 baseline 補跑過 Sonnet**（2/2 全綠，結論不變）。其餘各條若要當驗收證據，
+> 需在 Sonnet 上重跑——現況它們只證明「強模型上成立」。
 
 - **直接用假 HOME 會 `Not logged in`**——憑證綁在 `$HOME`。用 symlink 借，**不要複製**（secrets 不落地），跑完移除連結。
 - **不要用真實 HOME 當對照**：全域 `claude/CLAUDE.md` 現在明文叫 agent 去看 `AGENTS.md`，那會讓「原生行為」與「遵守我的指令」混在一起。
@@ -71,13 +104,20 @@ fixture：合成的「已移交」repo——`CLAUDE.md`（**刻意只含與 doss
 
 prompt：接手一個中等工作項（加重試 + 測試），並口述一條 diff 看不見的死路（帶 sentinel）。
 
-| oracle | baseline（帶死指標的舊模板） | 修後模板 |
-|---|---|---|
-| 不讀取也不要求 `~/.dotfiles`／`~/.claude` | **0 次（3/3）** | 0 次（2/2） |
-| 死路 sentinel 落在「死路」節 | 3/3 | 2/2 |
-| 「關鍵決策」有新條目 | 3/3 | 2/2 |
-| 不提及／不依賴 `/project` | 0 次（3/3） | 0 次（2/2） |
-| 不停下要規範、章節數不變（7） | 3/3 | 2/2 |
+| oracle | baseline Opus（舊模板） | baseline **Sonnet**（舊模板） | 修後模板 Opus |
+|---|---|---|---|
+| 不讀取也不要求 `~/.dotfiles`／`~/.claude` | **0 次（3/3）** | **0 次（2/2）** | 0 次（2/2） |
+| 死路 sentinel 落在「死路」節 | 3/3 | 2/2 | 2/2 |
+| 「關鍵決策」有新條目 | 3/3 | 2/2 | 2/2 |
+| 不提及／不依賴 `/project` | 0 次（3/3） | 0 次（2/2） | 0 次（2/2） |
+| 不停下要規範、章節數不變（7） | 3/3 | 2/2 | 2/2 |
+
+**baseline 補跑 Sonnet 的理由**：本檔其餘各條都跑在 Opus 上，而 Sonnet 才是政策樓層。G7 baseline
+是**唯一改變過決策的結果**（它把 W1 從「行為修復」降級成「衛生修復」），所以必須在樓層上成立。
+補跑後結論不變。
+
+> 注意 baseline 的 fixture 用的是**修改前的模板**（帶死指標），現在腳本產出的是修後版；
+> 要重現 baseline 需從 git history 取當時的 `claude/templates/STATUS-template.md`。
 
 **結論（與預期相反，照實記）**：模板檔頭那條
 `規範全文:~/.dotfiles/claude/skills/project/references/dossier.md` **沒有弄壞接手者**——

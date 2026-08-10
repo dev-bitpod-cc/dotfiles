@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """kernel-gate.py — agent contract 的 managed block 完整性掃描器。
 
-為何需要它：契約的 kernel 必須在三處**逐字**存在——repo 根 `AGENTS.md`（給任何 clone 到
-這個 repo 的 agent）、`claude/CLAUDE.md`（部署為全域 Claude 規則）、`codex/AGENTS.md`
-（部署為全域 Codex 指引）。三份都得自足：純指標方案（「去讀 ./AGENTS.md」）已被實測證偽
+為何需要它：契約的 kernel 必須在**四處**逐字存在——repo 根 `AGENTS.md`（工具中立入口）、
+root `CLAUDE.md`（**Claude 唯一會自動載入的**，2026-08-10 G1b 實測）、`claude/CLAUDE.md`
+（部署為全域 Claude 規則）、`codex/AGENTS.md`（部署為全域 Codex 指引）。四份都得自足：純指標方案（「去讀 ./AGENTS.md」）已被實測證偽
 ——規則不在 always-on context 就不生效（claude/skills/handoff/evals.md 的 H6 首跑，
 同一輪 repo-a 的 commit 落在 main、repo-b 才開 branch，因為規則只存在於延遲載入的檔案裡）。
 
-三份自足的代價是複本會漂移，而 skill-building-guide 明列「same fact stated in N places」
+四份自足的代價是複本會漂移，而 skill-building-guide 明列「same fact stated in N places」
 是 red flag。**這支 gate 就是把那個代價換成機檢**：漂移即紅。形狀同 xref-gate——把原本
 只靠散文維持的不變式變成機械守門。
 
@@ -28,7 +28,8 @@ import re
 import sys
 
 # 帶 kernel block 的四個檔——名字寫死是刻意的：漏改會讓 gate 找不到檔而判紅，比靜默略過安全。
-# 三份「全域／部署來源」各一（Claude 全域、Codex 全域、repo 契約），加上 root CLAUDE.md。
+# 四個角色：repo 契約入口（AGENTS.md）／Claude 唯一自動載入的 repo 檔（CLAUDE.md）／
+# Claude 全域部署來源（claude/CLAUDE.md）／Codex 全域部署來源（codex/AGENTS.md）。
 #
 # root CLAUDE.md 為什麼也要有一份：2026-08-10 實測，Claude Code **自動載入 root CLAUDE.md、
 # 但不自動載入 root AGENTS.md**（後者只在 agent 剛好探索 repo 時才被 cat 到）。只放在
@@ -79,7 +80,7 @@ def scan(root):
         try:
             text = read(root, rel)
         except FileNotFoundError:
-            findings.append("%s: 檔案不存在——kernel 需要在三處逐字存在" % rel)
+            findings.append("%s: 檔案不存在——kernel 需要在四處逐字存在（見檔頭：兩份全域部署來源 + 兩份 repo-resident）" % rel)
             continue
         body, errs = extract(text, "kernel")
         findings.extend("%s: %s" % (rel, e) for e in errs)
@@ -96,7 +97,7 @@ def scan(root):
                                 % (rel, canary))
 
     if len(bodies) == len(KERNEL_FILES):
-        # 條目數下限：三份都缺 block 時「空 == 空」會通過，這條是防那個假綠的關鍵
+        # 條目數下限：四份都缺 block 時「空 == 空」會通過，這條是防那個假綠的關鍵
         rules = [ln for ln in bodies[KERNEL_FILES[0]].splitlines() if ln.startswith("- ")]
         if len(rules) < MIN_RULE_LINES:
             findings.append("kernel block 只有 %d 條規則行（<%d）——內容被掏空？"
