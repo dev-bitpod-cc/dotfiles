@@ -15,8 +15,13 @@
 1. **使用者明說 Codex 不進生產線** → v3 反覆用「Codex 與其他 agent」當契約層的不可取代理由，那條沒了。
 2. **G1b 實測**：root `CLAUDE.md` **自動載入**、root `AGENTS.md` **不會**（後者只在 agent 剛好探索
    repo 時被 `cat` 到）。→ 任何「放一份檔案在 repo 裡就會被讀到」的方案都要重新檢查。
-3. **G1a/G2 實測**：branch-first 兩臂皆 3/3 另開 branch——那是 Claude Code **產品原生**的系統提示。
-   → kernel 對 Claude 的邊際價值有限；有鑑別力的是 C2（G4/G4b 2/2，無原生對應）。
+3. ~~**G1a/G2 實測**：branch-first 兩臂皆 3/3 另開 branch——那是 Claude Code **產品原生**的系統提示。
+   → kernel 對 Claude 的邊際價值有限；有鑑別力的是 C2（G4/G4b 2/2，無原生對應）。~~
+   **已失效（2026-08-10 同日，本計畫執行完之後）**：那批數據跑在 Opus。同一 fixture 在樓層模型
+   Sonnet 上重跑，**無 kernel 的那臂 2/2 直接 commit 到 `main`**——kernel 就是 branch 有沒有被開
+   出來的唯一原因。**本計畫的裁決不受影響**（它的 DO/DROP 都不建立在這條上），但**不要再引用
+   這條前提**。現行結論見 `claude/evals/contract-evals.md`
+   「G1a / G2 — kernel 對 branch-first 的邊際效果」。
 
 **新的真實需求**：即將移交一個 project 給新 owner；與人協作時用 `/project --pr`、不 merge。
 

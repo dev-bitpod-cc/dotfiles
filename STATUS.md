@@ -44,12 +44,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   第三版 fixture 重跑同結果,但**失敗落點改成 agent 的 memory 筆記**——比落在回覆更糟,它會在
   往後每個 session 被 recall。⚠️ 本條同日修正三次(fixture 兩度作廢),數據與作廢理由見
   `claude/evals/contract-evals.md`「G7 — 移交後接手者能否維護 dossier（2026-08-10，已跑）」。
-- **2026-08-10 branch-first 是 Claude Code 產品原生的,所以輕量 fixture 量不到 kernel 的邊際效果**:
-  G1a/G2 成對實驗兩臂皆 3/3 另開 branch,唯一差異是命名。**這是 fixture 無鑑別力,不是 H6 被推翻**
-  ——H6 是高負載情境(多 repo／resume／指令競爭),要重現得先有帶負載的 fixture(目前沒有)。
-  **推論:kernel 的 branch-first 對 Claude 邊際價值有限,真正不可取代的是 Codex 與協作者的 clean
-  clone。** 相對地 C2(決策紀錄過濾器)沒有原生對應,G4/G4b 因此**有**鑑別力且 2/2 GREEN。
-  情境全文見 `claude/evals/contract-evals.md`「G1a / G2 — kernel 對 branch-first 的邊際效果」。
+- ~~**2026-08-10 branch-first 是 Claude Code 產品原生的,輕量 fixture 量不到 kernel 的邊際效果**~~
+  **已失效(2026-08-10,同日)**:那是 Opus 專屬觀察。樓層模型 Sonnet 上同一 fixture,clean 臂
+  **2/2 直接 commit 到 main**、rules 臂 2/2 另開 branch——**kernel 就是 branch 有沒有被開出來的
+  唯一原因**;連帶作廢「對 Claude 邊際價值有限」那句推論。判準本身(強模型兩臂沒差 ≠ 規則多餘)
+  已沉為通則,見 `claude/evals/README.md`「模型樓層政策」。
 - **2026-08-10 installer 不得只寫 pointer,必須把 kernel block 本體裝進目標 repo 的 `CLAUDE.md`**
   (推翻計畫的 P0-2 樂觀分支)。理由見上一條:pointer 即使在自動載入的檔案裡,也只是「告訴你契約在
   別處」,瑣碎任務照樣不會去讀它指向的檔。代價是**每個安裝過的 repo 都多一份無機械守門的複本**
@@ -109,11 +108,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   卻主動講清落差**——行為分歧已達動規則的證據門檻。傾向**改順序而非加告誡**:W3 的 dossier 沉澱
   移到 W2 之前(predecessor 在 W1 已定出,可行),dirty 在蓋錨點當下即為最終值,過期的可能從流程
   消失;配一條 H5 oracle(用 8/09 的逐字錯誤當 RED)。未做——本輪任務是迴歸驗證。
-- [ ] **G 系列 eval 除 G7 外都跑在 Opus 上,不符樓層政策**(`claude/evals/README.md` 明訂
-  Sonnet 才是 PASS 門檻、Opus 非驗收門)。G7 兩臂已在 Sonnet 重跑(baseline **1/2 失敗**、修後 2/2)
-  ——它是唯一改變過決策的結果,故優先補。其餘(G1a/G1b/G2/G4/G4b/G6)現況只證明「強模型上成立」,
-  要當驗收證據需在 Sonnet 重跑。fixture 已可一鍵重建(`setup-sandboxes.sh` 的
-  `make_g6`/`make_g7`/`make_g7_base`)。
+- [x] G 系列 eval 樓層補齊——2026-08-10 G1a/G1b/G2/G4/G4b/G6/G7 **全數在 Sonnet 重跑**,
+  fixture 一併腳本化(`make_g1b`/`make_g1a`/`make_g4`/`make_g4b`)。**不是例行迴歸**:推翻一條
+  決策(見決策節)、掀出一條新缺口(見缺口節)
 - [ ] R4 non-blocking 餘一項:**新增 prose 的中文半形標點與既有全形混排**。2026-08-08 未做——
   「新增 prose」指哪一批已不可考,純風格、無失敗案例,且該日又寫入大量中文 prose(移動標靶)。
   要做就一次全檔統一,不要逐批追。其餘三項(Transfer 模式 commit 歸屬、evals/README 路徑基準、
@@ -208,6 +205,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   會被收斂的一節,而 `/project log` Step 2 的前提是「此刻 session 記憶還在」——**對別人寫的東西不成立**。
   可能後果:決策被當雙重記載壓掉,摘要還回報「已依 flag 收斂」。同族先例:`ship-state.sh` 的行號診斷
   就是因為多 session 並行時 agent 猜錯超標條目兩次才加的。**觸發條件:觀察到一次真的被壓掉,才動規則。**
+- **kernel 的「fallback conventions 由 repo 勝出」對 host repo 實務上不可達**(2026-08-10 G6 樓層
+  重跑的新 RED):Sonnet 兩次都用 Conventional Commits,而該 repo 明文拒絕它——**根因不是違抗,是
+  `AGENTS.md`/`CONTRIBUTING.md` 的 tool_use 皆為 0,它沒看過那條規則**。safety floor 是被載入的
+  文字所以穩;deference 卻要求一個「先去讀檔」的動作,沒有東西保證它發生(與 G1b 同一失效面)。
+  **觸發:真的要在別人的 repo 常態工作時**——候選解三條與代價見
+  `claude/evals/contract-evals.md`「這條 RED 的根因不是違抗，是那個檔從頭到尾沒被打開」。
 - **`AGENTS.md` 的 `Generated docs never win` 是已上線但從未測過的規則**(G5 隨 OpenWiki 一起 DEFER)。
   它是 `No failing scenario, no instruction` 的存量違例——**記著,現在不刪也不為它 churn**。
 - **`codex/AGENTS.md` 與 root `AGENTS.md` 同名不同角色**(前者是全域 Codex 指引的**來源檔**,由
@@ -225,14 +228,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   後果:新機器跑 setup 不會裝、macmini/m4mini 目前也沒有。該 cask 標 `auto_updates`,故 `brewup`
   不會升它(除非 `--greedy`)。**它沒有 `generate_completions_from_executable`,不會踩 codex 那個
   Gatekeeper 坑**,但首次執行仍會走核可流程——要裝就在該機 console 前跑一次。
-- **兩部個人 MacBook 不在 `inventory.conf`**(一部公司、一部家中,經 VPN ssh 進 macs),`dotsync` /
-  `allup` 都涵蓋不到,且**一次只能處理一部**。2026-08-09 已把 `~/.ssh/config` 的重生下沉成
-  `ensure-ssh-config.sh` 並接進 `brewup`,所以**跟上一次之後就不必再手動補齊**;補齊程序(含
-  「打 `brewup` 沒用、必須用絕對路徑繞過舊 alias」)見 repo 根 `CLAUDE.md`「系統更新與同步」。
-  兩機狀態:[x] 家裡那部 2026-08-09 補齊(使用者回報,未由本 session 獨立複驗);[ ] 公司那部未查,
-  走 `bootstrap` 那條路即可、**已不擋任何事**(原本卡的 Phase 3 已 DROP)。
-  **加進 inventory 這條路今天不可用**:2026-08-09 查 tailnet 沒有它們;且常離線的筆電會讓每次
-  dotsync 都帶 ❌,訊號被稀釋。**待確認是刻意(終端設備不入清單)還是缺口。**
+- **兩部個人 MacBook 不在 `inventory.conf`**(公司／家中,經 VPN ssh 進 macs),`dotsync`／`allup`
+  涵蓋不到。兩機已於 2026-08-09／08-10 各自補齊(使用者回報,未獨立複驗),一次性程序自此不需要。
+  **留下的是結構性事實**:要跟上得**在該機本地跑 `brewup`**,不會有人幫它們 pull,而**漏跑是無聲的**
+  (skill／地雷／模板停在舊版)。**加進 inventory 這條路今天不可用**:2026-08-09 查 tailnet 沒有它們,
+  且常離線的筆電會讓每次 dotsync 都帶 ❌、稀釋訊號。**待確認是刻意(終端設備不入清單)還是缺口。**
+
 
 ## 移交準備度
 
