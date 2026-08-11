@@ -9,6 +9,31 @@
 - 報告模板 — Codex 第三方審查通過（含 Completeness 深井、False Positive 記錄）
 - 報告模板 — Codex 第三方審查終止（C3 仍有 true positive）
 - 報告模板 — Codex 第三方審查 blocked（救援階梯走完仍無報告）
+- 同型處置紀錄（共用區塊，五個終態模板引用同一份定義）
+
+## 同型處置紀錄（共用區塊）
+
+> **單一定義，五處引用。** autofix 通過／autofix 終止／codex 通過／codex 終止／blocked 五個終態模板各放一行引用本節，**不複製本表**——複製會漂移，而單一定義讓「五個模板都接上」成為 grep 可驗的靜態事實（`tests/run.sh` 有守門）。
+
+**觸發契約以「本次流程是否產生過修復」定義，不看走哪個終態**：凡 autofix／autocodex 產生過修復 commit，該次的最終報告**必須**帶本節；零修復（R1 直接通過、C1 全為 false positive）才整節省略。
+
+> 終止報告最需要它——R5 終止時 branch 上本就躺著四輪修復，而收斂失敗時該問的正是「每輪有沒有做同型全修」。只做通過路徑等於在最需要的地方最弱。
+
+每條被修復的 finding 一列，**兩軸並排、零命中也要寫**（軸的定義見 `../SKILL.md`「修復原則」與 `reviewer-brief.md`「同型掃描」）：
+
+| 規則（用規則的語言，不是那一處的語言） | 命中點掃描（範圍／命中數） | 輸入空間（處理方式／證據） |
+|---|---|---|
+| SQL 查詢形狀的逃逸口 | `rg` 全 repo，1 處 | 根治：黑名單改 allowlist，不依賴枚舉關鍵字 |
+| `paths_overlap` 的重疊判定 | 全 repo 僅 1 處使用 | 列舉：4×4 等價類 14 格有效組合，逐格驗 |
+| `judgment.py` docstring 引用已撤回宣稱 | `rg` 全 repo，3 處 | n/a — 非「輸入→行為」型（純文件 stale） |
+
+**第三欄的合法值只有三種，其一必須成立**：
+
+1. **列舉** — 輸入空間有限且可分割：寫出等價類／邊界分割與逐項驗證證據。**不必是笛卡爾格**，能分割即可。
+2. **根治** — 輸入空間無限或不可枚舉（injection、並行狀態、錯誤處理路徑）：改成結構上不依賴枚舉的解（allowlist、型別約束、單一入口），並說明為何該解對整個空間成立。**這是完整處置，不是次等選項**——把規則抽象到更高層並根治，優於逐個補命中點。
+3. **n/a** — 僅限該 finding 不是「輸入→行為」型（純文件 stale、命名不一致），且須寫明為何不是。
+
+**`n/a` is NOT for "the input space was too large to verify."** That case is category 2 and requires a structural fix. Writing `n/a` there is the exemption this whole section exists to close.
 
 ## 報告模板 — 未通過（單 repo）
 
@@ -124,6 +149,9 @@
 - [建議] `file.ts:15` — {描述}
 {若無建議等級問題則省略此區塊}
 
+### 同型處置紀錄
+{填法見本檔「同型處置紀錄（共用區塊）」——每條修復過的 finding 一列，命中點軸與輸入空間軸並排，零命中也要寫。本次流程產生過修復即必填；零修復（R1 直接通過）才整節省略}
+
 ### Commit 建議
 {若有多筆 review fix commit（如 fix: address review findings）}
 主 agent 執行 squash：跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd --repo <r>`，把 `squash-cmd:` 整行照抄執行（腳本已解析出固定 hash 並驗過存在性與祖先關係；回 `verdict: STOP` 就停下交使用者，勿自行湊 hash、勿用會移動的 ref）。reset 後重新 commit。**message 依 `squash-preserve:` 分流**：無 preserve → 採原始功能變更的語意（如 `feat: 新增 X 功能`）；有 preserve → 新 commit 只是相對保留 commit 的增量，message 描述該增量（如 `fix: 修正 X 的邊界處理`），**不得沿用被保留 commit 的 subject**。兩者都不用 `fix: address review findings`，格式遵循專案 Conventional Commits 慣例。`verdict: WARNING`（無 commit 可 squash）→ 跳過 reset 與 commit，**但仍要跑 `clear`**（審查已完成，anchor 殘留會讓下一場被誤判成續跑）。
@@ -167,6 +195,9 @@
 | R3 | {N} | {N} | {是/否 + 一句} | {一句話} |
 | R4 | {N} | {N} | {是/否 + 一句} | {一句話} |
 | R5 | {N} | — | {是/否 + 一句} | 未自動修復 |
+
+### 同型處置紀錄
+{填法見本檔「同型處置紀錄（共用區塊）」。**終止報告必填**——branch 上已有前四輪修復，本表正是上方「根因與前輪重複？」欄的證據來源：對照它就看得出是同一條規則沒被一次修完，還是各輪不同根因的健康收斂}
 
 ### 收斂失敗分析
 {為什麼四輪修不完——是修 A 引入 B？結構性問題反覆觸發？還是同一條規則的實例每輪只修一個？}
@@ -231,6 +262,9 @@
 {列出被判定為 false positive 的 findings 及理由，供使用者參考}
 - [FP] {finding 描述} — {為何是 false positive}
 
+### 同型處置紀錄
+{填法見本檔「同型處置紀錄（共用區塊）」。**涵蓋主 agent 審查階段與 codex 階段的全部修復**，非只列 codex 那幾條；零修復（C1 全為 false positive 且主審階段也沒修過）才整節省略}
+
 ### Commit 建議
 {與通過報告相同——squash base 之上的 review fix commits（主 agent 審查階段 + codex 階段）壓成一顆，message 依 `squash-preserve:` 分流（無 preserve → 原始功能語意；有 preserve → 描述相對保留 commit 的增量）；`squash-note:` 列出的未納入者不自行擴大 reset}
 
@@ -267,6 +301,9 @@
 ### False Positive 記錄
 - [FP] {finding 描述} — {為何是 false positive}
 
+### 同型處置紀錄
+{填法見本檔「同型處置紀錄（共用區塊）」。**必填**——C3 仍有 true positive 時，本表是判斷「剩餘問題是修復震盪，還是同一條規則沒被一次修完」的證據；涵蓋主審階段與 codex 階段的全部修復}
+
 ### 建議下一步
 {具體建議：手動修復剩餘問題後可再跑 `/deep-review autocodex`}
 
@@ -302,6 +339,9 @@
 
 ### 主 agent 審查結論（不受影響）
 {一句話：Step 1–5 的結論與 fix commits 狀態}
+
+### 同型處置紀錄
+{填法見本檔「同型處置紀錄（共用區塊）」。**主審階段若產生過修復即必填**——codex 沒審成不影響主審那幾輪的處置該不該留痕；主審零修復才整節省略}
 
 ### 建議下一步
 - 環境錯誤（exit 5）→ 先修環境（codex 是否在 PATH／repo 與 range 是否正確），再重跑 `/deep-review autocodex`
