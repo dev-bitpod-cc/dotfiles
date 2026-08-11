@@ -12,7 +12,25 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(無進行中工作項——契約層與 dossier 可攜性兩批已收斂,見里程碑。凍結計畫:
+**測試契約拆檔（`docs/testing-contract.md`）**
+
+- **Context**:root `CLAUDE.md` 29,661 bytes,其中「測試」節 15,287 bytes(51.5%)且**是單一 15,123-byte 行**。
+  對照本 repo 自訂的 dossier 門檻(`ship-state.sh`:`DOSSIER_MAX_BYTES=24576`、`DOSSIER_MAX_LINE_BYTES=1000`)
+  ——**受管的 `STATUS.md`(21,236B)合規,沒人管的 `CLAUDE.md` 超標 21%、單行超標 15 倍**。
+  且 `claude/CLAUDE.md`(29,020B)是全域 symlink,本 repo 每 session 契約載入合計 58,681B。
+- **Goal**:gate 的判準/反例/設計理由移入 `docs/testing-contract.md`(正常換行分節),
+  `CLAUDE.md`「測試」節只留 always-on 的行為約束 + 指標。
+- **AC**:①`./tests/run.sh` exit 0(xref-gate 會驗新指標與既有指向「測試」節的引用);
+  ②`CLAUDE.md` 全檔 < 24,576B 且最長行 < 1,000B;③搬走的內容零遺失(逐節對照);
+  ④新檔按 `tests/run.sh` 節號組織,原文未涵蓋的節明確標為缺口、不編造。
+- **Constraints**:**不搬 always-on 行為約束**——「何時必跑」「以 exit code 判綠紅」
+  「不放寬 pattern」這類不改 gate 也要遵守的規則留在 `CLAUDE.md`,搬走就落入 H6 失效模式
+  (規則不在 always-on context 就不生效)。新檔的指標放 `AGENTS.md`「Repo specifics」
+  而**不進 portable 權威矩陣**(理由見決策節)。
+- **本次假設(待確認)**:`AGENTS.md:67` 與 `CLAUDE.md` 對「何時必跑」的並存**不消除**——
+  理由見決策節「兩個 agent 讀不同檔」。
+
+(其餘契約層與 dossier 可攜性兩批已收斂,見里程碑。凍結計畫:
 `docs/plans/2026-08-09-repo-contract-extraction.md`、`docs/plans/2026-08-10-dossier-portability.md`)
 
 **剩餘工作全部帶觸發條件、皆不在進行中**:①**Phase 3 改名 DROP**——Codex 進生產線再議;
@@ -27,6 +45,20 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-11 `AGENTS.md` 與 `CLAUDE.md` 對「何時必跑測試」的重複刻意保留**,並把
+  exactly-one-place 的例外條款從「kernel replicas」一般化為「**必須 always-on 且讀者載入不同檔**」。
+  拆檔時本想一併消除該重複,查下去發現它是**結構性的**:Codex 只讀 `AGENTS.md`、Claude 只自動載入
+  `CLAUDE.md`,指標對兩者其中之一必然落空(同 kernel replica 的成因)。**不新增第二個 managed block**
+  ——那三行短到漂移不出實質差異,gate 的建置成本高於收益。
+- **2026-08-11 `docs/testing-contract.md` 不進 portable 權威矩陣**,指標只寫在 `AGENTS.md`
+  「Repo specifics」。portable block 是要**整段裝到其他 repo** 的,加一列等於把本 repo 的檔案結構
+  強加給別人。(順帶否決了「按 AGENTS/CLAUDE 拆分權威矩陣那一列」的提案:多數 repo 只有一份契約檔,
+  寫死分工在只有 `CLAUDE.md` 的 repo 整條無法適用;現行「最近者勝」對 N 份都成立。)
+- **2026-08-11 驗證「重排後內容零遺失」只有 token 級檢查有效**。滑動窗口(剝非中文後比對)與
+  語意片段(按標點切)兩種都被重排大量假陽性淹沒——前者把原本被英文分隔的中文黏成原文不存在的串
+  (**與 xref-gate 檔頭警告的「整檔併成一串」同源,只是反過來造成假遺失**),後者對「含→涵蓋」
+  「逗號→分號」這類改寫全數判缺。有效的是抽 `code` 識別字與日期逐一比對(99/99、3/3)。
+  下次做搬遷驗證直接用 token 級,別再繞前兩種。
 - **2026-08-10「進行中含 ✅」flag 收窄到條目形狀(list item)**:krepo 連三次 ship 被同一張盤點表
   誤報(那是子項狀態欄)。**兩個候選各被實地反例否決**:「整張表全 ✅ 才算做完」——那張表本就 4 列
   全綠;「續行併入所屬條目」——表格前更早處仍有 bullet,寬續行模型照樣收回來。**刻意放棄**:續行 ✅
