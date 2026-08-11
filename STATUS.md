@@ -27,6 +27,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-11 拆檔時反向指標依「指向規則 vs 指向細節」分流,不是一律改**。11 處指向
+  `claude/CLAUDE.md`「已知地雷」的引用:指向**規則本身**的 4 處不動(`ensure-ssh-config.sh`、
+  `evals/README.md`、`tests/run.sh`、`ship-state.sh`——它們要的就是 always-on 那句),指向
+  **機制/鑑別法**的 3 處改指新檔,archive 5 處 write-once 不動。**xref-gate 抓不到這類斷裂**
+  ——節名還在、內容搬走了,gate 照樣綠;只能人工分流。改完以**突變測試**確認 gate 真的在驗新指標
+  (把節名改錯→命中,還原→乾淨),否則「全綠」可能只是掃描器沒匹配到。
 - **2026-08-11 `AGENTS.md` 與 `CLAUDE.md` 對「何時必跑測試」的重複刻意保留**,並把
   exactly-one-place 的例外條款從「kernel replicas」一般化為「**必須 always-on 且讀者載入不同檔**」。
   拆檔時本想一併消除該重複,查下去發現它是**結構性的**:Codex 只讀 `AGENTS.md`、Claude 只自動載入
@@ -41,34 +47,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   (**與 xref-gate 檔頭警告的「整檔併成一串」同源,只是反過來造成假遺失**),後者對「含→涵蓋」
   「逗號→分號」這類改寫全數判缺。有效的是抽 `code` 識別字與日期逐一比對(99/99、3/3)。
   下次做搬遷驗證直接用 token 級,別再繞前兩種。
-- **2026-08-10「進行中含 ✅」flag 收窄到條目形狀(list item)**:krepo 連三次 ship 被同一張盤點表
-  誤報(那是子項狀態欄)。**兩個候選各被實地反例否決**:「整張表全 ✅ 才算做完」——那張表本就 4 列
-  全綠;「續行併入所屬條目」——表格前更早處仍有 bullet,寬續行模型照樣收回來。**刻意放棄**:續行 ✅
-  與表格式待辦不再亮。判準註解與六條 fixture 是權威。
-- **2026-08-10 模板只帶「做錯會壞掉」的生命週期規則**:模板帶走了結構(節名+每節放什麼),沒帶走
-  生命週期規則——盤點 `references/dossier.md`(私有、不隨 repo 走)發現同類共 6 條缺席。**補 3 條**
-  (完成即移入里程碑、死路不刪、不得加 append-only log;各有實地事故),**排除**總量門檻/事件當下
-  記錄/stale 比沒有更糟——後者是「做了比較好」,而模板刻意壓短。⚠️ **排除是刻意的,下輪審查再提
-  不是新發現。** 附帶:pattern gate 只抓列舉過的東西,綁外部生態的耦合(`.env.example`)掃不到。
-- **2026-08-10 installer 不得只寫 pointer,必須把 kernel block 本體裝進目標 repo 的 `CLAUDE.md`**
-  (推翻計畫的 P0-2 樂觀分支)。理由見上一條:pointer 即使在自動載入的檔案裡,也只是「告訴你契約在
-  別處」,瑣碎任務照樣不會去讀它指向的檔。代價是**每個安裝過的 repo 都多一份無機械守門的複本**
-  (`tests/run.sh` 只跑本 repo),與 2026-08-08 xref gate 那條不對稱同型。
-- **2026-08-09 本輪範圍界線:無 RED 者一律 DEFER 並記觸發條件**(防下一個 session 的對抗式 review
-  原樣再提一次):①`transfer onboard` 子形狀 → 等第一個真實協作者(**已存在的模板比空白頁更容易被
-  照填**,會鎖死第一次真實情境的形狀);②`contract-flag:` 訊號 → 等「缺契約沒人發現」的實例;
-  ③skill 可攜化 → 等真實需求;④全域檔與契約 Working discipline 的措辭重複 → 等實測到行為分歧。
-- **2026-08-09 handoff 的跨主機 docs commit 與 ready4quit「一律不 commit」刻意相反**:前者是跨機
-  唯一媒介(不 commit 就沒有管道),後者是 pre-quit 純驗證(commit 權責屬 `/project log`)。兩者都對
-  但沒互相標註,下次審查易報成不一致,故記於此。**刻意不寫進 SKILL.md body**——不是觀察到的 agent
-  失敗,違反 `No failing scenario, no instruction`,只會替每次載入加 token。
-- **2026-08-08 散佈憑證變更的三條紀律**(全機隊改 SSH 身分與 key 檔名時實地得出):
-  ①**`cp` 不 `mv`**——新舊並存,任一步失敗都不斷線;遠端拉 dotfiles 靠的正是 GitHub SSH,
-  認證改壞又散佈出去就拉不到修正,只剩 `ssh <host>`(內網 CA cert)進去手改。
-  ②**散佈前提是變更已進 `origin/main`**——遠端 `dotsync` 拉的是 main,本地 branch 未 push
-  時散佈等於空轉(實地踩過一次,以為散完了其實什麼都沒變)。
-  ③**先散一台走完全程再放其餘**——挑最有代表性的那台(這次是 db01:remote 最多、唯一有
-  `insteadOf`、且有 krepo 可驗依賴路徑),不是挑最安全的。
+
 ## 死路(試過但放棄——防重工)
 
 - **mc(Midnight Commander)當遠端檔案管理器**:評估後放棄,理由是**協定層而非偏好**——
@@ -138,12 +117,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-09 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-11 全域 CLAUDE.md 已知地雷拆檔:`claude/CLAUDE.md` 29,020→23,704 bytes(最長行 1,386→993),實地事故/負面結果/鑑別法/修復序列移入 `claude/known-hazards.md`。**拆法與上一批不同**——上一批整節搬走,這批是**每條地雷內部拆**(留觸發形狀+靜默後果+正確寫法,搬案例與診斷),因為地雷是「動手當下要知道」而非「改 gate 時才需要」。最大宗是 cask/Gatekeeper 條 4,005→約 550 bytes(它其實是運維故障、不是寫程式會踩的雷,已有 `brewfix` 入口)。966 斷言全綠。
 - ✅ 2026-08-11 測試 gate 契約拆檔:root `CLAUDE.md` 29,661→15,807 bytes(最長行 15,123→429),gate 的判準/反例/設計理由移入 `docs/testing-contract.md`(按 `tests/run.sh` 節號組織)。**留在 always-on 的是行為約束**——何時必跑、以 exit code 判綠紅、xref gate 的「不放寬 pattern」,搬走即落入 H6 失效模式。順帶把 exactly-one-place 的例外從「kernel replicas」一般化為「**必須 always-on 且讀者載入不同檔**」(決策節有為何不消除那處重複)。966 斷言全綠。
 - ✅ 2026-08-11 deep-review 同型掃描兩軸拆分 + 產出物化：根因是 skill 自己發的**跨軸豁免**——`reviewer-brief` 的「已掃過、無其他命中，不必重掃」，但 reviewer 掃的是**命中點軸**、fixer 缺的是**輸入空間軸**。已收窄該句作用域、SKILL 拆成兩條軸並要求掃描先於編輯、五個終態報告必填「同型處置紀錄」（單一定義 + 五處引用，`tests/run.sh` 1f 守覆蓋率，含逐處抽離的 RED 自檢）。新增 **F22/d8**（輸入空間軸）與 **F23/d9**（命中點軸）：F22 首跑因 reviewer 自己撐開兩軸判 **INVALID**（空條件），改注入式 harness 後 5/6；F23 首跑 5/5——R1 一輪即四處全修（966 PASS）
-- ✅ 2026-08-10 dossier 可攜性收斂：G7 transfer clean-room eval（Sonnet；baseline **1/2 失敗**、修後 2/2）＋ `STATUS-template.md` 全檔可攜化（5 增 5 刪，純置換）＋ 刪 `codex/AGENTS.md` 與 kernel C2 矛盾的全域斷言 ＋ Phase 3 DROP 四處清理 ＋ G6 非強加測試 2/2（956 PASS）
-- ✅ 2026-08-10 G1b 成對實驗：實測 root `CLAUDE.md` 自動載入、root `AGENTS.md` 不會（clean room 不帶全域檔）→ kernel 擴為四份逐字複本，並定案 installer 必須裝 kernel 本體而非 pointer（956 PASS）
-- ✅ 2026-08-09 契約層抽取 Phase 2：repo 根 `AGENTS.md`（kernel：safety floor 6 + fallback conventions 2；portable：權威矩陣 + working discipline）＋ 三份 kernel 逐字複本 ＋ `tests/kernel-gate.py`（漂移／掏空／缺份／marker／canary／可攜性，含 10 條自檢 fixture）。`claude/CLAUDE.md` 與 `codex/AGENTS.md` 交出被 kernel 承接的條文（956 PASS；四個突變各驗過會紅，含真實 repo 改一個字的漂移）
-
 
 ## 已知缺口
 
@@ -187,7 +163,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 - **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper)**:2026-08-07 第三次發作。復原已有入口
   `brewfix`(唯讀診斷,`--fix` 才動手);機制、鑑別法、三條走不通的預防路徑全文見
-  `claude/CLAUDE.md`「已知地雷」,**此處不重述**。**仍未解**:確切觸發條件未知且事後無法重現
+  `claude/known-hazards.md`「cask 升版卡死」,**此處不重述**。**仍未解**:確切觸發條件未知且事後無法重現
   (同版本內容換路徑執行正常),要重現只能等該 cask 真正出新版。**未決**:預先設 xattr `0x0040`
   技術上可行,但前提已被負面結果動搖、代價卻是確定的(拿不到 tarball 簽章身分)——
   **用確定的代價換不確定的效果,暫不做**,優先靠已實證的復原路徑。
