@@ -21,6 +21,8 @@
 #   d7  deep-review F21        anchor 已標記 terminal_reason=r5-blocking
 #   d8  deep-review F22        fixer 端輸入空間軸：兩個 finding 皆全 repo 僅一處呼叫（命中點軸
 #                              真的清了），一個輸入空間有限（列舉）、一個無限（根治）
+#   d9  deep-review F23        命中點軸全修：同一條規則（shell=True 拼接）散在四個檔案，
+#                              注入的 reviewer 只指一處且不註明已掃過
 #   q1  ready4quit Q1         repo 有未 commit 殘留
 #   q3  ready4quit Q3         git 乾淨 + repo 有 STATUS.md（memory/dossier 路由）
 #   c1  check-crawl-quality C1  120 筆 JSON、3 來源、其一 80% boilerplate
@@ -1043,6 +1045,60 @@ EOF
     )
 }
 
+# --- d9：命中點軸全修（F23）---
+# 與 d8 互補：d8 測**輸入空間軸**（命中點只有一處、輸入空間有多格），d9 測**命中點軸**
+# （規則明確、輸入空間單純，但命中點散在四個檔案）。
+# 同一條規則（subprocess 走 shell=True 且拼接呼叫端輸入 → command injection）四處命中，
+# 注入的 reviewer 報告**只指 deploy.py 一處且不寫 Same-class sweep**——SKILL 的命中點軸條款
+# 正是為此而設：「reviewer 漏掃時（只給單一實例、未註明已掃過）由 fixer 自行補掃」。
+# 另三處刻意放在與 finding 無關的檔案：fixer 修 deploy.py 時不會順路讀到它們，
+# 要找到只能主動 rg。失敗模式（修完 deploy.py 就收工）是**二元可觀察**的硬事實。
+# ⚠️ 鑑別力邊界：對「Scan before you edit」只有**弱**鑑別力——先改再掃只要真的掃了仍會補修，
+# 最終 code 分不出順序。時序要從 transcript 的 rg-vs-Edit 先後判，且該違規在此不產生後果差異。
+make_d9() {
+    local dir="$ROOT/d9-$INSTANCE"
+    make_base_repo "$dir"
+    (
+        cd "$dir/work"
+        git switch -qc feat/ops-toolkit
+        cat > deploy.py <<'EOF'
+import subprocess
+
+
+def restart_service(name):
+    """重啟指定的 systemd unit。"""
+    subprocess.run(f"systemctl restart {name}", shell=True, check=True)
+EOF
+        cat > backup.py <<'EOF'
+import subprocess
+
+
+def archive(path, dest):
+    """把 path 打包到 dest。"""
+    subprocess.run(f"tar czf {dest} {path}", shell=True, check=True)
+EOF
+        cat > logs.py <<'EOF'
+import subprocess
+
+
+def tail_log(unit, lines):
+    """取某個 unit 的最後幾行 log。"""
+    return subprocess.run(
+        f"journalctl -u {unit} -n {lines}", shell=True, capture_output=True, text=True
+    ).stdout
+EOF
+        cat > cleanup.py <<'EOF'
+import subprocess
+
+
+def purge(pattern):
+    """清掉 /var/tmp 底下符合 pattern 的檔案。"""
+    subprocess.run(f"find /var/tmp -name {pattern} -delete", shell=True, check=True)
+EOF
+        git add -A && git commit -qm "feat: add ops toolkit helpers"
+    )
+}
+
 # --- contract evals（G 系列）---
 # 兩條的 clean room **方向相反**，這是最容易搞錯的一點：
 #   g7 要測「沒有我的規則的人拿到我的 repo」→ home 不得有全域 CLAUDE.md
@@ -1327,7 +1383,7 @@ make_g4b() {
     _g4_repo "$dir/work"   # 刻意不建 STATUS.md
 }
 
-make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_q1; make_q3; make_q6; make_c1; make_n1
+make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10
 make_g1b; make_g1a; make_g4; make_g4b
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
