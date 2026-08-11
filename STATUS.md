@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-10)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-11)
 
 ---
 
@@ -124,6 +124,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-09 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-11 deep-review 同型掃描兩軸拆分 + 產出物化：根因是 skill 自己發的**跨軸豁免**——`reviewer-brief` 的「已掃過、無其他命中，不必重掃」，但 reviewer 掃的是**命中點軸**、fixer 缺的是**輸入空間軸**。已收窄該句作用域、SKILL 拆成兩條軸並要求掃描先於編輯、五個終態報告必填「同型處置紀錄」（單一定義 + 五處引用，`tests/run.sh` 1f 守覆蓋率，含逐處抽離的 RED 自檢）。新增 **F22/d8**（輸入空間軸）與 **F23/d9**（命中點軸）：F22 首跑因 reviewer 自己撐開兩軸判 **INVALID**（空條件），改注入式 harness 後 5/6；F23 首跑 5/5——R1 一輪即四處全修（966 PASS）
 - ✅ 2026-08-10 dossier 可攜性收斂：G7 transfer clean-room eval（Sonnet；baseline **1/2 失敗**、修後 2/2）＋ `STATUS-template.md` 全檔可攜化（5 增 5 刪，純置換）＋ 刪 `codex/AGENTS.md` 與 kernel C2 矛盾的全域斷言 ＋ Phase 3 DROP 四處清理 ＋ G6 非強加測試 2/2（956 PASS）
 - ✅ 2026-08-10 G1b 成對實驗：實測 root `CLAUDE.md` 自動載入、root `AGENTS.md` 不會（clean room 不帶全域檔）→ kernel 擴為四份逐字複本，並定案 installer 必須裝 kernel 本體而非 pointer（956 PASS）
 - ✅ 2026-08-09 契約層抽取 Phase 2：repo 根 `AGENTS.md`（kernel：safety floor 6 + fallback conventions 2；portable：權威矩陣 + working discipline）＋ 三份 kernel 逐字複本 ＋ `tests/kernel-gate.py`（漂移／掏空／缺份／marker／canary／可攜性，含 10 條自檢 fixture）。`claude/CLAUDE.md` 與 `codex/AGENTS.md` 交出被 kernel 承接的條文（956 PASS；四個突變各驗過會紅，含真實 repo 改一個字的漂移）
