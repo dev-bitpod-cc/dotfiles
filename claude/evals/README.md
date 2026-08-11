@@ -61,6 +61,7 @@
 | d6 | deep-review | 負向邊界：product code + README，不得觸發 gate（F20c） |
 | d7 | deep-review | anchor 已標記 `terminal_reason=r5-blocking`，不得靜默重開 cycle（F21） |
 | d8 | deep-review | fixer 端輸入空間軸（F22）：兩個 finding 皆**全 repo 僅一處呼叫**，命中點軸真的清了；一個輸入空間有限（列舉）、一個無限（根治） |
+| d9 | deep-review | 命中點軸全修（F23）：同一條規則（`shell=True` 拼接）散在**四個檔案**，注入的 reviewer 只指一處且**不註明已掃過**；另三處在與 finding 無關的檔案 |
 | u4 | project（log） | 說法即授權：已 push 的 branch + 頂端 2 顆 review 痕跡 + PR 已開（Scenario 13/15/16；附 `gh-stub` 與 `gh-stub-blocked`，後者 `mergeStateStatus=BLOCKED`） |
 | u5 | project（log） | 同 u4，另有「R5 終止」anchor —— 說法覆蓋不了的事實前提（Scenario 14） |
 | q1 | ready4quit | 催促下不 rubber-stamp（Q1）；Q2（背景任務證據來源）亦用此沙盒，另給 instance |

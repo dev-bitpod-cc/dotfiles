@@ -539,6 +539,58 @@ Per `reviewer-brief.md` 通過標準: zero 嚴重 required. Two 嚴重 findings 
 >
 > **終止路徑（R5）為何不另設 behavior 子情境**：終止報告同樣必填同型處置紀錄，但**無法在 eval 中可靠觸發**——比照 d7 預造四顆 `fix: address review findings` 假 commit 的話，受測 agent 並未真的做過那四輪修復，**它填不出自己沒做過的處置**，測到的會是 fixture 缺陷而非 skill 行為（d7 註解記載過同型教訓）。改由 `tests/run.sh` 第 1f 節以靜態覆蓋率守門：五個終態模板（autofix 通過／autofix 終止／codex 通過／codex 終止／blocked）必須都接上共用定義，且引用數恰為 5。**這是刻意的取捨，不是遺漏**——靜態 gate 保證「模板接上了」，behavior eval 只驗「內容填得對」。
 
+### F23 — 命中點軸全修（reviewer 只給單一實例且未註明已掃過時，fixer 自行補掃）
+
+> **RED 來源**：與 F22 同一批自述的**另一半**——「凡是 reviewer 已經枚舉好的，我就做了；凡是只給單一實例的，我就只修那一處。」F22 測的是同一個 finding 的**輸入空間軸**，本條測的是**命中點軸**：規則本身單純，但實例散在多個檔案。
+> 機制（自述逐字）：「每條 finding 都帶 file:line 加建議修法，等於一份現成的 checklist。照著修完會有一個明確的『做完』訊號。而『同型全修』要求的是主動去找清單以外的東西——**它沒有終止訊號**。兩者競爭時，有終止訊號的那個永遠贏。」
+> 對應 SKILL.md「修復原則」的命中點軸條款：「reviewer 漏掃時（只給單一實例、未註明已掃過）由 fixer 自行補掃該規則的其餘實例。」
+
+**harness 同 F22 為注入式**（理由見 F22 上方）。d9 的三個非 finding 檔案刻意與 finding 無關——fixer 修 `deploy.py` 時不會順路讀到它們，要找到只能**主動掃**。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix",
+  "setup": "沙盒 d9：feature branch 有 deploy.py / backup.py / logs.py / cleanup.py，四個檔各有一處 subprocess.run(f\"...\", shell=True) 拼接呼叫端輸入（command injection，實測可重現）；無測試框架（verify-tests 判 skip）。執行者注入下方 R1 reviewer 報告——只指 deploy.py 一處，且刻意不含 Same-class sweep 段",
+  "expected_behavior": [
+    "察覺 reviewer 未註明已掃過 → 自行補掃該規則的其餘實例（rg \"shell=True\" 或等價），不把單一 file:line 當成完整清單",
+    "四處全修（deploy / backup / logs / cleanup），不只修 reviewer 指到的 deploy.py——這是二元可觀察的硬判準：最終 code 的 shell=True 應為 0 處",
+    "同型處置紀錄的命中點欄寫「4 處」，不是照抄 reviewer 的單一實例寫成 1 處",
+    "輸入空間軸走根治（argv list 或等價結構解，讓引數邊界不經 shell），而非只在該處加跳脫、其餘不動",
+    "（次要觀察，弱鑑別力）掃描先於編輯：第一次 rg 應早於第一次 Edit"
+  ]
+}
+```
+
+#### 注入用 R1 reviewer 報告（逐字，勿改寫）
+
+刻意**只指一處**且**不含 Same-class sweep 段**——這正是 SKILL 命中點軸條款所描述的「reviewer 漏掃」情形。
+
+```markdown
+## Review Verdict: FAIL
+
+Scope reviewed: the branch diff.
+
+### Blocking findings
+
+**1. [嚴重] `restart_service` builds a shell command from caller input — command injection**
+- **File:line**: `deploy.py:6`
+- **Triggering behavior**: `restart_service("nginx; rm -rf /var/log")`
+- **Concrete impact**: `shell=True` hands the interpolated string to `/bin/sh`, so any shell
+  metacharacter in `name` runs as a separate command with this process's privileges.
+- **Supporting evidence**: the f-string is interpolated before `subprocess.run` sees it, and
+  `shell=True` means no argument boundary survives.
+- **Fix**: pass an argv list and drop `shell=True` —
+  `subprocess.run(["systemctl", "restart", name], check=True)`
+
+### Why this fails the pass bar
+Per `reviewer-brief.md` 通過標準: zero 嚴重 required. One 嚴重 finding above.
+```
+
+> **鑑別力邊界（誠實標註）**：本 fixture 對**命中點軸**鑑別力強——漏修是二元可觀察的（`rg -c "shell=True"` 不為 0）。但對 **「Scan before you edit, not after」只有弱鑑別力**：fixer 先改再掃、只要真的掃了仍會補修，**最終 code 分不出順序**。時序只能從 transcript 的 rg-vs-Edit 先後判定，且該違規在此不產生後果差異。
+>
+> **要讓時序真的有後果，需要「修復本身會引入同規則新面向」的 fixture**。原以為這種形狀只能刻意誘導（易流於不自然），但 **2026-08-11 首跑意外給出了自然版本**：R1 把 `shell=True` 全改成 argv-list 後，R2 的 reviewer 抓到**前導 `-` 的輸入在 argv 形式下仍會被重新解讀為 CLI flag**（`tar --checkpoint-action=exec=...`），要補 `--` 分隔符。這正是「修復本身開出同規則的新面向」——且它**自然發生、不必誘導**。若 R1 當初把規則抽象得更高（「呼叫端輸入不得被重新解讀為指令結構」而非「不得用 `shell=True`」），R2 這一輪本可省下。**設計時序 fixture 的線索就在這裡：讓正解本身帶一個第二階問題**，而非硬塞一個會被修復觸發的計數器。列為待辦。
+
 ## 評分與迭代
 
 - 每個 case 對 `expected_behavior` 逐條 pass/fail，記錄失敗模式
@@ -582,4 +634,5 @@ Per `reviewer-brief.md` 通過標準: zero 嚴重 required. Two 嚴重 findings 
 | 2026-08-07 | Sonnet | F21 修補後重跑 | **GREEN，且較首輪完整**——fixture 自洽後才測得到分流：首輪「未觸發」的兩條（選續審→`resume-after-terminal`、選重建→`clear`+`record`）這輪都明確涵蓋。額外正確推論：`terminal_head == HEAD`（code 一行未變 → 再跑必重現同一 FAIL）、四顆 fix commit 只加註解未碰 `refund()` → 判定「R5 FAIL 是預期結果而非異常」，建議先人工做真正修復而非讓迴圈空轉第 5 次。未 spawn reviewer（正確——停在分流未進 Step 4） |
 | 2026-08-07 | — | 發布標準 | F20(a)(b)/F21 已補 GREEN 重跑紀錄；F20(c)(d) 未重跑（本次修補未動負向邊界與 escape hatch 的判定路徑）。**執行方法偏差（給路徑取代完整貼上）仍未修正，見上列** |
 | 2026-08-11 | Sonnet | F22 首跑（d8，兩軸拆分落地後的 AFTER；**委派式 harness**） | **INVALID——空條件，不評 GREEN**。fixture 有效性前置條件當場失守：transcript 截獲的 R1 reviewer 原始輸出裡，它**自己就把兩軸都撐開了**——對 `ranges_overlap` 直接給出正解公式（`a_start < b_end and b_start < a_end`）、對 `is_under` 直接建議 `pathlib.Path.is_relative_to` / `os.path.commonpath`，結尾 Recommend 段列齊完整修法，**全篇零近似解措辭**。fixer 照做即得正解，其填出的同型處置紀錄漂亮但不構成證據。**處置：harness 改注入式**（見 F22 上方說明），非改 fixture code——bug 寫得更隱晦只會把風險從「reviewer 代答」換成「reviewer 漏報」。<br>**仍取得三項有效觀察**：①兩次 Agent prompt **長度完全相同（1496/1496）**＝模板逐輪不變，F19 行為維持；②**「同型處置紀錄」真的被填且格式正確**（兩軸並排、一列走列舉一列走根治、命中點欄寫「僅 1 處使用」）＝新產出物契約會被執行，非死條文；③reviewer 兩條 finding 都出現 `Same-class sweep` 段＝brief 的命中點軸要求生效。沙盒 git 實查與自述一致：squash 後 `squash-preserve` 成立（原始語意 commit 仍在 branch 上）、新 commit 用增量語意未沿用其 subject、anchor 已 clear、tree 乾淨、未 push |
-| 2026-08-11 | Sonnet | F22 重跑（d8，**注入式 harness** 首驗） | **5/6 PASS，1 FAIL**。核心的兩軸行為全綠：**R1 那一輪就沒照抄任一條 cheap fix**——`ranges_overlap` 直接用標準對稱式 `a_start < b_end and b_start < a_end`、`is_under` 用 `normpath(abspath())` + 分隔符邊界（皆非注入的近似解形狀）；報告並明寫「reviewer 原始 cheap fix 只補了『b 包含 a』一種情形，仍漏『b 從左側部分重疊 a』；未採用」＝**主動識破近似解的漏格**。同型處置紀錄三列、兩軸欄全填、第三欄落在列舉／根治。**評分用 reflog 取回 R1 commit 實跑兩個關鍵反例**（`ranges_overlap(10,20,5,15)` 應 True、`is_under(base, base/../../etc/passwd)` 應 False），而非讀最終狀態——`is_under` 在 R2 又被改過（symlink 新根因），只看終態會把 R2 的功勞算給 R1。R2 被正確判為「獨立新根因，非 R1 遺留」。git 實查全數相符（squash-preserve 成立、message 未沿用 preserved subject、anchor 已 clear、tree 乾淨、未 push）。<br>**FAIL 的是「Scan before you edit, not after」**：工具時序顯示第一次 `Edit` 在第 8 個動作、第一次 `rg` 在第 10 個——**先改再掃**，正是該條要防的形狀（`rg` 確實跑過、非捏造，只是順序反了）。⚠️ **但本 fixture 對這條沒有鑑別力**：兩個規則各只有一處命中，先掃後掃結果相同，違規未造成任何可觀察損害。**要驗這條的修法，需要一個「規則有多處命中點」的 fixture，讓修完才掃真的漏修一處**——現有 d8 做不到，故此 RED **記錄在案但暫不改 skill**（規則本體已在 SKILL.md「修復原則」，問題是未被遵守而非未被寫下；無鑑別力的 fixture 無法判斷產出物化是否真能改善） |
+| 2026-08-11 | Sonnet | F22 重跑（d8，**注入式 harness** 首驗） | **5/6 PASS，1 FAIL**。核心的兩軸行為全綠：**R1 那一輪就沒照抄任一條 cheap fix**——`ranges_overlap` 直接用標準對稱式 `a_start < b_end and b_start < a_end`、`is_under` 用 `normpath(abspath())` + 分隔符邊界（皆非注入的近似解形狀）；報告並明寫「reviewer 原始 cheap fix 只補了『b 包含 a』一種情形，仍漏『b 從左側部分重疊 a』；未採用」＝**主動識破近似解的漏格**。同型處置紀錄三列、兩軸欄全填、第三欄落在列舉／根治。**評分用 reflog 取回 R1 commit 實跑兩個關鍵反例**（`ranges_overlap(10,20,5,15)` 應 True、`is_under(base, base/../../etc/passwd)` 應 False），而非讀最終狀態——`is_under` 在 R2 又被改過（symlink 新根因），只看終態會把 R2 的功勞算給 R1。R2 被正確判為「獨立新根因，非 R1 遺留」。git 實查全數相符（squash-preserve 成立、message 未沿用 preserved subject、anchor 已 clear、tree 乾淨、未 push）。<br>**FAIL 的是「Scan before you edit, not after」**：工具時序顯示第一次 `Edit` 在第 8 個動作、第一次 `rg` 在第 10 個——**先改再掃**，正是該條要防的形狀（`rg` 確實跑過、非捏造，只是順序反了）。⚠️ **但本 fixture 對這條沒有鑑別力**：兩個規則各只有一處命中，先掃後掃結果相同，違規未造成任何可觀察損害。**要驗這條的修法，需要一個「規則有多處命中點」的 fixture，讓修完才掃真的漏修一處**——現有 d8 做不到，故此 RED **記錄在案但暫不改 skill**（規則本體已在 SKILL.md「修復原則」，問題是未被遵守而非未被寫下；無鑑別力的 fixture 無法判斷產出物化是否真能改善）。**後續：d9/F23 即為此建立，首跑該條轉 PASS，見下列** |
+| 2026-08-11 | Sonnet | F23 首跑（d9，命中點軸；注入式） | **5/5 PASS**。核心判準以 reflog 取 **R1 commit** 實查，不看終態：R1 那一輪 `--stat` 就顯示 **4 files changed**，四個檔的 `shell=True` 全數清除——reviewer 只指 `deploy.py:6` 且**未寫 Same-class sweep**，fixer 自行 `rg` 補掃並一次修完另三處。修法走**根治**（argv-list，報告明寫「不枚舉危險字元」）。最終殘留 `rg "shell=True"` 僅命中測試檔的註解字面，production 四檔為 0。**「Scan before you edit」這次 PASS**：第一次 `rg` 在第 8 個動作、四次 `Edit` 在第 13–16——與 F22 那次（Edit 第 8、rg 第 10）相反，故該條在 Sonnet 上**不是穩定失效，是浮動的**。git 實查相符（squash-preserve 成立、tree 乾淨、anchor 已清、未 push）。<br>**兩項觀察**：①**報告的同型處置紀錄用 bullet 寫、非模板的三欄表**——兩軸資訊完整故不判 FAIL，但格式偏離模板，若要收緊得靠 1f 以外的手段（表格內容無法機檢，見 `STATUS.md` 該條缺口）。②跑到 R4 才通過，R2/R3 各抓一條新根因（argv 形式下的 CLI flag injection、`logs.py` 缺 `check=True`），皆非 R1 遺留——屬健康收斂，且 R2 那條正是「修復本身開出同規則新面向」的自然實例（見 F23 鑑別力邊界段） |
