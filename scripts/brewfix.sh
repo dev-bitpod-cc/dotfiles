@@ -2,7 +2,7 @@
 #
 # brewfix.sh — macOS：cask 升版被 Gatekeeper 卡死的診斷與復原
 #
-# 病灶（完整機制見 claude/CLAUDE.md「已知地雷」）：
+# 病灶（完整機制見 claude/known-hazards.md「cask 升版卡死」）：
 #   帶 `generate_completions_from_executable` 的 cask（如 codex）升版時，brew 會在
 #   install_artifacts 階段對剛解壓、仍帶 quarantine 的 binary **各 exec 一次**
 #   bash/zsh/fish 以產生 completion。該次 exec 若進入 Gatekeeper 首次核可流程而
