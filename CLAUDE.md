@@ -81,7 +81,7 @@ glog=git log --oneline --graph --decorate
 
 - macOS: `brewup`（brew update/upgrade + dotfiles pull + **ensure helper 部署** + Claude plugins + known_hosts 同步）
 - Linux: `brewup`（同 macOS）+ `sysup`（apt update/upgrade）
-- macOS: `brewfix`（cask 升版被 Gatekeeper 卡死時的診斷與復原；**預設唯讀**，`brewfix --fix` 才動手。病灶與鑑別法見 `claude/CLAUDE.md`「已知地雷」）
+- macOS: `brewfix`（cask 升版被 Gatekeeper 卡死時的診斷與復原；**預設唯讀**，`brewfix --fix` 才動手。病灶與鑑別法見 `claude/known-hazards.md`「cask 升版卡死」）
 
 > `brewup` / `sysup` 原為兩個 setup 腳本各自定義的 rc alias（`brewup` 兩份完全相同的複本），現已抽成
 > `scripts/brewup.sh` / `scripts/sysup.sh`，由 `shell/functions.sh` 包裝成函數——雙平台共用同一份邏輯。
