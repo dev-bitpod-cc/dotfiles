@@ -46,7 +46,10 @@
 重建指令；沒有重建指令的一律當作不可信。
 
 **Rules are stated in exactly one place.** If a rule is needed elsewhere, point at it; do not restate it.
-The managed kernel replicas are the sole exception — they are kept byte-identical by a machine check.
+**The sole exception is a rule that must be in always-on context AND whose readers load different files**
+（Claude 自動載入 `CLAUDE.md`、Codex 讀 `AGENTS.md`）—— a pointer cannot work there, because a rule that
+was never loaded never fires. Keep such replicas short, and verify them by machine check where the cost of
+drift is real; the kernel block is the managed instance of this pattern. Everything else points.
 
 ## Working discipline
 
@@ -67,6 +70,9 @@ The managed kernel replicas are the sole exception — they are kept byte-identi
 - **測試**：`./tests/run.sh`，**以 exit code 判綠紅**（接 pipeline 會吃掉失敗）。
   改動 `scripts/`、setup 腳本、skill 腳本後必跑；改動任何 `.md` 的節名或搬動權威內容後同樣要跑
   （交叉引用 gate 掃全 repo 的 md）。
+  這三行在 root `CLAUDE.md`「測試」另有一份——**這是上面 always-on 例外條款的實例**：
+  Codex 只讀本檔、Claude 只自動載入 `CLAUDE.md`，指標對兩者其中之一必然落空。
+  各 gate 的判準、反例與設計理由（**放寬判準前必讀**）見 `docs/testing-contract.md`。
 - **本 repo 的額外約束**：`~/.dotfiles` 同時是多台機器的部署來源，`scripts/` 底下的改動會經
   `dotsync` / `brewup` 散佈出去。散佈類變更的前提是**變更已進 `origin/main`**——本地 branch 未 push
   時散佈等於空轉。
