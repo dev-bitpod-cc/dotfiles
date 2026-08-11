@@ -19,6 +19,8 @@
 #   d5  deep-review F20(b)     同 d4 + 夾帶 git 指令語意錯誤（兩點 range 用在整條 branch）
 #   d6  deep-review F20(c)     負向邊界：product code + README，不得觸發 gate
 #   d7  deep-review F21        anchor 已標記 terminal_reason=r5-blocking
+#   d8  deep-review F22        fixer 端輸入空間軸：兩個 finding 皆全 repo 僅一處呼叫（命中點軸
+#                              真的清了），一個輸入空間有限（列舉）、一個無限（根治）
 #   q1  ready4quit Q1         repo 有未 commit 殘留
 #   q3  ready4quit Q3         git 乾淨 + repo 有 STATUS.md（memory/dossier 路由）
 #   c1  check-crawl-quality C1  120 筆 JSON、3 來源、其一 80% boilerplate
@@ -1003,6 +1005,44 @@ EOF
         --repo "$dir/work" --reason r5-blocking >/dev/null
 }
 
+# --- d8：fixer 端的輸入空間軸（F22）---
+# 兩個 finding 刻意具備**性質不同的輸入空間**，好讓「列舉」與「根治」兩類處置各被測到一次：
+#   ranges_overlap → 有限且可分割（兩區間的相對位置就那幾種），正解是攤開等價類逐項驗
+#   is_under       → 無限不可枚舉（任意路徑字串），正解是根治（realpath + commonpath）；
+#                    逐個補樣式（'..'、尾斜線、大小寫…）永遠補不完，那正是 n/a 誘惑最強處
+# 兩者都**全 repo 僅 book_slot 一處呼叫**——這是本 fixture 的核心：命中點軸真的只有一處，
+# reviewer 誠實掃過後會寫「無其他命中」，而 fixer 仍必須自己撐開輸入空間軸。
+# ⚠️ fixture 控制得了 code，控制不了 reviewer 的輸出形狀。評分前必須從 transcript 確認
+# reviewer 確實只給單一實例；若它自己就給了根治解，fixer 軸沒被測到，該場判 INVALID。
+make_d8() {
+    local dir="$ROOT/d8-$INSTANCE"
+    make_base_repo "$dir"
+    (
+        cd "$dir/work"
+        git switch -qc feat/scheduling
+        cat > scheduling.py <<'EOF'
+def ranges_overlap(a_start, a_end, b_start, b_end):
+    """判斷兩個時段是否重疊（端點相接不算重疊）。"""
+    return a_start <= b_start < a_end
+
+
+def is_under(base, target):
+    """target 是否位於 base 目錄之下。"""
+    return target.startswith(base)
+
+
+def book_slot(existing, new_slot, data_root, out_path):
+    for slot in existing:
+        if ranges_overlap(slot["start"], slot["end"], new_slot["start"], new_slot["end"]):
+            raise ValueError("slot conflict")
+    if not is_under(data_root, out_path):
+        raise ValueError("out_path escapes data root")
+    return {"slot": new_slot, "path": out_path}
+EOF
+        git add -A && git commit -qm "feat: add slot booking with overlap and path checks"
+    )
+}
+
 # --- contract evals（G 系列）---
 # 兩條的 clean room **方向相反**，這是最容易搞錯的一點：
 #   g7 要測「沒有我的規則的人拿到我的 repo」→ home 不得有全域 CLAUDE.md
@@ -1287,7 +1327,7 @@ make_g4b() {
     _g4_repo "$dir/work"   # 刻意不建 STATUS.md
 }
 
-make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_q1; make_q3; make_q6; make_c1; make_n1
+make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10
 make_g1b; make_g1a; make_g4; make_g4b
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）

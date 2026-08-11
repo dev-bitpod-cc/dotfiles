@@ -33,10 +33,12 @@
 
 ## 同型掃描（每條 finding 都要做）
 
+**本節掃的是命中點軸**——這條規則在**既有 code 的其他地方**還有沒有犯同樣的錯。另有一條**輸入空間軸**（修復對該規則的**所有輸入**是否成立）屬 fixer 職責，見 `../SKILL.md`「修復原則」。兩軸同名不同軸，**neither axis is evidence for the other**。
+
 一個 finding 只報一個實例是**不完整的**。找到問題後先把它抽象成規則（「這類輸入沒被驗證」「這個 flag 沒被處理」「這條慣例沒被遵守」），用該規則掃過審查範圍其餘部分，命中點全列進報告的「影響範圍」欄。
 
 - 掃描用 `rg` / `grep` 這類唯讀搜尋；規則抽象不出明確 pattern 時，至少檢查同檔案與同模組的相鄰程式碼。
-- 只有一個命中也要寫明「已掃過 X，無其他命中」——讓 fixer 知道範圍已確認，不必重掃。
+- 只有一個命中也要寫明「已掃過 X，無其他命中」——讓 fixer 知道**命中點**已確認，不必重掃同一軸。**This clears the sites axis ONLY.** It is not evidence that the fix holds across the rule's input space, and a fixer must NEVER read it as such.
 - 修復波及面同理：finding 若指出某個事實宣稱（語意、行為、介面、契約）是錯的或將被改動，一併掃引用該宣稱的文件 / 測試 / 呼叫端，列進同一條 finding。
 
 **One instance is a lead, not the finding.** A rule with three sites, reported one site per round, takes three rounds to fix — the single largest source of avoidable review rounds. Scan before writing the finding, not after the fixer asks.

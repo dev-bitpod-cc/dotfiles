@@ -467,6 +467,39 @@
 }
 ```
 
+### F22 — fixer 端的輸入空間軸（reviewer 掃過命中點 ≠ 修復對所有輸入成立）
+
+> **RED 來源：2026-08-11，兩個獨立 session（不同 repo、不同時間）被追問後的自述**。兩段各自指出**同一條可觀察的行為分界**——
+> 「凡是 reviewer 已經枚舉好的，我就做了；凡是只給單一實例的，我就只修那一處。而 skill 那條規則針對的正好是後者。」
+> 另一段給出機制與實例：「reviewer 正確掃出 `paths_overlap` 全 repo 僅此一處使用，我修了那一處 —— 而輸入空間有 14 格，我只修對其中一格。**兩個維度都叫『同型掃描』，但缺的是另一個。**」
+> 第三個觸發點是措辭：「R5 那條寫的是 `Cheap fix: also treat literal string equality as overlap` —— cheap 這個字本身就在說這是廉價近似解。我照抄，還當成完整修復。」
+> 同族的先前觀察：`STATUS.md` 記載 krepo 連跑四輪修復時漏的正是這條；F18 的 2026-08-04 實戰 RED 是同一條規則的 reviewer 端。
+>
+> **根因是 skill 自己發的豁免，不是 agent 不自律**：`reviewer-brief.md` 舊文寫「只有一個命中也要寫明『已掃過 X，無其他命中』——讓 fixer 知道範圍已確認，**不必重掃**」。但 reviewer 掃的是**命中點軸**（規則在既有 code 的其他犯錯處），fixer 缺的是**輸入空間軸**（修復對規則的所有輸入是否成立）。兩軸同名，那句話於是被讀成兩軸都覆蓋了。
+> 對應修法：`references/reviewer-brief.md`「同型掃描」收窄作用域、`SKILL.md`「修復原則」拆成兩條軸並要求掃描先於編輯、`references/report-templates.md`「同型處置紀錄（共用區塊）」把兩軸做成必填產出物（`tests/run.sh` 第 1f 節守門五個終態模板的覆蓋率）。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autofix",
+  "setup": "沙盒 d8：feature branch 有 scheduling.py，ranges_overlap（只判「b 起點落在 a 內」，漏其餘區間關係）與 is_under（startswith 前綴比對，可被 ../ 與同前綴目錄繞過）各只在 book_slot 一處被呼叫；無測試框架（verify-tests 判 skip）",
+  "expected_behavior": [
+    "不把 reviewer 的『已掃過、無其他命中』當成輸入空間也已覆蓋——命中點僅一處是事實，但兩個修復都要自己撐開輸入軸",
+    "ranges_overlap 走『列舉』：攤開兩區間的相對位置（等價類／邊界）逐項確認，而非只補一個被指到的形狀",
+    "is_under 走『根治』：改用 realpath + commonpath 這類結構解，不逐個補 '..'／尾斜線／同前綴樣式——輸入空間無限，補樣式永遠補不完",
+    "reviewer 若給 Cheap fix: 形式的建議修法，不照抄當完整修復（該措辭即自陳未覆蓋完整輸入空間）",
+    "掃描先於編輯：規則寫下來、掃完兩軸才動手改，不是修完再回頭補掃",
+    "最終報告帶「同型處置紀錄」，每條修復一列且兩軸欄都填；第三欄落在 列舉／根治／n-a 三類之一，n-a 不得用於『輸入空間太大所以沒驗』"
+  ]
+}
+```
+
+> **⚠️ fixture 有效性前置條件（不滿足即判 INVALID，不得評 GREEN）**：現行 harness 是受測 agent 自己委派 reviewer，fixture 只控制得了 code、**控制不了 reviewer 的輸出形狀**。若該場 reviewer 自己就列舉了完整輸入空間、或自己就給出根治解，fixer 軸根本沒被測到，PASS 是**空條件**。
+> 故評分前先從 transcript 截獲 reviewer 的**原始輸出**（路徑見 `claude/evals/README.md` 的 transcript 截獲步驟），確認它確實只給單一實例、且未代 fixer 撐開輸入空間。
+> 此判準有先例：`claude/evals/README.md` 的「fixture 自洽性看跑一遍、不是檔名都在」，以及 h8／H10 兩個沙盒正是為了避開空條件才不與 h5 共用。
+>
+> **終止路徑（R5）為何不另設 behavior 子情境**：終止報告同樣必填同型處置紀錄，但**無法在 eval 中可靠觸發**——比照 d7 預造四顆 `fix: address review findings` 假 commit 的話，受測 agent 並未真的做過那四輪修復，**它填不出自己沒做過的處置**，測到的會是 fixture 缺陷而非 skill 行為（d7 註解記載過同型教訓）。改由 `tests/run.sh` 第 1f 節以靜態覆蓋率守門：五個終態模板（autofix 通過／autofix 終止／codex 通過／codex 終止／blocked）必須都接上共用定義，且引用數恰為 5。**這是刻意的取捨，不是遺漏**——靜態 gate 保證「模板接上了」，behavior eval 只驗「內容填得對」。
+
 ## 評分與迭代
 
 - 每個 case 對 `expected_behavior` 逐條 pass/fail，記錄失敗模式

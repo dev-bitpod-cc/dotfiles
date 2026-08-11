@@ -395,6 +395,66 @@ else
     printf '%s\n' "$kernel_hits" | sed 's/^/     /'
 fi
 
+echo "▶ 1f. deep-review 同型處置紀錄：五個終態模板都要接上共用定義"
+# 「同型處置紀錄」刻意做成**單一定義 + 五處引用**（複製表格必漂移）。守門的真正對象是
+# **覆蓋率**：只接通過路徑等於在最需要的地方最弱——R5 終止時 branch 上正躺著四輪修復，
+# 而收斂失敗時該問的就是「每輪有沒有做同型全修」。定義與觸發契約見
+# claude/skills/deep-review/references/report-templates.md「同型處置紀錄（共用區塊）」。
+# **章節名一律端錨定精確比對**（不用子字串：「## 報告模板 — 通過」是多個 Codex 模板名的
+# 子字串，寬比對會讓漏接的模板假綠）；代價是改標題就會紅，那正是要的訊號。
+RT_MD="$ROOT/claude/skills/deep-review/references/report-templates.md"
+homotype_missing() {   # $1=檔案；印出「缺引用」的終態模板名，全接上則無輸出
+    # 章節邊界**只認 `^## 報告模板`**：模板正文本身就含 `## Deep Review — Round {N}`／
+    # `## Codex 第三方審查 — 通過`（那是要照抄進報告的標題，且與引用行同在 fence 內、
+    # 無法靠剝 fence 排除）。拿泛用的 `^## ` 當邊界會在模板第二行就結算，五個模板全數誤報。
+    awk '
+        /^## 報告模板/ {
+            if (want && !seen) print sec
+            sec = $0; seen = 0
+            want = (sec == "## 報告模板 — 通過" ||
+                    sec == "## 報告模板 — Autofix 終止（R5 未通過）" ||
+                    sec == "## 報告模板 — Codex 第三方審查通過" ||
+                    sec == "## 報告模板 — Codex 第三方審查終止（C3 仍有 true positive）" ||
+                    sec == "## 報告模板 — Codex 第三方審查 blocked（救援階梯走完仍無報告）")
+            next
+        }
+        want && /^### 同型處置紀錄/ { seen = 1 }
+        END { if (want && !seen) print sec }
+    ' "$1"
+}
+if [ ! -f "$RT_MD" ]; then
+    bad "找不到 report-templates.md（${RT_MD}）——覆蓋率無從驗證，空輸出不可信"
+else
+    # gate 自檢：抽掉第 5 處引用必須被抓到。掃描器改壞而恆不匹配時，
+    # 對真實檔案的空輸出一樣長得像「通過」。
+    ht_red="$TMP/homotype-red.md"
+    awk 'BEGIN { n = 0 } /^### 同型處置紀錄/ { n++; if (n == 5) next } { print }' "$RT_MD" > "$ht_red"
+    if [ -n "$(homotype_missing "$ht_red")" ]; then
+        ok "gate 自檢：抽掉一處引用 → 命中"
+    else
+        bad "gate 失效（RED 沒被抓，真實檔案的空輸出不可信）"
+    fi
+    if grep -q '^## 同型處置紀錄（共用區塊）' "$RT_MD"; then
+        ok "共用定義區塊存在"
+    else
+        bad "共用定義區塊不見了——五處引用會全部指空"
+    fi
+    ht_missing="$(homotype_missing "$RT_MD")"
+    if [ -z "$ht_missing" ]; then
+        ok "五個終態模板都接上同型處置紀錄"
+    else
+        bad "有終態模板漏接同型處置紀錄（產生過修復卻不留痕，掃了與沒掃在輸出上同形）"
+        printf '%s\n' "$ht_missing" | sed 's/^/     /'
+    fi
+    # 總數恰為 5：多出來代表接到了中途輪次的「未通過」模板（那不是終態，會逼 reviewer 填 fixer 的表）
+    ht_n=$(grep -c '^### 同型處置紀錄' "$RT_MD") || ht_n=-1
+    if [ "$ht_n" -eq 5 ]; then
+        ok "引用數恰為 5（未溢出到未通過模板）"
+    else
+        bad "引用數為 ${ht_n}，應為 5——多出的多半接在「未通過」模板上（中途輪次不是終態）"
+    fi
+fi
+
 echo "▶ 2. bash -n 語法 gate"
 syntax_fail=0
 for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \

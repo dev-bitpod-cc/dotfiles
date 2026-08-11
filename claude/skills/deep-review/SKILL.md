@@ -62,7 +62,11 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 **修復原則**：主 agent 在修復階段依照 subagent 的修復計畫執行，優先修復所有嚴重與中等問題；建議等級僅在不引入額外風險時順手處理。修復時另兩條硬性動作：
 
-- **同型全修**：finding 的「影響範圍」列了 N 個命中點就修 N 個，不只修第一個；reviewer 漏掃時（只給單一實例、未註明已掃過）由 fixer 自行補掃該規則的其餘實例。Fixing one site of a three-site rule is what turns one round into three.
+- **同型全修（命中點軸）**：finding 的「影響範圍」列了 N 個命中點就修 N 個，不只修第一個；reviewer 漏掃時（只給單一實例、未註明已掃過）由 fixer 自行補掃該規則的其餘實例。Fixing one site of a three-site rule is what turns one round into three.
+- **輸入空間覆蓋（輸入軸）**：把 finding 抽象成規則後，攤開該規則的**輸入空間**確認修復對整個空間成立——**列舉**（有限且可分割 → 寫出等價類／邊界分割並逐項驗）或**根治**（無限／不可枚舉 → 改成結構上不依賴枚舉的解，如 allowlist、型別約束、單一入口）。兩者都是完整處置，根治不是次等選項。
+  **A reviewer's 「已掃過 X，無其他命中」 clears the sites axis ONLY — it NEVER exempts this axis.** 兩軸同名不同軸（reviewer 端的定義見 `references/reviewer-brief.md`「同型掃描」）。同理 **reviewer 的建議修法是下限、不是上限**——`Cheap fix:`／「簡單作法」這類措辭即自陳未覆蓋完整輸入空間，照抄等於把近似解當成完整修復。
+- **Scan before you edit, not after.** 兩軸都在動手改之前掃完。實地失效：修完才掃，於是下一輪 reviewer 在**修復本身**裡抓到同一條規則的第三次違反。
+- **兩軸的處置寫進報告**（`references/report-templates.md`「同型處置紀錄」）——零命中也要寫。掃過與沒掃在輸出上不得同形。
 - **掃修復漣漪**：本輪修復若改變了某個事實宣稱（語意、行為、介面、契約），一併掃引用該宣稱的文件／測試／呼叫端並同步。改完語意卻留下 stale 描述，下一輪必被當成新 finding 報回來。
 
 **修復後驗證**：依錨點記錄的 tests-baseline 分流（record 時取得，`show` 可跨 session 恢復）：
@@ -165,10 +169,10 @@ Deep Review 進度：
 - [ ] Step 5：彙整輸出
         autofix 進迴圈前：branch-first（依 verdict）→ 測試 baseline → record 錨點（--tests-baseline）
         → WIP snapshot（僅 working-tree 模式且有未提交變更）
-        迴圈每輪重記一行：R{N} 審查 → 修復 → 驗證 → commit（上限 R5）
+        迴圈每輪重記一行：R{N} 審查 → 規則化+掃描（兩軸，先於編輯）→ 修復 → 驗證 → commit（上限 R5）
 - [ ] Step 6：Codex 第三方循環（僅 autocodex）
         進階段前先跑一次 codex runtime preflight check（非 0 只警告不阻擋）
-        每輪重記一行：C{N} 審查 → 驗證 → 修復 → commit（上限 C3）
+        每輪重記一行：C{N} 審查 → 驗證 → 規則化+掃描（兩軸，先於編輯）→ 修復 → commit（上限 C3）
 - [ ] 通過後：squash 成乾淨 commit（`squash-cmd` 取指令 → reset → commit → `clear`；**`clear` 無條件跑，即使 WARNING 跳過了 reset/commit**；語意 message + runtime Co-Authored-By trailer；`squash-preserve:` / `squash-note:` 有印就轉述進報告；commit 即停，等使用者指示是否 push）
 ```
 
