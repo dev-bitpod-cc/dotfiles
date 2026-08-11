@@ -3688,7 +3688,9 @@ bup_real_kh_sum=""
 mkdir -p "$bup/dotfiles/scripts" "$bup/dotfiles/claude" "$bup/dotfiles/ssh" "$bup/home/.ssh" "$bup/bin" "$bup/marks"
 
 # 受控 stub：只記錄被呼叫，不做任何真事
-for bup_cmd in git brew claude jq; do
+# bun 必須在這裡就備妥——第 6 節會呼叫 `bun outdated -g`，漏了它其餘各臂會跑到真的 bun
+# （網路查詢 + 結果隨這台機器的全域套件而變）。預設無輸出＝無落後。
+for bup_cmd in git brew claude jq bun; do
     {
         echo '#!/usr/bin/env bash'
         echo "echo \"\$0 \$*\" >> \"$bup/marks/$bup_cmd.log\""
@@ -3790,6 +3792,98 @@ if [ -n "$bup_real_kh_sum" ]; then
     assert_eq "真實 \$HOME/.ssh/known_hosts 未被觸碰" "$bup_real_kh_sum" "$(cksum < "$bup_real_home/.ssh/known_hosts")"
 else
     ok "真實 \$HOME 無 known_hosts（無可觸碰之物）"
+fi
+
+# --- 第 6 節：bun 全域套件落後提示（只提示、不自動升）-----------------------
+# 判準是 Current != Update。這節的價值幾乎全在「不該亮的時候不亮」——`bun outdated`
+# 對被 semver range 擋住的 major 也照列（實測 typescript Current/Update 同為 5.9.3、
+# Latest 7.0.2），判準若放寬成「有表格列就亮」，每次 brewup 都會亮一個升不動的東西。
+bup_make_bun() {   # $1=stdout 內容；$2=exit code（預設 0）
+    printf '%s\n' "$1" > "$bup/bun-outdated.txt"
+    {
+        echo '#!/usr/bin/env bash'
+        echo "cat \"$bup/bun-outdated.txt\""
+        echo "exit ${2:-0}"
+    } > "$bup/bin/bun"
+    chmod +x "$bup/bin/bun"
+}
+bup_run_bun() {    # 跑一次 brewup，回傳輸出
+    DOTFILES_DIR="$bup/dotfiles" HOME="$bup/home" PATH="$bup/bin:$PATH" bash "$BUP" 2>&1
+}
+bup_make_helpers ""
+
+# A. 有可升項（Current != Update）→ 必須亮，且指名是哪一個
+# fixture 逐字取自真實 `bun outdated -g`，含那行 `Resolving...` 進度條——它也帶 `|`，
+# 是最容易被寬鬆判準誤收的一行（`-F'|'` 切出 NF=3，靠 NF>=5 擋掉）。
+bup_make_bun 'bun outdated v1.3.14 (0d9b296a)
+Resolving... |----------------------------------------|
+|----------------------------------------|
+| Package  | Current | Update  | Latest  |
+|----------|---------|---------|---------|
+| wrangler | 4.120.0 | 4.120.1 | 4.120.1 |
+|----------------------------------------|'
+bup_out="$(bup_run_bun)"
+assert_rc "bun 有可升項 → brewup 仍 exit 0" 0 $?
+if grep -q 'bun 全域套件有更新' <<< "$bup_out"; then
+    ok "bun 有可升項 → 印出提示"
+else
+    bad "bun 有可升項卻沒提示——落後永遠不會被發現"
+fi
+if grep -q 'wrangler  4.120.0 → 4.120.1' <<< "$bup_out"; then
+    ok "提示指名套件與新舊版本（不是只說「有更新」）"
+else
+    bad "提示未列出是哪個套件／版本，使用者無從判斷要不要升"
+fi
+
+# B. 只有 major 被 semver range 擋（Current == Update）→ 必須靜默
+bup_make_bun 'bun outdated v1.3.14 (0d9b296a)
+|-----------------------------------------------|
+| Package           | Current | Update | Latest |
+|-------------------|---------|--------|--------|
+| typescript (peer) | 5.9.3   | 5.9.3  | 7.0.2  |
+|-----------------------------------------------|'
+bup_out="$(bup_run_bun)"
+if grep -q 'bun 全域套件有更新' <<< "$bup_out"; then
+    bad 'Current==Update 也亮——bun update -g 升不動它，每次 brewup 都會亮成恆真噪音'
+else
+    ok "只有 major 被 range 擋 → 不提示（噪音防線）"
+fi
+
+# C. 兩者混在同一張表 → 只列升得動的那個
+#    單獨的 B 可能因為「整段沒跑」而假綠；混合表逼出「逐列判斷」才過得了。
+bup_make_bun 'bun outdated v1.3.14 (0d9b296a)
+|-----------------------------------------------|
+| Package           | Current | Update  | Latest |
+|-------------------|---------|---------|--------|
+| typescript (peer) | 5.9.3   | 5.9.3   | 7.0.2  |
+| wrangler          | 4.120.0 | 4.120.1 | 4.120.1|
+|-----------------------------------------------|'
+bup_out="$(bup_run_bun)"
+if grep -q 'wrangler' <<< "$bup_out" && ! grep -q 'typescript' <<< "$bup_out"; then
+    ok "混合表 → 只列升得動的（逐列判斷，非整表判斷）"
+else
+    bad "混合表的過濾不正確（應只列 wrangler）"
+fi
+
+# D. bun outdated 失敗（網路不通／無全域 package.json）→ 靜默，不影響主流程
+bup_make_bun '' 1
+bup_out="$(bup_run_bun)"
+assert_rc "bun outdated 失敗 → brewup 仍 exit 0" 0 $?
+if grep -q 'bun 全域套件有更新' <<< "$bup_out"; then
+    bad "bun 查詢失敗卻印出提示——空結果被當成有落後"
+else
+    ok "bun 查詢失敗 → 靜默（不擋主流程、不誤報）"
+fi
+
+# E. 完全沒有 bun（多數 Linux 機器）→ 整段跳過
+#    PATH 收窄到沙盒 + 系統目錄，確保真的 bun 不會被找到。
+rm -f "$bup/bin/bun"
+bup_out="$(DOTFILES_DIR="$bup/dotfiles" HOME="$bup/home" PATH="$bup/bin:/usr/bin:/bin" bash "$BUP" 2>&1)"
+assert_rc "無 bun → brewup 仍 exit 0" 0 $?
+if grep -q 'bun' <<< "$bup_out"; then
+    bad "無 bun 卻仍輸出 bun 相關訊息"
+else
+    ok "無 bun → 整段靜默跳過"
 fi
 
 # all-up.sh 以 `[ -x "$BREWUP" ]` 決定要直接跑腳本還是退回 `zsh -ic "brewup"`（互動 alias 路徑，
