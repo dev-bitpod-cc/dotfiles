@@ -12,25 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-**測試契約拆檔（`docs/testing-contract.md`）**
-
-- **Context**:root `CLAUDE.md` 29,661 bytes,其中「測試」節 15,287 bytes(51.5%)且**是單一 15,123-byte 行**。
-  對照本 repo 自訂的 dossier 門檻(`ship-state.sh`:`DOSSIER_MAX_BYTES=24576`、`DOSSIER_MAX_LINE_BYTES=1000`)
-  ——**受管的 `STATUS.md`(21,236B)合規,沒人管的 `CLAUDE.md` 超標 21%、單行超標 15 倍**。
-  且 `claude/CLAUDE.md`(29,020B)是全域 symlink,本 repo 每 session 契約載入合計 58,681B。
-- **Goal**:gate 的判準/反例/設計理由移入 `docs/testing-contract.md`(正常換行分節),
-  `CLAUDE.md`「測試」節只留 always-on 的行為約束 + 指標。
-- **AC**:①`./tests/run.sh` exit 0(xref-gate 會驗新指標與既有指向「測試」節的引用);
-  ②`CLAUDE.md` 全檔 < 24,576B 且最長行 < 1,000B;③搬走的內容零遺失(逐節對照);
-  ④新檔按 `tests/run.sh` 節號組織,原文未涵蓋的節明確標為缺口、不編造。
-- **Constraints**:**不搬 always-on 行為約束**——「何時必跑」「以 exit code 判綠紅」
-  「不放寬 pattern」這類不改 gate 也要遵守的規則留在 `CLAUDE.md`,搬走就落入 H6 失效模式
-  (規則不在 always-on context 就不生效)。新檔的指標放 `AGENTS.md`「Repo specifics」
-  而**不進 portable 權威矩陣**(理由見決策節)。
-- **本次假設(待確認)**:`AGENTS.md:67` 與 `CLAUDE.md` 對「何時必跑」的並存**不消除**——
-  理由見決策節「兩個 agent 讀不同檔」。
-
-(其餘契約層與 dossier 可攜性兩批已收斂,見里程碑。凍結計畫:
+(無進行中工作項——契約層、dossier 可攜性、測試契約拆檔三批已收斂,見里程碑。凍結計畫:
 `docs/plans/2026-08-09-repo-contract-extraction.md`、`docs/plans/2026-08-10-dossier-portability.md`)
 
 **剩餘工作全部帶觸發條件、皆不在進行中**:①**Phase 3 改名 DROP**——Codex 進生產線再議;
@@ -156,6 +138,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-09 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-11 測試 gate 契約拆檔:root `CLAUDE.md` 29,661→15,807 bytes(最長行 15,123→429),gate 的判準/反例/設計理由移入 `docs/testing-contract.md`(按 `tests/run.sh` 節號組織)。**留在 always-on 的是行為約束**——何時必跑、以 exit code 判綠紅、xref gate 的「不放寬 pattern」,搬走即落入 H6 失效模式。順帶把 exactly-one-place 的例外從「kernel replicas」一般化為「**必須 always-on 且讀者載入不同檔**」(決策節有為何不消除那處重複)。966 斷言全綠。
 - ✅ 2026-08-11 deep-review 同型掃描兩軸拆分 + 產出物化：根因是 skill 自己發的**跨軸豁免**——`reviewer-brief` 的「已掃過、無其他命中，不必重掃」，但 reviewer 掃的是**命中點軸**、fixer 缺的是**輸入空間軸**。已收窄該句作用域、SKILL 拆成兩條軸並要求掃描先於編輯、五個終態報告必填「同型處置紀錄」（單一定義 + 五處引用，`tests/run.sh` 1f 守覆蓋率，含逐處抽離的 RED 自檢）。新增 **F22/d8**（輸入空間軸）與 **F23/d9**（命中點軸）：F22 首跑因 reviewer 自己撐開兩軸判 **INVALID**（空條件），改注入式 harness 後 5/6；F23 首跑 5/5——R1 一輪即四處全修（966 PASS）
 - ✅ 2026-08-10 dossier 可攜性收斂：G7 transfer clean-room eval（Sonnet；baseline **1/2 失敗**、修後 2/2）＋ `STATUS-template.md` 全檔可攜化（5 增 5 刪，純置換）＋ 刪 `codex/AGENTS.md` 與 kernel C2 矛盾的全域斷言 ＋ Phase 3 DROP 四處清理 ＋ G6 非強加測試 2/2（956 PASS）
 - ✅ 2026-08-10 G1b 成對實驗：實測 root `CLAUDE.md` 自動載入、root `AGENTS.md` 不會（clean room 不帶全域檔）→ kernel 擴為四份逐字複本，並定案 installer 必須裝 kernel 本體而非 pointer（956 PASS）
