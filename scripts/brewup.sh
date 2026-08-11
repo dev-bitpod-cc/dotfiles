@@ -70,4 +70,35 @@ if [ "${helper_warn}" -ne 0 ]; then
     echo "⚠️  部分 dotfiles helper 部署失敗——symlink 可能未更新，請跑 dotsync 或手動檢查"
 fi
 
+# 6. bun 全域套件落後提示（**只提示、不自動升**）
+#    為什麼不比照 `brew upgrade --yes` 自動升：brew 管的是被 formula 釘住的工具，而
+#    `bun install -g` 裝的是 wrangler 這類**會改變部署行為**的東西——由 allup 在整個機隊
+#    同時靜默升版，風險性質完全不同。要升的時機由人決定。
+#
+#    判準是 **Current != Update**（`bun update -g` 真的升得動的那些）。只有 Latest 不同的
+#    刻意不提示：那是 major 被 semver range 擋住（實測 typescript Current/Update 都是 5.9.3、
+#    Latest 7.0.2），`bun update -g` 解決不了它，每次都亮就變成恆真噪音。
+#
+#    `bun outdated` 不論有無落後都 exit 0，故一律解析輸出、不看 exit code。
+if command -v bun >/dev/null 2>&1; then
+    bun_outdated=$(bun outdated -g 2>/dev/null) || bun_outdated=""
+    # 表格列：| name | current | update | latest |。以 herestring 餵入而非 pipe——
+    # `printf | awk` 在大輸入下會踩 SIGPIPE + pipefail（見 CLAUDE.md 已知地雷）。
+    bun_stale=$(awk -F'|' '
+        NF >= 5 {
+            name = $2; cur = $3; upd = $4
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", upd)
+            if (name != "" && name !~ /^-+$/ && name != "Package" && cur != upd)
+                printf "     %s  %s → %s\n", name, cur, upd
+        }' <<< "${bun_outdated}")
+    if [ -n "${bun_stale}" ]; then
+        # 訊息刻意不帶反引號：雙引號語境下它是命令替換（見 CLAUDE.md 已知地雷），
+        # 改用單引號又會被 shellcheck 判 SC2016。終端輸出本來也不渲染 markdown。
+        echo 'ℹ️  bun 全域套件有更新（brewup 不自動升——要升請自己跑 bun update -g）'
+        printf '%s\n' "${bun_stale}"
+    fi
+fi
+
 exit 0
