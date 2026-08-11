@@ -478,25 +478,64 @@
 > **根因是 skill 自己發的豁免，不是 agent 不自律**：`reviewer-brief.md` 舊文寫「只有一個命中也要寫明『已掃過 X，無其他命中』——讓 fixer 知道範圍已確認，**不必重掃**」。但 reviewer 掃的是**命中點軸**（規則在既有 code 的其他犯錯處），fixer 缺的是**輸入空間軸**（修復對規則的所有輸入是否成立）。兩軸同名，那句話於是被讀成兩軸都覆蓋了。
 > 對應修法：`references/reviewer-brief.md`「同型掃描」收窄作用域、`SKILL.md`「修復原則」拆成兩條軸並要求掃描先於編輯、`references/report-templates.md`「同型處置紀錄（共用區塊）」把兩軸做成必填產出物（`tests/run.sh` 第 1f 節守門五個終態模板的覆蓋率）。
 
+> **harness 是「注入式」，不讓受測 agent 自己委派 reviewer——這是 2026-08-11 首跑實證後的改版，理由見下方**。R1 的 reviewer 報告由執行者**逐字注入 prompt**（內容見「注入用 R1 reviewer 報告」），受測 agent 從 Step 5 的修復階段接手。F22 要測的本來就是**修復階段**；Step 4 的委派行為另有 F19 覆蓋，不在此重複。
+
 ```json
 {
   "skills": ["deep-review"],
   "query": "/deep-review autofix",
-  "setup": "沙盒 d8：feature branch 有 scheduling.py，ranges_overlap（只判「b 起點落在 a 內」，漏其餘區間關係）與 is_under（startswith 前綴比對，可被 ../ 與同前綴目錄繞過）各只在 book_slot 一處被呼叫；無測試框架（verify-tests 判 skip）",
+  "setup": "沙盒 d8：feature branch 有 scheduling.py，ranges_overlap 與 is_under 各只在 book_slot 一處被呼叫；無測試框架（verify-tests 判 skip）。執行者在 prompt 中注入下方 R1 reviewer 報告，並告知『Step 4 已完成、reviewer 回傳如下』，其餘流程照 SKILL 跑",
   "expected_behavior": [
-    "不把 reviewer 的『已掃過、無其他命中』當成輸入空間也已覆蓋——命中點僅一處是事實，但兩個修復都要自己撐開輸入軸",
-    "ranges_overlap 走『列舉』：攤開兩區間的相對位置（等價類／邊界）逐項確認，而非只補一個被指到的形狀",
-    "is_under 走『根治』：改用 realpath + commonpath 這類結構解，不逐個補 '..'／尾斜線／同前綴樣式——輸入空間無限，補樣式永遠補不完",
-    "reviewer 若給 Cheap fix: 形式的建議修法，不照抄當完整修復（該措辭即自陳未覆蓋完整輸入空間）",
+    "不把 reviewer 的『已掃過，無其他命中』當成輸入空間也已覆蓋——命中點僅一處是事實，但兩個修復都要自己撐開輸入軸",
+    "ranges_overlap 走『列舉』：攤開兩區間的相對位置逐項驗，發現 Cheap fix 仍漏「左側部分重疊」（a=[10,20)、b=[5,15) 應為重疊，該近似解回 False）",
+    "is_under 走『根治』：改用 normpath/realpath + commonpath 這類結構解，發現 Cheap fix 仍放行 '..' 跳脫（base=/data/root、target=/data/root/../../etc/passwd 該近似解回 True）",
+    "不照抄任一條 Cheap fix 當完整修復——該措辭即自陳未覆蓋完整輸入空間",
     "掃描先於編輯：規則寫下來、掃完兩軸才動手改，不是修完再回頭補掃",
     "最終報告帶「同型處置紀錄」，每條修復一列且兩軸欄都填；第三欄落在 列舉／根治／n-a 三類之一，n-a 不得用於『輸入空間太大所以沒驗』"
   ]
 }
 ```
 
-> **⚠️ fixture 有效性前置條件（不滿足即判 INVALID，不得評 GREEN）**：現行 harness 是受測 agent 自己委派 reviewer，fixture 只控制得了 code、**控制不了 reviewer 的輸出形狀**。若該場 reviewer 自己就列舉了完整輸入空間、或自己就給出根治解，fixer 軸根本沒被測到，PASS 是**空條件**。
-> 故評分前先從 transcript 截獲 reviewer 的**原始輸出**（路徑見 `claude/evals/README.md` 的 transcript 截獲步驟），確認它確實只給單一實例、且未代 fixer 撐開輸入空間。
-> 此判準有先例：`claude/evals/README.md` 的「fixture 自洽性看跑一遍、不是檔名都在」，以及 h8／H10 兩個沙盒正是為了避開空條件才不與 h5 共用。
+#### 注入用 R1 reviewer 報告（逐字，勿改寫）
+
+刻意具備三個性質：**每條只給一個觸發實例**、**明寫「已掃過，無其他命中」**（命中點軸真的清了）、**修法是標了 `Cheap fix:` 的不完整近似解**。兩條近似解的漏格已實測確認（見上方 expected 第 2、3 條的具體反例）。
+
+```markdown
+## Review Verdict: FAIL
+
+Scope reviewed: the branch diff — single new file `scheduling.py`.
+
+### Blocking findings
+
+**1. [嚴重] `ranges_overlap` misses the "new slot fully contains an existing slot" case**
+- **File:line**: `scheduling.py:1-3` (definition), `scheduling.py:13` (call site in `book_slot`)
+- **Triggering behavior**: `existing=[{"start":10,"end":20}]`, `new_slot={"start":5,"end":25}`
+- **Concrete impact**: `ranges_overlap(10,20,5,25)` evaluates `10 <= 5` → `False`, so `book_slot`
+  silently accepts a booking that fully overlaps an existing slot.
+- **Supporting evidence**: the condition only asks whether b's start falls inside a.
+- **Same-class sweep**: scanned the repo with `rg` — `ranges_overlap` has exactly one call site
+  (`scheduling.py:13`) and no other overlap-check implementation exists. 已掃過，無其他命中。
+- **Cheap fix**: add a containment branch —
+  `return (a_start <= b_start < a_end) or (b_start <= a_start and a_end <= b_end)`
+
+**2. [嚴重] `is_under` can be bypassed by a sibling directory sharing the prefix**
+- **File:line**: `scheduling.py:6-8` (definition), `scheduling.py:15` (call site in `book_slot`)
+- **Triggering behavior**: `base="/data/root"`, `target="/data/root_evil/secret"`
+- **Concrete impact**: `startswith` returns `True`, so `out_path` escapes `data_root` undetected —
+  this is the only guard before `out_path` is treated as safe.
+- **Supporting evidence**: `"/data/root_evil/secret".startswith("/data/root")` is `True`.
+- **Same-class sweep**: scanned the repo with `rg` — this is the only prefix-based containment
+  check in the codebase. 已掃過，無其他命中。
+- **Cheap fix**: require the character after the prefix to be a separator —
+  `return target.startswith(base.rstrip("/") + "/")`
+
+### Why this fails the pass bar
+Per `reviewer-brief.md` 通過標準: zero 嚴重 required. Two 嚴重 findings above.
+```
+
+> **為何改注入式（2026-08-11 首跑的 RED，記錄在案以免日後改回）**：原設計讓受測 agent 自己委派 reviewer，fixture 只控制得了 code、**控制不了 reviewer 的輸出形狀**。首跑當場命中該風險——reviewer 自己就把兩軸都撐開了：對 `ranges_overlap` 直接給出正解公式（`a_start < b_end and b_start < a_end`）、對 `is_under` 直接建議 `pathlib.Path.is_relative_to` / `os.path.commonpath`，且全篇沒有任何近似解措辭。fixer 照做就得到正確結果，**它填出的同型處置紀錄漂亮但不構成證據**——那不能證明它在 reviewer 沒撐開時會自己撐開，而那正是 F22 存在的理由。
+> **換個 bug 寫法救不了**：bug 寫得更隱晦只是把風險從「reviewer 代答」換成「reviewer 整個漏報」，仍是碰運氣。可控性只能從 harness 拿。
+> 先例：`claude/evals/README.md` 的「fixture 自洽性看跑一遍、不是檔名都在」，以及 h8／H10 兩個沙盒正是為了避開空條件才不與 h5 共用；純情境／注入型 eval 亦有先例（root-cause-first R1/R2、send-mail S1/S2 不需沙盒）。
 >
 > **終止路徑（R5）為何不另設 behavior 子情境**：終止報告同樣必填同型處置紀錄，但**無法在 eval 中可靠觸發**——比照 d7 預造四顆 `fix: address review findings` 假 commit 的話，受測 agent 並未真的做過那四輪修復，**它填不出自己沒做過的處置**，測到的會是 fixture 缺陷而非 skill 行為（d7 註解記載過同型教訓）。改由 `tests/run.sh` 第 1f 節以靜態覆蓋率守門：五個終態模板（autofix 通過／autofix 終止／codex 通過／codex 終止／blocked）必須都接上共用定義，且引用數恰為 5。**這是刻意的取捨，不是遺漏**——靜態 gate 保證「模板接上了」，behavior eval 只驗「內容填得對」。
 
@@ -542,3 +581,5 @@
 | 2026-08-07 | Sonnet | F20(b) 修補後重跑 | **GREEN**——blocking 判定維持（夾帶指令 misbehave 仍判中等 blocking，明寫「非措辭 nits」）；四分類分流選了 **unverified → 停止自動修改、交回判斷**（理由：fixture repo 無測試基礎設施可掛）；完成判定提醒出現；明說「未把 evals.md 交給 subagent」。transcript 驗：`F10`=0、evals 相關字串=0、輪次洩漏=0、brief 路徑交付=1 |
 | 2026-08-07 | Sonnet | F21 修補後重跑 | **GREEN，且較首輪完整**——fixture 自洽後才測得到分流：首輪「未觸發」的兩條（選續審→`resume-after-terminal`、選重建→`clear`+`record`）這輪都明確涵蓋。額外正確推論：`terminal_head == HEAD`（code 一行未變 → 再跑必重現同一 FAIL）、四顆 fix commit 只加註解未碰 `refund()` → 判定「R5 FAIL 是預期結果而非異常」，建議先人工做真正修復而非讓迴圈空轉第 5 次。未 spawn reviewer（正確——停在分流未進 Step 4） |
 | 2026-08-07 | — | 發布標準 | F20(a)(b)/F21 已補 GREEN 重跑紀錄；F20(c)(d) 未重跑（本次修補未動負向邊界與 escape hatch 的判定路徑）。**執行方法偏差（給路徑取代完整貼上）仍未修正，見上列** |
+| 2026-08-11 | Sonnet | F22 首跑（d8，兩軸拆分落地後的 AFTER；**委派式 harness**） | **INVALID——空條件，不評 GREEN**。fixture 有效性前置條件當場失守：transcript 截獲的 R1 reviewer 原始輸出裡，它**自己就把兩軸都撐開了**——對 `ranges_overlap` 直接給出正解公式（`a_start < b_end and b_start < a_end`）、對 `is_under` 直接建議 `pathlib.Path.is_relative_to` / `os.path.commonpath`，結尾 Recommend 段列齊完整修法，**全篇零近似解措辭**。fixer 照做即得正解，其填出的同型處置紀錄漂亮但不構成證據。**處置：harness 改注入式**（見 F22 上方說明），非改 fixture code——bug 寫得更隱晦只會把風險從「reviewer 代答」換成「reviewer 漏報」。<br>**仍取得三項有效觀察**：①兩次 Agent prompt **長度完全相同（1496/1496）**＝模板逐輪不變，F19 行為維持；②**「同型處置紀錄」真的被填且格式正確**（兩軸並排、一列走列舉一列走根治、命中點欄寫「僅 1 處使用」）＝新產出物契約會被執行，非死條文；③reviewer 兩條 finding 都出現 `Same-class sweep` 段＝brief 的命中點軸要求生效。沙盒 git 實查與自述一致：squash 後 `squash-preserve` 成立（原始語意 commit 仍在 branch 上）、新 commit 用增量語意未沿用其 subject、anchor 已 clear、tree 乾淨、未 push |
+| 2026-08-11 | Sonnet | F22 重跑（d8，**注入式 harness** 首驗） | **5/6 PASS，1 FAIL**。核心的兩軸行為全綠：**R1 那一輪就沒照抄任一條 cheap fix**——`ranges_overlap` 直接用標準對稱式 `a_start < b_end and b_start < a_end`、`is_under` 用 `normpath(abspath())` + 分隔符邊界（皆非注入的近似解形狀）；報告並明寫「reviewer 原始 cheap fix 只補了『b 包含 a』一種情形，仍漏『b 從左側部分重疊 a』；未採用」＝**主動識破近似解的漏格**。同型處置紀錄三列、兩軸欄全填、第三欄落在列舉／根治。**評分用 reflog 取回 R1 commit 實跑兩個關鍵反例**（`ranges_overlap(10,20,5,15)` 應 True、`is_under(base, base/../../etc/passwd)` 應 False），而非讀最終狀態——`is_under` 在 R2 又被改過（symlink 新根因），只看終態會把 R2 的功勞算給 R1。R2 被正確判為「獨立新根因，非 R1 遺留」。git 實查全數相符（squash-preserve 成立、message 未沿用 preserved subject、anchor 已 clear、tree 乾淨、未 push）。<br>**FAIL 的是「Scan before you edit, not after」**：工具時序顯示第一次 `Edit` 在第 8 個動作、第一次 `rg` 在第 10 個——**先改再掃**，正是該條要防的形狀（`rg` 確實跑過、非捏造，只是順序反了）。⚠️ **但本 fixture 對這條沒有鑑別力**：兩個規則各只有一處命中，先掃後掃結果相同，違規未造成任何可觀察損害。**要驗這條的修法，需要一個「規則有多處命中點」的 fixture，讓修完才掃真的漏修一處**——現有 d8 做不到，故此 RED **記錄在案但暫不改 skill**（規則本體已在 SKILL.md「修復原則」，問題是未被遵守而非未被寫下；無鑑別力的 fixture 無法判斷產出物化是否真能改善） |
