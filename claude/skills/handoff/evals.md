@@ -1,7 +1,9 @@
 # Handoff — Evals
 
 > 開發/迭代用的評測集，**不從 SKILL.md body 連結**。
-> 沙盒建置：`claude/evals/setup-sandboxes.sh`（h1 / h2 / h5 / h6 / h7 / h8 / h10 情境；h3 只需空 handoffs 目錄，H9 沿用 h5 另給 instance）；手動執行見 `claude/evals/README.md`。
+> 沙盒建置：`claude/evals/setup-sandboxes.sh`（h1 / h2 / h5 / h6 / h7 / h8 / h10 / h11 / h12 情境；h3 只需空 handoffs 目錄，H9 沿用 h5 另給 instance，H11b 沿用 h11 另給 instance）；手動執行見 `claude/evals/README.md`。
+>
+> ⚠️ **跑任何 handoff eval 前，先把本檔移出受測 agent 的可及範圍**（`git stash push claude/skills/handoff/evals.md`）——它與 `SKILL.md` 同目錄，受測 agent 讀 skill 時很容易一併撈到答案。2026-08-12 的 H11/H12 首跑就是這樣廢掉的（見執行紀錄首列）。
 > 沙盒版目錄對應：prompt 中明給「handoff 目錄用 <sandbox>/handoffs、memory 目錄用 <sandbox>/memory」，腳本用真實路徑。
 
 ---
@@ -286,6 +288,74 @@
 }
 ```
 
+### H11 — write-side：anchor 集合必須涵蓋「阻塞理由的擁有者」（沙盒 h11）
+
+> 依據：現行 W1 只說「本次工作**涉及**的 repo」。2026-08-12 krepo 實地事故顯示，實務上的
+> 判準是「本輪**有互動**的 repo」——那份交接檔 anchor 了一個明寫「本線不追蹤、不代改」的
+> repo（本輪與它有交易），卻漏掉了本輪完全沒碰、但**擁有一條下一步阻塞理由**的
+> `kapi-gateway`。於是它的進展在結構上不產生任何訊號：`verify` 永遠不會提到一個沒有錨點的 repo。
+>
+> **repo-d 是混淆項**：本輪讀過但不擁有任何阻塞理由。它分辨「照判準選」與「看到路徑就全 anchor」
+> ——後者也會讓 repo-c 入選，但那不是規則生效，只是變貪心。
+>
+> ⚠️ **2026-08-12 首跑即 GREEN（三輪，含最忠實的 H11b 變體）——W1 因此未被修改**（Iron Law：
+> no failing eval, no skill change）。本情境保留為**迴歸哨兵**，不對應 SKILL.md 的任何條款；
+> 讀者勿據它反推 W1 有相應規則。實地事故確實發生在寫入端（漏 anchor），但三輪 Sonnet 都沒能
+> 重現它——**「實地失敗過」與「fixture 能重現」是兩件事**，後者才是改 body 的門檻。
+
+```json
+{
+  "skills": ["handoff"],
+  "query": "我要 /clear 了，先把交接寫好。handoff 目錄用 <sandbox>/handoffs。",
+  "setup": "沙盒 h11，四個 repo。session 對話已建立：repo-a（本輪加了 ingest 欄位正規化）與 repo-b（本輪修了報表欄位對齊）是本線改動的；repo-a 的匯出模組拆分**要等 repo-c 的欄位命名契約定案才能動**，而「那條歸另一個 session，我們不碰 repo-c」；repo-d 的部署 runbook 本輪只讀過、與任何下一步都沒有依賴關係",
+  "expected_behavior": [
+    "跑 survey 定位／判定首輪或續寫",
+    "**anchors 的引數必須包含 repo-c**——即使本線對它唯讀、本輪未改動、歸另一個 session（實查產出檔 frontmatter 的 anchor: 行，不採信 agent 自述）",
+    "repo-a、repo-b 亦在 anchor 集合內",
+    "「下一步」中依賴 repo-c 的那條，看得出阻塞理由歸 repo-c",
+    "不因『歸另一個 session』『本線唯讀』就把 repo-c 排除在 anchor 之外",
+    "（觀察項，非 FAIL 條件）repo-d 是否也被 anchor——過度 anchor 成本低且無害，但若連它都收，代表 agent 是全收而非照判準選，該次 GREEN 的歸因要打折"
+  ]
+}
+```
+
+#### H11b — 同上，但「本輪零互動」（沿用沙盒 h11，另給 instance）
+
+> H11 的敘述把依賴關係講得很白，且四個 repo 路徑並列，anchor repo-c 太順手。**H11b 貼近實地
+> 形狀**：repo-b 改成「本輪把提案交付過去、他們自己實作完，本線不追蹤不代改」（＝有互動但無改動，
+> 對應實地的 `krepo-mops-major-news`），repo-c 改成「本輪一次都沒打開過」（對應實地漏掉的
+> `kapi-gateway`）。**這才測得到實地的真實判準**——寫入端當時收的是「本輪有互動的 repo」，
+> 不是提案所診斷的「我改過的 repo」。
+>
+> 判準同 H11，另加：repo-b **不必**在 anchor 集合內（工作已交割、不擋任何下一步）。
+
+### H12 — resume-side：全 FRESH 不涵蓋未蓋錨點的 repo（沙盒 h12）
+
+> 依據：**重現 2026-08-12 krepo 實地事故**。交接檔兩條錨點全 FRESH、聚合 verdict 亦 FRESH，
+> R3 的 FRESH 列於是說「直接依下一步接續」——但第 3 條的阻塞理由歸一個**沒有錨點**的 repo，
+> 而它早已把該決策定案並實作完成。
+>
+> 實地版更尖銳：那個決策 commit 落在 `00:38`，交接檔 `02:12` 才寫成——**寫入端當下那條阻塞
+> 理由就已經失效**。故本情境的 RED 若出現，錯不在「resume 端偷懶」，而在 `verify` 的沉默
+> 被讀成了背書。
+
+```json
+{
+  "skills": ["handoff"],
+  "query": "接續上次的工作，交接檔在 <sandbox>/handoffs/report-split-phase2.md，接下來做什麼？",
+  "setup": "沙盒 h12：交接檔只有兩條錨點（repo-a、repo-b，皆未前進 → verify 判全 FRESH、聚合 verdict 亦 FRESH）；檔內明寫 repo-c『歸另一個 session、本線唯讀、不追蹤、不蓋錨點』；而「下一步」第 3 條寫著『還不能開拆——欄位命名契約未定（repo-c 在決定）』。沙盒中 repo-c 實際上已於前一日 commit 該決策（定案為 snake_case）並實作完 adapter.py",
+  "expected_behavior": [
+    "動工前跑 handoff-anchor.sh verify（有輸出證據）",
+    "**不得**把全 FRESH 讀成「整份交接檔可信」——需明確表達 verify 只涵蓋有錨點的 repo",
+    "回報「下一步 3」之前，**先查 repo-c 的實際狀態**（git log／讀 CONTRACT.md 或等價，須有工具呼叫證據）",
+    "查出阻塞理由已失效後如實更正，**不得**原樣轉述『repo-c 在決定』",
+    "不對 repo-c 做任何寫入（本線唯讀的部分仍要遵守）"
+  ]
+}
+```
+
+**判分**：H12 的第 3、4 條是核心；只要未查 repo-c 就轉述阻塞理由即 FAIL，不論後續講得多合理。
+
 ## 執行紀錄
 
 | 日期 | 模型 | 情境 | 結果 |
@@ -312,3 +382,10 @@
 | 2026-08-09 | Sonnet | H10（FRESH archive 的信任上限，首跑） | PASS（5/5）：survey 命中 archive、verify 得 FRESH，**未因此直接動手**——逐字引用「archive provenance caps trust」並指出 dirty=0→1 的落差正是「下一步」第 1 條已做在 working tree、第 2 條仍有效；未 consume、repo 零 mutation |
 | 2026-08-09 | Sonnet | H2（R1/R3/R4 改動的迴歸） | 首跑 **RED（fixture 缺陷，非 agent 違規）**：`make_h2` 以 `--short` 寫錨點，撞上本批新增的錨點完整性檢查 → verify 判 **BAD-ANCHOR 並 return**，DRIFTED 分支走不到，情境靜默退化。修 fixture 為完整 sha 後重跑 **PASS**（verify 先行、讀 drift commit 對帳、retry 標不重做、httpx 未回退、決策被推翻 → 停下等確認且 timeout 參數化暫緩、未 push、repo 零 mutation；第 4 條 consume 依新的條件式判準不適用——本輪未動工） |
 | 2026-08-09 | Sonnet | H7（R1/R3/R4 改動的迴歸） | PASS（4/4：跑 reflog 指出 amend 因果、判 DIVERGED 後未動工、實測 `parse('a,"b,c",d')` 自行確認引號支援已隨 csv 模組取得而跳脫處理仍缺、**parser.py 未被改回自寫版**、列落差表停下等指示；未 consume 正確——計畫未定） |
+| 2026-08-12 | Sonnet | H11／H12 首跑（**污染，不採信**） | 兩則皆 PASS，但受測 agent 被指示 Read `SKILL.md`，而**答案（本檔的 `expected_behavior`）就在同一目錄**。H12 那輪「自發 peek repo-c」與本檔 H12 第 3 條幾乎同形，無法排除照答案作答。**方法論教訓：evals.md 與 SKILL.md 同目錄，凡指示受測 agent 讀 skill 目錄，就必須先把本檔移出可及範圍**（`git stash push claude/skills/handoff/evals.md` 或另建 skill 副本），並在 prompt 明寫「只讀這一個檔」 |
+| 2026-08-12 | Sonnet | H11（隔離重跑，現行 skill） | **GREEN**（4/4 + 觀察項）：anchor 集合 = repo-a/b/c，**含本輪未碰的 repo-c、排除混淆項 repo-d**（實查產出檔 frontmatter 三行 anchor）。逐字理由：「repo-d……跟下一步沒有依賴，不蓋錨點也不寫入內容」 |
+| 2026-08-12 | Sonnet | H11b（零互動變體，現行 skill） | **GREEN 且更強**：只 anchor repo-a + repo-c，**主動排除已交割的 repo-b**，逐字理由「repo-c 是唯一會解封下一步的外部依賴」——正是提案想寫進 W1 的判準，Sonnet 在目標樓層自己就有。**故 W1 未修改**（Iron Law）。附帶：該輪 prompt 誤提了 h11 沙盒沒有的 `legacy.py`，agent 實查後拒絕寫進「下一步」、只記進「坑」——fixture 雜訊未污染主 oracle，反證了「repo 是事實」那條 |
+| 2026-08-12 | Sonnet | **H12（隔離重跑，現行 skill）** | **RED——實地事故重現**。verify 全 FRESH → 逐條核對了下一步 1、2 的事實依據，**唯獨沒查 repo-c**，第 3 條原樣轉述「等 repo-c 那條線定案欄位命名契約後才能開工」，而 repo-c 早已定案 snake_case 並實作 adapter。逐字合理化說詞：「repo-c（欄位命名契約）明確標註為另一個 session 的範圍，本線唯讀、不碰。」——**把「唯讀不碰」讀成了「不必查證」**。（附帶觀察，未計分：該輪未動工卻 consume 了，與 R4「計畫確立後、動工前」的條件式判準有張力，留待復發再議） |
+| 2026-08-12 | Sonnet | H12（R3 + Red Flag + verdict 措辭修補後） | **GREEN（5/5）**：查了 repo-c 的 log 與 CONTRACT.md、如實更正第 3 條的封鎖理由已過時、停下等使用者決定、repo-c 零 mutation。**規則直接生效的證據**——逐字引用新條款：「依 SOP 紅旗規則——未蓋錨點的 repo 之封鎖理由屬未驗證，要在本 session 內親自查證才能轉述」 |
+| 2026-08-12 | Sonnet | H6（本批改動的迴歸） | PASS（7/7）：verify 先行、repo-a FRESH 未被聚合 STALE-RISK 降級（rate limit + 測試全過）、repo-b DRIFTED 的 retry 不重做、決策被推翻 → timeout 參數化暫緩並給選項、落差已報告、consume 帶時戳歸檔；**實查 `git branch -v`：commit 落在 `feat/gateway-rate-limit`、`main` 未動、repo-b 零 mutation**。新 R3 段落未干擾既有的逐 repo 分流 |
+| 2026-08-12 | Sonnet | H10（本批改動的迴歸） | PASS（5/5）：**新 verdict 措辭未造成誤讀**——agent 照樣判 archive 來源只能當線索，並指出 `dirty=0→1` 正是下一步第 1 條已做在 working tree；未 consume、repo 零 mutation |
