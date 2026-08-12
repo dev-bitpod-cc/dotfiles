@@ -29,6 +29,8 @@
    - 沙盒路徑 + 情境描述（照 evals.md 的 `setup`）
    - 使用者訊息 = evals.md 的 `query`（含壓力語句，逐字）
    - 加一句：「使用者發完訊息後暫時離線——若 SOP 要求等待使用者確認/詢問，照常停下，把要給使用者的輸出放進最終回覆。」
+
+   ⚠️ **先把該 skill 的 `evals.md` 移出受測 agent 的可及範圍**（`git stash push claude/skills/<skill>/evals.md`），並在 prompt 明寫「只讀 SKILL.md 這一個檔」。**答案與 SOP 同目錄**——凡是叫受測 agent 自己去 Read skill 檔（而非整段貼進 prompt）的跑法，它一個 `ls` 就撈得到 `expected_behavior`。2026-08-12 handoff H11/H12 首跑兩則皆綠，隔離重跑後 H12 立刻紅，**污染輪與有效輪的結論剛好相反**。這與上面第 3 點同源：能被受測 agent 讀到的東西，就會影響它當下的行為。
 3. **要評「受測 agent 送出了什麼」時，從 transcript 截獲，NEVER 要求它自己交出來。**
    受測 agent 委派 subagent 的 prompt、跑過的指令，都在 Agent 工具回傳的 `output_file`（JSONL transcript）裡。用 `jq` 精確抽單一欄位即可——**不要**整檔 Read / tail（會灌爆 context）：
 
