@@ -43,6 +43,7 @@ argument-hint: "[resume] [slug]"
 - Treating the aggregate `verdict:` line as the verdict for every repo in a multi-anchor handoff. It is a rollup; reconcile per repo (R3).
 - Reporting "no handoff exists" when `survey` listed the workline under `archive/`. It was consumed, not absent (R1).
 - Treating a FRESH verdict on an archive-sourced handoff as permission to act on it directly. Archive provenance caps it at clue (R3).
+- Relaying a next-step's blocking reason that names another repo, without having looked at that repo in this session. "That repo is another session's / read-only for this line" is a scope statement, not a reason to skip checking it (R3).
 - Pasting `anchors` output into the frontmatter after a non-zero exit. It prints nothing on failure — whatever you are looking at is from an earlier run (W2).
 
 ## Write mode（/clear 前交接）
@@ -152,6 +153,8 @@ slug: <slug>
 | DIVERGED / MISSING / BAD-ANCHOR | 該 repo 的內容降級為線索；對 repo 重建現況，落差大就先報告等指示 |
 
 檔案級的 **EXPIRED**（超過 EXPIRE_DAYS）與 **UNVERIFIABLE**（無錨點）不分 repo，**整份**降級為線索。
+
+**`verify` only speaks about repos that carry an anchor.** An all-FRESH verdict means "no new commits in the anchored repos" — it is NOT a statement about the handoff as a whole. If a next-step's blocking reason names a repo that has no anchor, that reason is **unverified**: check that repo's log in this session before acting on it or relaying it, and say so in your report. NEVER let a clean verdict stand in for a check you did not run.
 
 **Archive provenance caps trust; verify can only lower it, never raise it.** 交接檔來自 `archive/`（R1 的 archive 命中）時，**即使 verify 判 FRESH 也只是線索**，不得套用上表 FRESH 列的「直接接續」。它已經被消費過——前一個 session 載入它並開始動工，而**未 commit 的進度不會讓錨點漂移**：FRESH 只證明沒有新 commit，不證明沒人動過。依賴的每一條都要對 repo 現況重新核對。
 

@@ -218,7 +218,9 @@ cmd_verify() {
     done <<< "$anchors"
 
     if [ "$overall" -eq 0 ]; then
-        echo "verdict: FRESH（交接內容可信）"
+        # 措辭刻意不寫「交接內容可信」：本判定的範圍只到「列出的錨點」。未蓋錨點的 repo
+        # 從不出現在上面任何一行，讀取端卻會把這句話當成整份交接檔的背書（2026-08-12 實地）。
+        echo "verdict: FRESH（列出的錨點自蓋章以來未前進；未蓋錨點的 repo 不在本判定範圍）"
     else
         echo "verdict: STALE-RISK（先跑上列 drift 比對，以 repo 現況為準再行動）"
     fi

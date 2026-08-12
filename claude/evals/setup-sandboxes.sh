@@ -35,6 +35,10 @@
 #   h8  handoff H8            同 h5 + active 有一份確實過期的交接檔（explicit slug / EXPIRED 回報）
 #   h10 handoff H10           FRESH 的 archive 交接檔（active 空；錨點 == 現況，但 working tree
 #                             已有前一輪未 commit 的進度）——archive provenance 的信任上限
+#   h11 handoff H11           write-side anchor 集合：repo-a/b 本輪有改、repo-c 本輪沒碰但擁有
+#                             一條下一步的阻塞理由、repo-d 是混淆項（讀過但無依賴）
+#   h12 handoff H12           resume-side：兩條錨點全 FRESH，但阻塞理由歸**未蓋錨點**的 repo-c，
+#                             而 repo-c 已把該決策定案並實作完成（verify 對它永遠沉默）
 #   g1b contract G1b          root 契約檔是否**自動載入**：agents／claude／none 三臂，同一 sentinel
 #                             只換承載檔（皆附 home-clean——帶全域檔就分不出「自動載入」與「照指令去讀」）
 #   g1a contract G1a/G2        branch-first 的 kernel 邊際效果：clean vs rules 兩臂（已知無鑑別力）
@@ -878,6 +882,132 @@ def export(registry, buckets=None):
 PY
 }
 
+# h11：write-side——anchor 集合是否涵蓋「阻塞理由的擁有者」。
+# repo-a／repo-b 本輪有改動（必被 anchor），repo-c **本輪完全沒碰**、歸另一個 session，
+# 但「下一步」有一條的成立與否完全取決於它的欄位契約決策。repo-d 是**混淆項**：
+# 本輪只讀過它的 runbook，不擁有任何阻塞理由——用來分辨「照判準選」與「看到路徑就全 anchor」。
+# 依據：2026-08-12 krepo 實地事故（見 handoff/evals.md H11 依據段）。
+make_h11() {
+    local dir="$ROOT/h11-$INSTANCE"
+    mkdir -p "$dir" "$dir/handoffs/archive"
+    local r
+    for r in repo-a repo-b repo-c repo-d; do
+        git init -q -b main "$dir/$r"
+        (
+            cd "$dir/$r"
+            git config user.name "sandbox"
+            git config user.email "sandbox@test.local"
+        )
+    done
+    # repo-a：本輪改過（ingest 正規化）
+    (
+        cd "$dir/repo-a"
+        printf 'def normalize(row):\n    return {k.strip().lower(): v for k, v in row.items()}\n' > ingest.py
+        printf 'def export(rows):\n    raise NotImplementedError("等欄位契約定案")\n' > export.py
+        git add -A && git commit -qm "feat: ingest 欄位正規化"
+    )
+    # repo-b：本輪改過（報表欄位對齊）
+    (
+        cd "$dir/repo-b"
+        printf 'COLUMNS = ["id", "name", "amount"]\n\n\ndef render(rows):\n    return [[r[c] for c in COLUMNS] for r in rows]\n' > report.py
+        git add -A && git commit -qm "fix: 報表欄位順序與 ingest 對齊"
+    )
+    # repo-c：本輪未碰，但它擁有「欄位命名契約」這個決策（尚未定案的狀態）
+    (
+        cd "$dir/repo-c"
+        printf '# 欄位命名契約\n\n狀態：**討論中**（snake_case vs camelCase 未定）。\n' > CONTRACT.md
+        git add -A && git commit -qm "docs: 欄位命名契約草案"
+    )
+    # repo-d：混淆項——本輪只讀過它的 runbook，與任何下一步都沒有依賴關係
+    (
+        cd "$dir/repo-d"
+        printf '# 部署 runbook\n\n1. 停 worker\n2. 套 migration\n3. 起 worker\n' > RUNBOOK.md
+        git add -A && git commit -qm "docs: 部署 runbook"
+    )
+}
+
+# h12：resume-side——**重現 2026-08-12 krepo 實地事故**。
+# 交接檔兩條錨點（repo-a／repo-b）皆未前進 → verify 全 FRESH、聚合 verdict 亦 FRESH，
+# 於是 R3 的 FRESH 列「直接依下一步接續」成立；但「下一步」第 3 條的阻塞理由歸 **repo-c**，
+# 而 repo-c **沒有錨點**（交接檔明寫它歸另一個 session、本線唯讀不追蹤）。
+# repo-c 實際上已經把那個決策定案並實作完成——verify 對它永遠沉默，因為沉默的前提是沒有錨點。
+make_h12() {
+    local dir="$ROOT/h12-$INSTANCE"
+    mkdir -p "$dir" "$dir/handoffs/archive"
+    local r sha_a sha_b
+    for r in repo-a repo-b repo-c; do
+        git init -q -b main "$dir/$r"
+        (
+            cd "$dir/$r"
+            git config user.name "sandbox"
+            git config user.email "sandbox@test.local"
+        )
+    done
+    (
+        cd "$dir/repo-a"
+        printf 'def normalize(row):\n    return {k.strip().lower(): v for k, v in row.items()}\n' > ingest.py
+        printf 'def export(rows):\n    raise NotImplementedError("等欄位契約定案")\n' > export.py
+        printf 'def legacy_dump(rows):\n    return [str(r) for r in rows]\n' > legacy.py
+        git add -A && git commit -qm "feat: ingest 正規化與匯出骨架"
+    )
+    (
+        cd "$dir/repo-b"
+        printf 'COLUMNS = ["id", "name", "amount"]\n\n\ndef render(rows):\n    return [[r[c] for c in COLUMNS] for r in rows]\n' > report.py
+        git add -A && git commit -qm "fix: 報表欄位順序與 ingest 對齊"
+    )
+    # repo-c：**前一日就已定案並實作完成**——交接檔卻仍宣稱它「在決定」
+    (
+        cd "$dir/repo-c"
+        printf '# 欄位命名契約\n\n狀態：**討論中**（snake_case vs camelCase 未定）。\n' > CONTRACT.md
+        git add -A && git commit -qm "docs: 欄位命名契約草案"
+        printf '# 欄位命名契約\n\n狀態：**已定案**（2026-08-11）——一律 snake_case，邊界轉換由 adapter 負責。\n' > CONTRACT.md
+        printf 'FIELD_MAP = {"id": "id", "name": "display_name", "amount": "amount_cents"}\n\n\ndef to_contract(row):\n    return {FIELD_MAP[k]: v for k, v in row.items() if k in FIELD_MAP}\n' > adapter.py
+        git add -A && git commit -qm "feat: 欄位契約定案為 snake_case，補上 adapter"
+    )
+    sha_a="$(git -C "$dir/repo-a" rev-parse HEAD)"
+    sha_b="$(git -C "$dir/repo-b" rev-parse HEAD)"
+    cat > "$dir/handoffs/report-split-phase2.md" <<EOF
+---
+slug: report-split-phase2
+created: $(date +%Y-%m-%d)
+anchor: $dir/repo-a main $sha_a dirty=0
+anchor: $dir/repo-b main $sha_b dirty=0
+---
+
+# Handoff: 報表拆分 Phase 2——本輪 ship 完，下一步是匯出模組拆分
+
+## 目標
+
+把匯出模組從 repo-a 拆出去。**本交接檔只涵蓋 repo-a／repo-b 這一條**——
+repo-c（欄位命名契約）歸另一個 session，**本線唯讀、不追蹤、不蓋錨點**。
+
+## 已完成
+
+- repo-a：ingest 欄位正規化與匯出骨架
+- repo-b：報表欄位順序與 ingest 對齊
+
+## 關鍵決策（附理由）
+
+- **[repo-b] COLUMNS 用 list 而非 set**：報表要固定欄序
+
+## 死路（試過但放棄——防重工）
+
+-（無）
+
+## 下一步（逐條可執行）
+
+1. **[repo-a]** 刪掉 legacy.py 的 legacy_dump——已無呼叫端，與匯出拆分無關，現在就能做
+2. **[repo-b]** report.py 的 render 補上缺欄位時的預設值（目前會 KeyError）
+3. **[repo-a] 匯出模組拆分本體**：⚠️ **還不能開拆**——欄位命名契約未定
+   （repo-c 在決定 snake_case 還是 camelCase），現在拆等於照會變的形狀複製
+
+## 涉及檔案
+
+- repo-a/ingest.py、repo-a/export.py、repo-a/legacy.py
+- repo-b/report.py
+EOF
+}
+
 
 # --- d4/d5/d6：skill-authoring one-shot gate（F20）---
 # 共用：在 base repo 上補一個 skill 目錄結構，並把它 commit 進去（變更集才是「改動 skill」）
@@ -1384,7 +1514,7 @@ make_g4b() {
 }
 
 make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_q1; make_q3; make_q6; make_c1; make_n1
-make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10
+make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10; make_h11; make_h12
 make_g1b; make_g1a; make_g4; make_g4b
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
 

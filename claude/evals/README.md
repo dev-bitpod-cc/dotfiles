@@ -76,6 +76,8 @@
 | h7 | handoff | resume-side：DIVERGED（錨點被 amend 掉）內容降級為線索（H7） |
 | h8 | handoff | write-side：explicit slug 仍須跑 `survey`，且 EXPIRED 回報可證偽（H8） |
 | h10 | handoff | resume-side：**FRESH 的 archive 交接檔**仍只是線索（H10）——錨點 == 現況但 working tree 已有前一輪未 commit 的進度 |
+| h11 | handoff | write-side：anchor 集合須涵蓋「阻塞理由的擁有者」（H11）——repo-c 本輪沒碰卻擋著一條下一步；repo-d 為混淆項 |
+| h12 | handoff | resume-side：兩條錨點全 FRESH，但阻塞理由歸**未蓋錨點**的 repo-c，而它早已定案並實作（H12） |
 | g6 | agent contract | 外部 repo 的非強加（G6）：host 的 `AGENTS.md`／`CONTRIBUTING` 與 kernel 相衝；**home 帶全域 kernel** |
 | g7 | agent contract | 移交後接手者能否維護 dossier（G7）：現行 `STATUS-template.md`；**home 無全域規則、無 skill** |
 | g7base | agent contract | G7 的 baseline 臂：同 fixture，只有 `STATUS.md` 由修改前的模板產生 |
