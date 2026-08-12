@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-11)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-12)
 
 ---
 
@@ -63,6 +63,14 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   這麼做。放棄理由:主 checkout 有其他 writer;`brewup` 會在 pull 前丟棄未提交改動,那份複製隨時
   被吃掉;最要命的是**「測的到底是哪一版」變得不可考**——與這些 skill 自己在防的「證據對不上
   結論」完全同型。**正解是先合併、主 checkout pull 之後再驗。**
+- **依外部提案的診斷改 `handoff` 的 W1(anchor 集合判準)**:2026-08-12 收到一份提案,診斷
+  「W1 的『涉及』被讀成『我改過的 repo』」是實地事故(交接檔漏 anchor 擋著下一步的 repo)的根因,
+  並提議在寫入端加判準。**跑了三輪 eval(H11 兩輪 + 最忠實的 H11b 變體)全部 GREEN 而放棄**——
+  H11b 裡 Sonnet 只 anchor「唯一會解封下一步的外部依賴」、主動排除已交割的 repo,那正是提案想
+  寫進 W1 的判準。**依 Iron Law(no failing eval, no skill change)不改 body**;真正紅的是讀取端
+  (H12),修補因此落在 R3。**這條的價值在於「實地確實在寫入端失手,但 fixture 重現不了」**——
+  兩者是兩件事,後者才是改 body 的門檻。H11/H11b 已留為迴歸哨兵並在 `evals.md` 標明不對應任何條款;
+  日後若寫入端事故復發,先讓 fixture 紅起來再動 W1,不要憑實地印象直接改。
 - **「/project log 包裝/並存 /uap」**:disable-model-invocation 下無法鏈式呼叫,只能複製
   pressure-tested 的 ship 防護邏輯——違反 single-source;功能上與「uap 強化」完全收斂,直接取代。
 - **在移交出去的 repo 內放一份 dossier 規範精簡版(`docs/dossier.md`)**:2026-08-10 設計時提出並否決。
