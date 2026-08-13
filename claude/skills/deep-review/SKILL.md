@@ -64,11 +64,11 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 - **同型全修（命中點軸）**：finding 的「影響範圍」列了 N 個命中點就修 N 個，不只修第一個；reviewer 漏掃時（只給單一實例、未註明已掃過）由 fixer 自行補掃該規則的其餘實例。Fixing one site of a three-site rule is what turns one round into three.
 - **輸入空間覆蓋（輸入軸）**：把 finding 抽象成規則後，攤開該規則的**輸入空間**確認修復對整個空間成立——**列舉**（有限且可分割 → 寫出等價類／邊界分割並逐項驗）或**根治**（無限／不可枚舉 → 改成結構上不依賴枚舉的解，如 allowlist、型別約束、單一入口）。兩者都是完整處置，根治不是次等選項。
-  **判別問句：這個集合的成員，會不會因為別人安裝／擴充了什麼而變多？**（DB catalog 的物件種類、plugin 提供的型別、第三方 API 的錯誤碼、日後新增的子命令）→ **會**＝外部可擴充集合，**枚舉必然差一個**，那不是「再補幾個」而是選錯解法，改根治；→ **不會**（repo 自己定義的封閉集）＝列舉合法。實地：`02-*.sql` 的同名 schema 檢查補了 `pg_proc`／`pg_type` 仍漏 operator／collation／text-search，三輪才改成「owner 不是本角色就中止」。
+  **判別問句：這個集合的成員，會不會因為別人安裝／擴充了什麼而變多？**（DB catalog 的物件種類、plugin 提供的型別、第三方 API 的錯誤碼——**判準是「誰能加成員」而非「會不會變多」**：repo 自己日後新增的子命令仍屬封閉集，照常列舉並同步更新測試）→ **會**＝外部可擴充集合，**枚舉必然差一個**，那不是「再補幾個」而是選錯解法，改根治；→ **不會**（repo 自己定義的封閉集）＝列舉合法。實地：`02-*.sql` 的同名 schema 檢查補了 `pg_proc`／`pg_type` 仍漏 operator／collation／text-search，三輪才改成「owner 不是本角色就中止」。
   **A reviewer's 「已掃過 X，無其他命中」 clears the sites axis ONLY — it NEVER exempts the others.** 各軸同名不同軸（reviewer 端的定義見 `references/reviewer-brief.md`「同型掃描」）。同理 **reviewer 的建議修法是下限、不是上限**——`Cheap fix:`／「簡單作法」這類措辭即自陳未覆蓋完整輸入空間，照抄等於把近似解當成完整修復。
 - **Scan before you edit, not after.** 各軸都在動手改之前掃完。實地失效：修完才掃，於是下一輪 reviewer 在**修復本身**裡抓到同一條規則的第三次違反。
 - **各軸的處置寫進報告**（`references/report-templates.md`「同型處置紀錄」）——零命中也要寫。掃過與沒掃在輸出上不得同形。
-- **相依軸（誰的正確性依賴我剛改的東西）**：改完 X 之後，**依「關係」逐類找依賴端，不是找哪裡還出現同一串字**——①條件 → 描述它的訊息／註解／docstring；②判準 → 它的自我測試；③事實 → 宣告它的權威檔；④能力 → 描述該能力的文件。**Search by relationship, not by matching text.** 這一軸**與命中點軸正交，且 grep 天然抓不到**：相依端的用字常與被改的東西不同、甚至反義（predicate 拿掉判空 ↔ 訊息仍寫「且非空」；清單 3 項變 4 項 ↔ 散文仍寫「三處」）。改完語意卻留下 stale 描述，下一輪必被當成新 finding 報回來。
+- **相依軸（誰的正確性依賴我要改的東西）**：**動手改 X 之前**（同上一條，掃描一律先於編輯），**依「關係」逐類找依賴端，不是找哪裡還出現同一串字**——①條件 → 描述它的訊息／註解／docstring；②判準 → 它的自我測試；③事實 → 宣告它的權威檔；④能力 → 描述該能力的文件。**Search by relationship, not by matching text.** 這一軸**與命中點軸正交，且 grep 天然抓不到**：相依端的用字常與被改的東西不同、甚至反義（predicate 拿掉判空 ↔ 訊息仍寫「且非空」；清單 3 項變 4 項 ↔ 散文仍寫「三處」）。改完語意卻留下 stale 描述，下一輪必被當成新 finding 報回來。
 
 **修復後驗證**：依錨點記錄的 tests-baseline 分流（record 時取得，`show` 可跨 session 恢復）：
 
