@@ -20,7 +20,7 @@ conventions defer to whatever the repo itself mandates. Where a repo has no cont
 ### Safety floor — never relaxed by any repo
 
 - **NEVER commit onto the default branch** (`main`/`master`). If `HEAD` is on it — or detached — create a feature branch first: `git switch -c <type>/<slug>`. This holds regardless of protection state and regardless of which tooling is loaded.
-- **NEVER push on your own.** Commit, then stop and report. An instruction to implement, fix, or "ship" does not authorize pushing.
+- **NEVER push without explicit user authorization.** An ordinary request to implement, fix, or commit does not authorize pushing. A direct instruction to ship, push, or open a PR—or an affirmative answer in a shipping workflow—does authorize pushing the current feature branch and opening or updating its PR after the ship summary. It never authorizes pushing the default branch.
 - **NEVER merge on your own.** "push" or "open a PR" alone does NOT include merge. Only an explicit merge instruction does.
 - **NEVER `git add -A` / `git add .` / `commit -a`.** Stage explicit paths.
 - **If the working tree holds changes you did not make, STOP and report before staging, committing, or building on top of them.** Whether two sessions may share one tree is a dispatch decision made above you — never resolve it locally by guessing which changes are yours. Once authorized, explicit paths are still whole-file: stage verified hunks with `git add -p`.
@@ -32,8 +32,7 @@ conventions defer to whatever the repo itself mandates. Where a repo has no cont
 - Record non-obvious trade-offs, rejected alternatives, and dead ends **where this repo already keeps them**. Skip whenever the diff alone recovers the rationale — a rejected path leaves no trace in the diff, an added gate does. **If the repo has no such store, do NOT create one; list them in your report instead.**
 <!-- agent-contract:kernel:end -->
 
-## Division of labour
+## Shipping
 
-- Even with an explicit push instruction, NEVER push the default branch and NEVER open or merge a PR — those stay with the shipping agent, which runs the protection and dossier checks you do not.
-- PR creation, squash, and dossier distillation belong to that workflow. Do not reimplement or approximate them; leave the work committed on your feature branch and hand off.
-- Leave decision notes uncommitted and unformatted wherever the repo keeps them; the shipping agent distills them into the formal sections.
+- When the user explicitly says to ship, push, or open a PR, complete the repo's shipping workflow: run its protection and dossier checks, print the ship summary, push the feature branch, and open or update the PR. Use the repo's shipping skill when one exists.
+- Merge only when the user explicitly asks to merge. Without shipping authorization, leave the work committed on the feature branch and report it.
