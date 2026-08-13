@@ -232,17 +232,18 @@ Deep Review 進度：
 
 - **只跑一次診斷 review**，不進修復循環（`autofix` 引數在此不生效）。
 - **severity 判準完全不變**——照 `references/reviewer-brief.md`「Completeness 深井」節既有的分級：prose 裡「夾帶指令 misbehave」「步驟自相矛盾」**仍是 blocking**；只有措辭與完整度是 non-blocking。**切斷的是 loop，不是 correctness bar。**（**指涉那份判準時一律用 brief 自己的節名，NEVER 用 evals 的情境編號**——`F10` 是開發期 oracle 的編號、brief 裡並不存在，寫進 prompt 等於誘導 reviewer 去讀 evals；2026-08-07 eval 實測到受測 agent 照抄成 `the brief's F10 severity guidance`。）（2026-08-06 那批四條高風險 finding 全在 `.md` 裡、全屬「照做會錯」類——降級它們等於放行真 bug。）
-- **eval 檔絕不進 subagent prompt**（`evals.md` 明寫「不從 SKILL.md body 連結」，它是開發期 oracle）。**報告必須明說「本批的完成判定看 evals + `tests/run.sh`，不是這份審查」並指向下一步的 eval workflow**（2026-08-07 eval 實測：不寫成硬要求時，agent 會漏掉這句，使用者容易把「review 通過」誤讀成「這批完成了」）；但**不把 eval 內容交給 reviewer**。
+- **eval 檔絕不進 subagent prompt**（`evals.md` 明寫「不從 SKILL.md body 連結」，它是開發期 oracle）。**報告必須明說「本批的完成判定看該 repo 的 eval／測試機制，不是這份審查」並指向下一步的 eval workflow**（2026-08-07 eval 實測：不寫成硬要求時，agent 會漏掉這句，使用者容易把「review 通過」誤讀成「這批完成了」）；但**不把 eval 內容交給 reviewer**。
+  - **機制名稱逐 repo 查——NEVER copy dotfiles' filenames into another repo's report.** dotfiles 是 `claude/evals/` + 各 skill 的 `evals.md` + `tests/run.sh`；別的 repo 可能是 pytest／`bun test`／CI，**也可能根本沒有**——沒有就如實寫「本 repo 無 eval oracle，完成判定需人工補」。上方觸發條件含「repo 根的 `CLAUDE.md`」，**此段在非 dotfiles repo 一樣會生效**（2026-08-13 實地撞上：目標 repo 的完成判定是 pytest、無 `tests/run.sh` 也無 `evals.md`，agent 得自行判斷不照搬；2026-08-07 F20(a) 沙盒重跑亦同）。
 - blocking finding 的處置**依可驗證性分流**（測試難寫 ≠ finding 不真）：
 
   | 情況 | 處置 |
   |---|---|
-  | 能建立會紅的可執行測試 | 進 `tests/run.sh`，走既有 TDD |
-  | 屬 agent 行為 | 建 behavior eval（該 skill 的 `evals.md`） |
+  | 能建立會紅的可執行測試 | 進該 repo 的測試套件（dotfiles 為 `tests/run.sh`），走既有 TDD |
+  | 屬 agent 行為 | 建 behavior eval（限該 repo 已有 eval 機制；dotfiles 為該 skill 的 `evals.md`。無機制 → 歸下一列） |
   | 暫時無法建立可靠 oracle | 標 **unverified**，**停止自動修改、交回使用者判斷** |
   | 確認是措辭／完整度 | 降 backlog |
 
-- **完成判定看 evals + `tests/run.sh` + 必要 forward test，不看第二輪 review 是否零 finding。**
+- **完成判定看該 repo 的 eval／測試機制 + 必要 forward test，不看第二輪 review 是否零 finding。**
 
 **Escape hatch 只有一個字面 token**：`/deep-review autofix force-skill-loop`。`autofix` 本身**不構成**推翻（那是它預設就會帶的字），**NEVER infer an equivalent from natural language**——使用者說「就是要跑」「照跑」都不算。帶了 `force-skill-loop` 才進 loop，且報告開頭必須標明「已知此 loop 結構上不收斂」。
 
