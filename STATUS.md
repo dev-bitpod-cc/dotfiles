@@ -155,6 +155,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-09 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-13 deep-review 加**相依軸**(誰依賴我要改的東西;依關係找、非 grep)、終止報告分流
+  「根因重複」的兩種成因(變更上→重做設計／方法上→換掃描維度,後者重寫救不了)、同型處置紀錄兩軸→三軸。
+  外部提案逐條驗證後採五退三;**F22 重跑 6/6**(相依端欄首驗,以實跑反例計分)。983 PASS。
 - ✅ 2026-08-13 repo-review 取證契約強化(**Codex 撰寫,本 session 只 ship、未 review**):
   codex reviewer 的 sandbox 從 `-s read-only` 改為 permission profile(repo 仍唯讀,只開 job 目錄下的
   TMPDIR/uv/pytest cache),`--strict-config` 讓不支援 profile 的舊版**硬失敗、不靜默落回 danger-full-access**;
@@ -166,6 +169,10 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 已知缺口
 
+- **codex reviewer 跑得動測試、但跑不完**(2026-08-13 C1 實測):PR #94 的 profile 解決了「建不了 cache」
+  (events 實查真跑了三次),但 sandbox 內 `PASS=956` vs 主機 `983`,伴隨 `cloned an empty repository`
+  ——建 git fixture 在 `:read-only`+tmpdir-write 下仍受限。**「能啟動」≠「跑得完」**;那個中途計數正是同輪
+  假 `verification: executed` 的來源(被讀成「全部通過」,漏掉 `TEST_RC=1`)。調 profile 前先看這條。
 - **eval 的受測 subagent 拿不到 deferred tools,部分契約在沙盒中無法構造**:2026-08-07 實測——
   主 session 的 `CronList`／`TaskOutput` 正常,探針 subagent(`Tools: *`)對同一批 `select:` 一律得
   `No matching deferred tools found`。凡「該工具查得成」才成立的情境因此做不出來,ready4quit
@@ -183,9 +190,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   把每顆 buried 標 `fixup` 折進前一顆語意 commit 即可(前一顆本就是它父節點,**衝突為零是結構保證**)。
   **代價才是沒做的理由**:語意 commit 的 hash 與內容都會變、「squash 絕不動語意 commit」從結構保證
   退成測試保證、多一條 rebase 回滾路徑、branch 首顆是 buried 時無目標;而實測多為 none/top-contiguous。
-
-- **證據標註 = backlog,無 RED 不進 brief**:待觀察失效為「finding 建立在未查證推論、fixer 誤信」,
-  至今零觀察;日後出現再加標註版(零風險、可測),而非授權外部存取。全紀錄見 deep-review `evals.md`。
 
 - **「規則的對稱面／使用點」只有文字原則、無產出物**(同型掃描那一半已於 2026-08-11 處置,見下條):
   Step 2 抓到 `add -A` 例外的使用點缺口純屬偶然(2026-08-05),同 session 的 #43 走過同一個 Step 2
