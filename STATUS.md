@@ -155,6 +155,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-09 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-13 repo-review 取證契約強化(**Codex 撰寫,本 session 只 ship、未 review**):
+  codex reviewer 的 sandbox 從 `-s read-only` 改為 permission profile(repo 仍唯讀,只開 job 目錄下的
+  TMPDIR/uv/pytest cache),`--strict-config` 讓不支援 profile 的舊版**硬失敗、不靜默落回 danger-full-access**;
+  job 目錄以 realpath 擋在受審 repo 之外。理由寫在 diff 註解裡,故不另記決策節。
+  +5 斷言(合併後 980 PASS),斷言打真實 argv。
 - ✅ 2026-08-13 Codex shipping 授權對齊:kernel push 條改為指向 repo 授權表、`codex/AGENTS.md`
   改為重用 repo 既有 shipping workflow(無則 commit 並停)、`claude/CLAUDE.md` 移除「只有 Claude
   能 ship」的過期 note。四份 kernel 維持 byte-identical(975 PASS;理由見決策節同日兩條)。
