@@ -60,14 +60,14 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 **再跑一次 autofix 不是預設下一步**——同一個 reviewer 對同一批 code 再開一輪，挖出的多是同類型的東西，而輪次上限會隨新一場 review 重置（等於上限失效）。`record` 印出 `cycle: 2+`（前一場未走完即重啟，腳本自動判定）時，終止報告**必須先給分流**，且明列「同 reviewer 再跑第三個週期價值最低，優先換視角」。**換視角的可行形式一律照報告模板的「續跑分流」表**——R5 未通過時直接跑 `/deep-review autocodex` 到不了 codex 階段（Step 6 只在主審通過後才進），故實際只有兩條：人工修掉剩餘 blocking 後才跑 `autocodex`，或直接把 `base..head` 交外部 reviewer。
 
-**修復原則**：主 agent 在修復階段依照 subagent 的修復計畫執行，優先修復所有嚴重與中等問題；建議等級僅在不引入額外風險時順手處理。修復時另兩條硬性動作：
+**修復原則**：主 agent 在修復階段依照 subagent 的修復計畫執行，優先修復所有嚴重與中等問題；建議等級僅在不引入額外風險時順手處理。修復時**以下每條都是硬性動作、不是建議**（軸的清單以 `references/report-templates.md`「同型處置紀錄（共用區塊）」為準，此處不複述數量）：
 
 - **同型全修（命中點軸）**：finding 的「影響範圍」列了 N 個命中點就修 N 個，不只修第一個；reviewer 漏掃時（只給單一實例、未註明已掃過）由 fixer 自行補掃該規則的其餘實例。Fixing one site of a three-site rule is what turns one round into three.
 - **輸入空間覆蓋（輸入軸）**：把 finding 抽象成規則後，攤開該規則的**輸入空間**確認修復對整個空間成立——**列舉**（有限且可分割 → 寫出等價類／邊界分割並逐項驗）或**根治**（無限／不可枚舉 → 改成結構上不依賴枚舉的解，如 allowlist、型別約束、單一入口）。兩者都是完整處置，根治不是次等選項。
   **判別問句：這個集合的成員，會不會因為別人安裝／擴充了什麼而變多？**（DB catalog 的物件種類、plugin 提供的型別、第三方 API 的錯誤碼、日後新增的子命令）→ **會**＝外部可擴充集合，**枚舉必然差一個**，那不是「再補幾個」而是選錯解法，改根治；→ **不會**（repo 自己定義的封閉集）＝列舉合法。實地：`02-*.sql` 的同名 schema 檢查補了 `pg_proc`／`pg_type` 仍漏 operator／collation／text-search，三輪才改成「owner 不是本角色就中止」。
-  **A reviewer's 「已掃過 X，無其他命中」 clears the sites axis ONLY — it NEVER exempts the other two.** 三軸同名不同軸（reviewer 端的定義見 `references/reviewer-brief.md`「同型掃描」）。同理 **reviewer 的建議修法是下限、不是上限**——`Cheap fix:`／「簡單作法」這類措辭即自陳未覆蓋完整輸入空間，照抄等於把近似解當成完整修復。
-- **Scan before you edit, not after.** 三軸都在動手改之前掃完。實地失效：修完才掃，於是下一輪 reviewer 在**修復本身**裡抓到同一條規則的第三次違反。
-- **三軸的處置寫進報告**（`references/report-templates.md`「同型處置紀錄」）——零命中也要寫。掃過與沒掃在輸出上不得同形。
+  **A reviewer's 「已掃過 X，無其他命中」 clears the sites axis ONLY — it NEVER exempts the others.** 各軸同名不同軸（reviewer 端的定義見 `references/reviewer-brief.md`「同型掃描」）。同理 **reviewer 的建議修法是下限、不是上限**——`Cheap fix:`／「簡單作法」這類措辭即自陳未覆蓋完整輸入空間，照抄等於把近似解當成完整修復。
+- **Scan before you edit, not after.** 各軸都在動手改之前掃完。實地失效：修完才掃，於是下一輪 reviewer 在**修復本身**裡抓到同一條規則的第三次違反。
+- **各軸的處置寫進報告**（`references/report-templates.md`「同型處置紀錄」）——零命中也要寫。掃過與沒掃在輸出上不得同形。
 - **相依軸（誰的正確性依賴我剛改的東西）**：改完 X 之後，**依「關係」逐類找依賴端，不是找哪裡還出現同一串字**——①條件 → 描述它的訊息／註解／docstring；②判準 → 它的自我測試；③事實 → 宣告它的權威檔；④能力 → 描述該能力的文件。**Search by relationship, not by matching text.** 這一軸**與命中點軸正交，且 grep 天然抓不到**：相依端的用字常與被改的東西不同、甚至反義（predicate 拿掉判空 ↔ 訊息仍寫「且非空」；清單 3 項變 4 項 ↔ 散文仍寫「三處」）。改完語意卻留下 stale 描述，下一輪必被當成新 finding 報回來。
 
 **修復後驗證**：依錨點記錄的 tests-baseline 分流（record 時取得，`show` 可跨 session 恢復）：
@@ -172,10 +172,10 @@ Deep Review 進度：
 - [ ] Step 5：彙整輸出
         autofix 進迴圈前：branch-first（依 verdict）→ 測試 baseline → record 錨點（--tests-baseline）
         → WIP snapshot（僅 working-tree 模式且有未提交變更）
-        迴圈每輪重記一行：R{N} 審查 → 規則化+掃描（三軸，先於編輯）→ 修復 → 驗證 → commit（上限 R5）
+        迴圈每輪重記一行：R{N} 審查 → 規則化+掃描（各軸，先於編輯）→ 修復 → 驗證 → commit（上限 R5）
 - [ ] Step 6：Codex 第三方循環（僅 autocodex）
         進階段前先跑一次 codex runtime preflight check（非 0 只警告不阻擋）
-        每輪重記一行：C{N} 審查 → 驗證 → 規則化+掃描（三軸，先於編輯）→ 修復 → commit（上限 C3）
+        每輪重記一行：C{N} 審查 → 驗證 → 規則化+掃描（各軸，先於編輯）→ 修復 → commit（上限 C3）
 - [ ] 通過後：squash 成乾淨 commit（`squash-cmd` 取指令 → reset → commit → `clear`；**`clear` 無條件跑，即使 WARNING 跳過了 reset/commit**；語意 message + runtime Co-Authored-By trailer；`squash-preserve:` / `squash-note:` 有印就轉述進報告；commit 即停，等使用者指示是否 push）
 ```
 
