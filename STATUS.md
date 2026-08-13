@@ -27,13 +27,12 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
-- **2026-08-13 push 授權從「絕不自行 push」改為「明說即授權」**。理由是**兩份契約對同一動作
-  給出不同答案**:kernel 要 commit 後一律停,`/project` 的說法表卻認「明說 ship 即授權」;而 kernel
-  是四份 byte-identical 的那一份,不對稱直接落到 Codex(它原先還多一段絕對禁止開 PR 的條文)。
-  改後:普通 implement/fix/commit 不授權 push;明說 ship/push/open PR 或在 shipping workflow
-  肯定答覆 → 授權推 feature branch 並開/更新 PR。**未放寬**:default branch 與 merge 仍各需明說。
-  root `AGENTS.md` 的 outward-facing 條同步改成這個形狀。
-  ⚠️ **這是 safety floor 措辭的放寬**——講清楚授權從哪來,而非減少需要授權的動作。
+- **2026-08-13 push 授權改為「指向單一授權表」,不是放寬語意**。根因:kernel 要 commit 後一律停、
+  `/project` 說法表卻認明說即授權,而 kernel 是四份 byte-identical 的那份,不對稱直接落到 Codex。
+  **初版改法(kernel 自列「ship/push/open PR 算授權」)被自身反例推翻**——說法表上裸「ship」歸
+  「無送出詞→問一題」,方向剛好相反,不對稱只換了位置(同一輪實測撞上)。**定案**:kernel 只定義
+  授權的形狀,**哪些話算數以 repo 授權表為準、不自行擴充同義詞**;`after the ship summary` 這個
+  kernel 自己沒定義的前置,換成「你剛提出的確認被肯定答覆」。default branch 與 merge 未放寬。
 - **2026-08-13 不建 Codex 版 project skill,等真實 RED**。既然 Codex 已可 ship,直覺下一步是把
   Claude 的 `project` workflow 複製一份給它;不做的理由是 `codex/AGENTS.md` 改後已指向
   **repo 既有的 shipping skill**,複製等於製造第二份會漂移的 pressure-tested 邏輯(同
@@ -152,9 +151,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-09 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
-- ✅ 2026-08-13 Codex shipping 授權對齊:kernel push 條改為「明說即授權」、`codex/AGENTS.md` 改為
-  重用 repo 既有 shipping workflow、`claude/CLAUDE.md` 移除「只有 Claude 能 ship」的過期 note。
-  四份 kernel 維持 byte-identical(975 PASS;理由見決策節同日兩條)。
+- ✅ 2026-08-13 Codex shipping 授權對齊:kernel push 條改為指向 repo 授權表、`codex/AGENTS.md`
+  改為重用 repo 既有 shipping workflow(無則 commit 並停)、`claude/CLAUDE.md` 移除「只有 Claude
+  能 ship」的過期 note。四份 kernel 維持 byte-identical(975 PASS;理由見決策節同日兩條)。
 
 ## 已知缺口
 

@@ -14,7 +14,7 @@ fallback conventions 則由該 repo 自己的規定勝出。Repo 沒有契約檔
 ### Safety floor — never relaxed by any repo
 
 - **NEVER commit onto the default branch** (`main`/`master`). If `HEAD` is on it — or detached — create a feature branch first: `git switch -c <type>/<slug>`. This holds regardless of protection state and regardless of which tooling is loaded.
-- **NEVER push without explicit user authorization.** An ordinary request to implement, fix, or commit does not authorize pushing. A direct instruction to ship, push, or open a PR—or an affirmative answer in a shipping workflow—does authorize pushing the current feature branch and opening or updating its PR after the ship summary. It never authorizes pushing the default branch.
+- **NEVER push without authorization for the push in front of you.** Implementing, fixing, or committing never carries it, and neither does approval given before this change existed. Authorization is one of exactly two things: an affirmative answer to a ship confirmation you just presented, or an instruction naming the action — push, open a PR — for the change now in hand. **Where the repo defines a shipping workflow, its authorization table is the only list of what counts as such an instruction; NEVER extend that list with synonyms of your own.** No authorization ever covers the default branch.
 - **NEVER merge on your own.** "push" or "open a PR" alone does NOT include merge. Only an explicit merge instruction does.
 - **NEVER `git add -A` / `git add .` / `commit -a`.** Stage explicit paths.
 - **If the working tree holds changes you did not make, STOP and report before staging, committing, or building on top of them.** Whether two sessions may share one tree is a dispatch decision made above you — never resolve it locally by guessing which changes are yours. Once authorized, explicit paths are still whole-file: stage verified hunks with `git add -p`.
@@ -103,7 +103,7 @@ When the user pastes third-party review findings, read the source code and verif
 ## 跨 Agent 工作分配（Claude Code / Codex 並用）
 
 - **writer 不限**：一般實作、測試、除錯兩邊都可做，依當下工具與模型選，**不按目錄分**（「codex 只碰 `codex/`」向來只是慣例、非規則）。
-- **ship 單一流程**：Claude 的 `/project log` 是 pressure-tested 的送出路徑（branch-first／protection／dossier 蒸餾）；Codex 收到明確 ship 授權時重用同一套狀態、保護與 mutation 腳本，不另寫一套近似流程。沒有 ship 授權時，兩者都停在 feature branch 的 commit。
+- **ship 單一流程**：Claude 的 `/project log` 是 pressure-tested 的送出路徑（branch-first／protection／dossier 蒸餾），其「說法表」是**授權判定的唯一權威**——kernel 指向它，兩邊因此不會對同一句話給出不同答案。Codex 拿到授權時重用同一套狀態、保護與 mutation 腳本，不另寫一套近似流程；repo 沒有這套流程時，兩者都停在 feature branch 的 commit。
 - **review 刻意隔離**：同一變更的作者與 reviewer 用不同 agent。可共用＝repo 事實／程式碼／測試／機械腳本／最終決策；**不主動共用**＝嫌疑清單、上輪 findings、輪次、預期答案、作者的判斷路徑；可刻意不同＝兩邊 reviewer 的判準與 orchestration（各自有 eval oracle 即可）。**共用與獨立審查是張力**——共用越多判準，blind review 的價值越低。
 - **One writer per work item.** Two agent sessions must NEVER edit the same working tree concurrently — use a separate worktree or clone. 這與上方 staging 紀律同源：並行編輯製造混檔，混檔製造誤收。
 
