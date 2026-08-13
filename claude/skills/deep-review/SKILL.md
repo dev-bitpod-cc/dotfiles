@@ -64,10 +64,11 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 - **同型全修（命中點軸）**：finding 的「影響範圍」列了 N 個命中點就修 N 個，不只修第一個；reviewer 漏掃時（只給單一實例、未註明已掃過）由 fixer 自行補掃該規則的其餘實例。Fixing one site of a three-site rule is what turns one round into three.
 - **輸入空間覆蓋（輸入軸）**：把 finding 抽象成規則後，攤開該規則的**輸入空間**確認修復對整個空間成立——**列舉**（有限且可分割 → 寫出等價類／邊界分割並逐項驗）或**根治**（無限／不可枚舉 → 改成結構上不依賴枚舉的解，如 allowlist、型別約束、單一入口）。兩者都是完整處置，根治不是次等選項。
-  **A reviewer's 「已掃過 X，無其他命中」 clears the sites axis ONLY — it NEVER exempts this axis.** 兩軸同名不同軸（reviewer 端的定義見 `references/reviewer-brief.md`「同型掃描」）。同理 **reviewer 的建議修法是下限、不是上限**——`Cheap fix:`／「簡單作法」這類措辭即自陳未覆蓋完整輸入空間，照抄等於把近似解當成完整修復。
-- **Scan before you edit, not after.** 兩軸都在動手改之前掃完。實地失效：修完才掃，於是下一輪 reviewer 在**修復本身**裡抓到同一條規則的第三次違反。
-- **兩軸的處置寫進報告**（`references/report-templates.md`「同型處置紀錄」）——零命中也要寫。掃過與沒掃在輸出上不得同形。
-- **掃修復漣漪**：本輪修復若改變了某個事實宣稱（語意、行為、介面、契約），一併掃引用該宣稱的文件／測試／呼叫端並同步。改完語意卻留下 stale 描述，下一輪必被當成新 finding 報回來。
+  **判別問句：這個集合的成員，會不會因為別人安裝／擴充了什麼而變多？**（DB catalog 的物件種類、plugin 提供的型別、第三方 API 的錯誤碼、日後新增的子命令）→ **會**＝外部可擴充集合，**枚舉必然差一個**，那不是「再補幾個」而是選錯解法，改根治；→ **不會**（repo 自己定義的封閉集）＝列舉合法。實地：`02-*.sql` 的同名 schema 檢查補了 `pg_proc`／`pg_type` 仍漏 operator／collation／text-search，三輪才改成「owner 不是本角色就中止」。
+  **A reviewer's 「已掃過 X，無其他命中」 clears the sites axis ONLY — it NEVER exempts the other two.** 三軸同名不同軸（reviewer 端的定義見 `references/reviewer-brief.md`「同型掃描」）。同理 **reviewer 的建議修法是下限、不是上限**——`Cheap fix:`／「簡單作法」這類措辭即自陳未覆蓋完整輸入空間，照抄等於把近似解當成完整修復。
+- **Scan before you edit, not after.** 三軸都在動手改之前掃完。實地失效：修完才掃，於是下一輪 reviewer 在**修復本身**裡抓到同一條規則的第三次違反。
+- **三軸的處置寫進報告**（`references/report-templates.md`「同型處置紀錄」）——零命中也要寫。掃過與沒掃在輸出上不得同形。
+- **相依軸（誰的正確性依賴我剛改的東西）**：改完 X 之後，**依「關係」逐類找依賴端，不是找哪裡還出現同一串字**——①條件 → 描述它的訊息／註解／docstring；②判準 → 它的自我測試；③事實 → 宣告它的權威檔；④能力 → 描述該能力的文件。**Search by relationship, not by matching text.** 這一軸**與命中點軸正交，且 grep 天然抓不到**：相依端的用字常與被改的東西不同、甚至反義（predicate 拿掉判空 ↔ 訊息仍寫「且非空」；清單 3 項變 4 項 ↔ 散文仍寫「三處」）。改完語意卻留下 stale 描述，下一輪必被當成新 finding 報回來。
 
 **修復後驗證**：依錨點記錄的 tests-baseline 分流（record 時取得，`show` 可跨 session 恢復）：
 
@@ -129,6 +130,8 @@ Hard constraints — violating any of these invalidates the codex round:
 
 **Findings 驗證規則**：主 agent 收到 codex findings 後，逐條讀原始碼獨立驗證。對每條判定 true positive / false positive / context-dependent。不預設 findings 正確，不預設錯誤。**只有 true positive 且非 Completeness 深井的 finding 才修復**；completeness / prose 深井（見 `references/reviewer-brief.md`，**不分 diff/baseline**）→ non-blocking、不觸發再一輪修復（codex 與 deep-review 同為對抗式 reviewer，深井會無限回吐——這道閘攔住「主 agent ↔ codex 來回燒額度」）。
 
+- **`verification:` 欄是分診資訊，NEVER a reason to skip verification.** codex 的 findings 每條帶 `verification: executed | static | partial`（其 `reviewer-brief.md` 要求）。**`executed` 是對方的 self-report**——它自稱跑過，不等於跑對了東西、也不等於那個結果支持它的結論。用這個欄位決定**先驗哪一條**（`static` 排前面，因為那是純推理），**不用它決定驗不驗**：逐條獨立驗證的要求不因任何標記而減免。實地反例：曾有一條 `static` 推理建議「一律要求 `--proxy`」，照做會把不帶該旗標的呼叫端踢出覆蓋。
+
 **Commit range 更新（依 `codex_base_mode`，見 Step 1）**：每輪執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh codex-next --repo <r>`，把輸出的 `codex-cmd:` 整行照抄以背景 Bash 執行——C1 全審 / C2+ 增量的 range 推導、last-codex-HEAD 記錄、重試冪等、C3 上限全在腳本內（增量為何安全見其 header）。使用者說 `codex full` → 加 `--full`（每輪重審 C1 全 scope）。exit 1（STOP：超上限 / anchor stale）→ 照 verdict 停下。**NEVER hand-compute the range. NEVER HEAD~1 — the anchor script owns the range.**
 
 - **C2+ 收斂判準**：finding 指向本輪修復 commit（增量 range 內新增/修改行）→ 照常驗證；屬 Completeness 深井（見 `references/reviewer-brief.md`：baseline backlog 或 prose artifact，**不分模式**）→ non-blocking、不阻擋通過、不觸發再一輪修復。
@@ -169,10 +172,10 @@ Deep Review 進度：
 - [ ] Step 5：彙整輸出
         autofix 進迴圈前：branch-first（依 verdict）→ 測試 baseline → record 錨點（--tests-baseline）
         → WIP snapshot（僅 working-tree 模式且有未提交變更）
-        迴圈每輪重記一行：R{N} 審查 → 規則化+掃描（兩軸，先於編輯）→ 修復 → 驗證 → commit（上限 R5）
+        迴圈每輪重記一行：R{N} 審查 → 規則化+掃描（三軸，先於編輯）→ 修復 → 驗證 → commit（上限 R5）
 - [ ] Step 6：Codex 第三方循環（僅 autocodex）
         進階段前先跑一次 codex runtime preflight check（非 0 只警告不阻擋）
-        每輪重記一行：C{N} 審查 → 驗證 → 規則化+掃描（兩軸，先於編輯）→ 修復 → commit（上限 C3）
+        每輪重記一行：C{N} 審查 → 驗證 → 規則化+掃描（三軸，先於編輯）→ 修復 → commit（上限 C3）
 - [ ] 通過後：squash 成乾淨 commit（`squash-cmd` 取指令 → reset → commit → `clear`；**`clear` 無條件跑，即使 WARNING 跳過了 reset/commit**；語意 message + runtime Co-Authored-By trailer；`squash-preserve:` / `squash-note:` 有印就轉述進報告；commit 即停，等使用者指示是否 push）
 ```
 
