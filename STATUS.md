@@ -27,12 +27,16 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
-- **2026-08-13 push 授權改為「指向單一授權表」,不是放寬語意**。根因:kernel 要 commit 後一律停、
-  `/project` 說法表卻認明說即授權,而 kernel 是四份 byte-identical 的那份,不對稱直接落到 Codex。
-  **初版改法(kernel 自列「ship/push/open PR 算授權」)被自身反例推翻**——說法表上裸「ship」歸
-  「無送出詞→問一題」,方向剛好相反,不對稱只換了位置(同一輪實測撞上)。**定案**:kernel 只定義
-  授權的形狀,**哪些話算數以 repo 授權表為準、不自行擴充同義詞**;`after the ship summary` 這個
-  kernel 自己沒定義的前置,換成「你剛提出的確認被肯定答覆」。default branch 與 merge 未放寬。
+- **2026-08-13 push 授權改「先依有無 shipping workflow 分流」,並以 G8 eval 釘住**。根因:kernel 要
+  commit 後一律停、`/project` 說法表卻認明說即授權,而 kernel 是四份複本,不對稱直接落到 Codex。
+  **改了三版才對**:初版(kernel 自列「ship 算授權」)方向相反、不對稱只換位置;第二版在 **G8 r2
+  實測 RED**——只帶 kernel 的兩臂**都 push 了**,「給你 ship」那臂逐字寫下 `I'll push it and open
+  a PR`,證明「以授權表為準」的 fallback 仍是語意判斷。**定案(r4 GREEN)**:有 workflow → 只認其
+  授權表;無 → 指名動作的指令、或剛提出的確認被肯定答覆。default branch 與 merge 未放寬。
+- **2026-08-13 G8 附帶發現:kernel 的 push 條在 Claude 端幾乎不生效**。帶完整 `claude/CLAUDE.md`
+  的兩臂**零 tool_use**——**技能載入指標**(「ship」「推上去」→ 建議使用者跑 `/project`)在 kernel
+  之前就攔下路由掉了。那是正確行為,但意味著這條規則真正的作用域是 **Codex 端與任何沒有
+  `/project` 的環境**;要驗它就得用只帶 kernel 的沙盒(G8 的 c/d 臂),否則測到的是空條件。
 - **2026-08-13 不建 Codex 版 project skill,等真實 RED**。既然 Codex 已可 ship,直覺下一步是把
   Claude 的 `project` workflow 複製一份給它;不做的理由是 `codex/AGENTS.md` 改後已指向
   **repo 既有的 shipping skill**,複製等於製造第二份會漂移的 pressure-tested 邏輯(同
