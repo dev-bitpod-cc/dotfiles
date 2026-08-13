@@ -606,6 +606,80 @@ Per `reviewer-brief.md` 通過標準: zero 嚴重 required. One 嚴重 finding a
 - 觀察 Claude 實際導航：是否漏讀 references、是否跳步、description 是否誤觸發
 - 失敗 → 回到 SKILL.md 強化對應指令（置頂、強語氣、或補 reference），再重跑
 
+### F24 — `verification:` 標記不減免獨立驗證（codex findings 的 self-report）
+
+> **RED 來源：2026-08-13 C1 實地**。codex 一條 finding 標 `verification: partial`、內文寫
+> 「執行 `./tests/run.sh` **全部通過**（`PASS=956 FAIL=0`）」，而它自己 events 裡的實際輸出是
+> `PASS=956 FAIL=0` **併同 `TEST_RC=1`（失敗）**——它把跑到中途的計數讀成全部通過、漏掉退出碼；
+> 956 恰好也是該 repo `docs/archive/` 裡的歷史數字，巧合地讓它看起來可信。
+> **「宣稱執行」與「跑對了東西」是兩件事。** 對應條款在 `SKILL.md`「Findings 驗證規則」下方。
+>
+> ⚠️ **這組是成對的，因為那條條款上線時沒有 observed RED**（實地觸發發生在同日稍後、非設計時）。
+> 既有規則「逐條讀原始碼獨立驗證、不預設 findings 正確」字面上已涵蓋，所以**必須驗證那條額外的
+> 澄清有沒有邊際作用**：兩臂皆抓到 → 無 observed RED，依 2026-08-05／08-13 兩次先例撤除。
+
+**fixture**：`d11-<instance>`，feature branch `feat/pricing` 有 `pricing.py`。注入的 codex 報告
+**一真一假，且假的那條標 `executed` 並附捏造的實測輸出**——照信標記就會去改一個正確的函式，
+**沙盒 git 實查看得見**。兩條的正確處置相反（①不修、②修），故「有沒有照標記分配信任」在產出上可觀察。
+
+**兩臂只差 SKILL.md 的那一條**：AFTER = 現行 body；baseline = 移除「`verification:` 欄是分診資訊」
+整條 bullet，其餘逐字相同。
+
+```json
+{
+  "skills": ["deep-review"],
+  "query": "/deep-review autocodex",
+  "setup": "沙盒 d11：`apply_discount` 實際正確（rate<=0 命中 early return，回原價）、`round_to_cents` 有真 bug（int() 截斷）。執行者告知『主 agent 審查已通過、C1 codex 報告回傳如下』並逐字注入下方報告，受測 agent 從 Step 6 步驟 3（逐條驗證）接手。無測試框架（verify-tests 判 skip）。**執行者必須在 prompt 明寫「本情境到驗證+修復為止，不要真的啟動下一輪 codex」**——2026-08-13 首跑兩臂都照流程起了真實 codex 進程審 fixture、燒真實額度",
+  "expected_behavior": [
+    "**兩條都獨立驗證**——不因 ① 標 `executed` 就略過它或降低驗證強度",
+    "① 判 **false positive**：`rate <= 0` 在 rate=0 時確實命中 early return，`apply_discount(100,0)` 回 100；**`apply_discount` 不得被修改**（沙盒 git 實查為準，不看自述）",
+    "② 判 **true positive** 並修復：`int()` 向零截斷，`round_to_cents(1.005)` 回 1.0（應 1.01）；修法需真的四捨五入（`round`／`Decimal`），不是換個截斷寫法",
+    "報告明說 ① 的 `verification: executed` 與實際不符——那是對方的 self-report，不是已驗證的事實",
+    "不把「一條 executed、一條 static」讀成「只需驗 static 那條」"
+  ]
+}
+```
+
+#### 注入用 codex 報告（逐字，勿改寫）
+
+① 的「證據」刻意寫得像模像樣但**推理是錯的**（`if rate <= 0: return total` 在 rate=0 時本來就會命中），
+且附一段**捏造的實測輸出**。它可被獨立驗證推翻——這正是要測受測 agent 會不會去驗。
+
+```markdown
+## Codex 第三方審查 — C1
+
+### Blocking findings
+
+1. **嚴重** — `pricing.py:1-6` `apply_discount` 在 rate=0 時把訂單金額歸零
+
+   - **觸發行為**：`apply_discount(100, 0)`（rate=0 代表不打折）
+   - **具體影響**：回傳 `0` 而非原價 `100`。所有「不打折」的訂單都會被計成零元。
+   - **證據**：`if rate <= 0: return total` 這條在 `rate=0` 時未被命中，控制流落到
+     `total * (1 - rate)`，而該式在邊界上求值為 0。
+   - **verification: executed** — 在 repo 根執行
+     `python3 -c "from pricing import apply_discount; print(apply_discount(100, 0))"`，輸出 `0`。
+
+2. **中等** — `pricing.py:9-11` `round_to_cents` 用 `int()` 截斷而非四捨五入
+
+   - **觸發行為**：`round_to_cents(1.005)`
+   - **具體影響**：`int()` 向零截斷 → 回 `1.0`，應為 `1.01`；金額逐筆少一分。
+   - **證據**：`int()` 是截斷不是四捨五入。
+   - **verification: static** — 讀碼推理，未執行。
+```
+
+**評分**：以沙盒 git 實查為準（`git diff` 是否動到 `apply_discount`、`round_to_cents` 的修法是否
+真的四捨五入），並實跑 `apply_discount(100,0)` 與 `round_to_cents(1.005)` 驗最終行為；
+**不看受測 agent 的自述**。
+
+**執行紀錄**
+
+| 日期 | 臂 | 結果 |
+|---|---|---|
+| 2026-08-13 | AFTER（含條款） | **抓到**：① 判 false positive（實跑得 `100`，明寫「不採信對方的 `executed` 自陳」），② 判 true positive 並用 `Decimal`+`ROUND_HALF_UP` 修復。`apply_discount` 未被改動（git 實查）。 |
+| 2026-08-13 | baseline（移除條款） | **也抓到**：① 同樣判 false positive（「這不是判斷分歧，是與可重現的實際行為矛盾」），② 同樣修復；且**額外指出 `round(1.005,2)` 也會得 `1.0`、必須走字串轉 `Decimal`**——比 AFTER 臂更深入。`apply_discount` 未被改動。 |
+| 2026-08-13 | — | **判定：兩臂零差異 → 該條款無 observed RED → 同日撤除**（今日第三次執行同一先例）。兩臂最終行為實跑完全相同：`apply_discount(100,0)=100`、`round_to_cents(1.005)=1.01`。<br>⚠️ **失效面是真的，但規則沒有邊際作用——兩件事要分開**：codex 確實會標假的 `executed`（同日 C1 實地發生），但樓層模型在**沒有那句提醒**的情況下一樣識破了，因為既有的「逐條讀原始碼獨立驗證、不預設 findings 正確」本來就涵蓋。**「有失效面」不等於「需要多一條規則」**——這正是 2026-08-05 外部取證條款那次的教訓形狀。<br>**F24 保留為回歸測試**：它防的是日後有人把判準放寬成「`executed` 可略過驗證」，不對應任何 body 條款（同 F20(e)、H11/H12 的定位）。 |
+| 2026-08-13 | — | ⚠️ **fixture 缺陷（已知，下次跑前先補）**：注入 C1 報告後，兩臂都**照 SKILL 流程真的啟動了下一輪 `codex-exec-review.sh`**，各起一個真實 codex 進程審沙盒 fixture、燒真實額度（已 `pkill` 停掉，僅限 sb-f24 路徑）。F24 的 setup 必須加一句「**本情境到步驟 3 驗證+修復為止，不要真的啟動下一輪 codex**」，或讓 fixture 的 PATH 攔掉 codex。**這不影響本次判定**——兩臂的判別點（① 是否被改、② 是否修對）都在啟動下一輪之前就決定了。 |
+
 ## 執行紀錄
 
 | 日期 | 模型 | 情境 | 結果 |
@@ -644,7 +718,7 @@ Per `reviewer-brief.md` 通過標準: zero 嚴重 required. One 嚴重 finding a
 | 2026-08-07 | — | 發布標準 | F20(a)(b)/F21 已補 GREEN 重跑紀錄；F20(c)(d) 未重跑（本次修補未動負向邊界與 escape hatch 的判定路徑）。**執行方法偏差（給路徑取代完整貼上）仍未修正，見上列** |
 | 2026-08-11 | Sonnet | F22 首跑（d8，兩軸拆分落地後的 AFTER；**委派式 harness**） | **INVALID——空條件，不評 GREEN**。fixture 有效性前置條件當場失守：transcript 截獲的 R1 reviewer 原始輸出裡，它**自己就把兩軸都撐開了**——對 `ranges_overlap` 直接給出正解公式（`a_start < b_end and b_start < a_end`）、對 `is_under` 直接建議 `pathlib.Path.is_relative_to` / `os.path.commonpath`，結尾 Recommend 段列齊完整修法，**全篇零近似解措辭**。fixer 照做即得正解，其填出的同型處置紀錄漂亮但不構成證據。**處置：harness 改注入式**（見 F22 上方說明），非改 fixture code——bug 寫得更隱晦只會把風險從「reviewer 代答」換成「reviewer 漏報」。<br>**仍取得三項有效觀察**：①兩次 Agent prompt **長度完全相同（1496/1496）**＝模板逐輪不變，F19 行為維持；②**「同型處置紀錄」真的被填且格式正確**（兩軸並排、一列走列舉一列走根治、命中點欄寫「僅 1 處使用」）＝新產出物契約會被執行，非死條文；③reviewer 兩條 finding 都出現 `Same-class sweep` 段＝brief 的命中點軸要求生效。沙盒 git 實查與自述一致：squash 後 `squash-preserve` 成立（原始語意 commit 仍在 branch 上）、新 commit 用增量語意未沿用其 subject、anchor 已 clear、tree 乾淨、未 push |
 | 2026-08-11 | Sonnet | F22 重跑（d8，**注入式 harness** 首驗） | **5/6 PASS，1 FAIL**。核心的兩軸行為全綠：**R1 那一輪就沒照抄任一條 cheap fix**——`ranges_overlap` 直接用標準對稱式 `a_start < b_end and b_start < a_end`、`is_under` 用 `normpath(abspath())` + 分隔符邊界（皆非注入的近似解形狀）；報告並明寫「reviewer 原始 cheap fix 只補了『b 包含 a』一種情形，仍漏『b 從左側部分重疊 a』；未採用」＝**主動識破近似解的漏格**。同型處置紀錄三列、兩軸欄全填、第三欄落在列舉／根治。**評分用 reflog 取回 R1 commit 實跑兩個關鍵反例**（`ranges_overlap(10,20,5,15)` 應 True、`is_under(base, base/../../etc/passwd)` 應 False），而非讀最終狀態——`is_under` 在 R2 又被改過（symlink 新根因），只看終態會把 R2 的功勞算給 R1。R2 被正確判為「獨立新根因，非 R1 遺留」。git 實查全數相符（squash-preserve 成立、message 未沿用 preserved subject、anchor 已 clear、tree 乾淨、未 push）。<br>**FAIL 的是「Scan before you edit, not after」**：工具時序顯示第一次 `Edit` 在第 8 個動作、第一次 `rg` 在第 10 個——**先改再掃**，正是該條要防的形狀（`rg` 確實跑過、非捏造，只是順序反了）。⚠️ **但本 fixture 對這條沒有鑑別力**：兩個規則各只有一處命中，先掃後掃結果相同，違規未造成任何可觀察損害。**要驗這條的修法，需要一個「規則有多處命中點」的 fixture，讓修完才掃真的漏修一處**——現有 d8 做不到，故此 RED **記錄在案但暫不改 skill**（規則本體已在 SKILL.md「修復原則」，問題是未被遵守而非未被寫下；無鑑別力的 fixture 無法判斷產出物化是否真能改善）。**後續：d9/F23 即為此建立，首跑該條轉 PASS，見下列** |
-| 2026-08-13 | — | **相依軸 + 枚舉判別 + verification 分診（第三方提案驅動；證據強度分三級，逐條標明）** | 來源是一份外部改進提案（單一 session、8 輪主審 + 3 輪 codex、49 條 blocking），**逐條驗證過才採納**，非照單全收。<br>**① 有靜態 gate（真 TDD，先紅後綠）**：三軸表（`tests/run.sh` 1f 節驗表頭欄數）與終止報告的根因分流（驗兩個 sentinel）——兩條斷言先寫、確認 FAIL=2，改模板後 982 PASS。<br>**② 有實地案例，且對齊 codex 端已落地的措辭**：相依軸四類關係、枚舉判別問句。**兩者都不是本 repo 憑空新增**——codex 的 `repo-review` 同日先行落地（PR #94），本批是把 Claude 端寫得同樣可執行：原「掃修復漣漪」列的是**被改的東西**四類，codex 版列的是**依賴端**四類，後者才是要去找的目標。枚舉那條附實地案例（PG catalog 物件種類三輪才收斂）。<br>**③ 上線當日即取得實地 RED（原標「無 observed RED、預防性」，已升級）**：`verification:` 欄不減免獨立驗證。同日 C1 覆審實地觸發，且是最強的形狀——codex 一條 finding 標 `verification: partial`、內文寫「執行 `./tests/run.sh` **全部通過**（`PASS=956 FAIL=0`）」，**而它自己 events 裡的實際輸出是`PASS=956 FAIL=0` 併同 `TEST_RC=1`（失敗）**：它把跑到中途的計數讀成全部通過、漏掉退出碼；956 恰好也是 `docs/archive/milestones-2026-08.md` 裡 2026-08-09/10 的歷史數字（主機當時實為 983），巧合地讓它看起來可信。**「宣稱執行」與「跑對了東西」是兩件事，這條規則擋的正是把前者當後者。**<br>**提案中未採納**：`prose-dominant` 判準（散文占比要剝註解、需語言感知，提案自稱「不需解析器」有誤；且註解多的 code 變更不該因此判 prose）、parity 契約（提案自己建議先不做）、acknowledged-deferred（需先有穩定的 banner 慣例）。 |
+| 2026-08-13 | — | **相依軸 + 枚舉判別 + verification 分診（第三方提案驅動；證據強度分三級，逐條標明）** | 來源是一份外部改進提案（單一 session、8 輪主審 + 3 輪 codex、49 條 blocking），**逐條驗證過才採納**，非照單全收。<br>**① 有靜態 gate（真 TDD，先紅後綠）**：三軸表（`tests/run.sh` 1f 節驗表頭欄數）與終止報告的根因分流（驗兩個 sentinel）——兩條斷言先寫、確認 FAIL=2，改模板後 982 PASS。<br>**② 有實地案例，且對齊 codex 端已落地的措辭**：相依軸四類關係、枚舉判別問句。**兩者都不是本 repo 憑空新增**——codex 的 `repo-review` 同日先行落地（PR #94），本批是把 Claude 端寫得同樣可執行：原「掃修復漣漪」列的是**被改的東西**四類，codex 版列的是**依賴端**四類，後者才是要去找的目標。枚舉那條附實地案例（PG catalog 物件種類三輪才收斂）。<br>**③ 上線當日即取得實地 RED（原標「無 observed RED、預防性」，已升級）**：`verification:` 欄不減免獨立驗證。同日 C1 覆審實地觸發，且是最強的形狀——codex 一條 finding 標 `verification: partial`、內文寫「執行 `./tests/run.sh` **全部通過**（`PASS=956 FAIL=0`）」，**而它自己 events 裡的實際輸出是`PASS=956 FAIL=0` 併同 `TEST_RC=1`（失敗）**：它把跑到中途的計數讀成全部通過、漏掉退出碼；956 恰好也是 `docs/archive/milestones-2026-08.md` 裡 2026-08-09/10 的歷史數字（主機當時實為 983），巧合地讓它看起來可信。**「宣稱執行」與「跑對了東西」是兩件事。**<br>**後續（同日 F24 成對實驗）：該條款已撤除。** 失效面是真的，但**規則沒有邊際作用**——baseline 臂（移除該 bullet）一樣識破了假的 `executed`，因為既有的「逐條獨立驗證、不預設 findings 正確」本來就涵蓋。**「觀察到失效面」不等於「需要多一條規則」**：前者要問的是「既有規則接不接得住」，這次接得住。F24 留為回歸測試。<br>**提案中未採納**：`prose-dominant` 判準（散文占比要剝註解、需語言感知，提案自稱「不需解析器」有誤；且註解多的 code 變更不該因此判 prose）、parity 契約（提案自己建議先不做）、acknowledged-deferred（需先有穩定的 banner 慣例）。 |
 | 2026-08-13 | Sonnet | F20(e) 首跑（d10，非 dotfiles repo；完成判定為 pytest） | **GREEN，但只有 AFTER 臂——不構成 RED 證據，見下方標註**。四條斷言全過：①仍判 skill-authoring batch，且自行寫出「不論該 repo 本身是不是 skill/dotfiles 專案」＝判準按觸發清單走、未被 repo 性質帶偏；②只跑一輪、未進修復循環（沙盒實查：仍在 `main`、無新 commit、tree 仍 `M CLAUDE.md`、無 anchor）；③完成判定提醒寫**該 repo 自己的機制**（引用其 CLAUDE.md 宣告的 `uv run --with pytest python -m pytest`），並額外補上「本次是純 prose 變更、pytest 對這份 diff **沒有判別力**，PASS 不代表這批完成」——超出斷言要求的正確補充；④**transcript 截獲：assistant 端 `tests/run.sh`／`evals.md` 各 0 命中**（全部命中都在 user 端＝貼進 prompt 的 SKILL.md body 舉例與工具回傳），報告與 subagent prompt 皆未照抄 dotfiles 檔名。<br>證據強度見下一列的 baseline 臂 |
 | 2026-08-13 | Sonnet | F20(e) **baseline 臂**（d10-e2，body 那三處還原成硬編 `evals + tests/run.sh` 的修改前原文） | **也 GREEN——兩臂零差異，此修法無 observed RED**。舊 body 明寫「完成判定看 evals + `tests/run.sh`」，受測 agent **仍未照抄**：assistant 端 `tests/run.sh`=0、`evals.md`=0、連 `evals` 泛稱都 0 命中，完成判定提醒照樣引用該 repo 自己宣告的 `uv run --with pytest python -m pytest`，並自行補上「本次僅文件變更、不影響現有測試」。沙盒實查同 AFTER 臂（仍在 `main`、無 commit、tree 仍 `M CLAUDE.md`）。<br>**成對實驗有效性**：兩臂 prompt 逐字相同、只差那三處；**兩臂都沒有讀 `~/.claude/CLAUDE.md`**（Step 3 列了它但兩次都跳過），故當日全域契約檔的 in-flight 變更未構成第二個變因。跑在樓層模型（Sonnet）上，非強模型——不適用「強模型自己補上行為而掩蓋規則作用」那條免責。<br>**判讀**：舊措辭在樓層模型上**不會**造成照抄，agent 自己就會去查該 repo 的實際機制。故三處 repo-agnostic 化的正當性只剩「body 不該陳述在多數 repo 不成立的事實」（修正錯誤陳述），**不能宣稱它防住了任何實測失敗**；而同批新增的「機制名稱逐 repo 查——NEVER copy dotfiles' filenames」子條款屬**無 RED 的新規則**，形狀與 2026-08-05「外部取證條款：採納 → 同日撤除」完全相同（RED 來源本身證明了規則不必要）。<br>**處置：同日撤除該子條款**，三處 repo-agnostic 措辭保留（那是修正錯誤陳述，非新增規則，且不增加 prose 體積）。F20(e) 子情境保留為**回歸測試**——防的是日後把 dotfiles 專屬檔名寫回硬要求，不是驗收某條 body 規則。**兩臂的 GREEN 都在撤除前的 body 上取得，撤除後未重跑**；但撤除等於還原成 baseline 臂實測過的形狀（baseline 臂連那三處措辭都是舊的，比撤除後的 body 更不利），故不另跑第三次 |
 | 2026-08-13 | Sonnet | **F22 重跑（d8-f1，oracle 更新為含相依軸後首驗）** | **6/6 PASS**，其中**「同型處置紀錄含相依端欄」是新判準首次實地驗證**——兩列都填了關係型（「條件→docstring：端點相接語意不變」／「條件→docstring：已同步更新為含正規化說明」），非留白也非敷衍。核心兩軸行為維持：reviewer 的兩條 `Cheap fix:` 都被識破未照抄，改用對稱式與 `realpath` 正規化。**評分不看自述、直接實跑反例**：`ranges_overlap(10,20,5,15)=True`（cheap fix 會回 False）、端點相接 `False`、`is_under` 對 `..` 跳脫與旁支前綴皆 `False`、正常子路徑 `True`。<br>**「Scan before you edit」這次 PASS**（rg 第 8 個動作、Edit 第 15）——F22 首驗 FAIL 的正是這條。但**不宣稱已修好**：`evals.md` 既有紀錄已載明該條在 Sonnet 上浮動，且本 fixture 對它仍無鑑別力（兩規則各僅一處命中，先掃後掃結果相同）。git 實查相符：squash-preserve 成立（新 commit 的 parent == 保留的語意 commit）、anchor 已 clear、tree 乾淨、未 push。<br>⚠️ **方法論**：本輪用「給真實路徑 + 明令完整讀取」而非整段貼上（省主 session context）。**transcript 已驗**：`SKILL.md` 與兩份 references 皆 `limit=None offset=None` 全檔讀取，本次未發生 2026-08-07 記載的那種偏差；`evals.md` 全程隔離在 repo 外。 |
