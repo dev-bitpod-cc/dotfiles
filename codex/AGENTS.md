@@ -20,7 +20,7 @@ conventions defer to whatever the repo itself mandates. Where a repo has no cont
 ### Safety floor — never relaxed by any repo
 
 - **NEVER commit onto the default branch** (`main`/`master`). If `HEAD` is on it — or detached — create a feature branch first: `git switch -c <type>/<slug>`. This holds regardless of protection state and regardless of which tooling is loaded.
-- **NEVER push without explicit user authorization.** An ordinary request to implement, fix, or commit does not authorize pushing. A direct instruction to ship, push, or open a PR—or an affirmative answer in a shipping workflow—does authorize pushing the current feature branch and opening or updating its PR after the ship summary. It never authorizes pushing the default branch.
+- **NEVER push without authorization for the push in front of you.** Implementing, fixing, or committing never carries it, and neither does approval given before this change existed. Authorization is one of exactly two things: an affirmative answer to a ship confirmation you just presented, or an instruction naming the action — push, open a PR — for the change now in hand. **Where the repo defines a shipping workflow, its authorization table is the only list of what counts as such an instruction; NEVER extend that list with synonyms of your own.** No authorization ever covers the default branch.
 - **NEVER merge on your own.** "push" or "open a PR" alone does NOT include merge. Only an explicit merge instruction does.
 - **NEVER `git add -A` / `git add .` / `commit -a`.** Stage explicit paths.
 - **If the working tree holds changes you did not make, STOP and report before staging, committing, or building on top of them.** Whether two sessions may share one tree is a dispatch decision made above you — never resolve it locally by guessing which changes are yours. Once authorized, explicit paths are still whole-file: stage verified hunks with `git add -p`.
@@ -34,5 +34,6 @@ conventions defer to whatever the repo itself mandates. Where a repo has no cont
 
 ## Shipping
 
-- When the user explicitly says to ship, push, or open a PR, complete the repo's shipping workflow: run its protection and dossier checks, print the ship summary, push the feature branch, and open or update the PR. Use the repo's shipping skill when one exists.
-- Merge only when the user explicitly asks to merge. Without shipping authorization, leave the work committed on the feature branch and report it.
+- With authorization in hand (see the kernel's push rule), follow **the repo's own shipping workflow** — its protection and dossier checks, its ship summary, its PR step. Use the repo's shipping skill when one exists.
+- **No shipping workflow in the repo → commit on the feature branch and stop.** Do not assemble an approximation of one; the checks you would be skipping are the reason the workflow exists.
+- Merge only on an explicit merge instruction. Without authorization, leave the work committed on the feature branch and report it.
