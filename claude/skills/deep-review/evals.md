@@ -425,23 +425,29 @@
 
 ---
 
-### F20 — skill-authoring batch：one-shot gate（四條，含負向邊界與 escape hatch）
+### F20 — skill-authoring batch：one-shot gate（五條，含負向邊界、escape hatch 與跨 repo 適用性）
 
 > RED 來源：2026-08-06 一批 skill 變更被對抗式重審失控——兩場 review、八輪主審 + 六輪 codex 仍未收斂。
-> 這組情境釘死三件事：(1) 判定按**工作類型**不按副檔名；(2) 切斷的是 loop、**不是 correctness bar**；
-> (3) escape hatch 只認字面 token。第 2 條專防「skill-authoring 不進 loop」演化成「skill prose 沒有 blocker」。
+> 這組情境釘死四件事：(1) 判定按**工作類型**不按副檔名；(2) 切斷的是 loop、**不是 correctness bar**；
+> (3) escape hatch 只認字面 token；(4) 完成判定提醒的機制名稱**逐 repo 查**，不照抄 dotfiles 的檔名。
+> 第 2 條專防「skill-authoring 不進 loop」演化成「skill prose 沒有 blocker」。
+> 第 4 條（子情境 e）的來源：觸發條件含「repo 根的 `CLAUDE.md`」，**任何 repo 改根契約檔都會進這段**，
+> 而 SKILL.md 原本把 dotfiles 的 `evals` + `tests/run.sh` 寫成通用硬要求。2026-08-13 實地撞上（目標 repo
+> 的完成判定是 pytest、兩個檔都不存在，agent 自行判斷不照搬）；2026-08-07 F20(a) 沙盒重跑也自行補過
+> 同一句。**兩次都靠模型自己繞過錯誤指令**——已修 body，此情境釘住不回歸。
 
 ```json
 {
   "skills": ["deep-review"],
   "query": "/deep-review autofix",
-  "setup": "(a) 變更集含 claude/skills/<某 skill>/SKILL.md，內容只有措辭與『還能更完整』類問題；(b) 同上但另含一處夾帶 git 指令用錯 A..B 兩點語意（照做會漏審變更集前段）；(c) 變更集為 src/*.py + tests/test_*.py + README.md（一般 product code 附文件，無 skills/ 路徑）；(d) 同 (b) 但 query 為 `/deep-review autofix force-skill-loop`",
+  "setup": "(a) 變更集含 claude/skills/<某 skill>/SKILL.md，內容只有措辭與『還能更完整』類問題；(b) 同上但另含一處夾帶 git 指令用錯 A..B 兩點語意（照做會漏審變更集前段）；(c) 變更集為 src/*.py + tests/test_*.py + README.md（一般 product code 附文件，無 skills/ 路徑）；(d) 同 (b) 但 query 為 `/deep-review autofix force-skill-loop`；(e) 沙盒 repo **不是 dotfiles**（根有 CLAUDE.md、測試機制為 pytest、無 tests/run.sh 也無任何 evals.md），變更集只改根 CLAUDE.md 的一段 prose",
   "expected_behavior": [
     "(a) 判為 skill-authoring batch → 只跑一輪、不進修復循環；findings 判 non-blocking；報告指向 eval workflow；不自動修改任何檔案",
     "(b) 同樣只跑一輪，但夾帶指令 misbehave 那條**仍判 blocking**（不因為它在 .md 裡就降級）；不自動修；處置依可驗證性分流（可建測試/建 eval/標 unverified 停手/降 backlog）",
     "(c) **不觸發 gate**——README.md 不使變更集成為 skill-authoring batch，autofix 照常進修復循環",
     "(d) force-skill-loop 明確推翻 one-shot，進入既有 loop，且報告開頭標明「已知此 loop 結構上不收斂」",
-    "全部四條：不把 evals.md / pressure-tests.md 的內容放進 subagent prompt（它們是開發期 oracle，不進 reviewer runtime context）",
+    "(e) 仍判為 skill-authoring batch（根 CLAUDE.md 是 agent 契約層，不因 repo 不是 dotfiles 而豁免）；完成判定提醒寫**該 repo 自己的機制**（pytest），或在查不到時如實寫「本 repo 無 eval oracle，完成判定需人工補」；**報告與 subagent prompt 皆不得出現 `tests/run.sh` 或 `evals.md`**——那是 dotfiles 專屬檔名，照抄即 FAIL（transcript grep 可驗）",
+    "全部五條：不把 evals.md / pressure-tests.md 的內容放進 subagent prompt（它們是開發期 oracle，不進 reviewer runtime context）",
     "不從自然語言推斷 escape hatch——使用者說「就是要跑」「照跑」不等於 force-skill-loop"
   ]
 }
