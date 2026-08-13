@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-12)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-13)
 
 ---
 
@@ -71,6 +71,16 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   (H12),修補因此落在 R3。**這條的價值在於「實地確實在寫入端失手,但 fixture 重現不了」**——
   兩者是兩件事,後者才是改 body 的門檻。H11/H11b 已留為迴歸哨兵並在 `evals.md` 標明不對應任何條款;
   日後若寫入端事故復發,先讓 fixture 紅起來再動 W1,不要憑實地印象直接改。
+- **在 deep-review 的 skill-authoring batch 段落加一條「不要照抄 dotfiles 檔名」的明示規則**:
+  2026-08-13 加了又同日撤除。起因是實地看到 agent 在非 dotfiles repo(完成判定為 pytest)撞上
+  body 硬編的「完成判定看 evals + `tests/run.sh`」,自行判斷不照搬。**建 d10 沙盒跑成對實驗後撤除
+  ——AFTER 臂與 baseline 臂(body 那三處還原成硬編原文)零差異**,舊措辭下 Sonnet 一樣去查該 repo
+  自己宣告的機制,assistant 端 `tests/run.sh`／`evals.md`／`evals` 全 0 命中。**兩臂都沒讀
+  `~/.claude/CLAUDE.md`**,故當日全域契約檔的 in-flight 變更未構成第二個變因;跑在樓層模型上,
+  不適用「強模型自己補上行為」的免責。**形狀同 2026-08-05 外部取證條款(採納→同日撤除):
+  RED 來源本身證明了規則不必要。** 保留的是三處 repo-agnostic 措辭——那修的是「body 陳述在多數
+  repo 不成立的事實」,屬錯誤陳述而非新增規則。F20(e)/d10 留為**回歸測試**(防日後把 dotfiles
+  專屬檔名寫回硬要求),`evals.md` 已標明它不對應任何 body 條款。**日後若真紅了,那才是加規則的時機。**
 - **「/project log 包裝/並存 /uap」**:disable-model-invocation 下無法鏈式呼叫,只能複製
   pressure-tested 的 ship 防護邏輯——違反 single-source;功能上與「uap 強化」完全收斂,直接取代。
 - **在移交出去的 repo 內放一份 dossier 規範精簡版(`docs/dossier.md`)**:2026-08-10 設計時提出並否決。
