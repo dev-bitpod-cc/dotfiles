@@ -33,6 +33,17 @@ set -uo pipefail
 JOB_ROOT="${CODEX_EXEC_REVIEW_DIR:-$HOME/.claude/deep-review/codex}"
 SESSIONS_DIR="${CODEX_EXEC_SESSIONS_DIR:-$HOME/.codex/sessions}"
 
+# 審查者需要跑會建立暫存/cache 的測試，但 repo 必須保持唯讀。permission profile 從
+# :read-only 繼承，只開目前 $TMPDIR；--strict-config 讓不支援 profile 的舊版 Codex
+# 直接失敗，NEVER 靜默落回使用者 config 的 danger-full-access。
+CODEX_REVIEW_PERMISSION_ARGS=(
+    --ignore-user-config
+    --strict-config
+    -c 'default_permissions="repo_review_temp"'
+    -c 'permissions.repo_review_temp.extends=":read-only"'
+    -c 'permissions.repo_review_temp.filesystem={":tmpdir"="write"}'
+)
+
 # 救援 prompt：與 SKILL.md「Codex 執行與失敗處理」節逐字一致，改此處須同步該節。
 RESUME_PROMPT_DEFAULT='你先前的審查已完成偵查與驗證，請直接輸出最終審查報告（findings：嚴重度、檔案:行號、問題、建議；繁體中文）。不要再執行任何指令。'
 
@@ -99,6 +110,11 @@ extract_session_id() {
 # 從 job 的 meta 取 key（run 寫入、resume/status 讀取）
 meta_get() {   # meta_get <job_dir> <key>
     sed -n "s/^$2=//p" "$1/meta" 2>/dev/null | head -1
+}
+
+prepare_review_tmp() {   # prepare_review_tmp <job_dir>
+    mkdir -p "$1/tmp/uv" "$1/tmp/pytest" \
+        || die_env "無法建立 reviewer 暫存目錄：$1/tmp"
 }
 
 # 印一段耗時；ended 未寫入表示該階段仍在執行
@@ -179,12 +195,21 @@ cmd_run() {
     started="$(date +%s)"
     job_parent="$JOB_ROOT/$(repo_slug "$repo")"
     mkdir -p "$job_parent" || die_env "無法建立 job 目錄：$job_parent"
+    local job_parent_real repo_real
+    job_parent_real="$(cd "$job_parent" && pwd -P)" || die_env "無法解析 job 目錄：$job_parent"
+    repo_real="$(cd "$repo" && pwd -P)" || die_env "無法解析 repo 路徑：$repo"
+    case "$job_parent_real" in
+        "$repo_real"|"$repo_real"/*)
+            die_env "reviewer 暫存目錄不得位於受審 repo 內：$job_parent_real" ;;
+    esac
+    job_parent="$job_parent_real"
     # mktemp 保證唯一：同一秒內的兩次 run（C{N} 重跑、多 repo 併發）若共用目錄，
     # 會把上一輪殘留的 report.md 當成本輪產出回報 → 假成功。NEVER derive job dir from timestamp alone.
     job="$(mktemp -d "$job_parent/$round-$started-XXXXXX")" || die_env "無法建立 job 目錄：$job_parent"
     echo "job-dir: $job"
     local marker="$job/.started"
     : > "$marker"
+    prepare_review_tmp "$job"
 
     # 一行協議 prompt：逐字固定。NEVER add focus points, test requests, context files, or convention docs.
     local prompt="Run your repo-review skill on $repo for $range. 繁體中文."
@@ -195,17 +220,18 @@ cmd_run() {
         printf 'round=%s\n' "$round"
         printf 'started=%s\n' "$started"
     } > "$job/meta"
-    # -s read-only 是刻意的：codex 只審不改，修復一律由主 agent 執行（審查者與作者分離）。
-    # config.toml 全域預設為 danger-full-access，故此旗標必須顯式帶。
-    # 注意：`codex exec resume` 不吃 -s，該路徑改以 -c sandbox_mode 達成同一約束（見 cmd_resume）。
-    local -a argv=(exec --json --color never -C "$repo" -s read-only -o "$job/report.md" "$prompt")
+    local -a argv=(exec --json --color never -C "$repo" "${CODEX_REVIEW_PERMISSION_ARGS[@]}" \
+        -o "$job/report.md" "$prompt")
+    local pytest_addopts="${PYTEST_ADDOPTS:-}"
+    pytest_addopts="${pytest_addopts:+$pytest_addopts }-o cache_dir=\"$job/tmp/pytest\""
 
     # 記錄與執行**衍生自同一個 argv 陣列**：兩者若各寫一遍，$job/cmd 只是重建字串，
     # 對它做的斷言守不住真實呼叫（實證：拿掉真實呼叫的 -s，測試仍全綠）。
     # NEVER reconstruct the command line separately from the one actually executed.
     { printf '%q ' codex "${argv[@]}"; printf '\n'; } > "$job/cmd"
 
-    codex "${argv[@]}" > "$job/events.jsonl" 2> "$job/stderr.log"
+    TMPDIR="$job/tmp" UV_CACHE_DIR="$job/tmp/uv" PYTEST_ADDOPTS="$pytest_addopts" \
+        codex "${argv[@]}" > "$job/events.jsonl" 2> "$job/stderr.log"
     local rc=$?
 
     printf '%s\n' "$rc" > "$job/exit-code"
@@ -248,8 +274,8 @@ cmd_resume() {
 
     # `codex exec resume` 與 `codex exec` 是不同 subcommand，旗標集合不同：
     #   無 --color、無 -s/--sandbox、無 -C/--cd（帶了會被 clap 當 unexpected argument 拒絕）。
-    # 因此 sandbox 改以 -c 覆寫（否則落回 config.toml 的 danger-full-access，審查者就取得寫入權），
-    # 工作根改以 cd 達成（resume 不吃 -C，不 cd 會繼承呼叫端 cwd——多 repo 下幾乎必為錯的 repo）。
+    # permission profile 可透過兩者共有的 -c/--strict-config 套用；工作根改以 cd 達成
+    # （resume 不吃 -C，不 cd 會繼承呼叫端 cwd——多 repo 下幾乎必為錯的 repo）。
     local repo=""
     repo="$(meta_get "$job" repo)"
     if [ -z "$repo" ] || [ ! -d "$repo" ]; then
@@ -264,12 +290,17 @@ cmd_resume() {
     local marker="$job/.started-resume"
     : > "$marker"
     printf 'resume-started=%s\n' "$(date +%s)" >> "$job/meta"
+    prepare_review_tmp "$job"
 
-    local -a argv=(exec resume "$sid" --json -c sandbox_mode="read-only" -o "$job/report-resume.md" "$prompt")
+    local -a argv=(exec resume "$sid" --json "${CODEX_REVIEW_PERMISSION_ARGS[@]}" \
+        -o "$job/report-resume.md" "$prompt")
+    local pytest_addopts="${PYTEST_ADDOPTS:-}"
+    pytest_addopts="${pytest_addopts:+$pytest_addopts }-o cache_dir=\"$job/tmp/pytest\""
     # `&&` 必須留在 %q 之外，否則被轉義成 \&\& → 貼回 shell 時變成 cd 的字面引數，codex 根本不會跑
     { printf 'cd %q && ' "$repo"; printf '%q ' codex "${argv[@]}"; printf '\n'; } > "$job/cmd-resume"
 
-    ( cd "$repo" && codex "${argv[@]}" ) \
+    ( cd "$repo" && TMPDIR="$job/tmp" UV_CACHE_DIR="$job/tmp/uv" PYTEST_ADDOPTS="$pytest_addopts" \
+        codex "${argv[@]}" ) \
         > "$job/events-resume.jsonl" 2> "$job/stderr-resume.log"
     local rc=$?
     printf '%s\n' "$rc" > "$job/exit-code-resume"

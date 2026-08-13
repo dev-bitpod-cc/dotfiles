@@ -2346,6 +2346,14 @@ if grep -q "Round-cap diagnosis follows root-cause history" "$ROOT/codex/skills/
     && grep -q "Do not infer an architectural problem or recommend a rewrite from the cap alone" "$ROOT/codex/skills/repo-review/SKILL.md"; then
     ok "repo-review evals 覆蓋輪次上限的收斂診斷"
 else bad "repo-review 收斂診斷 behavior contract 不完整"; fi
+if grep -q "Autofix propagates semantic dependencies" "$ROOT/codex/skills/repo-review/evals.md" \
+    && grep -q "Findings identify verification basis" "$ROOT/codex/skills/repo-review/evals.md" \
+    && grep -q "Autofix stops enumerating externally extensible sets" "$ROOT/codex/skills/repo-review/evals.md" \
+    && grep -q "condition.*message" "$ROOT/codex/skills/repo-review/SKILL.md" \
+    && grep -q "verification.*executed.*static.*partial" "$ROOT/codex/skills/repo-review/references/reviewer-brief.md" \
+    && grep -q "externally extensible" "$ROOT/codex/skills/repo-review/SKILL.md"; then
+    ok "repo-review evals 與 runtime contract 覆蓋相依軸、取證類型、枚舉停損"
+else bad "repo-review 新 behavior contracts 尚未完整落地"; fi
 if [ -f "$ROOT/codex/skills/repo-review/references/reviewer-brief.md" ] \
     && grep -q "references/reviewer-brief.md" "$ROOT/codex/skills/repo-review/SKILL.md"; then
     ok "repo-review reviewer brief 已納入 runtime contract"
@@ -3228,6 +3236,11 @@ cer_make_stub() {   # cer_make_stub <write_report:yes|no> [id_field]
 # 落檔供斷言：實際 argv 與執行時的 cwd
 printf '%s\n' "\$@" > "\${CODEX_STUB_ARGV:-/dev/null}"
 pwd > "\${CODEX_STUB_CWD:-/dev/null}"
+{
+    printf 'TMPDIR=%s\n' "\${TMPDIR:-}"
+    printf 'UV_CACHE_DIR=%s\n' "\${UV_CACHE_DIR:-}"
+    printf 'PYTEST_ADDOPTS=%s\n' "\${PYTEST_ADDOPTS:-}"
+} > "\${CODEX_STUB_ENV:-/dev/null}"
 
 [ "\$1" = "exec" ] || { echo "error: unexpected subcommand '\$1'" >&2; exit 2; }
 shift
@@ -3237,7 +3250,7 @@ if [ "\${1:-}" = "resume" ]; then mode="resume"; shift; [ -n "\${1:-}" ] && case
 out=""
 while [ \$# -gt 0 ]; do
     case "\$1" in
-        --json|--ephemeral|--skip-git-repo-check) shift ;;
+        --json|--ephemeral|--skip-git-repo-check|--ignore-user-config|--strict-config) shift ;;
         -o|--output-last-message) out="\${2:-}"; shift 2 ;;
         -m|--model|-c|--config|--output-schema) shift 2 ;;
         --color|-s|--sandbox|-C|--cd)
@@ -3261,13 +3274,15 @@ cer_run() { PATH="$cer_base/bin:$PATH" CODEX_EXEC_REVIEW_DIR="$cer_base/jobs" ba
 
 # (1) 報告產出 → exit 0 + job 產物齊全 + session id 取出
 # 斷言一律打**真實 argv**（stub 落檔），不打 $job/cmd——後者是重建字串，
-# 真實呼叫若漂移（如掉了 -s read-only）它照樣長對，等於守空。
+# 真實呼叫若漂移（如掉了 permission profile）它照樣長對，等於守空。
 cer_make_stub yes
 cer_argv_run="$TMP/cer-run.argv"
-cer_out="$(CODEX_STUB_ARGV="$cer_argv_run" cer_run run --repo "$cer_repo" --range "$cer_range" --round C1 2>/dev/null)"
+cer_env_run="$TMP/cer-run.env"
+cer_out="$(CODEX_STUB_ARGV="$cer_argv_run" CODEX_STUB_ENV="$cer_env_run" cer_run run --repo "$cer_repo" --range "$cer_range" --round C1 2>/dev/null)"
 assert_rc "run 產出報告 → exit 0" 0 $?
 cer_job="$(printf '%s\n' "$cer_out" | sed -n 's/^job-dir: //p' | head -1)"
 if [ -n "$cer_job" ] && [ -d "$cer_job" ]; then ok "run 第一行印出 job-dir"; else bad "run 未印出可用的 job-dir"; fi
+cer_job_real="$(cd "$cer_job" && pwd -P)"
 cer_missing=""
 for f in cmd meta events.jsonl report.md session-id exit-code; do
     [ -f "$cer_job/$f" ] || cer_missing="$cer_missing $f"
@@ -3277,15 +3292,24 @@ assert_eq "session id 自 events 取出" "sess-fixture-1" "$(cat "$cer_job/sessi
 if grep -qxF "Run your repo-review skill on $cer_repo for $cer_range. 繁體中文." "$cer_argv_run"; then
     ok "送出的 prompt 為一行協議原文（真實 argv）"
 else bad "prompt 偏離一行協議原文"; fi
-if grep -qxF -- "-s" "$cer_argv_run" && grep -qxF "read-only" "$cer_argv_run"; then
-    ok "run 以 read-only sandbox 執行（真實 argv；審查者不改碼）"
-else bad "run 未帶 -s read-only"; fi
+if grep -qxF -- "--ignore-user-config" "$cer_argv_run" \
+    && grep -qxF -- "--strict-config" "$cer_argv_run" \
+    && grep -qxF 'default_permissions="repo_review_temp"' "$cer_argv_run" \
+    && grep -qxF 'permissions.repo_review_temp.extends=":read-only"' "$cer_argv_run" \
+    && grep -qxF 'permissions.repo_review_temp.filesystem={":tmpdir"="write"}' "$cer_argv_run"; then
+    ok "run 以嚴格 permission profile 保持 repo 唯讀、只開 tmp 寫入"
+else bad "run 未帶 repo 唯讀 + tmp 可寫的嚴格 permission profile"; fi
+if grep -qxF "TMPDIR=$cer_job_real/tmp" "$cer_env_run" \
+    && grep -qxF "UV_CACHE_DIR=$cer_job_real/tmp/uv" "$cer_env_run" \
+    && grep -qF "$cer_job_real/tmp/pytest" "$cer_env_run"; then
+    ok "run 將 tmp、uv、pytest cache 導向 job 暫存目錄"
+else bad "run 未完整導向測試暫存與 cache：$(tr '\n' ' ' < "$cer_env_run")"; fi
 if grep -qxF -- "-C" "$cer_argv_run" && grep -qxF "$cer_repo" "$cer_argv_run"; then
     ok "run 以 -C 指向受審 repo（真實 argv）"
 else bad "run 未以 -C 指向受審 repo"; fi
 if grep -qxF -- "--json" "$cer_argv_run"; then ok "run 帶 --json（events 可解析）"; else bad "run 未帶 --json"; fi
 # $job/cmd 仍須忠實反映真實呼叫（同一 argv 陣列衍生），供事後複製重跑
-if grep -qF -- "-s read-only" "$cer_job/cmd" || grep -qF -- "-s" "$cer_job/cmd"; then
+if grep -qF -- 'default_permissions' "$cer_job/cmd" && grep -qF -- 'repo_review_temp' "$cer_job/cmd"; then
     ok "cmd 記錄與真實呼叫同源"
 else bad "cmd 記錄與真實呼叫脫節"; fi
 
@@ -3294,6 +3318,7 @@ cer_make_stub no thread_id
 cer_out="$(cer_run run --repo "$cer_repo" --range "$cer_range" --round C1 2>/dev/null)"
 assert_rc "run 報告空 → exit 4" 4 $?
 cer_job2="$(printf '%s\n' "$cer_out" | sed -n 's/^job-dir: //p' | head -1)"
+cer_job2_real="$(cd "$cer_job2" && pwd -P)"
 assert_eq "session id 亦支援 thread_id 欄位" "sess-fixture-1" "$(cat "$cer_job2/session-id")"
 # job 目錄唯一性（mktemp）：同秒兩次 run 若共用目錄，會把上一輪的 report.md 當本輪產出 → 假成功
 if [ "$cer_job" != "$cer_job2" ]; then ok "同秒兩次 run 的 job 目錄不碰撞"; else bad "job 目錄碰撞（會誤報上輪報告）"; fi
@@ -3304,7 +3329,8 @@ assert_rc "resume 仍無產出 → exit 4" 4 $?
 cer_make_stub yes
 cer_argv="$TMP/cer-resume.argv"
 cer_cwd="$TMP/cer-resume.cwd"
-cer_out="$(CODEX_STUB_ARGV="$cer_argv" CODEX_STUB_CWD="$cer_cwd" cer_run resume --job-dir "$cer_job2" 2>/dev/null)"
+cer_env_resume="$TMP/cer-resume.env"
+cer_out="$(CODEX_STUB_ARGV="$cer_argv" CODEX_STUB_CWD="$cer_cwd" CODEX_STUB_ENV="$cer_env_resume" cer_run resume --job-dir "$cer_job2" 2>/dev/null)"
 assert_rc "resume 救回報告 → exit 0" 0 $?
 if printf '%s\n' "$cer_out" | grep -qF "resume session: sess-fixture-1"; then
     ok "resume 沿用 job 記錄的 session id"
@@ -3317,10 +3343,19 @@ if grep -qxF -- "-C" "$cer_argv"; then bad "resume 帶了 -C（真實 binary 會
 # session id 也要打真實 argv：只驗腳本自印的 "resume session:" 的話，argv 掉了 sid 仍會全綠
 # （真實 binary 缺 SESSION_ID 且無 --last 會失敗）
 if grep -qxF "sess-fixture-1" "$cer_argv"; then ok "resume 的 session id 出現在真實 argv"; else bad "resume 未把 session id 傳給 codex"; fi
-# resume 無 -s，須改以 -c sandbox_mode 達成同一約束（否則落回 config.toml 的 danger-full-access）
-if grep -qF 'sandbox_mode="read-only"' "$cer_argv" || grep -qF 'sandbox_mode=read-only' "$cer_argv"; then
-    ok "resume 以 -c sandbox_mode 維持 read-only"
-else bad "resume 未約束 sandbox（會落回 danger-full-access）"; fi
+# resume 無 -s，仍須顯式套用同一 permission profile（否則落回 config.toml 的 danger-full-access）
+if grep -qxF -- "--ignore-user-config" "$cer_argv" \
+    && grep -qxF -- "--strict-config" "$cer_argv" \
+    && grep -qxF 'default_permissions="repo_review_temp"' "$cer_argv" \
+    && grep -qxF 'permissions.repo_review_temp.extends=":read-only"' "$cer_argv" \
+    && grep -qxF 'permissions.repo_review_temp.filesystem={":tmpdir"="write"}' "$cer_argv"; then
+    ok "resume 維持 repo 唯讀 + tmp 可寫的嚴格 permission profile"
+else bad "resume 未約束 permission profile（可能落回 danger-full-access）"; fi
+if grep -qxF "TMPDIR=$cer_job2_real/tmp" "$cer_env_resume" \
+    && grep -qxF "UV_CACHE_DIR=$cer_job2_real/tmp/uv" "$cer_env_resume" \
+    && grep -qF "$cer_job2_real/tmp/pytest" "$cer_env_resume"; then
+    ok "resume 沿用 job 暫存與 cache 目錄"
+else bad "resume 未完整導向測試暫存與 cache"; fi
 # resume 不支援 -C，須自行 cd 到受審 repo，否則繼承呼叫者 cwd
 assert_eq "resume 在受審 repo 的工作目錄下執行" "$(cd "$cer_repo" && pwd -P)" "$(cd "$(cat "$cer_cwd")" && pwd -P)"
 # 失敗現場可見（B1）
@@ -3342,6 +3377,14 @@ cer_run run --repo "$cer_repo" --range "noDots" --round C1 >/dev/null 2>&1
 assert_rc "range 缺 .. → exit 5" 5 $?
 CODEX_EXEC_REVIEW_DIR="$cer_base/jobs" PATH=/usr/bin:/bin bash "$CER" run --repo "$cer_repo" --range "$cer_range" --round C1 >/dev/null 2>&1
 assert_rc "codex 不在 PATH → exit 5" 5 $?
+cer_inside_argv="$TMP/cer-inside-repo.argv"
+CODEX_STUB_ARGV="$cer_inside_argv" CODEX_EXEC_REVIEW_DIR="$cer_repo/.review-jobs" \
+    PATH="$cer_base/bin:$PATH" bash "$CER" run --repo "$cer_repo" --range "$cer_range" --round C1 >/dev/null 2>&1
+assert_rc "reviewer 暫存根位於受審 repo 內 → exit 5" 5 $?
+if [ ! -s "$cer_inside_argv" ]; then
+    ok "repo 內暫存根在啟動 codex 前即被拒"
+else bad "repo 內暫存根仍啟動了 codex（會在唯讀 repo 打寫入洞）"; fi
+rm -rf "$cer_repo/.review-jobs"
 
 # (5) baseline 模式：base 端非 rev（∅）只警告不阻擋——不可退化成 exit 5
 cer_make_stub yes
