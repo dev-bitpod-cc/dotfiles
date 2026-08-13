@@ -16,7 +16,7 @@
 ### Safety floor — never relaxed by any repo
 
 - **NEVER commit onto the default branch** (`main`/`master`). If `HEAD` is on it — or detached — create a feature branch first: `git switch -c <type>/<slug>`. This holds regardless of protection state and regardless of which tooling is loaded.
-- **NEVER push on your own.** Commit, then stop and report. An instruction to implement, fix, or "ship" does not authorize pushing.
+- **NEVER push without explicit user authorization.** An ordinary request to implement, fix, or commit does not authorize pushing. A direct instruction to ship, push, or open a PR—or an affirmative answer in a shipping workflow—does authorize pushing the current feature branch and opening or updating its PR after the ship summary. It never authorizes pushing the default branch.
 - **NEVER merge on your own.** "push" or "open a PR" alone does NOT include merge. Only an explicit merge instruction does.
 - **NEVER `git add -A` / `git add .` / `commit -a`.** Stage explicit paths.
 - **If the working tree holds changes you did not make, STOP and report before staging, committing, or building on top of them.** Whether two sessions may share one tree is a dispatch decision made above you — never resolve it locally by guessing which changes are yours. Once authorized, explicit paths are still whole-file: stage verified hunks with `git add -p`.

@@ -14,7 +14,7 @@
 ### Safety floor — never relaxed by any repo
 
 - **NEVER commit onto the default branch** (`main`/`master`). If `HEAD` is on it — or detached — create a feature branch first: `git switch -c <type>/<slug>`. This holds regardless of protection state and regardless of which tooling is loaded.
-- **NEVER push on your own.** Commit, then stop and report. An instruction to implement, fix, or "ship" does not authorize pushing.
+- **NEVER push without explicit user authorization.** An ordinary request to implement, fix, or commit does not authorize pushing. A direct instruction to ship, push, or open a PR—or an affirmative answer in a shipping workflow—does authorize pushing the current feature branch and opening or updating its PR after the ship summary. It never authorizes pushing the default branch.
 - **NEVER merge on your own.** "push" or "open a PR" alone does NOT include merge. Only an explicit merge instruction does.
 - **NEVER `git add -A` / `git add .` / `commit -a`.** Stage explicit paths.
 - **If the working tree holds changes you did not make, STOP and report before staging, committing, or building on top of them.** Whether two sessions may share one tree is a dispatch decision made above you — never resolve it locally by guessing which changes are yours. Once authorized, explicit paths are still whole-file: stage verified hunks with `git add -p`.
@@ -56,8 +56,8 @@ drift is real; the kernel block is the managed instance of this pattern. Everyth
 - **Bug fix: write a reproducing test first, then fix.** 無法可行地自動重現者（環境相依、外部服務行為）
   改記手動重現步驟與修後驗證方式；「先重現、再修」的順序不變。
 - **Ambiguous task: NEVER silently pick one reading.** 列出可能的解讀讓人選，不要為了維持動能而假設。
-- **Irreversible or outward-facing actions require asking first**——push、發信、對外送出、刪除，
-  即使其他部分已獲授權。
+- **Irreversible or outward-facing actions require explicit authorization**——push、發信、對外送出、刪除。
+  當前請求已明說該動作時就是授權，不要再問一次；未明說才停下確認。
 - **Solo repo is not a lighter process.**「只有我一個人」「反正也沒保護」都不是放寬上述任何一條的理由。
 - 為什麼 kernel 要求 clean clone 驗證：混檔誤收**在磁碟上恆綠**，只有乾淨 clone 看得見；
   人工看 staged diff 已實證失敗過三次，不能取代它。
