@@ -130,7 +130,6 @@ Hard constraints — violating any of these invalidates the codex round:
 
 **Findings 驗證規則**：主 agent 收到 codex findings 後，逐條讀原始碼獨立驗證。對每條判定 true positive / false positive / context-dependent。不預設 findings 正確，不預設錯誤。**只有 true positive 且非 Completeness 深井的 finding 才修復**；completeness / prose 深井（見 `references/reviewer-brief.md`，**不分 diff/baseline**）→ non-blocking、不觸發再一輪修復（codex 與 deep-review 同為對抗式 reviewer，深井會無限回吐——這道閘攔住「主 agent ↔ codex 來回燒額度」）。
 
-- **`verification:` 欄是分診資訊，NEVER a reason to skip verification.** codex 的 findings 每條帶 `verification: executed | static | partial`（其 `reviewer-brief.md` 要求）。**`executed` 是對方的 self-report**——它自稱跑過，不等於跑對了東西、也不等於那個結果支持它的結論。用這個欄位決定**先驗哪一條**（`static` 排前面，因為那是純推理），**不用它決定驗不驗**：逐條獨立驗證的要求不因任何標記而減免。實地反例：曾有一條 `static` 推理建議「一律要求 `--proxy`」，照做會把不帶該旗標的呼叫端踢出覆蓋。
 
 **Commit range 更新（依 `codex_base_mode`，見 Step 1）**：每輪執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh codex-next --repo <r>`，把輸出的 `codex-cmd:` 整行照抄以背景 Bash 執行——C1 全審 / C2+ 增量的 range 推導、last-codex-HEAD 記錄、重試冪等、C3 上限全在腳本內（增量為何安全見其 header）。使用者說 `codex full` → 加 `--full`（每輪重審 C1 全 scope）。exit 1（STOP：超上限 / anchor stale）→ 照 verdict 停下。**NEVER hand-compute the range. NEVER HEAD~1 — the anchor script owns the range.**
 
