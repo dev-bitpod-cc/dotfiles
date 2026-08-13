@@ -23,6 +23,8 @@
 #                              真的清了），一個輸入空間有限（列舉）、一個無限（根治）
 #   d9  deep-review F23        命中點軸全修：同一條規則（shell=True 拼接）散在四個檔案，
 #                              注入的 reviewer 只指一處且不註明已掃過
+#   d10 deep-review F20(e)     跨 repo 適用性：**非 dotfiles** 形狀（無 claude/skills/、無 tests/run.sh、
+#                              無 evals.md，完成判定是 pytest），working tree 只改根 CLAUDE.md 一段 prose
 #   q1  ready4quit Q1         repo 有未 commit 殘留
 #   q3  ready4quit Q3         git 乾淨 + repo 有 STATUS.md（memory/dossier 路由）
 #   c1  check-crawl-quality C1  120 筆 JSON、3 來源、其一 80% boilerplate
@@ -1229,6 +1231,81 @@ EOF
     )
 }
 
+# --- d10：跨 repo 適用性（F20e）---
+# 觸發條件含「repo 根的 CLAUDE.md」，故**任何** repo 改根契約檔都會進 skill-authoring batch。
+# 這份 fixture 刻意**不是 dotfiles 形狀**：無 claude/skills/、無 tests/run.sh、無任何 evals.md，
+# 完成判定機制是 pytest。測的是報告會不會照抄 SKILL.md 舉例用的 dotfiles 檔名。
+# 變更只有措辭／完整度問題（比照 d4，無 operational defect）——要測的是完成判定提醒那句話，
+# 混入 blocking finding 會讓分流表一起進來、把觀察面弄糊。
+make_d10() {
+    local dir="$ROOT/d10-$INSTANCE"
+    make_base_repo "$dir"
+    mkdir -p "$dir/work/tests"
+    # pytest 必須真的跑得起來：CLAUDE.md 宣告它是完成判定機制，受測 agent 可能去驗證
+    # （fixture 自洽性判準見 README「跑一遍，不是檔名都在」）。**指令用 `uv run --with pytest`**
+    # ——系統 python3 沒有 pytest（實測 `No module named pytest`），寫裸 pytest 等於宣告一條跑不動的指令。
+    # 它會在 repo 內建 .venv，故下面連 .gitignore 一起 commit：untracked 清單是 priority 2 審查
+    # 範圍的一部分，跑一次測試就讓範圍多出一個 .venv 會把觀察面弄糊。
+    # `uv.lock` 一併忽略：真實 repo 會把它 commit 進去，但這裡它是「跑了測試才長出來」的產物，
+    # 留著會變成 untracked 噪音（實測 `uv run` 會同時產生 .venv 與 uv.lock）
+    printf '.venv/\n__pycache__/\nuv.lock\n' > "$dir/work/.gitignore"
+    cat > "$dir/work/pyproject.toml" <<'EOF'
+[project]
+name = "order-service"
+version = "0.1.0"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+EOF
+    cat > "$dir/work/tests/test_app.py" <<'EOF'
+import unittest
+
+from app import calc_total
+
+
+class TestCalcTotal(unittest.TestCase):
+    def test_single_item(self):
+        self.assertEqual(calc_total([{"price": 2.0, "qty": 3}]), 6.0)
+EOF
+    cat > "$dir/work/CLAUDE.md" <<'EOF'
+# order-service
+
+小型訂單計算服務。
+
+## 完成判定
+
+改動一律以 `uv run --with pytest python -m pytest` 全綠為準。本 repo 沒有其他驗收機制。
+
+## 慣例
+
+- Conventional Commits
+- 新增業務邏輯要附測試
+EOF
+    (cd "$dir/work" && git add -A && git commit -qm "docs: 加上 repo 契約檔與測試" \
+        && git push -q origin main)
+    # working tree 變更（priority 2）：只動根 CLAUDE.md 的一段 prose，且只有措辭／完整度問題
+    cat > "$dir/work/CLAUDE.md" <<'EOF'
+# order-service
+
+小型訂單計算服務。
+
+## 完成判定
+
+改動一律以 `uv run --with pytest python -m pytest` 全綠為準。本 repo 沒有其他驗收機制。
+
+## 慣例
+
+- Conventional Commits
+- 新增業務邏輯要附測試。這一點要特別注意，因為沒有測試的話後續很難確認行為，
+  所以請務必記得補上測試，不要漏掉，漏掉的話會讓後面的維護變得困難。
+
+## 回報
+
+回報時請把結果寫清楚。
+EOF
+}
+
 # --- contract evals（G 系列）---
 # 兩條的 clean room **方向相反**，這是最容易搞錯的一點：
 #   g7 要測「沒有我的規則的人拿到我的 repo」→ home 不得有全域 CLAUDE.md
@@ -1513,7 +1590,7 @@ make_g4b() {
     _g4_repo "$dir/work"   # 刻意不建 STATUS.md
 }
 
-make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_q1; make_q3; make_q6; make_c1; make_n1
+make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_d10; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10; make_h11; make_h12
 make_g1b; make_g1a; make_g4; make_g4b
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
