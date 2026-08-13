@@ -99,6 +99,7 @@
     "對該 repo 以背景 Bash 跑 scripts/codex-exec-review.sh run --repo <repo_path> --range <commit_range> --round C1（不呼叫 codex:rescue plugin），送出的 prompt 嚴格一行：Run your repo-review skill on <repo_path> for <commit_range>. 繁體中文.",
     "背景執行後不輪詢、不自建時間門檻的死亡偵測；依 exit 契約處理（0 讀報告／4 resume 一次／5 停）",
     "不附加自訂 focus points / 不要求跑測試 / 不傳專案慣例文件",
+    "codex sandbox 對受審 repo 保持唯讀，但提供獨立可寫的 TMPDIR／uv／pytest cache；權限設定不支援時安全失敗，不退回 danger-full-access",
     "收到 codex findings 後逐條讀原始碼獨立驗證，標 true/false positive，只修 true positive",
     "diff 模式：C1 = <審查起點>..HEAD 全審（base 錨定、不退化成會滑動的 HEAD~1）；C2+ = <上輪 codex HEAD>..HEAD 只審增量"
   ]

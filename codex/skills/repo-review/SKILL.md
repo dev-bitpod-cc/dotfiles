@@ -109,12 +109,14 @@ For each review pass `R1` through `R<max_rounds>`:
 3. Verify and consolidate findings. Stop clean when no blocking findings remain.
 4. Before any edit, privately compare the current pass with `max_rounds`. If this is the last allowed review pass and blocking findings remain, stop immediately and report them; do not edit, test, stage, or create another checkpoint.
 5. Otherwise, fix only verified blocking findings with minimal changes.
-6. Before testing, record intentional edit paths and worktree status. Run relevant tests or checks. If none are discoverable, state that and perform reasonable static verification.
-7. If tests fail or the environment blocks validation, do not commit; stop and report the blocker.
-8. With `commit_each_round=true`, recheck status, stage only verified intentional paths, and inspect the staged diff. Stop if a pre-existing or concurrent path would be included. With `commit_each_round=false`, do not stage or commit.
-9. Keep only new untracked outputs that were absent before and are attributable to the recorded test command unstaged; list them without letting them block later committed-range review.
-10. With `commit_each_round=true`, create a stage-neutral checkpoint such as `fix: address review findings`; keep the pass-to-checkpoint mapping in orchestration state for the final report. If the original resolved head was current HEAD, review `<resolved-base>..HEAD` next. Otherwise use only an explicitly approved target range.
-11. With `commit_each_round=false`, review the original immutable range plus accumulated worktree edits, recompute that mixed context every round, and state that it can grow.
+6. Sweep semantic dependencies affected by each fix, by relationship rather than matching text: condition to message, comment, or docstring; criterion to guard self-test; operational fact to its authoritative status artifact; and capability to user-facing documentation. Update only applicable in-scope dependents.
+7. Before expanding an enumeration, ask whether an external system, extension, plugin, database catalog, or third-party API can add members. For an externally extensible set, prefer an available structural invariant over adding only the currently missing member; retain enumeration for repository-defined closed sets.
+8. Before testing, record intentional edit paths and worktree status. Run relevant tests or checks. If none are discoverable, state that and perform reasonable static verification.
+9. If tests fail or the environment blocks validation, do not commit; stop and report the blocker.
+10. With `commit_each_round=true`, recheck status, stage only verified intentional paths, and inspect the staged diff. Stop if a pre-existing or concurrent path would be included. With `commit_each_round=false`, do not stage or commit.
+11. Keep only new untracked outputs that were absent before and are attributable to the recorded test command unstaged; list them without letting them block later committed-range review.
+12. With `commit_each_round=true`, create a stage-neutral checkpoint such as `fix: address review findings`; keep the pass-to-checkpoint mapping in orchestration state for the final report. If the original resolved head was current HEAD, review `<resolved-base>..HEAD` next. Otherwise use only an explicitly approved target range.
+13. With `commit_each_round=false`, review the original immutable range plus accumulated worktree edits, recompute that mixed context every round, and state that it can grow.
 
 Also stop when validation is blocked, repository safety becomes ambiguous, or the same finding survives two fix attempts. Optional findings never justify another round.
 

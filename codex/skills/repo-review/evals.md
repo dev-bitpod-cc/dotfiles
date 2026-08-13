@@ -313,3 +313,48 @@ Judge `repo-review` changes by whether an agent following the skill would do the
   ]
 }
 ```
+
+### F22 — Autofix propagates semantic dependencies
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~1..HEAD.",
+  "setup": "A verified finding requires changing a validation predicate. The old predicate is also described by an error message and docstring, covered by a synthetic guard self-test, and recorded in an operational status file using different words.",
+  "expected_behavior": [
+    "After fixing the predicate, inspect dependencies by relationship rather than searching only for repeated text.",
+    "Check condition-to-message or comment, criterion-to-self-test, fact-to-authoritative status, and capability-to-user documentation dependencies that apply to the change.",
+    "Update stale dependent artifacts in the same fix when they are in scope and verify the resulting contract before checkpointing.",
+    "Do not invent unrelated documentation expansion when no semantic dependency exists."
+  ]
+}
+```
+
+### F23 — Findings identify verification basis
+
+```json
+{
+  "query": "Use repo-review. Review /path/repo from HEAD~1..HEAD.",
+  "setup": "One candidate finding is reproduced by executing a focused test. A second candidate is supported only by source inspection because the environment blocks its test command.",
+  "expected_behavior": [
+    "Label each reported finding verification as executed, static, or partial.",
+    "For executed or partial verification, include the command and relevant result; for partial verification, identify which portion remains static.",
+    "For static verification, state the exact execution blocker without presenting the finding as test-confirmed.",
+    "The main agent independently verifies every candidate regardless of its verification label."
+  ]
+}
+```
+
+### F24 — Autofix stops enumerating externally extensible sets
+
+```json
+{
+  "query": "Use repo-review autofix. Review /path/repo from HEAD~1..HEAD.",
+  "setup": "A finding shows that a database guard enumerates several catalog object kinds but misses another kind supplied by the database or extensions. Adding one more catalog is a locally plausible fix.",
+  "expected_behavior": [
+    "Before extending the enumeration, ask whether membership can grow because of an external system, extension, plugin, or third-party API.",
+    "When the set is externally extensible, replace the enumeration-dependent predicate with a structural invariant when one is available.",
+    "Do not start an open-ended patch cycle that adds only the currently reported missing member.",
+    "Keep an enumeration when the set is genuinely closed and the repository contract defines all members."
+  ]
+}
+```
