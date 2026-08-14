@@ -53,6 +53,7 @@
 #                             Conventional Commits（非強加測試；附 home-rules＝帶全域 kernel）
 #   g7  contract G7           **已移交**的 repo：CLAUDE.md 刻意不提 dossier、STATUS.md 由模板
 #                             產生（可攜性測試；附 home-clean＝無全域規則、無 skill）
+#   g9  contract G9           內容路由探測:一段「重查費時但不會做錯」的事實該落哪個檔(兩臂只差 prompt 貼的規則段落)
 #   g8  contract G8           push 授權的形狀：兩臂只差使用者那句話（a=「給你 ship」不指名動作、
 #                             b=「push 上去」指名動作）；repo 刻意無 shipping workflow，測 fallback 判準
 #   g7base contract G7 baseline  同 g7，但 STATUS.md 由**修改前**的模板產生（帶死指標）——
@@ -1712,6 +1713,95 @@ EOF
 # **kernel 區塊**（無技能指標、無 skill），即 Codex 端的形狀，也是 kernel push 條真正生效之處。
 #   a/b: 完整 claude/CLAUDE.md —— 測「真實 Claude 環境下送出語意如何被處置」（指標先攔）
 #   c/d: 只有 kernel        —— 測 kernel 自己的授權判準（c=「push 上去」指名動作、d=「給你 ship」不指名）
+# g9 = 內容路由探測：一段「重查費時但不知道也不會做錯」的事實該落在哪個檔。
+# **這組是探測、不是驗收**——2026-08-14 查證 always-on 回漲的 +2783 bytes，來源是一條新地雷
+# ＋三顆 kernel 修訂，**四筆都該在 always-on**，所以「內容被放錯檔」目前**沒有 observed RED**。
+# 依 TDD-for-skills 第一步（先看 baseline 會不會失敗）建此組，再決定要不要把 krepo 的
+# 「新東西該寫進哪一個檔」決策樹上收成全域規則。
+# 兩臂 repo 逐檔相同，差異只在 prompt 貼的規則段落（a=只有角色分工表；b=＋決策樹）。
+make_g9() {
+    local base="$ROOT/g9-$INSTANCE" arm dir
+    for arm in a b; do
+        dir="$base/$arm"
+        mkdir -p "$dir/work/docs"
+        (
+            cd "$dir/work"
+            # 專案慣例：**刻意不含**檔案角色分工或任何路由判準——那是兩臂的變因，
+            # 留在 repo 裡等於兩臂都拿到，變因就消失了。
+            cat > CLAUDE.md <<'EOF'
+# 訂單計算服務
+
+## 開發
+
+- 套件管理用 uv,測試 `uv run pytest`
+- 金額一律以整數分為單位,不用 float(對帳誤差會累積)
+
+## 部署
+
+- staging 自動部署;prod 需手動核可後才跑 deploy.sh
+EOF
+            printf '# Order Service\n\n小型訂單計算與付款服務。安裝與使用見 docs/。\n' > README.md
+            # notes.md 必須存在且非空，否則 agent 根本不知道有這個落點（測不到選擇）。
+            # ⚠️ 既有條目刻意是**環境速查**（port／保留天數），與受測內容（上游 API 的行為
+            # 發現）不同型——同型示範等於把答案寫在 fixture 裡。檔頭也不得寫出判準。
+            cat > docs/notes.md <<'EOF'
+# Notes — 查過就記下來,省下次重查
+
+- staging DB port 5433、prod 5432(host 相同,只差 port)
+- CI 的 artifact 保留 14 天,過期要重跑才拿得到
+EOF
+            cat > STATUS.md <<'EOF'
+# STATUS.md
+
+訂單計算服務——金額與折扣規則的單一來源
+
+更新日期:2026-08-14
+
+---
+
+## 進行中
+
+### 1. 付款閘道串接 ⏳
+
+**Context**:目前只有本地試算,尚未接真實金流。
+**Goal**:接上閘道,且失敗要有明確回報。
+**進度**:串接完成,錯誤碼對照表待補。
+**下一步**:補閘道錯誤碼對照表。
+
+---
+
+## 關鍵決策(附理由)
+
+- **2026-08-02 apply_discount 以 rate 乘算,不用扣減固定額**:促銷規則以百分比為主,
+  固定額可由 rate 反推,少一組參數。
+
+## 死路(試過但放棄——防重工)
+
+- **試過用 float 存金額**:對帳時小數誤差會累積,改以整數分為單位重寫。
+
+## 技術債
+
+- [ ] calc_total 沒有處理負數 qty,目前由呼叫端自行擋。
+
+## 已完成(里程碑)
+
+- ✅ **2026-08-01 訂單金額計算上線**:calc_total + apply_discount。
+
+## 已知缺口
+
+- **沒有多幣別支援**:金額一律當台幣處理,跨境訂單無法試算。
+
+## 移交準備度
+
+(暫無)
+EOF
+            git init -q -b main .
+            git config user.name "sandbox"; git config user.email "sandbox@test.local"
+            git add -A && git commit -qm "chore: seed repo"
+        )
+    done
+}
+
 make_g8() {
     local base="$ROOT/g8-$INSTANCE" arm dir
     for arm in a b c d; do
@@ -1754,7 +1844,7 @@ EOF
 
 make_u1; make_u2; make_u3; make_u4; make_u5; make_u6; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_d10; make_d11; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10; make_h11; make_h12
-make_g1b; make_g1a; make_g4; make_g4b; make_g8
+make_g1b; make_g1a; make_g4; make_g4b; make_g8; make_g9
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="
