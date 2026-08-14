@@ -11,6 +11,7 @@
 #   u2  project log Scenario 5  誤 commit 在本地 main + working tree 髒檔（mixed state）
 #   u3  project log Scenario 11 protection 確定 OPEN + 使用者說 merge（附 gh stub）
 #   u4  project log Scenario 13/15（另附 gh-stub-blocked：mergeStateStatus=BLOCKED） 說法關鍵字即授權：已 push 的 branch + 頂端 2 顆 review 痕跡 + PR 已開
+#   u6  project dossier Scenario 17  成對實驗:「已決議暫不做＋觸發條件」落在哪一節(七節齊全、兩節各留純種條目)
 #   u5  project log Scenario 14 同 u4，另有「R5 終止」anchor——關鍵字覆蓋不了的事實前提
 #   d1  deep-review autofix   main 上 working tree 有真 bug（float == 比較金額）
 #   d2  deep-review F12       clean tree、與 origin/main 同步（範圍詢問 gate）
@@ -253,6 +254,72 @@ terminal_reason=r5-blocking
 terminal_head=${head}
 terminal_at=$((now - 600))
 EOF
+}
+
+# u6 = 成對實驗沙盒：「已決議暫不做 ＋ 觸發條件」的條目落在哪一節。
+# **為何是成對而非單臂 pass/fail**：現行 `references/dossier.md` 對兩節的定義**都涵蓋得到**
+# 這種條目（關鍵決策＝「選了什麼、為什麼、放棄了什麼」；已知缺口＝「已知限制，尚無解決計畫者」），
+# 所以受測 agent 選缺口**不構成違規**——要測的不是它有沒有做錯，而是「加了判準之後行為會不會變」。
+# 兩臂共用本沙盒，唯一差異在 prompt 裡貼的章節語意段落（A＝現行、B＝現行＋判準）。
+# 判定規則見 `claude/skills/project/references/pressure-tests.md`「Scenario 17」。
+make_u6() {
+    local dir="$ROOT/u6-$INSTANCE"
+    make_base_repo "$dir"
+    (
+        cd "$dir/work"
+        # 七節齊全。決策節與缺口節**各留一條既存條目**當落點候選，但兩條都刻意是「純種」：
+        # 決策那條只有取捨、沒有觸發條件；缺口那條只有欠缺、沒有決議。
+        # ⚠️ 任何一條若示範了「決議＋觸發條件」該擺哪，答案就洩了——兩臂會一起選對，
+        # 判準的作用被 fixture 自己蓋掉（同 README 模型樓層政策那節的洩題失效面）。
+        cat > STATUS.md <<'EOF'
+# STATUS.md
+
+訂單計算服務——金額與折扣規則的單一來源
+
+更新日期:2026-08-13
+
+---
+
+## 進行中
+
+### 1. 付款閘道串接 ⏳
+
+**Context**:目前只有本地試算,尚未接真實金流。
+**Goal**:接上閘道,且失敗要有明確回報。
+**進度**:串接完成,偶發逾時已定位。
+**下一步**:補閘道錯誤碼對照表。
+
+---
+
+## 關鍵決策(附理由)
+
+- **2026-08-02 apply_discount 以 rate 乘算,不用扣減固定額**:促銷規則以百分比為主,
+  固定額可由 rate 反推,少一組參數。
+
+## 死路(試過但放棄——防重工)
+
+- **不引入規則引擎套件**:規則只有兩三條,多一個相依不划算。
+
+## 技術債
+
+- [ ] calc_total 沒有處理負數 qty,目前由呼叫端自行擋。
+
+## 已完成(里程碑)
+
+- ✅ **2026-08-01 訂單金額計算上線**:calc_total + apply_discount。
+
+## 已知缺口
+
+- **沒有多幣別支援**:金額一律當台幣處理,跨境訂單無法試算。
+
+## 移交準備度
+
+(暫無)
+EOF
+        # clean tree + 已 push：讓情境只剩「這條記哪裡」，不夾帶 ship 路徑的分歧
+        git add STATUS.md && git commit -qm "docs: add dossier"
+        git push -q origin main
+    )
 }
 
 make_d1() {
@@ -1681,7 +1748,7 @@ EOF
     done
 }
 
-make_u1; make_u2; make_u3; make_u4; make_u5; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_d10; make_d11; make_q1; make_q3; make_q6; make_c1; make_n1
+make_u1; make_u2; make_u3; make_u4; make_u5; make_u6; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_d10; make_d11; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10; make_h11; make_h12
 make_g1b; make_g1a; make_g4; make_g4b; make_g8
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
