@@ -44,7 +44,7 @@ curl help.bitpod.cc
 
 > **Cloudflare 設定**：
 > - `dot.bitpod.cc` 302 redirect 至
->   `https://raw.githubusercontent.com/dev-bitpod-cc/dotfiles/main/bootstrap.sh`（安裝器）
+>   `https://raw.githubusercontent.com/jjshen-eland/dotfiles/main/bootstrap.sh`（安裝器）
 > - `help.bitpod.cc` 由 Cloudflare Worker 回傳純文字提醒（腳本見 `docs/cloudflare-help-worker.js`）
 
 ### macOS（已有 repo）
