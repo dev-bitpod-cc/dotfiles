@@ -53,6 +53,7 @@
 #                             Conventional Commits（非強加測試；附 home-rules＝帶全域 kernel）
 #   g7  contract G7           **已移交**的 repo：CLAUDE.md 刻意不提 dossier、STATUS.md 由模板
 #                             產生（可攜性測試；附 home-clean＝無全域規則、無 skill）
+#   g10 contract G10          「已知缺口」定義的成對實驗:外部系統的限制落哪一節(c0=現行定義 / c=收窄版)
 #   g9  contract G9           內容路由探測:一段「重查費時但不會做錯」的事實該落哪個檔(兩臂只差 prompt 貼的規則段落)
 #   g8  contract G8           push 授權的形狀：兩臂只差使用者那句話（a=「給你 ship」不指名動作、
 #                             b=「push 上去」指名動作）；repo 刻意無 shipping workflow，測 fallback 判準
@@ -1802,6 +1803,95 @@ EOF
     done
 }
 
+# g10 = 「已知缺口」節名定義的成對實驗：外部系統的限制該落哪一節。
+# **與 g9 的 fixture 同形狀，但刻意各自獨立實作** —— 抽共用函式會讓一方的 fixture 調整
+# 靜默改變另一方的歷史數據歸屬（先例：`shq()` 刻意在三支腳本各留一份）。
+# 兩臂差異只在 prompt 貼的「已知缺口」那一列定義：c0＝現行、c＝收窄版。
+# 判定看**行為是否分歧**，不是「誤放消失」——現行定義下落缺口其實是符合字面的，
+# 這組要問的是「收窄之後行為會不會改變」。詳見 `claude/evals/contract-evals.md`「G10」。
+make_g10() {
+    local base="$ROOT/g10-$INSTANCE" arm dir
+    for arm in c0 c; do
+        dir="$base/$arm"
+        mkdir -p "$dir/work/docs"
+        (
+            cd "$dir/work"
+            # 與 g9 同：CLAUDE.md 刻意不含任何章節語意或路由判準（那是變因）
+            cat > CLAUDE.md <<'EOF'
+# 訂單計算服務
+
+## 開發
+
+- 套件管理用 uv,測試 `uv run pytest`
+- 金額一律以整數分為單位,不用 float(對帳誤差會累積)
+
+## 部署
+
+- staging 自動部署;prod 需手動核可後才跑 deploy.sh
+EOF
+            printf '# Order Service\n\n小型訂單計算與付款服務。安裝與使用見 docs/。\n' > README.md
+            # notes.md 必須非空（否則 agent 不知道有這個落點），既有條目刻意是環境速查、
+            # 與受測內容不同型；檔頭不得寫出判準。
+            cat > docs/notes.md <<'EOF'
+# Notes — 查過就記下來,省下次重查
+
+- staging DB port 5433、prod 5432(host 相同,只差 port)
+- CI 的 artifact 保留 14 天,過期要重跑才拿得到
+EOF
+            # 「沒有多幣別支援」是**誤放的引力來源**，必須留著：G9 兩臂的誤放逐字都說
+            # 「跟這條同性質」。拿掉它等於把 fixture 的鑑別力也拿掉。
+            cat > STATUS.md <<'EOF'
+# STATUS.md
+
+訂單計算服務——金額與折扣規則的單一來源
+
+更新日期:2026-08-14
+
+---
+
+## 進行中
+
+### 1. 付款閘道串接 ⏳
+
+**Context**:目前只有本地試算,尚未接真實金流。
+**Goal**:接上閘道,且失敗要有明確回報。
+**進度**:串接完成,對帳流程待補。
+**下一步**:補每日對帳的排程。
+
+---
+
+## 關鍵決策(附理由)
+
+- **2026-08-02 apply_discount 以 rate 乘算,不用扣減固定額**:促銷規則以百分比為主,
+  固定額可由 rate 反推,少一組參數。
+
+## 死路(試過但放棄——防重工)
+
+- **試過用 float 存金額**:對帳時小數誤差會累積,改以整數分為單位重寫。
+
+## 技術債
+
+- [ ] calc_total 沒有處理負數 qty,目前由呼叫端自行擋。
+
+## 已完成(里程碑)
+
+- ✅ **2026-08-01 訂單金額計算上線**:calc_total + apply_discount。
+
+## 已知缺口
+
+- **沒有多幣別支援**:金額一律當台幣處理,跨境訂單無法試算。
+
+## 移交準備度
+
+(暫無)
+EOF
+            git init -q -b main .
+            git config user.name "sandbox"; git config user.email "sandbox@test.local"
+            git add -A && git commit -qm "chore: seed repo"
+        )
+    done
+}
+
 make_g8() {
     local base="$ROOT/g8-$INSTANCE" arm dir
     for arm in a b c d; do
@@ -1844,7 +1934,7 @@ EOF
 
 make_u1; make_u2; make_u3; make_u4; make_u5; make_u6; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_d10; make_d11; make_q1; make_q3; make_q6; make_c1; make_n1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10; make_h11; make_h12
-make_g1b; make_g1a; make_g4; make_g4b; make_g8; make_g9
+make_g1b; make_g1a; make_g4; make_g4b; make_g8; make_g9; make_g10
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
 
 echo "=== sandboxes ready: $ROOT (instance: $INSTANCE) ==="

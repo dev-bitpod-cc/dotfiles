@@ -12,19 +12,24 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-### 1. dossier／always-on 治理:證據充分的三項 ⏳
+### 1. always-on 量體訊號 ＋ default-branch 機械防線 ⏳
 
-**Context**:完整脈絡、量到的事實與 DROP 清單見 `docs/plans/2026-08-14-dossier-governance.md`
-(**權威在該檔,此處不複述**)。工具面四項已落地;本項只含其中**可直接做**的三件,
-需先跑 fixture 的④⑤⑥不在範圍。
-**Goal**:①`dossier.md` 修「已知缺口」節名定義,消除「我方功能缺口 vs 外部系統限制」的歧義;
-②always-on 檔(兩份 `CLAUDE.md` ＋ `MEMORY.md`)加量體訊號;③pre-commit hook 擋 default branch。
-**AC**:①修後重跑 G9 的 b 臂,不再以「跟『沒有多幣別支援』同性質」為由誤放;②訊號印得出三份
-檔的 bytes,且**不產生任何需要當次處置的 flag**;③在 default branch 上 commit 被擋、訊息指向
-`branch-first.sh`,feature branch 不受影響。
-**Constraints**:②**只加訊號**——不設硬門檻、不砍 always-on 內容(砍了沒 gate 守會回漲);
-①是**修定義不是加規則**,不得在其上再疊路由判準(G9 已證無效);③救援路徑仍走 `branch-first.sh`。
-**下一步**:①(最便宜且驗證成本已付)。
+**Context**:脈絡與 DROP 清單見 `docs/plans/2026-08-14-dossier-governance.md`(權威在該檔,
+不複述)。原訂三項,**「收窄已知缺口定義」已由 G10 否決**(見死路節同日條),只剩兩件機械面。
+**Goal**:①`ship-state.sh` 加 always-on 量體訊號(純資訊、不設門檻);②`.githooks/` dispatcher
+＋ default-branch guard,經 `git/config` 的 `core.hooksPath` 散佈。
+**AC**:
+- ①落點在取得 toplevel 之後、remote/default early return **之前**;三態輸出(NONE／逐檔／
+  UNKNOWN);worktree 要驗主 checkout 的 `-ef`;`SKILL.md` Step 1 與 Step 2 都列入。
+  ⚠️ `MEMORY.md` **不納入**(machine-local、路徑未固化)。
+- ②代理 git 全部 hook 名(**非** sample 那 14 個);repo hook 的 exit code 原樣傳回;guard 跑
+  subshell 三態(約定 code=擋、其餘非零=放行);逃生變數只停 guard、不跳過 repo hook;
+  merge／rebase／cherry-pick 進行中早退;detached 不擋;`.githooks/*` 納入四道 gate;mode 100755。
+  **已知邊界**:repo 自設 local `core.hooksPath` 會完全繞過(已實測),純本地 main 與缺
+  `origin/HEAD` 的自訂 default 刻意放行——三者各有測試固定。
+**Constraints**:①**只加訊號**,不設硬門檻、不砍 always-on 內容;②`git/config` 那行是**最後一個
+mutation**(include 讀 working tree,存檔即全域生效);rollout(merge／push／dotsync)**另取授權**。
+**下一步**:①(不動 git 層,風險最低)。
 
 > 更早的凍結計畫:`docs/plans/2026-08-09-repo-contract-extraction.md`、
 > `docs/plans/2026-08-10-dossier-portability.md`。
@@ -118,12 +123,16 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   這次是**先測再決定**;差別在於前三次有「實地出過事」的印象在推,這次刻意先讓 fixture 說話。
   ⚠️ **順帶推翻了自己的診斷**:實測顯示 Sonnet 分類分得很清楚,所以缺口節那 8 條的滯留
   **不是寫入時分錯**,較可能是「先寫成缺口、後來做了決定卻在原地追加而沒搬家」。新假設待測。
-- **把 krepo 的「新東西該寫進哪一個檔」決策樹上收成全域規則**:2026-08-14 建 G9 成對探測,
-  兩臂各 4 輪**零差異**(皆 3/4 落對、1/4 落 STATUS.md)。**候選那臂還更糟**——為適配本 repo 加的
-  「狀態類一律進 STATUS.md、不走三題」成了跳過判準的逃生口,受測 agent 逐字引用它繞開決策樹。
-  **真根因不是缺路由規則**(見技術債同日條)。⚠️ 起念的理由「always-on 在回漲、沒人知道新內容
-  該不該進去」**查證後不成立**:+2783 bytes 全來自一條新地雷＋三顆 kernel 修訂,四筆都該在
-  always-on。**又一次憑推論指認失效面**。詳見 `claude/evals/contract-evals.md`「G9」。
+- **收窄「已知缺口」定義(加上「我方」主體)**:G10 成對實驗,驗收批次 control 僅 **1/4** 落缺口
+  (門檻 ≥3/4)→ 不改。**真正的發現是行為不穩定**——同一 fixture／query／模型,pilot 兩輪全落缺口、
+  驗收四輪只有一輪落,**多數行為在兩批間反轉**。候選臂確實引用了收窄定義,所以不是定義沒用,
+  而是 baseline 多數輪次也做對。⚠️ 連帶推翻 G9 留下的「節名歧義」假設(顯形率僅 1/4)。
+  數據見 `claude/evals/contract-evals.md`「G10」。
+- **把 krepo 的「新東西該寫進哪一個檔」決策樹上收成全域規則**:G9 成對探測,兩臂各 4 輪
+  **零差異**。**候選那臂還更糟**——為適配本 repo 加的「狀態類不走三題」成了跳過判準的逃生口,
+  受測 agent 逐字引用它繞開決策樹。⚠️ 起念的理由「always-on 在回漲、沒人知道新內容該不該
+  進去」**查證後不成立**(+2783 bytes 四筆都該在 always-on)——**又一次憑推論指認失效面**。
+  數據見 `claude/evals/contract-evals.md`「G9」。
 - **拿「STATUS.md 負增量」當「被 flag 逼著壓縮」的代理指標**:2026-08-14 用過,結論全錯——
   多數負增量是拆分搬移與完成項移出,且該 repo 的量體 flag 早有明文豁免。**正解:數 flag 實際
   處置的 commit,並先查該 repo 自己的契約檔有無豁免**——量體訊號不分辨「誰讓它變小」。
@@ -137,14 +146,8 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 ## 技術債
 
-- [ ] **merge 最後一哩把你留在 `main`,而那正是下一輪違規的起點**(2026-08-14 實地:本 session
-  merge 完切回 main,下一輪直接開工、commit 落在 main;`branch-first.sh` 情況 B 救回,未 push
-  故無外部影響)。**規則本身沒問題**——kernel 明文、腳本齊備、救援序列一次成功;缺的是**機械
-  防線**。候選:pre-commit hook 擋 default branch 上的 commit。未評估。
-- [ ] **「已知缺口」節名有歧義:同時讀得成「我方的功能缺口」與「外部系統的已知限制」**
-  (2026-08-14 G9 實測:兩臂各有 1/4 把上游 API 的 rate limit 放進該節,理由都是「跟『沒有多幣別
-  支援』那條同性質」——字面上兩者都成立)。要修的是 `dossier.md` 對該節的定義,**不是在上面再疊
-  一層路由規則**(G9 已證那救不了)。未動:先看它會不會真的造成問題。
+- [ ] **merge 最後一哩把你留在 `main`,而那正是下一輪違規的起點**(2026-08-14 實地一次,
+  `branch-first.sh` 情況 B 救回、未 push)。規則本身沒問題——缺的是機械防線,處置見進行中 #1 的②。
 - [ ] **xref-gate 的判準是「heading **或**內文」,故通用詞當節名會讓保護降級**(2026-08-14 做
   突變測試時發現):把 `docs/dead-ends.md` 的 `## 分工` 改名,gate 仍綠——因為該檔另一處指標句
   裡也有「分工」二字。**節名撞通用詞時,突變測試必須改 heading 與內文兩處才測得準**;想真正
