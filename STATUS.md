@@ -12,24 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-### 1. always-on 量體訊號 ＋ default-branch 機械防線 ⏳
-
-**Context**:脈絡與 DROP 清單見 `docs/plans/2026-08-14-dossier-governance.md`(權威在該檔,
-不複述)。原訂三項,**「收窄已知缺口定義」已由 G10 否決**(見死路節同日條),只剩兩件機械面。
-**Goal**:①`ship-state.sh` 加 always-on 量體訊號(純資訊、不設門檻);②`.githooks/` dispatcher
-＋ default-branch guard,經 `git/config` 的 `core.hooksPath` 散佈。
-**AC**:
-- ①落點在取得 toplevel 之後、remote/default early return **之前**;三態輸出(NONE／逐檔／
-  UNKNOWN);worktree 要驗主 checkout 的 `-ef`;`SKILL.md` Step 1 與 Step 2 都列入。
-  ⚠️ `MEMORY.md` **不納入**(machine-local、路徑未固化)。
-- ②代理 git 全部 hook 名(**非** sample 那 14 個);repo hook 的 exit code 原樣傳回;guard 跑
-  subshell 三態(約定 code=擋、其餘非零=放行);逃生變數只停 guard、不跳過 repo hook;
-  merge／rebase／cherry-pick 進行中早退;detached 不擋;`.githooks/*` 納入四道 gate;mode 100755。
-  **已知邊界**:repo 自設 local `core.hooksPath` 會完全繞過(已實測),純本地 main 與缺
-  `origin/HEAD` 的自訂 default 刻意放行——三者各有測試固定。
-**Constraints**:①**只加訊號**,不設硬門檻、不砍 always-on 內容;②`git/config` 那行是**最後一個
-mutation**(include 讀 working tree,存檔即全域生效);rollout(merge／push／dotsync)**另取授權**。
-**下一步**:①(不動 git 層,風險最低)。
+(無進行中工作項——2026-08-14 的 dossier／always-on 治理已收斂,見里程碑。)
 
 > 更早的凍結計畫:`docs/plans/2026-08-09-repo-contract-extraction.md`、
 > `docs/plans/2026-08-10-dossier-portability.md`。
@@ -43,6 +26,21 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-14 always-on 量體訊號放 ship-state、且刻意無條件印**。治理的對象一直是錯的:兩份
+  `CLAUDE.md` 每 session 載入卻**零 gate**,而不自動載入的 STATUS.md 有五層。放 SessionStart hook
+  不行(那支的契約是「無事發生就無輸出」)。**背離「只在超標時印」原則**是因為它是 baseline 觀測
+  而非處置訊號。⚠️ 升級成 flag 前要先解決「結構下限出口」——機隊最大 102968,貿然設門檻會有
+  七八個 repo 常亮。
+- **2026-08-14 hook 用宣告式部署(`git/config` 一行),不寫 ensure helper**。原以為
+  `core.hooksPath` 的 `~` 不展開,**實測會**(git 2.50.1／機隊 2.55.0),而該檔已由 setup 以
+  `include.path` 掛在全機隊 → 改一行、下次 pull 即生效,省掉 helper＋dotfiles-sync 兩處掛載＋
+  一整節測試。⚠️ **代價是它取代整個 hook 目錄**——必須寫成 dispatcher 代理全部 client-side
+  hook 名,否則 repo 自己的 LFS hook 會靜默失效;邊界與判準見 `docs/testing-contract.md`
+  「24. `.githooks/dispatcher`(全域 core.hooksPath 的單一入口)」。
+- **2026-08-14 guard 的 fail-open 用三態 exit code,不用 `set -u`**。實測 `set -u` 遇未綁定變數
+  會 `exit 1` ——那是 fail-**closed**,正好相反,而 hook 自己出錯就會擋掉全機隊所有 commit。
+  改成 guard 跑 subshell、約定 exit 97 才擋,其餘非零一律放行。**語法錯誤與 interpreter 缺失
+  本質上無法 fail-open**,只能靠四道 gate。
 - **2026-08-14 全檔 flag 帶收斂順序:①砍重複 ②歸檔留指標 ③最後才蒸餾**。舊文字把最不可逆的
   手段排在第一,與規範的「超標時優先歸檔」相反,而**只有 flag 會在動手當下被讀到**。判準是
   危險不對稱:歸檔可取回,蒸餾砍掉的是理由與實測數字。
@@ -52,14 +50,6 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   `docs/plans/2026-08-14-dossier-governance.md`「DROP」;兩個要點:軟目標訊號**要先有「已達結構
   下限」的出口**(否則對 always-on 佔 72% 的本 repo 只是第二個常亮 flag),per-repo 覆寫要走
   krepo 豁免條款的形狀(帶理由與失效條件)而非純數字。
-- **2026-08-14 條目 flag 邊界止於非續行區塊**(行首 blockquote／標題／分隔線;機制與實證見
-  `ship-state.sh` 該處註解與 `tests/run.sh` 第 9 節)。**值得記的是失效的形狀**:被誤併的
-  524B 是**歸檔指標**——收斂做對之後才會產生的東西,於是**做對事反被判超標**,而處置指引
-  「涵蓋多個決策→拆成多條」對它無效(它本來就是一條)。修後十個 repo 只有出問題的那個變
-  (804→722)、其餘差 0:**精準修復,不是放寬門檻**。
-- **2026-08-14 條目 flag 補上建議收斂目標(680)**。`DOSSIER_TARGET_PCT` 原本只套在全檔 flag、
-  條目漏了,於是每次都壓到剛好過關(五個 repo 的最大條目落在 798/788/784/778/725,聚在上限
-  下緣不是巧合)。理由與全檔 flag 同,見該常數註解。
 - **2026-08-13 不建 Codex 版 project skill,等真實 RED**。既然 Codex 已可 ship,直覺下一步是把
   Claude 的 `project` workflow 複製一份給它;不做的理由是 `codex/AGENTS.md` 改後已指向
   **repo 既有的 shipping skill**,複製等於製造第二份會漂移的 pressure-tested 邏輯(同
@@ -146,8 +136,6 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 ## 技術債
 
-- [ ] **merge 最後一哩把你留在 `main`,而那正是下一輪違規的起點**(2026-08-14 實地一次,
-  `branch-first.sh` 情況 B 救回、未 push)。規則本身沒問題——缺的是機械防線,處置見進行中 #1 的②。
 - [ ] **xref-gate 的判準是「heading **或**內文」,故通用詞當節名會讓保護降級**(2026-08-14 做
   突變測試時發現):把 `docs/dead-ends.md` 的 `## 分工` 改名,gate 仍綠——因為該檔另一處指標句
   裡也有「分工」二字。**節名撞通用詞時,突變測試必須改 heading 與內文兩處才測得準**;想真正
@@ -199,6 +187,10 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-13 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-14 治理落地兩件(計畫的①經 G10 否決,見死路節):`ship-state.sh` 加 always-on 量體
+  訊號(純資訊、三態、worktree 可辨識);`.githooks/dispatcher` 全域 hook 代理＋default-branch
+  guard,經 `git/config` 一行宣告式散佈。+26 條迴歸(第 24 節 19 條),含 fail-open、chain exit
+  code、三個刻意 false negative 的邊界固定。正反兩向突變測試皆命中。1022 PASS。
 - ✅ 2026-08-14 dossier 治理一整批(起點:使用者反映「一直在處理 dossier flag、很花時間」)。
   **工具**:`ship-state.sh` 條目 flag 兩修(邊界止於非續行區塊、補建議目標 680)＋全檔 flag 帶
   收斂順序＋歸檔孤兒反向守門(krepo 13.0s→2.5s);+13 條迴歸。**存量**:死路節分層外移

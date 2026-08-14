@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# .githooks/dispatcher — 全域 core.hooksPath 的單一入口，依 $0 basename 分派。
+#
+# 為什麼是 dispatcher 而不是只放一個 pre-commit：**全域 `core.hooksPath` 取代整個 hook
+# 目錄**。目錄裡沒有的 hook 名，repo 自己 `.git/hooks/` 的同名版本就**靜默不執行**
+# ——`post-checkout`／`post-merge` 正是 Git LFS 用的。所以本目錄要掛上所有 client-side
+# hook 名（各為指向本檔的 symlink），每一個都先 chain 回 repo 自己的版本。
+#
+# **已知邊界，不假裝擋得住**：
+#   1. repo 自設 **local** `core.hooksPath` 會完全繞過本檔（已實測：local 覆寫 global）。
+#   2. server-side 的 receive 系列（`pre-receive`／`update`／`proc-receive`／`post-receive`／
+#      `post-update`）與 Perforce 的 `p4-*` 刻意不代理——此環境用不到。**git 升版時重新盤點**。
+#
+# 設計紀律（每一條都是實測或 review 逼出來的，改動前先讀 `docs/testing-contract.md`）：
+#   - repo hook 的 exit code **原樣傳回**，本檔不吞。
+#   - 逃生變數與「進行中操作早退」**只停用 guard**，不跳過 repo 自己的 hook。
+#   - guard 跑在 **subshell** 並以 exit 97 表示「確認命中、應阻擋」；**其餘任何非零一律
+#     視為內部失敗 → 放行**。不能用 `set -e`／裸 `set -u` 做 fail-open：實測未綁定變數
+#     會讓整支 exit 1，那是 fail-**closed**，正好相反。
+#   - 語法錯誤與 interpreter 不存在**本質上無法 fail-open**（shell 直接回非零），
+#     那一層只能靠 `tests/run.sh` 的四道 gate 擋在 commit 之前。
+
+hook_name="$(basename -- "$0")"
+
+# --- 1) chain：先跑 repo 自己的同名 hook ---
+# **路徑解析兩者用途不同、不可互換**（linked worktree 實測）：
+#   hooks 在 --git-common-dir/hooks/；MERGE_HEAD 等操作狀態在 --absolute-git-dir。
+# **不要用 `--git-path hooks/...`** —— 它會被 core.hooksPath 汙染，指回本目錄造成無限遞迴。
+common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common_dir=""
+if [ -n "${common_dir}" ]; then
+    repo_hook="${common_dir}/hooks/${hook_name}"
+    # `-ef` 排除「chain 目標其實就是 dispatcher 自己」（例如有人把 .git/hooks 也連過來）。
+    if [ -x "${repo_hook}" ] && ! [ "${repo_hook}" -ef "$0" ]; then
+        "${repo_hook}" "$@" || exit $?
+    fi
+fi
+
+# --- 2) 只有 pre-commit 帶 guard，其餘 hook 到此為止 ---
+[ "${hook_name}" = "pre-commit" ] || exit 0
+
+# --- 3) 逃生口與進行中操作：**只停 guard**，上面的 chain 已經跑完了 ---
+# 逃生變數存在的理由：tests/run.sh 有 74 個 `git init`、setup-sandboxes.sh 約 30 處在 main 上
+# commit，其中一個正是「誤 commit 在 main」的救援 fixture——沒有這個變數，證明救援路徑有效的
+# 那個 fixture 會造不出來。
+[ -n "${DOTFILES_PRECOMMIT_OFF:-}" ] && exit 0
+
+git_dir="$(git rev-parse --absolute-git-dir 2>/dev/null)" || exit 0
+for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG rebase-merge rebase-apply sequencer; do
+    [ -e "${git_dir}/${marker}" ] && exit 0
+done
+
+# --- 4) guard：subshell ＋ 三態 exit code ---
+guard_rc=0
+(
+    set -u
+    # detached **不擋**：會打到 rebase／bisect／CI shallow checkout，而實地違規那次 HEAD 在
+    # main。detached 已由 ship-state 的 `branch-first: REQUIRED` 與 branch-first.sh 情況 A 接住。
+    cur="$(git symbolic-ref --short -q HEAD)" || exit 0
+
+    # default 判定必須離線且便宜（每次 commit 都跑，不能 gh、不能 fetch）。
+    # **不 source ship-state.sh** —— 讓 git 層基礎設施依賴 Claude skill 是錯的相依方向；
+    # 重複這幾行是對的（先例：`shq()` 刻意在三支腳本各留一份）。
+    def=""
+    if head_ref="$(git symbolic-ref --short -q refs/remotes/origin/HEAD)"; then
+        def="${head_ref#origin/}"
+    elif [ "${cur}" = "main" ] || [ "${cur}" = "master" ]; then
+        # 缺 origin/HEAD 時只認 main／master，且要求同名 remote-tracking ref 存在。
+        git show-ref --verify --quiet "refs/remotes/origin/${cur}" && def="${cur}"
+    fi
+
+    # **刻意保留的 false negative**（弱於 kernel 的明文要求，為了讓純本地 fixture 跑得動）：
+    #   純本地 `git init` 的 main、以及缺 origin/HEAD 的自訂 default（如 trunk）都不擋。
+    #   兩者各有一條測試固定邊界，不得讓 AC 說成「default branch 上一律被擋」。
+    [ -n "${def}" ] && [ "${cur}" = "${def}" ] && exit 97
+    exit 0
+) || guard_rc=$?
+
+# 只有 97 才擋。其餘非零＝guard 內部失敗（未綁定變數、git 不可用…）→ **放行**。
+[ "${guard_rc}" -eq 97 ] || exit 0
+
+branch="$(git symbolic-ref --short -q HEAD)"
+toplevel="$(git rev-parse --show-toplevel 2>/dev/null)"
+{
+    printf '\n'
+    printf '✋ 這是 default branch（%s）—— kernel 禁止在此 commit。\n' "${branch}"
+    printf '\n'
+    printf '   先開 feature branch（一個指令，working tree 不會動）：\n'
+    printf '     ~/.claude/skills/project/scripts/branch-first.sh %s <type>/<slug>\n' "'${toplevel}'"
+    printf '\n'
+    printf '   ⚠️ 不要改用 --no-verify 重試——那會讓這顆 commit 繞過所有 hook（不只這一道），\n'
+    printf '      而上面那行只要一次就把 commit 接到 feature branch 上。\n'
+    printf '\n'
+} >&2
+exit 1
