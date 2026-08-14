@@ -1250,6 +1250,109 @@ if grep -q "最大條目" <<< "$out"; then ok "條目本身真超標 → 仍報�
 # 分別是 798 / 788 / 784 / 778 / 725（上限 800），聚在門檻下緣不是巧合。
 if grep -qE "建議.*≤ [0-9]+ bytes" <<< "$out"; then ok "條目 flag 附建議收斂目標（不再壓到剛好過關）"; else bad "條目 flag 缺建議收斂目標（${out}）"; fi
 
+# --- 全檔 flag 的收斂順序：歸檔必須排在蒸餾之前 ---
+# `references/dossier.md` 早就寫了「超標時**優先歸檔**、不要為幾百 bytes 去壓無關舊條目」，
+# 而 flag 文字寫的是「蒸餾＋歸檔」——**規範與工具訊息相反，且只有 flag 會被讀到**。
+# 危險不對稱是這條的理由：歸檔只是搬家（留指標即可取回），蒸餾砍掉的是理由與實測數字，
+# git history 找得回文字、找不回「當初為什麼認為這個數字重要」。把最不可逆的手段排在
+# 訊息第一個，等於預設引導往最貴的方向走。
+mkdir -p "$TMP/ds-order"
+python3 - "$TMP/ds-order/STATUS.md" <<'PYEOF'
+import sys, pathlib
+doc = ("# STATUS.md\n專案一句話定位(更新日期:2026-08-14)\n\n## 進行中\n- 一個工作項\n"
+       + "".join(f"- 第 {i} 條佔位敘述{'佔' * 18}。\n" for i in range(350))
+       + "\n## 關鍵決策(附理由)\n- 一條決策\n\n## 死路(試過但放棄——防重工)\n- 一條死路\n\n"
+         "## 技術債\n- 一條技術債\n\n## 已完成(里程碑)\n- ✅ 一個里程碑\n\n"
+         "## 已知缺口\n- 一條缺口\n\n## 移交準備度\n(暫無)\n")
+# 前提斷言必須在 write **之前**：assert 失敗時 python exit 1，但 tests/run.sh 是
+# `set -uo pipefail`（無 -e）不會中止——寫在後面的話，檔案已經落地、測試照跑，
+# 斷言形同虛設。2026-08-14 首版即踩到（60 條只有 12802 bytes，沒超標卻靜默跑完）。
+assert len(doc.encode()) > 24576, f"fixture bytes 未超標: {len(doc.encode())}"
+assert doc.count("\n") > 300, f"fixture 行數未超標: {doc.count(chr(10))}"
+pathlib.Path(sys.argv[1]).write_text(doc)
+PYEOF
+git init --bare -q "$TMP/ds-order-origin.git"
+(cd "$TMP/ds-order" && git init -q -b main . && "${GITC[@]}" add STATUS.md && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/ds-order-origin.git" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-order" 2>/dev/null)"
+order_line="$(grep 'bytes >' <<< "$out")"
+if grep -q "最後才蒸餾" <<< "$order_line"; then ok "全檔 flag 帶收斂順序（蒸餾排最後）"; else bad "全檔 flag 缺收斂順序（${order_line}）"; fi
+p_arch="$(awk '{print index($0, "歸檔")}' <<< "$order_line")"
+p_dist="$(awk '{print index($0, "蒸餾")}' <<< "$order_line")"
+if [ "$p_arch" -gt 0 ] && [ "$p_dist" -gt 0 ] && [ "$p_arch" -lt "$p_dist" ]; then ok "歸檔排在蒸餾之前（最不可逆的手段不排第一）"; else bad "收斂順序錯：歸檔@${p_arch} 蒸餾@${p_dist}"; fi
+lines_line="$(grep '行 >' <<< "$out")"
+if grep -q "最後才蒸餾" <<< "$lines_line"; then ok "行數 flag 同樣帶收斂順序（兩條 flag 不得各自演化）"; else bad "行數 flag 缺收斂順序（${lines_line}）"; fi
+
+# --- 歸檔孤兒：docs/archive/ 裡沒有任何 md 連到的檔 ---
+# 歸檔正是「內容還在 git 裡、但從 dossier 走不到」的主要製造途徑，而腳本自己的註解說
+# 「內容遺失是 dossier 最貴的失效，靜默是最糟的形式」。dotfiles 的 xref-gate 只驗**正向**
+# （指標指到的東西在不在），反向從來沒查過，且它只保護本 repo。
+# 2026-08-14 實測：evint 6/10、krepo 9/29 是孤兒——而提出這條的 repo 自己是 0/8，
+# 風險真實但在自己的 repo 裡看不見。
+mkdir -p "$TMP/ds-orph/docs/archive"
+cat > "$TMP/ds-orph/STATUS.md" <<'DOSSIER'
+# STATUS.md
+專案一句話定位(更新日期:2026-08-14)
+
+## 進行中
+- 一個工作項
+
+## 關鍵決策(附理由)
+- 較舊條目已歸檔至 `docs/archive/kept.md`。
+
+## 死路(試過但放棄——防重工)
+- 一條死路
+
+## 技術債
+- 一條技術債
+
+## 已完成(里程碑)
+- ✅ 一個里程碑
+
+## 已知缺口
+- 一條缺口
+
+## 移交準備度
+(暫無)
+DOSSIER
+printf '# 被連到的歸檔\n\n有指標指向本檔。\n' > "$TMP/ds-orph/docs/archive/kept.md"
+printf '# 沒人連的歸檔\n\n從 dossier 走不到這裡。\n' > "$TMP/ds-orph/docs/archive/lost.md"
+git init --bare -q "$TMP/ds-orph-origin.git"
+(cd "$TMP/ds-orph" && git init -q -b main . && "${GITC[@]}" add . && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/ds-orph-origin.git" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-orph" 2>/dev/null)"
+if grep -q "歸檔孤兒" <<< "$out"; then ok "無人連到的歸檔 → 印孤兒訊號"; else bad "歸檔孤兒未偵測（${out}）"; fi
+if grep -q "lost.md" <<< "$out"; then ok "孤兒訊號列出檔名（可直接處置）"; else bad "孤兒訊號未列檔名"; fi
+orph_line="$(grep '歸檔孤兒' <<< "$out" || true)"
+if grep -q "kept.md" <<< "$orph_line"; then bad "被連到的歸檔誤報為孤兒（假陽性）"; else ok "被連到的歸檔不誤報"; fi
+
+# 補上指標 → 訊號消失（避免只驗到「恆印」）
+python3 - "$TMP/ds-orph/STATUS.md" <<'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+p.write_text(s.replace("- 一條死路", "- 一條死路(全文見 `docs/archive/lost.md`)", 1))
+PYEOF
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-orph" 2>/dev/null)"
+if grep -q "歸檔孤兒" <<< "$out"; then bad "補上指標後仍報孤兒（恆印，非偵測）"; else ok "補上指標 → 孤兒訊號消失"; fi
+
+# 指標不含 "archive" 字樣時仍須認得——掃描 pattern 收太窄就會在這裡變成假陽性。
+# 實地反例（evint，2026-08-14）：`> （`…2026-07-27-status-pre-condense.md`）` 整行
+# 沒有 archive 字樣。假陽性比多掃幾行貴得多：它會叫人補一條本來就在的指標，
+# 或更糟——以為那份歸檔可以刪。
+python3 - "$TMP/ds-orph/STATUS.md" <<'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+s = s.replace("(全文見 `docs/archive/lost.md`)", "(全文見 `…lost.md`)", 1)
+assert "…lost.md" in s and "docs/archive/lost.md" not in s, "fixture 未改成省略號形式"
+p.write_text(s)
+PYEOF
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-orph" 2>/dev/null)"
+if grep -q "歸檔孤兒" <<< "$out"; then bad "省略號形式的指標未被認出 → 假陽性（掃描 pattern 太窄）"; else ok "指標不含 archive 字樣也認得（pattern 以 .md 為準）"; fi
+
+# archive 目錄不存在 → 靜默（多數 repo 沒有這個目錄，不得製造噪音）
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-full" 2>/dev/null)"
+if grep -q "歸檔孤兒" <<< "$out"; then bad "無 docs/archive 卻印孤兒訊號"; else ok "無 docs/archive → 不印（不製造噪音）"; fi
+
 # --- review 痕跡偵測（Step 4 squash 選項的判定依據；prose 下沉）---
 # 為何下沉：判「哪些 commit 算 review 迭代痕跡」需要 deep-review 的權威 subject 清單，
 # model 憑印象比對會把使用者自己的 `fix: 修正某某` 當痕跡建議壓掉，而使用者一句「好」
