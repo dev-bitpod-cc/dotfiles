@@ -343,12 +343,24 @@ detect_dossier() {
         # 合法偏大，於是恆誤報）。錨定後只有真的以那些節名開頭的標題才算。
         /^##[[:space:]]/ { flush(); insec = ($0 ~ /^##[[:space:]]*(關鍵決策|已完成|里程碑)/); next }
         insec && /^-[[:space:]]/ { flush(); cur = length($0); curline = NR; next }
+        # 條目止於「不是續行」的東西：行首 blockquote、標題（### 不被上面的 ^## 攔到）、
+        # 分隔線。三者都是條目外的獨立區塊，續行則一律有縮排、不會匹配到這裡。
+        # 少了這條，緊跟在條目後的**歸檔指標 blockquote** 會被算進前一條 → 假陽性超標，
+        # 而它正是收斂做對之後的產物（krepo-mops-major-news 2026-08-13：280B 決策 ＋
+        # 524B 指標 ＝ 804B，超標 4 bytes，且「拆成多條」的處置對它無效）。
+        # 帶哨兵 \001 的行不在此列——那是 fenced 內容，計入條目 bytes 是刻意的。
+        insec && cur && /^(>|#|---)/ { flush(); next }
         insec && cur { l = $0; sub(/^\001/, "", l); cur += length(l) + 1 }
         END { flush(); printf "%d\t%d\n", max + 0, maxline + 0 }' <<< "$unfenced")"
     max_entry="${entry_out%%	*}"
     max_entry_line="${entry_out##*	}"
     if [ "$max_entry" -gt "$DOSSIER_ENTRY_MAX_BYTES" ]; then
-        echo "dossier-flag: 決策/里程碑節最大條目 ${max_entry} bytes > ${DOSSIER_ENTRY_MAX_BYTES}（在第 ${max_entry_line} 行；蒸餾上限——決策留結論、里程碑一行化，推導史沉 git history。**若該條涵蓋多個決策 → 拆成多條，不是壓字**）"
+        # 建議目標同全檔 flag 的理由（見 DOSSIER_TARGET_PCT）：壓到剛好低於上限＝下次
+        # 任何編輯即再觸發。這裡漏套用過——2026-08-13 實測五個 repo 的最大條目落在
+        # 798 / 788 / 784 / 778 / 725，聚在上限下緣，正是「壓到剛好過關」的形狀。
+        local target_entry
+        target_entry=$(( DOSSIER_ENTRY_MAX_BYTES * DOSSIER_TARGET_PCT / 100 ))
+        echo "dossier-flag: 決策/里程碑節最大條目 ${max_entry} bytes > ${DOSSIER_ENTRY_MAX_BYTES}（在第 ${max_entry_line} 行；蒸餾上限——決策留結論、里程碑一行化，推導史沉 git history。**若該條涵蓋多個決策 → 拆成多條，不是壓字**；建議收斂至 ≤ ${target_entry} bytes，留得下數次 ship 的成長）"
     fi
     # 「進行中」節內的 ✅ = 完成項未移走；其他節（里程碑）的 ✅ 合法，不得誤報。
     # ⚠ `/✅/` **沒有行首錨點**，哨兵中和不了它——必須自行 `/^\001/ { next }` 跳過圍欄行。
