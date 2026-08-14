@@ -458,6 +458,79 @@ detect_dossier() {
         fi
     fi
 }
+# always-on 量體：這個 repo 的 root `CLAUDE.md`（Claude 每個 session 自動載入）與 `AGENTS.md`
+# （Codex 每次讀），外加「該 repo 就是全域 CLAUDE.md 的來源」時的那一份。**只量 Claude 側是
+# 半套**——這個工作流是雙 agent 的。
+#
+# 為什麼在 ship 時印：always-on 檔只在 ship 那一刻被 commit，訊號印在**動手當下**才有處置窗口
+# （同全檔 flag 收斂順序的論證）。放 SessionStart hook 不行——那支的契約是「無事發生就完全
+# 無輸出」，`tests/run.sh` 第 16 節有五條 `assert_eq ""` 擋著。
+#
+# **這是對 `dossier-sections:`「只在超標時印、平時是噪音」那條原則的刻意背離**：本行是
+# baseline 觀測、不是處置訊號，無條件印才看得到趨勢。
+# ⚠️ **升級成 flag 之前必須先解決「結構下限出口」**（見 `docs/plans/2026-08-14-dossier-governance.md`）
+# ——機隊 root `CLAUDE.md` 最大 102968、dotfiles 16993 只排第十，貿然設門檻會有七八個 repo
+# 每次 ship 都亮，那正是 krepo 137KB 現在的狀態：flag 常亮＝沒有 flag。
+#
+# ⚠️ **必須在 remote／default 的 early return 之前呼叫**——無 remote 的 repo 會在那裡就返回。
+detect_always_on() {
+    local repo="$1" toplevel="$2" f b parts="" present=0
+    for f in CLAUDE.md AGENTS.md; do
+        if [ ! -f "${toplevel}/${f}" ]; then
+            parts="${parts}${parts:+ ＋ }${f} NONE"
+            continue
+        fi
+        # 讀取失敗與「不存在」不得混為一談：UNKNOWN 是不知道、NONE 是確定沒有（同 protection
+        # verdict 的語意）。空字串餵進數值比較會靜默當 0，故失敗顯式賦 -1（CLAUDE.md 已知地雷）。
+        b="$(LC_ALL=C wc -c < "${toplevel}/${f}" 2>/dev/null | tr -d ' ')" || b=-1
+        [ -n "$b" ] || b=-1
+        if [ "$b" -lt 0 ]; then
+            parts="${parts}${parts:+ ＋ }${f} UNKNOWN"
+        else
+            parts="${parts}${parts:+ ＋ }${f} ${b} bytes"
+        fi
+        present=$(( present + 1 ))
+    done
+
+    # 全域那一份：只有「擁有 symlink target」的 repo 才印，故多 repo ship 不會重複印。
+    # **不要改成無條件印**——全域檔是 repo-independent 的，check_repo 是 per-repo 迴圈。
+    local global_src="${HOME}/.claude/CLAUDE.md" gpath="" gnote="" gb cdir main_ck
+    if [ -e "$global_src" ]; then
+        if [ -e "${toplevel}/claude/CLAUDE.md" ] && [ "${toplevel}/claude/CLAUDE.md" -ef "$global_src" ]; then
+            gpath="${toplevel}/claude/CLAUDE.md"; gnote="生效中"
+        else
+            # linked worktree 裡 `-ef` 為假，而「在 worktree 改自家 CLAUDE.md」正是常態工作方式
+            # ——訊號恰好在最需要它的場合消失。沿 common-dir 找主 checkout 補印，
+            # **並驗證主 checkout 那份確實 `-ef` 全域檔**：只憑「有 common-dir」會把其他 repo
+            # 的 linked worktree 也誤認成 dotfiles。
+            cdir="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || cdir=""
+            if [ -n "$cdir" ]; then
+                main_ck="$(dirname "$cdir")"
+                if [ "$main_ck" != "$toplevel" ] && [ -e "${main_ck}/claude/CLAUDE.md" ] \
+                   && [ "${main_ck}/claude/CLAUDE.md" -ef "$global_src" ] \
+                   && [ -e "${toplevel}/claude/CLAUDE.md" ]; then
+                    gpath="${toplevel}/claude/CLAUDE.md"; gnote="worktree 副本，生效的是主 checkout"
+                fi
+            fi
+        fi
+    fi
+
+    if [ "$present" -eq 0 ] && [ -z "$gpath" ]; then
+        echo "always-on: NONE"
+        return 0
+    fi
+    echo "always-on: ${parts}（此 repo 的 always-on 面；純資訊，不必當次處置）"
+    if [ -n "$gpath" ]; then
+        gb="$(LC_ALL=C wc -c < "$gpath" 2>/dev/null | tr -d ' ')" || gb=-1
+        [ -n "$gb" ] || gb=-1
+        if [ "$gb" -lt 0 ]; then
+            echo "           claude/CLAUDE.md UNKNOWN（全域，${gnote}）"
+        else
+            echo "           claude/CLAUDE.md ${gb} bytes（全域，${gnote}）"
+        fi
+    fi
+}
+
 # review 痕跡的權威 subject 清單在 deep-review——那些 commit 是它產生的，清單跟著產生者走。
 # 跨 skill source；缺席時降級印 UNKNOWN 而**不猜**：讓 model 憑印象比對 subject，漂一個字
 # 就會把使用者自己的 `fix: 修正某某` 當成迭代痕跡建議壓掉，而使用者一句「好」就 force-push 了。
@@ -806,6 +879,10 @@ check_repo() {
     local branch remote remotes_n
     branch="$(git -C "$repo" symbolic-ref --short -q HEAD)" || branch="DETACHED"
     echo "branch: $branch"
+
+    # 落點在此、**不得往下移**：下面 remote／default 兩處都會 early return，
+    # 移到那之後會讓「任何 repo 都量」與 `always-on: NONE` 兩條都不成立（tests 第 9 節有守門）。
+    detect_always_on "$repo" "$toplevel"
 
     remote="$(detect_remote "$repo")"
     if [ -z "$remote" ]; then
