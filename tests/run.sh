@@ -1353,6 +1353,46 @@ if grep -q "歸檔孤兒" <<< "$out"; then bad "省略號形式的指標未被�
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-full" 2>/dev/null)"
 if grep -q "歸檔孤兒" <<< "$out"; then bad "無 docs/archive 卻印孤兒訊號"; else ok "無 docs/archive → 不印（不製造噪音）"; fi
 
+# --- always-on 量體訊號（純資訊，不判 flag）---
+# 為什麼要有：`claude/CLAUDE.md`(全域,每 session 載入) ＋ 各 repo 的 root `CLAUDE.md`／
+# `AGENTS.md` 完全沒有任何大小 gate，而**不自動載入**的 STATUS.md 卻有五層治理——治理的
+# 對象錯了。08-11 收斂後兩份 CLAUDE.md 已回漲 +2783 bytes 且無人看得住。
+# **刻意背離** `dossier-sections:`「只在超標時印、平時是噪音」那條原則：本行是 baseline
+# 觀測而非處置訊號，無條件印才看得到趨勢。升級成 flag 的前置條件是先解決「結構下限出口」
+# （機隊 root CLAUDE.md 最大 102968、dotfiles 16993 排第十，貿然設 flag 會有七八個 repo 常亮）。
+mkdir -p "$TMP/ds-ao"
+printf '# Repo conventions\n\n用 uv,測試 uv run pytest。\n' > "$TMP/ds-ao/CLAUDE.md"
+printf '# Agent contract\n\nkernel 見下。\n' > "$TMP/ds-ao/AGENTS.md"
+git init --bare -q "$TMP/ds-ao-origin.git"
+(cd "$TMP/ds-ao" && git init -q -b main . && "${GITC[@]}" add -A && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/ds-ao-origin.git" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-ao" 2>/dev/null)"
+ao_line="$(grep '^always-on:' <<< "$out" || true)"
+if [ -n "$ao_line" ]; then ok "有 CLAUDE.md／AGENTS.md → 印 always-on 訊號"; else bad "缺 always-on 訊號（${out}）"; fi
+if grep -qE 'CLAUDE\.md [0-9]+' <<< "$ao_line" && grep -qE 'AGENTS\.md [0-9]+' <<< "$ao_line"; then ok "兩份檔的 bytes 都印出來"; else bad "bytes 未逐檔印出（${ao_line}）"; fi
+# 不得是 flag——`dossier-flag:` 前綴會讓「乾淨 dossier → 無 flag」那條立刻紅
+if grep -q "^dossier-flag: always-on" <<< "$out"; then bad "always-on 誤用 dossier-flag 前綴（它是純資訊）"; else ok "always-on 是純資訊、不是 flag"; fi
+
+# 只存在其中一份 → 逐檔標示，不得整行消失或整行 NONE
+rm -f "$TMP/ds-ao/AGENTS.md"
+(cd "$TMP/ds-ao" && "${GITC[@]}" add -A && "${GITC[@]}" commit -qm "drop agents")
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-ao" 2>/dev/null)"
+ao_line="$(grep '^always-on:' <<< "$out" || true)"
+if grep -qE 'CLAUDE\.md [0-9]+' <<< "$ao_line" && grep -q 'AGENTS.md NONE' <<< "$ao_line"; then ok "只有一份時逐檔標示（另一份 NONE）"; else bad "部分存在的標示不對（${ao_line}）"; fi
+
+# 兩份都無 → 整體 NONE（用第 9 節既有的乾淨 fixture，它沒有 CLAUDE.md）
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-full" 2>/dev/null)"
+if grep -q '^always-on: NONE' <<< "$out"; then ok "兩份都無 → always-on: NONE"; else bad "無檔時未印 NONE（$(grep '^always-on:' <<< "$out"))"; fi
+
+# **無 remote 的 repo 也要印** —— check_repo 在無 remote 時提早 return，訊號放錯位置就會被吞掉。
+# 這條是落點的守門：它紅了代表 always-on 被移到 early return 之後。
+mkdir -p "$TMP/ds-ao-local"
+printf '# Local only\n\n沒有 remote 的 repo。\n' > "$TMP/ds-ao-local/CLAUDE.md"
+(cd "$TMP/ds-ao-local" && git init -q -b main . && "${GITC[@]}" add -A && "${GITC[@]}" commit -qm init)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-ao-local" 2>/dev/null)"
+if grep -q '^always-on:' <<< "$out"; then ok "無 remote 的 repo 仍印 always-on（落點在 early return 之前）"; else bad "無 remote 時訊號被 early return 吞掉——落點錯"; fi
+if grep -q '^verdict: STOP' <<< "$out"; then ok "無 remote 仍照常 verdict: STOP（未改變既有行為）"; else bad "無 remote 的 STOP 消失了"; fi
+
 # --- review 痕跡偵測（Step 4 squash 選項的判定依據；prose 下沉）---
 # 為何下沉：判「哪些 commit 算 review 迭代痕跡」需要 deep-review 的權威 subject 清單，
 # model 憑印象比對會把使用者自己的 `fix: 修正某某` 當痕跡建議壓掉，而使用者一句「好」

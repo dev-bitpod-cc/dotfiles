@@ -155,6 +155,44 @@ red flag。**這支 gate 就是把那個代價換成機檢**：漂移即紅。�
 讀的人以為漏算了一塊。**剝 fence 用哨兵前綴**（行號對齊＋長度不失真；量長度前剝哨兵，
 否則佔比虛胖），五個 code site 皆吃 unfenced（三個 pattern 家族）。
 
+### 歸檔孤兒（反向守門）
+
+`docs/archive/*.md` 沒有被任何 md 連到 → 檔案還在 git 裡但從 dossier 走不到。既有
+`xref-gate` 只驗**正向**（指標指到的節/檔在不在），這一條補的是反向，且只印訊號、**絕不自動刪**
+（同 stale-branches 的紀律）。
+
+**掃描 pattern 用 `.md` 而非 `archive`**：任何對歸檔檔的引用必然含前者、不見得含後者
+（evint 實地反例 `…2026-07-27-…md` 整行無 archive 字樣）。**窄 pattern 的假陽性比多掃幾行貴
+得多** —— 它會叫人補一條本來就在的指標，或更糟、以為那份歸檔可以刪。斷言含一條「省略號形式
+的指標仍認得」的哨兵；突變測試（把 pattern 收窄）必須只讓那一條紅。
+
+實作為**單次掃描**：逐檔各跑一次 `grep -r` 在 krepo（29 個歸檔檔）要 13.0s，而這支腳本每次
+ship 都跑；改成掃一次後 2.5s。
+
+### always-on 量體訊號（純資訊，不判紅綠）
+
+量此 repo 的 root `CLAUDE.md`（Claude 每 session 自動載入）與 `AGENTS.md`（Codex 每次讀），
+擁有全域 `CLAUDE.md` symlink target 的 repo 另印一行。**只量 Claude 側是半套** —— 這個工作流
+是雙 agent 的。
+
+**落點必須在 remote／default 的 early return 之前**（`check_repo` 有兩處 `return`）。移到後面
+會讓「任何 repo 都量」與 `always-on: NONE` 兩條同時不成立 —— 第 9 節有一條「無 remote 的 repo
+仍印」專門守這個落點。
+
+**三態不得混用**：兩份都無 → 整行 `NONE`；只有一份 → **逐檔標示**；讀取失敗 → 該檔 `UNKNOWN`
+（同 `protection:` 的語意，不知道 ≠ 沒有）。bytes 讀取失敗顯式賦 `-1` 再守門，不能讓空字串餵
+進數值比較（那會靜默當 0）。
+
+**這是對「`dossier-sections:` 只在超標時印、平時是噪音」那條原則的刻意背離**：本行是 baseline
+觀測、不是處置訊號，無條件印才看得到趨勢。⚠️ **升級成 flag 之前必須先解決「結構下限出口」**
+——機隊 root `CLAUDE.md` 最大 102968、dotfiles 16993 只排第十，貿然設門檻會有七八個 repo 每次
+ship 都亮，那正是 krepo 137KB 現在的狀態：flag 常亮＝沒有 flag。
+
+**linked worktree 要另外接**：`-ef` 在 worktree 副本為假，而「在 worktree 改自家 CLAUDE.md」
+正是常態工作方式 —— 訊號會恰好在最需要它的場合消失。沿 `--git-common-dir` 找主 checkout 補印，
+**並驗證主 checkout 那份確實 `-ef` 全域檔**：只憑「有 common-dir」會把其他 repo 的 linked
+worktree 也誤認成 dotfiles。
+
 ### 節名判定一律端錨定、不用子字串
 
 `## 進行中（已完成 M1）` 這種自然寫法含「已完成」三字，子字串版會把整個進行中章節當里程碑節
