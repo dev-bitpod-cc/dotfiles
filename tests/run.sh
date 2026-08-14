@@ -5404,6 +5404,64 @@ assert_rc "未知選項 → exit 2" 2 $?
 
 unset GIT_CONFIG_GLOBAL
 
+echo "▶ 23b. ensure-dotfiles-remote.sh（轉移後的 origin 正規化）"
+# 2026-08-15 dotfiles 由 dev-bitpod-cc 轉入 jjshen-eland。舊 URL 靠 GitHub 的轉移 redirect
+# 仍 pull 得動，所以**壞掉的方式是靜默的**：若日後在舊路徑重建同名 repo，全機隊會悄悄
+# pull 到別的東西。本節釘死三件事：三種實地形狀都認得、HTTPS 不得被升級成 SSH、幂等。
+EDR_SCRIPT="$ROOT/scripts/ensure-dotfiles-remote.sh"
+edr="$TMP/edr"; mkdir -p "$edr"
+
+edr_repo() {  # <name> <origin-url>
+    rm -rf "${edr:?}/$1"
+    git init -q "$edr/$1"
+    git -C "$edr/$1" remote add origin "$2"
+}
+edr_url() { git -C "$edr/$1" remote get-url origin; }
+edr_run() { DOTFILES_DIR="$edr/$1" bash "$EDR_SCRIPT"; }
+
+# 2026-08-15 巡檢 14 台實得的三種形狀——**不是設想出來的**，db01 那台就是沒有 .git 尾綴
+edr_repo ssh-alias  "git@github-me:dev-bitpod-cc/dotfiles.git"
+edr_repo ssh-nosuf  "git@github-me:dev-bitpod-cc/dotfiles"
+edr_repo https      "https://github.com/dev-bitpod-cc/dotfiles.git"
+
+out="$(edr_run ssh-alias)"
+assert_rc "SSH 別名形式 → exit 0" 0 $?
+assert_eq "github-me 別名 → 預設 github.com + 新 owner" \
+    "git@github.com:jjshen-eland/dotfiles.git" "$(edr_url ssh-alias)"
+if grep -q '^↻ ' <<< "$out"; then ok "改寫時印 ↻（dotsync 靠這個前綴撈訊息）"; else bad "改寫未印 ↻（${out}）"; fi
+
+edr_run ssh-nosuf >/dev/null
+assert_eq "無 .git 尾綴同樣認得（db01 實地形狀）" \
+    "git@github.com:jjshen-eland/dotfiles.git" "$(edr_url ssh-nosuf)"
+
+# 這條是本節的重點：那 6 台只 pull，public repo 的 HTTPS 免認證。
+# 升級成 SSH 等於平白給唯讀主機加一條金鑰依賴，而且失敗會發生在**它們自己 pull 的時候**
+edr_run https >/dev/null
+assert_eq "HTTPS 維持 HTTPS，只換 owner" \
+    "https://github.com/jjshen-eland/dotfiles.git" "$(edr_url https)"
+
+# 幂等：改寫後再跑一次應零輸出、零 mutation
+out="$(edr_run ssh-alias)"
+assert_rc "幂等重跑 → exit 0" 0 $?
+if [ -z "$out" ]; then ok "穩態零輸出（不製造 dotsync 噪音）"; else bad "穩態仍有輸出（${out}）"; fi
+assert_eq "幂等重跑不改 URL" "git@github.com:jjshen-eland/dotfiles.git" "$(edr_url ssh-alias)"
+
+# 不該碰的一律不碰——誤判會把別的 repo 的 origin 改掉，而那是不可逆的
+edr_repo other-owner "git@github-me:someone-else/dotfiles.git"
+edr_repo other-repo  "git@github-me:dev-bitpod-cc/isdotgd.git"
+edr_run other-owner >/dev/null
+edr_run other-repo  >/dev/null
+assert_eq "owner 不符 → 不動" "git@github-me:someone-else/dotfiles.git" "$(edr_url other-owner)"
+assert_eq "repo 名不符 → 不動" "git@github-me:dev-bitpod-cc/isdotgd.git" "$(edr_url other-repo)"
+
+# 非 repo / 無 origin → 靜默 exit 0（helper 在 dotsync 裡失敗會被記成 helper_warn）
+mkdir -p "$edr/not-a-repo"
+DOTFILES_DIR="$edr/not-a-repo" bash "$EDR_SCRIPT" >/dev/null 2>&1
+assert_rc "非 git repo → 靜默 exit 0" 0 $?
+git init -q "$edr/no-origin"
+DOTFILES_DIR="$edr/no-origin" bash "$EDR_SCRIPT" >/dev/null 2>&1
+assert_rc "無 origin remote → 靜默 exit 0" 0 $?
+
 echo "▶ 24. .githooks/dispatcher（全域 core.hooksPath 的單一入口）"
 # 為什麼是 dispatcher 而不是單一 pre-commit：全域 `core.hooksPath` **取代整個 hook 目錄**，
 # 目錄裡沒有的 hook 名，repo 自己 `.git/hooks/` 的同名版本就靜默不執行（post-checkout／

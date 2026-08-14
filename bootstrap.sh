@@ -42,7 +42,7 @@ print_success() { echo -e "${GREEN}✅ $1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_error()   { echo -e "${RED}❌ $1${NC}"; }
 
-DOTFILES_REPO="https://github.com/dev-bitpod-cc/dotfiles.git"
+DOTFILES_REPO="https://github.com/jjshen-eland/dotfiles.git"
 DOTFILES_DIR="$HOME/.dotfiles"
 
 OS="$(uname)"

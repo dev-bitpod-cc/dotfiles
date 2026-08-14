@@ -46,6 +46,10 @@ helper_warn=0
 [ -f "${DOTFILES}/scripts/ensure-codex-skills.sh" ] && { bash "${DOTFILES}/scripts/ensure-codex-skills.sh" 2>/dev/null || helper_warn=1; } || true
 [ -f "${DOTFILES}/scripts/ensure-codex-guidance.sh" ] && { bash "${DOTFILES}/scripts/ensure-codex-guidance.sh" 2>/dev/null || helper_warn=1; } || true
 [ -f "${DOTFILES}/scripts/ensure-lftprc.sh" ] && { bash "${DOTFILES}/scripts/ensure-lftprc.sh" 2>/dev/null || helper_warn=1; } || true
+# 一次性遷移（2026-08-15 dotfiles 轉入 jjshen-eland）：把 origin 改指新 owner。
+# 掛在 brewup 而不只 dotsync——brewup 隨 allup 跑得更頻繁，機隊收斂快一輪。
+# 全機隊跟上後，本行連同 ensure-dotfiles-remote.sh 可一併移除。
+[ -f "${DOTFILES}/scripts/ensure-dotfiles-remote.sh" ] && { bash "${DOTFILES}/scripts/ensure-dotfiles-remote.sh" || helper_warn=1; } || true
 
 # 2. Homebrew
 brew trust --formula oven-sh/bun/bun 2>/dev/null
