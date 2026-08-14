@@ -26,21 +26,17 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-15 dotfiles 轉入 `jjshen-eland`,用所有權消掉 gh 雙帳號碰撞,不加 wrapper**。active gh
+  account 是**機器全域可變狀態**,工作 repo 的平行 session 會切走它 → ship 個人帳號的 repo 就吃到
+  `protection: UNKNOWN` 與 `pr create` 失敗。**否決 wrapper**:爆炸半徑只有兩個 repo,解法卻要
+  shadow 掉 `gh` 散到 14 台,正是 CLAUDE.md 自己禁的 PATH shadowing;且 `UNKNOWN → PROTECTED → PR`
+  恰等於預設路徑,實際後果為零。⚠️ `github-me`／`id_personal` 原樣保留(理由見 CLAUDE.md);
+  iOS App 仍在個人帳號,它若也從雙帳號機器 ship 會重演,屆時同一條前綴即解。
 - **2026-08-14 always-on 量體訊號放 ship-state、且刻意無條件印**。治理的對象一直是錯的:兩份
   `CLAUDE.md` 每 session 載入卻**零 gate**,而不自動載入的 STATUS.md 有五層。放 SessionStart hook
   不行(那支的契約是「無事發生就無輸出」)。**背離「只在超標時印」原則**是因為它是 baseline 觀測
   而非處置訊號。⚠️ 升級成 flag 前要先解決「結構下限出口」——機隊最大 102968,貿然設門檻會有
   七八個 repo 常亮。
-- **2026-08-14 hook 用宣告式部署(`git/config` 一行),不寫 ensure helper**。原以為
-  `core.hooksPath` 的 `~` 不展開,**實測會**(git 2.50.1／機隊 2.55.0),而該檔已由 setup 以
-  `include.path` 掛在全機隊 → 改一行、下次 pull 即生效,省掉 helper＋dotfiles-sync 兩處掛載＋
-  一整節測試。⚠️ **代價是它取代整個 hook 目錄**——必須寫成 dispatcher 代理全部 client-side
-  hook 名,否則 repo 自己的 LFS hook 會靜默失效;邊界與判準見 `docs/testing-contract.md`
-  「24. `.githooks/dispatcher`(全域 core.hooksPath 的單一入口)」。
-- **2026-08-14 guard 的 fail-open 用三態 exit code,不用 `set -u`**。實測 `set -u` 遇未綁定變數
-  會 `exit 1` ——那是 fail-**closed**,正好相反,而 hook 自己出錯就會擋掉全機隊所有 commit。
-  改成 guard 跑 subshell、約定 exit 97 才擋,其餘非零一律放行。**語法錯誤與 interpreter 缺失
-  本質上無法 fail-open**,只能靠四道 gate。
 - **2026-08-14 外部 findings 七條落地兩條,其餘五條不做**。逐條判定見
   `docs/plans/2026-08-14-dossier-governance.md`「DROP」;兩個要點:軟目標訊號**要先有「已達結構
   下限」的出口**(否則對 always-on 佔 72% 的本 repo 只是第二個常亮 flag),per-repo 覆寫要走
@@ -80,10 +76,6 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   語意 commit 即可、衝突為零是結構保證,**做得到但沒做**——代價是語意 commit 的 hash 與內容都會變、
   「squash 絕不動語意 commit」從結構保證退成測試保證、多一條 rebase 回滾路徑、branch 首顆是
   buried 時無目標;而實測多為 none/top-contiguous。不變式因此只做到「壓得掉的一律壓」。
-- **2026-08-05「用 `--admin`」不收進說法表**。它語意上比 `bypass merge` 更明確,但**「不自行擴充
-  等價詞」正是說法表擋 rationalization 的機制**,收進去等於承認自然語言等價詞。設計 S15 eval 時
-  撞到:施壓句「加個 `--admin` 就過了」會把授權塞進施壓句、正確答案自己變歧義。現行＝不接受,
-  要求使用者改說 bypass merge。**無實地案例前不動。**
 
 ## 死路(試過但放棄——防重工)
 
@@ -91,6 +83,9 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 > 分層照 `claude/known-hazards.md`「分工」對「已知地雷」的做法:死路要能在你沒想到要查的當下
 > 擋住你,**規則不在 always-on 就不生效**,故結論留此、證據外移。
 
+- **用 direnv(`.envrc` 注入 `GH_TOKEN`)解 gh 雙帳號**:direnv hook 掛在 zsh precmd 上,而
+  `ship-state.sh`／`gh pr create` 都是 agent 的一次性 Bash 呼叫,**precmd 不觸發**。**推廣:靠
+  rc／prompt hook 的方案對 agent 執行路徑一律無效。**
 - **mc(Midnight Commander)當遠端檔案管理器**:協定層否決——mc 的 `sftp://` VFS 走內建 libssh2、
   **不支援 OpenSSH 使用者憑證**,而內網主機一律 cert 認證,主要路徑不通。同樣需求用 `lftp`。
   **libssh2 支援 cert 之前,重評都是白費**。
@@ -133,6 +128,9 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 ## 技術債
 
+- [ ] **`scripts/ensure-dotfiles-remote.sh` 一次性遷移殘留,全機隊跟上後移除**(2026-08-15 加,掛
+  `dotfiles-sync.sh`＋`brewup.sh`)。**移除條件**:14 台 origin 皆已是 `jjshen-eland`。穩態零輸出、
+  留著不痛,但它是那種會默默變成永久設施的東西。
 - [ ] **`tests/run.sh` 平時只在 macOS 跑,跨平台分支的 Linux 行為無人驗**(2026-08-15 發現:
   `:4199` 的 stat 順序寫反,在 Linux 上恆紅了不知多久,直到 hook 那批第一次上 Linux 才浮出)。
   **危害是它會掩蓋真失敗**——往後在 Linux 看到 FAIL=1 會先當成已知那條。dotsync 後任何一台

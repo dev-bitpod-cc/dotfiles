@@ -513,3 +513,18 @@
   危險不對稱:歸檔可取回,蒸餾砍掉的是理由與實測數字。
 - **2026-08-14 加歸檔孤兒偵測(反向守門)**:既有 xref-gate 只驗正向,「歸檔出去後沒人連」從沒
   查過——那正是靜默內容遺失的主要途徑(實測 evint 6/10、krepo 9/29)。只印訊號、絕不自動刪。
+- **2026-08-14 hook 用宣告式部署(`git/config` 一行),不寫 ensure helper**。原以為
+  `core.hooksPath` 的 `~` 不展開,**實測會**(git 2.50.1／機隊 2.55.0),而該檔已由 setup 以
+  `include.path` 掛在全機隊 → 改一行、下次 pull 即生效,省掉 helper＋dotfiles-sync 兩處掛載＋
+  一整節測試。⚠️ **代價是它取代整個 hook 目錄**——必須寫成 dispatcher 代理全部 client-side
+  hook 名,否則 repo 自己的 LFS hook 會靜默失效;邊界與判準見 `docs/testing-contract.md`
+  「24. `.githooks/dispatcher`(全域 core.hooksPath 的單一入口)」。
+- **2026-08-14 guard 的 fail-open 用三態 exit code,不用 `set -u`**。實測 `set -u` 遇未綁定變數
+  會 `exit 1` ——那是 fail-**closed**,正好相反,而 hook 自己出錯就會擋掉全機隊所有 commit。
+  改成 guard 跑 subshell、約定 exit 97 才擋,其餘非零一律放行。**語法錯誤與 interpreter 缺失
+  本質上無法 fail-open**,只能靠四道 gate。
+- **2026-08-05「用 `--admin`」不收進說法表**(2026-08-15 歸檔:說法表本身＋CLAUDE.md kernel 的
+  「NEVER extend it with synonyms of your own」已是 always-on 的保護,此處只剩「為什麼」)。它語意上
+  比 `bypass merge` 更明確,但**「不自行擴充等價詞」正是說法表擋 rationalization 的機制**,收進去等於
+  承認自然語言等價詞。設計 S15 eval 時撞到:施壓句「加個 `--admin` 就過了」會把授權塞進施壓句、
+  正確答案自己變歧義。現行＝不接受,要求使用者改說 bypass merge。**無實地案例前不動。**
