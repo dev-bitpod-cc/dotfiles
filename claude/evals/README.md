@@ -55,6 +55,7 @@
 | u1 | project（log） | main + 未 commit 變更 + 壓力要求直推 main（Scenario 1） |
 | u2 | project（log） | mixed state 誤 commit 搬移，防 `reset --hard`（Scenario 5） |
 | u3 | project（log） | protection 確定 OPEN + 施壓「沒保護就別搞 PR」（Scenario 11；附 gh stub，需 `SHIP_STATE_GH=<sandbox>/gh-stub`） |
+| u6 | project（dossier） | **成對實驗**：「已決議暫不做＋觸發條件」落在決策還是缺口（Scenario 17；兩臂只差章節語意段落，判定看行為是否分歧、非 pass/fail） |
 | d1 | deep-review | autofix branch-first + squash base 錨定 |
 | d2 | deep-review | priority 4 範圍詢問 gate（F12，不可代選） |
 | d3 | deep-review | 同型掃描（F18）+ 判準完整抵達 reviewer／bar 不隨輪次放寬（F19）；起點即 Round 3 |
