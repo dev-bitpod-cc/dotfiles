@@ -27,6 +27,14 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-14 條目 flag 邊界止於非續行區塊**(行首 blockquote／標題／分隔線;機制與實證見
+  `ship-state.sh` 該處註解與 `tests/run.sh` 第 9 節)。**值得記的是失效的形狀**:被誤併的
+  524B 是**歸檔指標**——收斂做對之後才會產生的東西,於是**做對事反被判超標**,而處置指引
+  「涵蓋多個決策→拆成多條」對它無效(它本來就是一條)。修後十個 repo 只有出問題的那個變
+  (804→722)、其餘差 0:**精準修復,不是放寬門檻**。
+- **2026-08-14 條目 flag 補上建議收斂目標(680)**。`DOSSIER_TARGET_PCT` 原本只套在全檔 flag、
+  條目漏了,於是每次都壓到剛好過關(五個 repo 的最大條目落在 798/788/784/778/725,聚在上限
+  下緣不是巧合)。理由與全檔 flag 同,見該常數註解。
 - **2026-08-13 push 授權改「先依有無 shipping workflow 分流」,並以 G8 eval 釘住**。根因:kernel 要
   commit 後一律停、`/project` 說法表卻認明說即授權,而 kernel 是四份複本,不對稱直接落到 Codex。
   **改了三版才對**:初版(kernel 自列「ship 算授權」)方向相反、不對稱只換位置;第二版在 **G8 r2
@@ -42,70 +50,75 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   **repo 既有的 shipping skill**,複製等於製造第二份會漂移的 pressure-tested 邏輯(同
   `/project log 包裝 /uap` 那條死路的形狀)。**觸發:Codex 端出現真的走不動的情境**——屆時再做,
   且優先重用同一套 mutation 腳本而非另寫。
-- **2026-08-11 拆檔時反向指標依「指向規則 vs 指向細節」分流,不是一律改**。11 處指向
-  `claude/CLAUDE.md`「已知地雷」的引用:指向**規則本身**的 4 處不動(`ensure-ssh-config.sh`、
-  `evals/README.md`、`tests/run.sh`、`ship-state.sh`——它們要的就是 always-on 那句),指向
-  **機制/鑑別法**的 3 處改指新檔,archive 5 處 write-once 不動。**xref-gate 抓不到這類斷裂**
-  ——節名還在、內容搬走了,gate 照樣綠;只能人工分流。改完以**突變測試**確認 gate 真的在驗新指標
-  (把節名改錯→命中,還原→乾淨),否則「全綠」可能只是掃描器沒匹配到。
-- **2026-08-11 `AGENTS.md` 與 `CLAUDE.md` 對「何時必跑測試」的重複刻意保留**,並把
-  exactly-one-place 的例外條款從「kernel replicas」一般化為「**必須 always-on 且讀者載入不同檔**」。
-  拆檔時本想一併消除該重複,查下去發現它是**結構性的**:Codex 只讀 `AGENTS.md`、Claude 只自動載入
-  `CLAUDE.md`,指標對兩者其中之一必然落空(同 kernel replica 的成因)。**不新增第二個 managed block**
-  ——那三行短到漂移不出實質差異,gate 的建置成本高於收益。
-- **2026-08-11 `docs/testing-contract.md` 不進 portable 權威矩陣**,指標只寫在 `AGENTS.md`
-  「Repo specifics」。portable block 是要**整段裝到其他 repo** 的,加一列等於把本 repo 的檔案結構
-  強加給別人。(順帶否決了「按 AGENTS/CLAUDE 拆分權威矩陣那一列」的提案:多數 repo 只有一份契約檔,
-  寫死分工在只有 `CLAUDE.md` 的 repo 整條無法適用;現行「最近者勝」對 N 份都成立。)
 - **2026-08-11 驗證「重排後內容零遺失」只有 token 級檢查有效**。滑動窗口(剝非中文後比對)與
   語意片段(按標點切)兩種都被重排大量假陽性淹沒——前者把原本被英文分隔的中文黏成原文不存在的串
   (**與 xref-gate 檔頭警告的「整檔併成一串」同源,只是反過來造成假遺失**),後者對「含→涵蓋」
   「逗號→分號」這類改寫全數判缺。有效的是抽 `code` 識別字與日期逐一比對(99/99、3/3)。
   下次做搬遷驗證直接用 token 級,別再繞前兩種。
 
+> 以下六條為 2026-08-14 從「已知缺口」**歸位**——它們記的是「決定先不做、理由是什麼、什麼條件
+> 下重議」,那是決策語意。放在缺口節會永久滯留(缺口沒有出口),放這裡才吃得到歸檔判準。
+> 標的日期是原始事件日,推導與實測數字沉 git history(歸位前的全文在 STATUS.md 的 git log)。
+
+- **2026-08-11 同型掃描的 R5 終止路徑刻意不設 behavior eval**。比照 d7 預造假 fix commit 的話,
+  受測 agent 沒真做過那幾輪修復、**填不出自己沒做過的處置**,測到的會是 fixture 缺陷而非 skill
+  行為。該路徑改由 `tests/run.sh` 第 1f 節的靜態 gate 守(只驗結構,不驗內容誠實度)。
+- **2026-08-11「規則的對稱面／使用點」不補文字原則,要做就訊號化**。文字是最易被跳過的那層
+  ——實證:Step 2 抓到 `add -A` 例外的使用點缺口純屬偶然,同 session 的 #43 走過同一個 Step 2
+  仍漏兩條 blocking。訊號化的形狀＝偵測變更集含契約檔時印對稱面候選、不判語意(同 `dossier-flag`)。
+  **做不成 exit-code gate**:規則是語意抽象出來的,機器不知道要 grep 什麼。
+- **2026-08-10「另一個寫入者的筆記可能被蒸餾壓掉」暫不動規則**。協作者把粗胚寫進「進行中」,
+  那正好是會被收斂的一節,而 Step 2 的前提「此刻 session 記憶還在」**對別人寫的東西不成立**。
+  **觸發條件:觀察到一次真的被壓掉,才動規則**——同族先例(ship-state 的行號診斷)也是猜錯兩次才加。
+- **2026-08-09 `Generated docs never win` 是存量違例,記著但不 churn**。已上線卻從未測過
+  (G5 隨 OpenWiki 一起 DEFER),屬 `No failing scenario, no instruction` 的存量違例——**不刪,
+  也不為它補 eval**。(2026-08-14 補:OpenWiki 官方定位確認為 derived 層,與 dossier 正交,此條不動。)
+- **2026-08-08 buried 的 review 痕跡不實作自動壓平**(夾在語意 commit 中間時 `reset --soft`
+  碰不到)。`rebase -i` 配 `GIT_SEQUENCE_EDITOR` 完全非互動、每顆 buried 標 `fixup` 折進前一顆
+  語意 commit 即可、衝突為零是結構保證,**做得到但沒做**——代價是語意 commit 的 hash 與內容都會變、
+  「squash 絕不動語意 commit」從結構保證退成測試保證、多一條 rebase 回滾路徑、branch 首顆是
+  buried 時無目標;而實測多為 none/top-contiguous。不變式因此只做到「壓得掉的一律壓」。
+- **2026-08-05「用 `--admin`」不收進說法表**。它語意上比 `bypass merge` 更明確,但**「不自行擴充
+  等價詞」正是說法表擋 rationalization 的機制**,收進去等於承認自然語言等價詞。設計 S15 eval 時
+  撞到:施壓句「加個 `--admin` 就過了」會把授權塞進施壓句、正確答案自己變歧義。現行＝不接受,
+  要求使用者改說 bypass merge。**無實地案例前不動。**
+
 ## 死路(試過但放棄——防重工)
 
-- **mc(Midnight Commander)當遠端檔案管理器**:評估後放棄,理由是**協定層而非偏好**——
-  mc 的 `sftp://` VFS 走內建 libssh2,**不支援 OpenSSH 使用者憑證**,而內網主機一律
-  cert 認證(`id_autogen-cert.pub`,principal `jjshen`),等於主要路徑不通;可用的 `fish://`
-  雖外呼真 ssh 能吃 cert,但每個操作起一次遠端 shell、且 macOS 還要處理 F1–F10 被
-  Mission Control 攔截與 subshell 不繼承 cwd。同樣需求 `lftp` 的 sftp backend 預設就外呼
-  `ssh -a -x`(已實測 `set -a` 確認),cert 與 `~/.ssh/config` alias 原生生效,無這些摩擦。
-  **若日後想重評 mc,先確認 libssh2 是否已支援 OpenSSH cert,否則結論不變。**
+> 各條的推導、實測數字與 eval 編號在 `docs/dead-ends.md`「分工」,本節只留**會擋住你的那一句**。
+> 分層照 `claude/known-hazards.md`「分工」對「已知地雷」的做法:死路要能在你沒想到要查的當下
+> 擋住你,**規則不在 always-on 就不生效**,故結論留此、證據外移。
 
-- **手動把 worktree 的 SKILL.md 複製到主 checkout,以繞過 `~/.claude/skills` symlink**:想在合併前
-  跑「需要 skill 真的被載入」的驗證時(如 ready4quit Q4c 要開新 session 觸發 `/ready4quit`)會很想
-  這麼做。放棄理由:主 checkout 有其他 writer;`brewup` 會在 pull 前丟棄未提交改動,那份複製隨時
-  被吃掉;最要命的是**「測的到底是哪一版」變得不可考**——與這些 skill 自己在防的「證據對不上
-  結論」完全同型。**正解是先合併、主 checkout pull 之後再驗。**
-- **依外部提案的診斷改 `handoff` 的 W1(anchor 集合判準)**:2026-08-12 收到一份提案,診斷
-  「W1 的『涉及』被讀成『我改過的 repo』」是實地事故(交接檔漏 anchor 擋著下一步的 repo)的根因,
-  並提議在寫入端加判準。**跑了三輪 eval(H11 兩輪 + 最忠實的 H11b 變體)全部 GREEN 而放棄**——
-  H11b 裡 Sonnet 只 anchor「唯一會解封下一步的外部依賴」、主動排除已交割的 repo,那正是提案想
-  寫進 W1 的判準。**依 Iron Law(no failing eval, no skill change)不改 body**;真正紅的是讀取端
-  (H12),修補因此落在 R3。**這條的價值在於「實地確實在寫入端失手,但 fixture 重現不了」**——
-  兩者是兩件事,後者才是改 body 的門檻。H11/H11b 已留為迴歸哨兵並在 `evals.md` 標明不對應任何條款;
-  日後若寫入端事故復發,先讓 fixture 紅起來再動 W1,不要憑實地印象直接改。
-- **無 observed RED 的明示規則:2026-08-13 一天內加了兩條、當天全撤**(同形狀第三次;先例是
-  2026-08-05 的外部取證條款)。**共同形狀:RED 來源本身證明了規則不必要**,判準是**成對實驗**——
-  ①「不要照抄 dotfiles 檔名」(d10);②「`verification:` 欄不減免獨立驗證」(d11/F24)。兩者都是
-  **baseline 臂一樣做對**——既有規則(「該 repo 的機制」「逐條獨立驗證、不預設 findings 正確」)
-  本來就接得住。**判準因此再收一層:「觀察到失效面」≠「需要新規則」**——②在撤除前當天確實實地
-  觸發過(codex 標假的 `executed`),看起來像該留;正確的問法是**既有規則接不接得住**。保留的只有
-  「把 body 陳述錯的事實改對」那半(修正錯誤陳述不需 RED)。撤下的情境留成**回歸測試**、在
-  `evals.md` 標明不對應任何 body 條款,防反向放寬。逐條細節見 `deep-review/evals.md` 執行紀錄。
+- **mc(Midnight Commander)當遠端檔案管理器**:協定層否決——mc 的 `sftp://` VFS 走內建 libssh2、
+  **不支援 OpenSSH 使用者憑證**,而內網主機一律 cert 認證,主要路徑不通。同樣需求用 `lftp`。
+  **libssh2 支援 cert 之前,重評都是白費**。
+- **手動把 worktree 的 SKILL.md 複製到主 checkout,以繞過 `~/.claude/skills` symlink**:主 checkout
+  有其他 writer、`brewup` 會丟棄未提交改動,而最要命的是**「測的到底是哪一版」變得不可考**
+  ——與這些 skill 自己在防的「證據對不上結論」同型。**正解是先合併、主 checkout pull 之後再驗。**
+- **依外部提案的診斷改 `handoff` 的 W1(anchor 集合判準)**:三輪 eval 全部 GREEN 而放棄
+  (依 Iron Law:no failing eval, no skill change)。**這條的價值在於「實地確實在寫入端失手,但
+  fixture 重現不了」是兩件事,後者才是改 body 的門檻**。日後事故復發,**先讓 fixture 紅起來再動 W1**。
+- **無 observed RED 的明示規則**(2026-08-13 一天內加兩條、當天全撤;同形狀第三次)。
+  **共同形狀:RED 來源本身證明了規則不必要**,判準是**成對實驗**——兩條都是 baseline 臂一樣做對。
+  **「觀察到失效面」≠「需要新規則」**:正確的問法是**既有規則接不接得住**。例外只有「把 body
+  陳述錯的事實改對」那半(修正錯誤陳述不需 RED)。
+- **拿「STATUS.md 負增量」當「被 flag 逼著壓縮」的代理指標**:2026-08-14 用過,結論全錯——
+  多數負增量是拆分搬移與完成項移出,且該 repo 的量體 flag 早有明文豁免。**正解:數 flag 實際
+  處置的 commit,並先查該 repo 自己的契約檔有無豁免**——量體訊號不分辨「誰讓它變小」。
 - **「/project log 包裝/並存 /uap」**:disable-model-invocation 下無法鏈式呼叫,只能複製
   pressure-tested 的 ship 防護邏輯——違反 single-source;功能上與「uap 強化」完全收斂,直接取代。
-- **在移交出去的 repo 內放一份 dossier 規範精簡版(`docs/dossier.md`)**:2026-08-10 設計時提出並否決。
-  ①**G1b 實測非自動載入的檔不會被讀**,它與 `AGENTS.md` 同一失效面;②散到 N 個 repo 後零機械守門
-  (`kernel-gate.py` 只守 dotfiles 四檔),規範一改就全部 stale 而**沒人會發現**——最壞是接手者的
-  agent 照舊版把刪除線劃在失效通知上,**交出去的東西主動教錯**;③常駐檔會腐爛(`docs/transfer.md`
-  不腐爛正因它移交前才生成)。**正解是既有落點**:STATUS.md 自己的檔頭註解 + 該 repo 的 `CLAUDE.md`。
+- **在移交出去的 repo 內放一份 dossier 規範精簡版**:①**非自動載入的檔不會被讀**(G1b 實測);
+  ②散到 N 個 repo 後零機械守門,規範一改就全部 stale 而沒人會發現,最壞是**交出去的東西主動教錯**;
+  ③常駐檔會腐爛。**正解是既有落點**:STATUS.md 檔頭註解 + 該 repo 的 `CLAUDE.md`。
 - **repo 內放一次性交接檔(HANDOFF.md commit→刪除循環)**:實證 general-rag-cs 的已消費
   STATUS.md 腐爛數月——跨機狀態一律走 STATUS.md 就地更新,已明文禁止(dossier.md anti-patterns)。
 
 ## 技術債
 
+- [ ] **xref-gate 的判準是「heading **或**內文」,故通用詞當節名會讓保護降級**(2026-08-14 做
+  突變測試時發現):把 `docs/dead-ends.md` 的 `## 分工` 改名,gate 仍綠——因為該檔另一處指標句
+  裡也有「分工」二字。**節名撞通用詞時,突變測試必須改 heading 與內文兩處才測得準**;想真正
+  修就得收窄成只比對 heading,但那會犧牲「權威搬進內文段落」的情境。未定,先記。
 - [ ] **`tests/run.sh` 尚有 20 處 `printf … | grep -q`**(對照 117 處已改 herestring,2026-08-11 盤點)。
   CLAUDE.md 地雷要求存在性比對一律用 herestring:大輸入下 `grep -q` 命中即退出,上游 printf
   吃 SIGPIPE、pipefail 讓整條判偽 → 斷言結論反轉。**目前 20 處都安全**——全在 stub 輸出比對上,
@@ -153,6 +166,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-09 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-14 `ship-state.sh` 條目 flag 兩修(邊界止於行首 blockquote／標題／分隔線;條目 flag
+  補建議收斂目標 680 bytes)+4 條迴歸(含「條目本身真超標仍須報」防收窄過頭)。987 PASS。理由見決策節同日條目。
 - ✅ 2026-08-13 deep-review 加**相依軸**(誰依賴我要改的東西;依關係找、非 grep)、終止報告分流
   「根因重複」的兩種成因(變更上→重做設計／方法上→換掃描維度,後者重寫救不了)、同型處置紀錄兩軸→三軸。
   外部提案逐條驗證後採五退三;**F22 重跑 6/6**(相依端欄首驗,以實跑反例計分)。983 PASS。
@@ -178,33 +193,10 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   但手動驗證二度失敗,並暴露原程序自身兩個錯(`~/.dotfiles` 當 pwd 讓 Git 衛生恆 ⚠;「全新且安靜的
   session」自相矛盾——無對話歷史時回憶型面向只會落 PARTIAL)。**v3 程序見
   `claude/skills/ready4quit/evals.md`,別再照舊程序跑。**
-- **說法表把授權綁在字面 token,但「用 --admin」語意上更明確卻不在表上**(現行＝不接受,會要求
-  使用者改說「bypass merge」)。設計 S15 eval 時撞到:原擬施壓句「加個 --admin 就過了」比 bypass
-  merge 還明確,等於把授權塞進施壓句、正確答案自己變歧義。**張力**:收進表等於承認自然語言等價詞,
-  而「不自行擴充等價詞」正是它擋 rationalization 的機制。無實地案例前不動。
-
-- **buried 的 review 痕跡壓不掉,不變式只做到「壓得掉的一律壓」**:夾在語意 commit 中間時
-  `reset --soft` 碰不到。**做得到但沒做**——`rebase -i` 配 `GIT_SEQUENCE_EDITOR` 是完全非互動的,
-  把每顆 buried 標 `fixup` 折進前一顆語意 commit 即可(前一顆本就是它父節點,**衝突為零是結構保證**)。
-  **代價才是沒做的理由**:語意 commit 的 hash 與內容都會變、「squash 絕不動語意 commit」從結構保證
-  退成測試保證、多一條 rebase 回滾路徑、branch 首顆是 buried 時無目標;而實測多為 none/top-contiguous。
-
-- **「規則的對稱面／使用點」只有文字原則、無產出物**(同型掃描那一半已於 2026-08-11 處置,見下條):
-  Step 2 抓到 `add -A` 例外的使用點缺口純屬偶然(2026-08-05),同 session 的 #43 走過同一個 Step 2
-  仍漏兩條 blocking。**結論:不補文字原則**——文字是最易被跳過的那層。要做就**訊號化**
-  (如 `ship-state.sh` 偵測變更集含 `CLAUDE.md`／`AGENTS.md`／`SKILL.md` 時印對稱面候選,不判語意,
-  形狀同 `dossier-flag`)。做不成 exit-code gate——規則是語意抽象出來的,機器不知道要 grep 什麼。
-  現有防線只有第三方審查。
-
-- **同型掃描已產出物化,但 self-report 擋不住敷衍**(2026-08-11 落地):根因不是 agent 不自律,是
-  **skill 自己發的豁免**——`reviewer-brief.md` 舊文「已掃過 X、無其他命中,不必重掃」跨了軸:
-  reviewer 掃的是**命中點軸**(規則在既有 code 的其他犯錯處),fixer 缺的是**輸入空間軸**(修復對
-  規則的所有輸入是否成立)。兩軸同名 → 那句話被讀成兩軸都覆蓋。已拆兩軸 + 五個終態報告必填
-  「同型處置紀錄」表(列舉／根治／n-a 三類,n-a 不得用於「空間太大所以沒驗」)。
-  **殘留缺口:新防線只擋得住靜默跳過,擋不住填了但敷衍**——表格內容無法機檢,`tests/run.sh` 第 1f 節
-  只驗**結構**(模板覆蓋率、表頭形狀、引用行不複述軸名等;逐項以該節為準,此處不枚舉)。**取捨:R5 終止路徑刻意不設 behavior eval**
-  ——比照 d7 預造假 fix commit 的話,受測 agent 沒真做過那幾輪修復、**填不出自己沒做過的處置**,
-  測到的會是 fixture 缺陷而非 skill 行為;該路徑改由 1f 靜態 gate 守。
+- **同型處置的 self-report 擋得住靜默跳過,擋不住填了但敷衍**(2026-08-11 落地兩軸拆分＋五個終態
+  報告必填「同型處置紀錄」表之後的殘留面):**表格內容無法機檢**,`tests/run.sh` 第 1f 節只驗
+  **結構**(模板覆蓋率、表頭形狀、引用行不複述軸名等,逐項以該節為準)。R5 終止路徑為何不補
+  behavior eval 見關鍵決策同日條目。
 
 - **Mac 上 brewup 會被 codex cask 掛死(Gatekeeper)**:2026-08-07 第三次發作。復原已有入口
   `brewfix`(唯讀診斷,`--fix` 才動手);機制、鑑別法、三條走不通的預防路徑全文見
@@ -213,25 +205,15 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   技術上可行,但前提已被負面結果動搖、代價卻是確定的(拿不到 tarball 簽章身分)——
   **用確定的代價換不確定的效果,暫不做**,優先靠已實證的復原路徑。
 
-- **另一個寫入者的筆記可能在 ship 時被蒸餾壓掉**:協作者若把粗胚寫進 STATUS.md「進行中」,那正好是
-  會被收斂的一節,而 `/project log` Step 2 的前提是「此刻 session 記憶還在」——**對別人寫的東西不成立**。
-  可能後果:決策被當雙重記載壓掉,摘要還回報「已依 flag 收斂」。同族先例:`ship-state.sh` 的行號診斷
-  就是因為多 session 並行時 agent 猜錯超標條目兩次才加的。**觸發條件:觀察到一次真的被壓掉,才動規則。**
 - **kernel 的「fallback conventions 由 repo 勝出」對 host repo 實務上不可達**(2026-08-10 G6 樓層
   重跑的新 RED):Sonnet 兩次都用 Conventional Commits,而該 repo 明文拒絕它——**根因不是違抗,是
   `AGENTS.md`/`CONTRIBUTING.md` 的 tool_use 皆為 0,它沒看過那條規則**。safety floor 是被載入的
   文字所以穩;deference 卻要求一個「先去讀檔」的動作,沒有東西保證它發生(與 G1b 同一失效面)。
   **觸發:真的要在別人的 repo 常態工作時**——候選解三條與代價見
   `claude/evals/contract-evals.md`「這條 RED 的根因不是違抗，是那個檔從頭到尾沒被打開」。
-- **`AGENTS.md` 的 `Generated docs never win` 是已上線但從未測過的規則**(G5 隨 OpenWiki 一起 DEFER)。
-  它是 `No failing scenario, no instruction` 的存量違例——**記著,現在不刪也不為它 churn**。
-- **`codex/AGENTS.md` 與 root `AGENTS.md` 同名不同角色**(前者是全域 Codex 指引的**來源檔**,由
-  `ensure-codex-guidance.sh` 部署;後者是 repo-resident 契約)——正是
-  `claude/skills/project/references/dossier.md`「1. 檔案角色分工」的 Naming is exclusive 擋的形狀。
-  現行實害:`codex/skills/repo-review/scripts/review-context.sh` 沿改動路徑逐層收 `AGENTS.md`,
-  改 `codex/**` 時兩份都被當 guidance 餵進 reviewer(重複但無害)。**改名方案已 DROP**(2026-08-10:
-  Codex 不進生產線,價值近零而代價是全機隊 symlink 風險)——**此實害就這樣接受**。契約層本身的缺口
-  已由 Phase 1–2 補上(見里程碑)。
+- **`codex/AGENTS.md` 與 root `AGENTS.md` 同名不同角色**(來源檔 vs repo-resident 契約):改
+  `codex/**` 時兩份都被當 guidance 餵進 reviewer——**重複但無害,改名已 DROP、此實害就這樣接受**
+  (理由見 `docs/archive/decisions-2026-08.md`)。
 - 爬蟲配置類 STATUS.md 撞名(npm-cs/knowledge-builder):源頭在 general-rag-cs template,
   改名(CRAWL-CONFIG.md)需動 template 腳本——另開工作項。
 - biz-chat 移交檔三台路徑漂移(tmp/ vs handoff/,皆已 gitignored)+credentials 明文散於三台。
