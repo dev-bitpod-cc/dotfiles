@@ -129,8 +129,11 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 ## 技術債
 
 - [ ] **`scripts/ensure-dotfiles-remote.sh` 一次性遷移殘留,全機隊跟上後移除**(2026-08-15 加,掛
-  `dotfiles-sync.sh`＋`brewup.sh`)。**移除條件**:14 台 origin 皆已是 `jjshen-eland`。穩態零輸出、
-  留著不痛,但它是那種會默默變成永久設施的東西。
+  `dotfiles-sync.sh`＋`brewup.sh`)。**移除條件**:inventory 的 14 台**＋不在 inventory 的兩台
+  MacBook** origin 皆已是 `jjshen-eland`。14 台當天即完成;**兩台 MacBook 尚未**——它們正是靠
+  `brewup.sh` 這個呼叫點才會自己正規化(見 CLAUDE.md「不在 `inventory.conf` 的機器怎麼跟上」
+  第 ② 步),現在拆掉就只剩 GitHub 轉移 redirect 撐著。⚠️ **本條初版的移除條件只寫「14 台」、
+  漏掉那兩台**,2026-08-15 當天差點據以移除——`dotsync` 的涵蓋範圍不等於機隊全體。
 - [ ] **`tests/run.sh` 平時只在 macOS 跑,跨平台分支的 Linux 行為無人驗**(2026-08-15 發現:
   `:4199` 的 stat 順序寫反,在 Linux 上恆紅了不知多久,直到 hook 那批第一次上 Linux 才浮出)。
   **危害是它會掩蓋真失敗**——往後在 Linux 看到 FAIL=1 會先當成已知那條。dotsync 後任何一台
