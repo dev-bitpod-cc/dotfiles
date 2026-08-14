@@ -1188,6 +1188,68 @@ PYEOF
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-full" 2>/dev/null)"
 if grep -q "缺少規範章節" <<< "$out" && grep -q "已知缺口" <<< "$out" && grep -q "移交準備" <<< "$out"; then ok "整節被刪 → 印缺少規範章節並列出是哪幾節"; else bad "整節被刪未被抓到（尺寸 flag 抓不到、簽章也放行）"; fi
 
+# --- dossier 條目上限：邊界須止於條目本身，不得吃進其後的獨立區塊 ---
+# 實地（krepo-mops-major-news 2026-08-13）：一條 280B 的決策 ＋ 其後 524B 的**歸檔指標
+# blockquote** 被算成同一條 804B，報超標 4 bytes。處置指引「涵蓋多個決策 → 拆成多條」
+# 對它無效——它本來就是一條，於是只剩擰字或搬走指標兩條無效路。而那個 blockquote 正是
+# 把建置期取捨歸檔後留下的指向：**做對了收斂動作，產物反而被判超標**。
+# 條目邊界因此止於 blockquote / 標題 / 分隔線——三者都不是「續行」，原註解「以頂層
+# `- ` bullet 為條目邊界、續行併入」講的也一直是這個意思，只是實作沒攔。
+mkdir -p "$TMP/ds-entry"
+python3 - "$TMP/ds-entry/STATUS.md" <<'PYEOF'
+import sys, pathlib
+head = "# STATUS.md\n專案一句話定位(更新日期:2026-08-13)\n\n## 進行中\n- 一個工作項\n\n"
+# 決策本體遠低於上限；其後三種獨立區塊各自也不足以單獨超標，合計才越線
+entry = "- **2026-08-12 一條決策**:" + "決" * 80 + "。\n"
+quote = "> **已歸檔的建置期取捨在 `docs/archive/status-x.md`**:" + "史" * 180 + "。\n"
+tail = ("\n## 死路(試過但放棄——防重工)\n- 一條死路\n\n## 技術債\n- 一條技術債\n\n"
+        "## 已完成(里程碑)\n- ✅ 一個里程碑\n\n## 已知缺口\n- 一條缺口\n\n## 移交準備度\n(暫無)\n")
+doc = head + "## 關鍵決策(附理由)\n" + entry + "\n" + quote + tail
+pathlib.Path(sys.argv[1]).write_text(doc)
+# 前提斷言：本體本身必須低於上限，合計必須高於——否則這個 fixture 測不到邊界
+b_entry = len(entry.encode())
+b_total = b_entry + 1 + len(quote.encode())
+assert b_entry < 800 < b_total, f"fixture 失效: 本體 {b_entry} / 合計 {b_total}"
+PYEOF
+git init --bare -q "$TMP/ds-entry-origin.git"
+(cd "$TMP/ds-entry" && git init -q -b main . && "${GITC[@]}" add STATUS.md && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/ds-entry-origin.git" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-entry" 2>/dev/null)"
+if grep -q "最大條目" <<< "$out"; then bad "條目後的 blockquote 被併入 → 假陽性超標（${out}）"; else ok "條目後的 blockquote 不併入條目（歸檔指標不再被判超標）"; fi
+
+# 同一個邊界的另外兩面：標題與分隔線也不是續行
+python3 - "$TMP/ds-entry/STATUS.md" <<'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+p.write_text(s.replace("> **已歸檔的建置期取捨在 `docs/archive/status-x.md`**:",
+                       "### 一個子標題\n\n說明文字:", 1))
+PYEOF
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-entry" 2>/dev/null)"
+if grep -q "最大條目" <<< "$out"; then bad "條目後的 ### 子標題被併入條目（${out}）"; else ok "條目後的 ### 子標題不併入條目"; fi
+
+# 真超標仍須抓到——上面的邊界收窄不得把「條目本身確實過長」一起放掉
+mkdir -p "$TMP/ds-entry-real"
+python3 - "$TMP/ds-entry-real/STATUS.md" <<'PYEOF'
+import sys, pathlib
+entry = "- **2026-08-12 一條過長的決策**:" + "字" * 320 + "。\n"
+doc = ("# STATUS.md\n專案一句話定位(更新日期:2026-08-13)\n\n## 進行中\n- 一個工作項\n\n"
+       "## 關鍵決策(附理由)\n" + entry +
+       "\n## 死路(試過但放棄——防重工)\n- 一條死路\n\n## 技術債\n- 一條技術債\n\n"
+       "## 已完成(里程碑)\n- ✅ 一個里程碑\n\n## 已知缺口\n- 一條缺口\n\n## 移交準備度\n(暫無)\n")
+pathlib.Path(sys.argv[1]).write_text(doc)
+assert len(entry.encode()) > 800, "fixture 失效: 本體未超標"
+PYEOF
+git init --bare -q "$TMP/ds-entry-real-origin.git"
+(cd "$TMP/ds-entry-real" && git init -q -b main . && "${GITC[@]}" add STATUS.md && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/ds-entry-real-origin.git" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-entry-real" 2>/dev/null)"
+if grep -q "最大條目" <<< "$out"; then ok "條目本身真超標 → 仍報（邊界收窄未放過真陽性）"; else bad "真超標未被抓到（收窄過頭）"; fi
+
+# 條目 flag 須附建議收斂目標：全檔 flag 早有（DOSSIER_TARGET_PCT），條目漏了套用。
+# 實測後果——壓到剛好低於上限，下次任何編輯即再觸發：2026-08-13 五個 repo 的最大條目
+# 分別是 798 / 788 / 784 / 778 / 725（上限 800），聚在門檻下緣不是巧合。
+if grep -qE "建議.*≤ [0-9]+ bytes" <<< "$out"; then ok "條目 flag 附建議收斂目標（不再壓到剛好過關）"; else bad "條目 flag 缺建議收斂目標（${out}）"; fi
+
 # --- review 痕跡偵測（Step 4 squash 選項的判定依據；prose 下沉）---
 # 為何下沉：判「哪些 commit 算 review 迭代痕跡」需要 deep-review 的權威 subject 清單，
 # model 憑印象比對會把使用者自己的 `fix: 修正某某` 當痕跡建議壓掉，而使用者一句「好」
