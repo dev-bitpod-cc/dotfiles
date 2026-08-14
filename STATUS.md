@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-14)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-15)
 
 ---
 
@@ -41,11 +41,6 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   會 `exit 1` ——那是 fail-**closed**,正好相反,而 hook 自己出錯就會擋掉全機隊所有 commit。
   改成 guard 跑 subshell、約定 exit 97 才擋,其餘非零一律放行。**語法錯誤與 interpreter 缺失
   本質上無法 fail-open**,只能靠四道 gate。
-- **2026-08-14 全檔 flag 帶收斂順序:①砍重複 ②歸檔留指標 ③最後才蒸餾**。舊文字把最不可逆的
-  手段排在第一,與規範的「超標時優先歸檔」相反,而**只有 flag 會在動手當下被讀到**。判準是
-  危險不對稱:歸檔可取回,蒸餾砍掉的是理由與實測數字。
-- **2026-08-14 加歸檔孤兒偵測(反向守門)**:既有 xref-gate 只驗正向,「歸檔出去後沒人連」從沒
-  查過——那正是靜默內容遺失的主要途徑(實測 evint 6/10、krepo 9/29)。只印訊號、絕不自動刪。
 - **2026-08-14 外部 findings 七條落地兩條,其餘五條不做**。逐條判定見
   `docs/plans/2026-08-14-dossier-governance.md`「DROP」;兩個要點:軟目標訊號**要先有「已達結構
   下限」的出口**(否則對 always-on 佔 72% 的本 repo 只是第二個常亮 flag),per-repo 覆寫要走
@@ -72,6 +67,8 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   ——實證:Step 2 抓到 `add -A` 例外的使用點缺口純屬偶然,同 session 的 #43 走過同一個 Step 2
   仍漏兩條 blocking。訊號化的形狀＝偵測變更集含契約檔時印對稱面候選、不判語意(同 `dossier-flag`)。
   **做不成 exit-code gate**:規則是語意抽象出來的,機器不知道要 grep 什麼。
+  **2026-08-15 又一個實例**:`stat -c` 先於 `-f` 的順序在 `codex-runtime-hygiene.sh` 與
+  `tests/run.sh:3758` 都有明文註解,卻仍漏了 `:4199` 這個使用點——**文字原則確實接不住**。
 - **2026-08-10「另一個寫入者的筆記可能被蒸餾壓掉」暫不動規則**。協作者把粗胚寫進「進行中」,
   那正好是會被收斂的一節,而 Step 2 的前提「此刻 session 記憶還在」**對別人寫的東西不成立**。
   **觸發條件:觀察到一次真的被壓掉,才動規則**——同族先例(ship-state 的行號診斷)也是猜錯兩次才加。
@@ -136,6 +133,10 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 ## 技術債
 
+- [ ] **`tests/run.sh` 平時只在 macOS 跑,跨平台分支的 Linux 行為無人驗**(2026-08-15 發現:
+  `:4199` 的 stat 順序寫反,在 Linux 上恆紅了不知多久,直到 hook 那批第一次上 Linux 才浮出)。
+  **危害是它會掩蓋真失敗**——往後在 Linux 看到 FAIL=1 會先當成已知那條。dotsync 後任何一台
+  都跑得動 `bash tests/run.sh`,但沒有任何流程會去跑。未決:要不要納入某個既有流程。
 - [ ] **xref-gate 的判準是「heading **或**內文」,故通用詞當節名會讓保護降級**(2026-08-14 做
   突變測試時發現):把 `docs/dead-ends.md` 的 `## 分工` 改名,gate 仍綠——因為該檔另一處指標句
   裡也有「分工」二字。**節名撞通用詞時,突變測試必須改 heading 與內文兩處才測得準**;想真正
@@ -187,6 +188,10 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-13 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-15 修 `tests/run.sh:4199` 的 stat 跨平台順序(GNU `-c` 先於 BSD `-f`)。
+  Linux 上該條恆紅:GNU 的 `stat -f` 遇無效格式雖回 rc=1、卻已把 filesystem 統計吐進 stdout,
+  與 fallback 的輸出相連。**與 `:3758` 註解描述的「假成功」機制不同**,已在註解分清。
+  同批完成 hook 的全機隊散佈(14 台)＋跨平台實測(Linux／Darwin 皆正確擋下)。
 - ✅ 2026-08-14 治理落地兩件(計畫的①經 G10 否決,見死路節):`ship-state.sh` 加 always-on 量體
   訊號(純資訊、三態、worktree 可辨識);`.githooks/dispatcher` 全域 hook 代理＋default-branch
   guard,經 `git/config` 一行宣告式散佈。+26 條迴歸(第 24 節 19 條),含 fail-open、chain exit

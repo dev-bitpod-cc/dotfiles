@@ -4196,7 +4196,16 @@ esc_run() { SOURCE_FILE="$esc/src/config" TARGET_HOME="$1" BACKUP_ROOT="$esc/bac
 esc_out="$(esc_run "$esc/home")"; esc_rc=$?
 assert_rc "首次部署 → exit 0" 0 "$esc_rc"
 if [ -f "$esc/home/.ssh/config" ]; then ok "config 已產生"; else bad "config 未產生"; fi
-assert_eq "權限 600" "600" "$(stat -f '%Lp' "$esc/home/.ssh/config" 2>/dev/null || stat -c '%a' "$esc/home/.ssh/config")"
+# stat -c 先試（GNU rc=0、BSD rc=1）再退 -f，順序不可顛倒——同 :3758 與
+# codex-runtime-hygiene.sh 的既有註解。**2026-08-14 首次在 Linux 跑完整測試才發現這裡寫反了。**
+#
+# ⚠️ 失效機制與 :3758 那條註解描述的**不完全相同**，值得分清楚：
+#   - `%m` 那種**有效**的 filesystem 格式 → GNU `stat -f` 真的成功，`||` 永不觸發（:3758 的情形）。
+#   - `%Lp` 這種**無效**格式 → GNU `stat -f` 其實回 rc=1，`||` **有**觸發；但它在失敗前已經把
+#     一整段 filesystem 統計吐到 stdout，於是 command substitution 收到的是「那段 ＋ 600」相連。
+#   兩者後果相同（fallback 的輸出被污染），但別把後者也記成「假成功」。
+# **危害不是這條紅，是它會掩蓋往後所有真失敗**——在 Linux 上看到 FAIL=1 會先被當成已知的那條。
+assert_eq "權限 600" "600" "$(stat -c '%a' "$esc/home/.ssh/config" 2>/dev/null || stat -f '%Lp' "$esc/home/.ssh/config" 2>/dev/null)"
 if grep -q 'Host example' "$esc/home/.ssh/config"; then ok "來源內容已灌入"; else bad "來源內容遺失"; fi
 # config.local 是 setup 的職責——這裡先生一個空檔會讓 setup 的 `[ ! -f ]` 永遠跳過真內容
 if [ -e "$esc/home/.ssh/config.local" ]; then bad "不該建立 config.local（會讓 setup 跳過真內容）"; else ok "不建立 config.local"; fi
