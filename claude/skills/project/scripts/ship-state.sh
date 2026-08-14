@@ -293,16 +293,23 @@ detect_dossier() {
         fi
     fi
     # 收斂建議目標：不是「壓到剛好低於門檻」（見 DOSSIER_TARGET_PCT 註解）
-    local target_lines target_bytes oversize=0
+    local target_lines target_bytes oversize=0 order_hint
     target_lines=$(( DOSSIER_MAX_LINES * DOSSIER_TARGET_PCT / 100 ))
     target_bytes=$(( DOSSIER_MAX_BYTES * DOSSIER_TARGET_PCT / 100 ))
+    # 收斂順序（兩條全檔 flag 共用一份，不得各自演化）。
+    # 為何順序要寫進 flag 而不是只留在 references/dossier.md：那份規範早就寫了「超標時
+    # **優先歸檔**、不要為幾百 bytes 去壓無關舊條目」，但**只有 flag 會在動手當下被讀到**
+    # ——舊文字「蒸餾＋歸檔」把最不可逆的手段排在第一個，與規範相反。
+    # 危險不對稱才是理由：歸檔只是搬家（留指標即可取回），蒸餾砍掉的是理由與實測數字，
+    # git history 找得回文字、找不回「當初為什麼認為這個數字重要」。
+    order_hint="收斂順序：①砍掉 repo 內已有權威的重複（規格/CLAUDE.md 已載明者）②整批歸檔已成歷史的段落並留指標 ③**最後才蒸餾**——逐條壓字通常收不回足夠 bytes，而被壓掉的往往正是理由與實測數字"
     if [ "$lines" -gt "$DOSSIER_MAX_LINES" ]; then
         oversize=1
-        echo "dossier-flag: 全檔 ${lines} 行 > ${DOSSIER_MAX_LINES}（硬訊號——當次收斂：蒸餾＋歸檔 docs/archive/；建議收斂至 ≤ ${target_lines} 行，留得下數次 ship 的成長）"
+        echo "dossier-flag: 全檔 ${lines} 行 > ${DOSSIER_MAX_LINES}（硬訊號——當次收斂。${order_hint}；建議收斂至 ≤ ${target_lines} 行，留得下數次 ship 的成長）"
     fi
     if [ "$bytes" -gt "$DOSSIER_MAX_BYTES" ]; then
         oversize=1
-        echo "dossier-flag: 全檔 ${bytes} bytes > ${DOSSIER_MAX_BYTES}（行數代理失真——硬訊號同全檔過長：當次收斂，蒸餾＋改正常換行段落；建議收斂至 ≤ ${target_bytes} bytes）"
+        echo "dossier-flag: 全檔 ${bytes} bytes > ${DOSSIER_MAX_BYTES}（行數代理失真——硬訊號同全檔過長，當次收斂。${order_hint}；巨型單行另需改正常換行段落；建議收斂至 ≤ ${target_bytes} bytes）"
     fi
     # 各節佔比：只在超標時印（平時是噪音）。沒有這行，收斂對象只能靠印象猜——
     # 實證：krepo 2026-07-29 憑印象挑了里程碑節開刀，一輪 PR 只省 905 bytes，
@@ -407,6 +414,47 @@ detect_dossier() {
         lag=$(( (head_ct - st_ct) / 86400 ))
         if [ "$lag" -gt "$DOSSIER_STALE_DAYS" ]; then
             echo "dossier-flag: 最後 commit 落後 repo 活動 ${lag} 天 > ${DOSSIER_STALE_DAYS}（過期——列入 Step 4 附註告知、本次重點補齊）"
+        fi
+    fi
+
+    # 歸檔孤兒：`docs/archive/*.md` 沒有被任何 md 連到 → 檔案還在 git 裡，但從 dossier
+    # 走不到，**等於不存在**。歸檔正是製造這種失效的主要途徑，而它完全靜默——本檔開頭
+    # 那句「內容遺失是 dossier 最貴的失效，靜默是最糟的形式」講的就是這個。
+    # 既有守門只驗**正向**（dotfiles 的 xref-gate：指標指到的節/檔在不在），反向從沒查過，
+    # 且那個 gate 只跑本 repo。實測 2026-08-14：evint 6/10、krepo 9/29 是孤兒，
+    # 而提出此缺口的 repo 自己 0/8——**風險真實，但在自己的 repo 裡看不見**。
+    # 只印訊號、絕不自動刪（同 stale-branches 的紀律：刪東西永遠不會自動發生）。
+    if [ -d "${repo}/docs/archive" ]; then
+        local orphans="" orph_n=0 af ab arch_refs cand ref_cnt
+        # **單次掃描**收集所有提到 archive 的行（帶來源檔名，`-H`）。
+        # 逐檔各跑一次 `grep -r` 的寫法對大 repo 會爆：krepo 29 個歸檔檔 → 13.0s，
+        # 而這支腳本每次 ship 都跑。改成掃一次、之後都在這個小集合上比對。
+        # `--include` 必須在 `--` **之前**——`--` 之後的一切都不再被當成選項，
+        # 寫成 `-- pat --include=...` 會把 include 當搜尋路徑（首版踩過，靜默誤判）。
+        # pattern 用 `.md` 而非 `archive`：**任何**對歸檔檔的引用必然含 `.md`（檔名本身
+        # 就以它結尾），但不見得含 `archive`——實地反例（evint）：
+        # `> （`…2026-07-27-status-pre-condense.md`）` 整行沒有 archive 字樣，
+        # 用 `archive` 掃會把它判成孤兒。窄 pattern 的假陽性比多掃幾行貴得多：
+        # 它會叫人去補一條本來就存在的指標，或更糟——以為那份歸檔可以刪。
+        arch_refs="$(grep -rHF --include='*.md' -- '.md' "$repo" 2>/dev/null)" || arch_refs=""
+        for af in "${repo}"/docs/archive/*.md; do
+            [ -e "$af" ] || continue          # glob 無命中時字面展開
+            ab="$(basename "$af")"
+            # herestring 而非 pipe：`grep -q` 命中即退出會讓上游吃 SIGPIPE，
+            # `set -o pipefail` 下整條判偽（CLAUDE.md 已知地雷）。
+            cand="$(grep -F -- "$ab" <<< "$arch_refs")" || cand=""
+            ref_cnt=0
+            # 排除「檔案自己提到自身檔名」。grep -c 找不到時印 0 且 exit 1，故用
+            # `|| ref_cnt=0` 而非 `$(... || echo 0)`——後者會產生雙行 `0\n0`。
+            [ -n "$cand" ] && { ref_cnt="$(grep -cvF -- "${af}:" <<< "$cand")" || ref_cnt=0; }
+            if [ "$ref_cnt" -eq 0 ]; then
+                orph_n=$(( orph_n + 1 ))
+                [ "$orph_n" -le "$MAX_LIST" ] && orphans="${orphans} docs/archive/${ab}"
+            fi
+        done
+        if [ "$orph_n" -gt 0 ]; then
+            [ "$orph_n" -gt "$MAX_LIST" ] && orphans="${orphans} …（共 ${orph_n} 份）"
+            echo "dossier-flag: 歸檔孤兒${orphans}（無任何 md 連到——內容還在 git 裡但從 dossier 走不到,等於不存在。補一條指標、或確認確實不再需要;**不自動刪**）"
         fi
     fi
 }
