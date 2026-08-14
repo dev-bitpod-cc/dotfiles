@@ -64,3 +64,14 @@
 - ✅ 2026-08-11 全域 CLAUDE.md 已知地雷拆檔:`claude/CLAUDE.md` 29,020→23,704 bytes(最長行 1,386→993),實地事故/負面結果/鑑別法/修復序列移入 `claude/known-hazards.md`。**拆法與上一批不同**——上一批整節搬走,這批是**每條地雷內部拆**(留觸發形狀+靜默後果+正確寫法,搬案例與診斷),因為地雷是「動手當下要知道」而非「改 gate 時才需要」。最大宗是 cask/Gatekeeper 條 4,005→約 550 bytes(它其實是運維故障、不是寫程式會踩的雷,已有 `brewfix` 入口)。966 斷言全綠。
 - ✅ 2026-08-11 測試 gate 契約拆檔:root `CLAUDE.md` 29,661→15,807 bytes(最長行 15,123→429),gate 的判準/反例/設計理由移入 `docs/testing-contract.md`(按 `tests/run.sh` 節號組織)。**留在 always-on 的是行為約束**——何時必跑、以 exit code 判綠紅、xref gate 的「不放寬 pattern」,搬走即落入 H6 失效模式。順帶把 exactly-one-place 的例外從「kernel replicas」一般化為「**必須 always-on 且讀者載入不同檔**」(決策節有為何不消除那處重複)。966 斷言全綠。
 - ✅ 2026-08-11 deep-review 同型掃描兩軸拆分 + 產出物化：根因是 skill 自己發的**跨軸豁免**——`reviewer-brief` 的「已掃過、無其他命中，不必重掃」，但 reviewer 掃的是**命中點軸**、fixer 缺的是**輸入空間軸**。已收窄該句作用域、SKILL 拆成兩條軸並要求掃描先於編輯、五個終態報告必填「同型處置紀錄」（單一定義 + 五處引用，`tests/run.sh` 1f 守覆蓋率，含逐處抽離的 RED 自檢）。新增 **F22/d8**（輸入空間軸）與 **F23/d9**（命中點軸）：F22 首跑因 reviewer 自己撐開兩軸判 **INVALID**（空條件），改注入式 harness 後 5/6；F23 首跑 5/5——R1 一輪即四處全修（966 PASS）
+- ✅ 2026-08-13 deep-review 加**相依軸**(誰依賴我要改的東西;依關係找、非 grep)、終止報告分流
+  「根因重複」的兩種成因(變更上→重做設計／方法上→換掃描維度,後者重寫救不了)、同型處置紀錄兩軸→三軸。
+  外部提案逐條驗證後採五退三;**F22 重跑 6/6**(相依端欄首驗,以實跑反例計分)。983 PASS。
+- ✅ 2026-08-13 repo-review 取證契約強化(**Codex 撰寫,本 session 只 ship、未 review**):
+  codex reviewer 的 sandbox 從 `-s read-only` 改為 permission profile(repo 仍唯讀,只開 job 目錄下的
+  TMPDIR/uv/pytest cache),`--strict-config` 讓不支援 profile 的舊版**硬失敗、不靜默落回 danger-full-access**;
+  job 目錄以 realpath 擋在受審 repo 之外。理由寫在 diff 註解裡,故不另記決策節。
+  +5 斷言(合併後 980 PASS),斷言打真實 argv。
+- ✅ 2026-08-13 Codex shipping 授權對齊:kernel push 條改為指向 repo 授權表、`codex/AGENTS.md`
+  改為重用 repo 既有 shipping workflow(無則 commit 並停)、`claude/CLAUDE.md` 移除「只有 Claude
+  能 ship」的過期 note。四份 kernel 維持 byte-identical(975 PASS;理由見決策節同日兩條)。

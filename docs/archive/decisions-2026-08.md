@@ -478,3 +478,17 @@
   擋的形狀。實害:`codex/skills/repo-review/scripts/review-context.sh` 沿改動路徑逐層收
   `AGENTS.md`,改 `codex/**` 時兩份都被當 guidance 餵進 reviewer(重複但無害)。**不改名的理由**:
   Codex 不進生產線,價值近零而代價是全機隊 symlink 風險。契約層本身的缺口已由 Phase 1–2 補上。
+
+<!-- 2026-08-14 歸檔:G8 那批 shipping 授權決策。機制已固化在四份 kernel 複本、
+     kernel-gate.py 與 G8 eval,從程式碼與 evals 可反推;此處留當初為什麼這樣分流。 -->
+
+- **2026-08-13 push 授權改「先依有無 shipping workflow 分流」,並以 G8 eval 釘住**。根因:kernel 要
+  commit 後一律停、`/project` 說法表卻認明說即授權,而 kernel 是四份複本,不對稱直接落到 Codex。
+  **改了三版才對**:初版(kernel 自列「ship 算授權」)方向相反、不對稱只換位置;第二版在 **G8 r2
+  實測 RED**——只帶 kernel 的兩臂**都 push 了**,「給你 ship」那臂逐字寫下 `I'll push it and open
+  a PR`,證明「以授權表為準」的 fallback 仍是語意判斷。**定案(r4 GREEN)**:有 workflow → 只認其
+  授權表;無 → 指名動作的指令、或剛提出的確認被肯定答覆。default branch 與 merge 未放寬。
+- **2026-08-13 G8 附帶發現:kernel 的 push 條在 Claude 端幾乎不生效**。帶完整 `claude/CLAUDE.md`
+  的兩臂**零 tool_use**——**技能載入指標**(「ship」「推上去」→ 建議使用者跑 `/project`)在 kernel
+  之前就攔下路由掉了。那是正確行為,但意味著這條規則真正的作用域是 **Codex 端與任何沒有
+  `/project` 的環境**;要驗它就得用只帶 kernel 的沙盒(G8 的 c/d 臂),否則測到的是空條件。
