@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-13)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-14)
 
 ---
 
@@ -27,6 +27,20 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-14 全檔 flag 帶收斂順序:①砍重複 ②歸檔留指標 ③最後才蒸餾**。舊文字「蒸餾＋歸檔」
+  與 `dossier.md` 早就寫的那句「超標時優先歸檔」相反,而**只有 flag 會在動手當下被讀到**。
+  判準是危險不對稱:
+  歸檔可取回,蒸餾砍掉的是理由與實測數字——git history 找得回文字、找不回「當初為什麼認為
+  這個數字重要」。
+- **2026-08-14 加歸檔孤兒偵測(反向守門)**。既有 xref-gate 只驗正向(指標指到的在不在),
+  「歸檔出去後沒人連」從沒查過,而那正是靜默內容遺失的主要途徑(實測 evint 6/10、krepo 9/29)。
+  只印訊號、絕不自動刪。**掃描 pattern 的假陽性比漏抓貴**——它會叫人補一條本來就在的指標,
+  或更糟、以為那份歸檔可刪;pattern 與效能取捨見程式碼註解。
+- **2026-08-14 外部 findings 七條落地兩條,其餘四條暫不做**。軟目標訊號方向對,但 dotfiles
+  always-on 佔 72%、**結構性達不到建議目標**,直接加只會變成第二個常亮 flag——先要有
+  「已達結構下限」的出口。per-repo 覆寫的問題真實(活躍 repo 無一寬鬆),但 krepo 既有豁免
+  條款形狀更好(帶理由與失效條件),純數字覆寫缺的正是防濫用。另兩條:「從超出常態佔比的節收」
+  不採(超出可能來自誤放而非該節肥);拆條目撐大全檔的張力量級不成比例(~15 bytes 對 24576)。
 - **2026-08-14 條目 flag 邊界止於非續行區塊**(行首 blockquote／標題／分隔線;機制與實證見
   `ship-state.sh` 該處註解與 `tests/run.sh` 第 9 節)。**值得記的是失效的形狀**:被誤併的
   524B 是**歸檔指標**——收斂做對之後才會產生的東西,於是**做對事反被判超標**,而處置指引
@@ -35,16 +49,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **2026-08-14 條目 flag 補上建議收斂目標(680)**。`DOSSIER_TARGET_PCT` 原本只套在全檔 flag、
   條目漏了,於是每次都壓到剛好過關(五個 repo 的最大條目落在 798/788/784/778/725,聚在上限
   下緣不是巧合)。理由與全檔 flag 同,見該常數註解。
-- **2026-08-13 push 授權改「先依有無 shipping workflow 分流」,並以 G8 eval 釘住**。根因:kernel 要
-  commit 後一律停、`/project` 說法表卻認明說即授權,而 kernel 是四份複本,不對稱直接落到 Codex。
-  **改了三版才對**:初版(kernel 自列「ship 算授權」)方向相反、不對稱只換位置;第二版在 **G8 r2
-  實測 RED**——只帶 kernel 的兩臂**都 push 了**,「給你 ship」那臂逐字寫下 `I'll push it and open
-  a PR`,證明「以授權表為準」的 fallback 仍是語意判斷。**定案(r4 GREEN)**:有 workflow → 只認其
-  授權表;無 → 指名動作的指令、或剛提出的確認被肯定答覆。default branch 與 merge 未放寬。
-- **2026-08-13 G8 附帶發現:kernel 的 push 條在 Claude 端幾乎不生效**。帶完整 `claude/CLAUDE.md`
-  的兩臂**零 tool_use**——**技能載入指標**(「ship」「推上去」→ 建議使用者跑 `/project`)在 kernel
-  之前就攔下路由掉了。那是正確行為,但意味著這條規則真正的作用域是 **Codex 端與任何沒有
-  `/project` 的環境**;要驗它就得用只帶 kernel 的沙盒(G8 的 c/d 臂),否則測到的是空條件。
 - **2026-08-13 不建 Codex 版 project skill,等真實 RED**。既然 Codex 已可 ship,直覺下一步是把
   Claude 的 `project` workflow 複製一份給它;不做的理由是 `codex/AGENTS.md` 改後已指向
   **repo 既有的 shipping skill**,複製等於製造第二份會漂移的 pressure-tested 邏輯(同
@@ -170,8 +174,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 ## 已完成(里程碑)
 
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
-> 2026-08-05～08-09 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
+> 2026-08-05～08-13 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-14 外部 findings 落地兩條:全檔 flag 帶收斂順序(蒸餾排最後)＋歸檔孤兒偵測
+  (反向守門,krepo 13.0s→2.5s)。+9 條迴歸,含省略號指標的假陽性哨兵。996 PASS。理由與
+  其餘五條的處置見決策節同日三條。
 - ✅ 2026-08-14 dossier 治理三件事(起點:使用者反映「一直在處理 dossier flag、很花時間」)。
   ①**工具**:`ship-state.sh` 條目 flag 兩修(邊界止於行首 blockquote／標題／分隔線;補建議收斂
   目標 680 bytes)+4 條迴歸,理由見決策節同日兩條。②**存量**:死路節分層——證據外移
@@ -179,17 +186,6 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   已知缺口六條歸位到決策(缺口 34%→21%、決策 18%→29%);全檔 24318→22843 bytes。零遺失以
   token 級檢查確認(103/103)。③**規範**:u6 沙盒 + Scenario 17 成對實驗,v2 四輪兩臂零差異 →
   **判準否決、未寫進 `dossier.md`**(見死路節同日條)。987 PASS。
-- ✅ 2026-08-13 deep-review 加**相依軸**(誰依賴我要改的東西;依關係找、非 grep)、終止報告分流
-  「根因重複」的兩種成因(變更上→重做設計／方法上→換掃描維度,後者重寫救不了)、同型處置紀錄兩軸→三軸。
-  外部提案逐條驗證後採五退三;**F22 重跑 6/6**(相依端欄首驗,以實跑反例計分)。983 PASS。
-- ✅ 2026-08-13 repo-review 取證契約強化(**Codex 撰寫,本 session 只 ship、未 review**):
-  codex reviewer 的 sandbox 從 `-s read-only` 改為 permission profile(repo 仍唯讀,只開 job 目錄下的
-  TMPDIR/uv/pytest cache),`--strict-config` 讓不支援 profile 的舊版**硬失敗、不靜默落回 danger-full-access**;
-  job 目錄以 realpath 擋在受審 repo 之外。理由寫在 diff 註解裡,故不另記決策節。
-  +5 斷言(合併後 980 PASS),斷言打真實 argv。
-- ✅ 2026-08-13 Codex shipping 授權對齊:kernel push 條改為指向 repo 授權表、`codex/AGENTS.md`
-  改為重用 repo 既有 shipping workflow(無則 commit 並停)、`claude/CLAUDE.md` 移除「只有 Claude
-  能 ship」的過期 note。四份 kernel 維持 byte-identical(975 PASS;理由見決策節同日兩條)。
 
 ## 已知缺口
 
