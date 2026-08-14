@@ -452,3 +452,29 @@
   時散佈等於空轉(實地踩過一次,以為散完了其實什麼都沒變)。
   ③**先散一台走完全程再放其餘**——挑最有代表性的那台(這次是 db01:remote 最多、唯一有
   `insteadOf`、且有 krepo 可驗依賴路徑),不是挑最安全的。
+
+<!-- 2026-08-14 歸檔:契約層拆檔那一批。機制已固化在 xref-gate／kernel-gate／AGENTS.md,
+     從程式碼可反推;此處留的是當初為什麼這樣分流。 -->
+
+- **2026-08-11 拆檔時反向指標依「指向規則 vs 指向細節」分流,不是一律改**。11 處指向
+  `claude/CLAUDE.md`「已知地雷」的引用:指向**規則本身**的 4 處不動(`ensure-ssh-config.sh`、
+  `evals/README.md`、`tests/run.sh`、`ship-state.sh`——它們要的就是 always-on 那句),指向
+  **機制/鑑別法**的 3 處改指新檔,archive 5 處 write-once 不動。**xref-gate 抓不到這類斷裂**
+  ——節名還在、內容搬走了,gate 照樣綠;只能人工分流。改完以**突變測試**確認 gate 真的在驗新指標
+  (把節名改錯→命中,還原→乾淨),否則「全綠」可能只是掃描器沒匹配到。
+- **2026-08-11 `AGENTS.md` 與 `CLAUDE.md` 對「何時必跑測試」的重複刻意保留**,並把
+  exactly-one-place 的例外條款從「kernel replicas」一般化為「**必須 always-on 且讀者載入不同檔**」。
+  拆檔時本想一併消除該重複,查下去發現它是**結構性的**:Codex 只讀 `AGENTS.md`、Claude 只自動載入
+  `CLAUDE.md`,指標對兩者其中之一必然落空(同 kernel replica 的成因)。**不新增第二個 managed block**
+  ——那三行短到漂移不出實質差異,gate 的建置成本高於收益。
+- **2026-08-11 `docs/testing-contract.md` 不進 portable 權威矩陣**,指標只寫在 `AGENTS.md`
+  「Repo specifics」。portable block 是要**整段裝到其他 repo** 的,加一列等於把本 repo 的檔案結構
+  強加給別人。(順帶否決了「按 AGENTS/CLAUDE 拆分權威矩陣那一列」的提案:多數 repo 只有一份契約檔,
+  寫死分工在只有 `CLAUDE.md` 的 repo 整條無法適用;現行「最近者勝」對 N 份都成立。)
+- **2026-08-10 `codex/AGENTS.md` 的改名方案 DROP,同名實害就這樣接受**(2026-08-14 從
+  STATUS.md「已知缺口」歸檔,該處只留一行現象)。它與 root `AGENTS.md` 同名不同角色——前者是
+  全域 Codex 指引的**來源檔**(由 `ensure-codex-guidance.sh` 部署),後者是 repo-resident 契約,
+  正是 `claude/skills/project/references/dossier.md`「1. 檔案角色分工」的 Naming is exclusive
+  擋的形狀。實害:`codex/skills/repo-review/scripts/review-context.sh` 沿改動路徑逐層收
+  `AGENTS.md`,改 `codex/**` 時兩份都被當 guidance 餵進 reviewer(重複但無害)。**不改名的理由**:
+  Codex 不進生產線,價值近零而代價是全機隊 symlink 風險。契約層本身的缺口已由 Phase 1–2 補上。
