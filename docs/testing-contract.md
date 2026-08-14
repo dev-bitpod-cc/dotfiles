@@ -393,6 +393,63 @@ ps／lsof／killall／sudo 皆以 stub 注入。
 - `--apply` 幂等；未知選項 exit 2 而非當成路徑。
 - `GIT_CONFIG_GLOBAL` 隔離，**絕不碰真的 `~/.gitconfig`**。
 
+## 24. `.githooks/dispatcher`（全域 core.hooksPath 的單一入口）
+
+### 為什麼是 dispatcher 而不是單一 pre-commit
+
+全域 `core.hooksPath` **取代整個 hook 目錄**。目錄裡沒有的 hook 名，repo 自己 `.git/hooks/`
+的同名版本就**靜默不執行** —— `post-checkout`／`post-merge` 正是 Git LFS 用的。「靜默」是本
+repo 已知地雷的共同形狀，所以本目錄掛上**全部 client-side hook 名**（各為指向 dispatcher 的
+symlink），每一個都先 chain 回 repo 自己的版本。
+
+**代理清單不由實作者挑**：`.git/hooks/*.sample` 只有 14 個、不是全集（缺 `post-commit`／
+`post-checkout`／`post-merge`／`post-rewrite`／`pre-auto-gc`）。server-side 的 receive 系列與
+Perforce `p4-*` 刻意不代理 —— **git 升版時要重新盤點**，測試以 18 個名字逐一斷言。
+
+**只有 dispatcher 是實體檔**：四道 gate 只列它（掃 symlink 等於重複掃同一內容），
+所以有一條「`.githooks` 下只有 dispatcher 是實體檔」的斷言 —— 新增第二個實體檔會漏掉 gate。
+
+### chain 與 fail-open 的邊界（順序不可調換）
+
+1. 先跑 repo 自己的同名 hook，**exit code 原樣傳回**，本檔不吞。
+2. 逃生變數與「進行中操作早退」**只停用 guard，不跳過 repo 自己的 hook**。
+3. guard 跑在 **subshell**，以 `exit 97` 表示「確認命中、應阻擋」；**其餘任何非零一律視為
+   內部失敗 → 放行**。
+
+⚠️ **不能用 `set -u` 做 fail-open**：實測未綁定變數會讓整支 `exit 1`，那是 fail-**closed**，
+正好相反 —— 而 hook 自己出錯回非零就會擋掉 14 台上所有 commit，包括修這個 bug 的那顆。
+語法錯誤與 interpreter 不存在**本質上無法 fail-open**，那一層只能靠四道 gate 擋在 commit 之前。
+
+### 路徑解析：兩者用途不同、不可互換（linked worktree 實測）
+
+- repo hook 在 **`--git-common-dir`**`/hooks/`
+- `MERGE_HEAD`／`sequencer/` 等**操作狀態**在 **`--absolute-git-dir`**（worktree 下是
+  `.git/worktrees/<name>`）
+
+**不要用 `git rev-parse --git-path hooks/…`** —— 它被 `core.hooksPath` 汙染（實測回
+`<hooksPath>/pre-commit`），拿來 chain 會無限遞迴呼叫自己。另用 `-ef` 排除「chain 目標其實
+就是 dispatcher 本身」。
+
+### 三個刻意保留的 false negative（各有一條測試固定邊界）
+
+`detached HEAD`、`純本地 git init 的 main`、`缺 origin/HEAD 的自訂 default`（如 trunk）
+**都不擋**。這**弱於 kernel 的明文要求**，是為了讓 `tests/run.sh` 的 74 個 `git init` fixture
+與 eval 沙盒跑得動而保留的 —— **不得讓 AC 說成「default branch 上一律被擋」**。
+
+另有一個擋不住的邊界：**repo 自設 local `core.hooksPath` 會完全繞過本防線**（已實測：
+local 覆寫 global）。同樣明列、不假裝擋得住。
+
+### 測試隔離
+
+`tests/run.sh` 與 `claude/evals/setup-sandboxes.sh` 各 `export DOTFILES_PRECOMMIT_OFF=1`
+—— 否則全域 hooksPath 一生效，兩者的 fixture（含 g8 刻意造的「誤 commit 在 main」，也就是
+**證明救援路徑有效的那一個**）就造不出來。
+
+⚠️ 第 24 節要驗「無變數→擋」與三個 false negative 的地方，必須在 subshell 內
+`unset DOTFILES_PRECOMMIT_OFF` **反向解除** —— 否則測到的是逃生變數而不是判定序（假綠）。
+**exit code 一律直接呼叫 dispatcher 驗**：`git commit` 對 hook 只看零/非零、自己回 1，
+透過它量不到 42（2026-08-14 首版測試就是這樣誤判成實作壞掉）。
+
 ## 未列於本檔的節
 
 `dotfiles-sync` 遠端回報段（ssh 失敗與無告知時都不可吞掉主機結果）已有測試但無獨立節號。

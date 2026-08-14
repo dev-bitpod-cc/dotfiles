@@ -34,6 +34,13 @@
 [core]
     pager = delta
     excludesfile = ~/.gitignore_global
+    # 全域 hook 代理（default-branch guard ＋ chain 回各 repo 自己的 hook）。
+    # 宣告式部署：本檔已由 setup 以 `git config --global include.path` 掛在全機隊上，
+    # 改這一行 → 下次 git pull 即生效，不需要 ensure helper、不需要動 dotfiles-sync。
+    # `~` 會被展開（實測 git 2.50.1／機隊 2.55.0 皆可；它與 include.path 走同一條
+    # git_config_pathname）。⚠️ 注意這是**取代整個 hook 目錄**，不是疊加——
+    # 設計、已知邊界與測試見 `docs/testing-contract.md`「24. `.githooks/dispatcher`」。
+    hooksPath = ~/.dotfiles/.githooks
 
 [interactive]
     diffFilter = delta --color-only

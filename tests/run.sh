@@ -29,8 +29,15 @@
 #  19. review-anchor.sh（deep-review skill script）錨點生命週期 / squash-cmd / codex-next
 #  20. verify-tests.sh（deep-review skill script）框架偵測與 exit 契約（uv/bun stub）
 #  21. crawl-quality-scan.py（check-crawl-quality skill script）確定性掃描 / 扣分帳目 / --classify 覆核
+#  24. .githooks/dispatcher 全域 hook 代理：chain／exit code 原樣傳回／guard 三態 fail-open／三個刻意的 false negative
 #
 set -uo pipefail
+
+# 全域 `core.hooksPath` 生效後，本檔的 74 個 `git init` fixture（含**刻意造在 main 上的
+# 誤 commit**）會被 default-branch guard 擋下——連「證明救援路徑有效」的那個 fixture 都造不出來。
+# 逃生變數只停用 guard、**不會**跳過 repo 自己的 hook，故不影響任何 chain 相關斷言。
+# ⚠️ 第 24 節要測「無變數→擋」的那幾條必須用 `env -u DOTFILES_PRECOMMIT_OFF` 反向解除。
+export DOTFILES_PRECOMMIT_OFF=1
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1   # 相對路徑的 source 解析與 git 操作以 repo 根為基準（從外部目錄執行時避免 SC1091 誤報）
@@ -80,6 +87,7 @@ if shellcheck -x -P "SCRIPTDIR:$ROOT/scripts" \
     "$ROOT"/claude/scripts/*.sh \
     "$ROOT"/claude/skills/*/scripts/*.sh "$ROOT"/claude/skills/*/scripts/lib/*.sh \
     "$ROOT"/codex/skills/*/scripts/*.sh \
+    "$ROOT/.githooks/dispatcher" \
     "$ROOT/shell/functions.sh" \
     "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh" \
     "$ROOT"/claude/evals/*.sh \
@@ -104,6 +112,7 @@ fullwidth_hits="$(LC_ALL=C grep -nE '\$[A-Za-z_][A-Za-z0-9_]*[^[:print:][:space:
     "$ROOT"/claude/scripts/*.sh \
     "$ROOT"/claude/skills/*/scripts/*.sh "$ROOT"/claude/skills/*/scripts/lib/*.sh \
     "$ROOT"/codex/skills/*/scripts/*.sh \
+    "$ROOT/.githooks/dispatcher" \
     "$ROOT/shell/functions.sh" \
     "$ROOT"/claude/evals/*.sh \
     "$ROOT/tests/run.sh")"
@@ -165,6 +174,7 @@ hd_hits="$(awk -f "$HD_GATE" \
     "$ROOT"/claude/scripts/*.sh \
     "$ROOT"/claude/skills/*/scripts/*.sh "$ROOT"/claude/skills/*/scripts/lib/*.sh \
     "$ROOT"/codex/skills/*/scripts/*.sh \
+    "$ROOT/.githooks/dispatcher" \
     "$ROOT/shell/functions.sh" \
     "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh" \
     "$ROOT"/claude/evals/*.sh \
@@ -490,6 +500,7 @@ for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
          "$ROOT"/claude/scripts/*.sh \
          "$ROOT"/claude/skills/*/scripts/*.sh "$ROOT"/claude/skills/*/scripts/lib/*.sh \
          "$ROOT"/codex/skills/*/scripts/*.sh \
+         "$ROOT/.githooks/dispatcher" \
          "$ROOT/shell/functions.sh" \
          "$ROOT/setup-mac-env.sh" "$ROOT/setup-linux-env.sh" "$ROOT/write-mac-defaults.sh" \
          "$ROOT"/claude/evals/*.sh; do
@@ -5383,6 +5394,103 @@ assert_eq "跳過 gate 後仍正常換寫" "git@github.com:elandcomtw/krepo.git"
 assert_rc "未知選項 → exit 2" 2 $?
 
 unset GIT_CONFIG_GLOBAL
+
+echo "▶ 24. .githooks/dispatcher（全域 core.hooksPath 的單一入口）"
+# 為什麼是 dispatcher 而不是單一 pre-commit：全域 `core.hooksPath` **取代整個 hook 目錄**，
+# 目錄裡沒有的 hook 名，repo 自己 `.git/hooks/` 的同名版本就靜默不執行（post-checkout／
+# post-merge 正是 Git LFS 用的）。**「靜默」是本 repo 已知地雷的共同形狀。**
+# ⚠️ 本節一律用 **local** `core.hooksPath` 指向 repo 內的 `.githooks`，不碰 `git/config`
+# 也不碰全域設定——`~/.gitconfig` 已 include `git/config`，那個檔一存檔就影響本機所有 repo。
+HOOKS_DIR="$ROOT/.githooks"
+hk_git() { git -c user.email=t@t -c user.name=t "$@"; }
+hk_repo() {   # $1=名稱 → bare origin + clone（有 origin/HEAD），local hooksPath 指向 .githooks
+    git init --bare -q "$TMP/$1.git"
+    git clone -q "$TMP/$1.git" "$TMP/$1" 2>/dev/null
+    ( cd "$TMP/$1" && echo seed > f.txt && hk_git add f.txt && hk_git commit -qm seed \
+        && git push -q origin HEAD:main 2>/dev/null && git branch -q -M main
+      git remote set-head origin main >/dev/null 2>&1
+      git config core.hooksPath "$HOOKS_DIR" )
+}
+
+# --- 代理清單完整性：清單不由實作者挑 ---
+# `.git/hooks/*.sample` 只有 14 個、**不是全集**——缺 post-commit／post-checkout／post-merge／
+# post-rewrite／pre-auto-gc。未代理的（server-side receive 系列、Perforce p4-*）是刻意排除，
+# **git 升版時要重新盤點**。
+hk_missing=""
+for h in applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit \
+         prepare-commit-msg commit-msg post-commit pre-rebase post-checkout post-merge \
+         pre-push post-rewrite pre-auto-gc post-index-change push-to-checkout \
+         sendemail-validate fsmonitor-watchman; do
+    if [ ! -L "$HOOKS_DIR/$h" ] || [ "$(readlink "$HOOKS_DIR/$h")" != "dispatcher" ]; then
+        hk_missing="${hk_missing} ${h}"
+    fi
+done
+if [ -z "$hk_missing" ]; then ok "18 個 client-side hook 名皆為指向 dispatcher 的 symlink"; else bad "代理清單缺漏或指錯：${hk_missing}"; fi
+# 只有 dispatcher 是實體檔——新增第二個實體檔會漏掉四道 gate（它們只列 dispatcher）
+hk_reg="$(find "$HOOKS_DIR" -type f -exec basename {} \; | sort | tr '\n' ' ')"
+if [ "$hk_reg" = "dispatcher " ]; then ok ".githooks 目錄下只有 dispatcher 是實體檔（其餘皆 symlink）"; else bad "多了實體檔，四道 gate 掃不到：${hk_reg}"; fi
+if [ -x "$HOOKS_DIR/dispatcher" ]; then ok "dispatcher 可執行"; else bad "dispatcher 缺執行位元——git 不執行也不報錯，防線靜默不存在"; fi
+hk_mode="$(git -C "$ROOT" ls-files -s .githooks/dispatcher | awk '{print $1}')"
+assert_eq "dispatcher 在 git 內是 100755" "100755" "${hk_mode:-none}"
+
+# --- default branch 擋、feature 放行、逃生變數 ---
+hk_repo hk1
+out="$(cd "$TMP/hk1" && echo a >> f.txt && hk_git add f.txt && env -u DOTFILES_PRECOMMIT_OFF git -c user.email=t@t -c user.name=t commit -m t 2>&1)"
+hk_rc=$?
+if [ "$hk_rc" -ne 0 ]; then ok "default branch 上 commit 被擋"; else bad "default branch 未擋"; fi
+if grep -q "branch-first.sh" <<< "$out"; then ok "訊息含可照抄的 branch-first.sh 路徑"; else bad "訊息缺 branch-first 指引"; fi
+if grep -q -- "--no-verify" <<< "$out"; then ok "訊息明文封死 --no-verify（模型的第一反射）"; else bad "訊息未封 --no-verify"; fi
+if (cd "$TMP/hk1" && DOTFILES_PRECOMMIT_OFF=1 hk_git commit -qm t2); then ok "逃生變數 → 放行（tests 與 eval 沙盒靠它）"; else bad "逃生變數無效——74 個 git fixture 會造不出來"; fi
+if ( unset DOTFILES_PRECOMMIT_OFF; cd "$TMP/hk1" && git switch -qc feat/x && echo b >> f.txt && hk_git add f.txt && hk_git commit -qm t3 ); then ok "feature branch 不受影響"; else bad "feature branch 被誤擋"; fi
+
+# --- chain：repo 自己的 hook 存活，exit code 原樣傳回 ---
+# ⚠️ **exit code 要直接呼叫 dispatcher 驗**——`git commit` 對 hook 只看零/非零、自己回 1，
+# 透過它量不到 42（2026-08-14 首版測試就是這樣誤判成實作壞掉）。
+hk_repo hk2
+mkdir -p "$TMP/hk2/.git/hooks"
+printf '#!/bin/sh\nexit 42\n' > "$TMP/hk2/.git/hooks/pre-commit"; chmod 755 "$TMP/hk2/.git/hooks/pre-commit"
+( cd "$TMP/hk2" && env -u DOTFILES_PRECOMMIT_OFF "$HOOKS_DIR/pre-commit" >/dev/null 2>&1 ); hk_rc=$?
+assert_eq "repo pre-commit exit 42 → dispatcher 原樣傳回" "42" "$hk_rc"
+( cd "$TMP/hk2" && DOTFILES_PRECOMMIT_OFF=1 "$HOOKS_DIR/pre-commit" >/dev/null 2>&1 ); hk_rc=$?
+assert_eq "逃生變數存在時仍回 42（只停 guard、不跳過 repo hook）" "42" "$hk_rc"
+printf '#!/bin/sh\necho REPO-CM >&2\nexit 0\n' > "$TMP/hk2/.git/hooks/commit-msg"; chmod 755 "$TMP/hk2/.git/hooks/commit-msg"
+out="$(cd "$TMP/hk2" && "$HOOKS_DIR/commit-msg" /dev/null 2>&1)"
+if grep -q "REPO-CM" <<< "$out"; then ok "非 pre-commit 的 hook 也 chain（commit-msg 存活）"; else bad "commit-msg 未被 chain——LFS 那類 hook 會靜默失效"; fi
+
+# --- fail-open：guard 的依賴故意失敗 → 仍放行 ---
+# 三態設計壞掉時會靜默變 fail-closed（擋掉 14 台上所有 commit，包括修這個 bug 的那顆）。
+hk_repo hk3
+mkdir -p "$TMP/hk3-stub"
+printf '#!/bin/sh\nexit 3\n' > "$TMP/hk3-stub/git"; chmod 755 "$TMP/hk3-stub/git"
+( cd "$TMP/hk3" && env -u DOTFILES_PRECOMMIT_OFF PATH="$TMP/hk3-stub:/usr/bin:/bin" "$HOOKS_DIR/pre-commit" >/dev/null 2>&1 ); hk_rc=$?
+assert_eq "guard 依賴失敗（git 回非零）→ 放行，不是擋下" "0" "$hk_rc"
+
+# --- 邊界：三個刻意保留的 false negative，各一條固定 ---
+hk_repo hk4
+if ( unset DOTFILES_PRECOMMIT_OFF; cd "$TMP/hk4" && git switch -q --detach HEAD && echo e >> f.txt && hk_git add f.txt && hk_git commit -qm t ); then ok "detached 不擋（會打到 rebase／bisect／CI shallow checkout）"; else bad "detached 被誤擋"; fi
+git init -q -b main "$TMP/hk-local"
+( cd "$TMP/hk-local" && git config core.hooksPath "$HOOKS_DIR" )
+if ( unset DOTFILES_PRECOMMIT_OFF; cd "$TMP/hk-local" && echo x > a && hk_git add a && hk_git commit -qm t ); then ok "純本地 main（無 origin）不擋——明列的 false negative"; else bad "純本地 main 被擋，fixture 會造不出來"; fi
+hk_repo hk5
+( cd "$TMP/hk5" && git branch -q -m main trunk && git push -q origin trunk 2>/dev/null && git remote set-head origin -d >/dev/null 2>&1 && git fetch -q origin 2>/dev/null )
+if ( unset DOTFILES_PRECOMMIT_OFF; cd "$TMP/hk5" && echo f >> f.txt && hk_git add f.txt && hk_git commit -qm t ); then ok "自訂 default（trunk，無 origin/HEAD）不擋——明列的 false negative"; else bad "trunk 被誤擋"; fi
+
+# --- 進行中操作早退：查 --absolute-git-dir，不是 common-dir ---
+hk_repo hk6
+touch "$(cd "$TMP/hk6" && git rev-parse --absolute-git-dir)/MERGE_HEAD"
+if ( unset DOTFILES_PRECOMMIT_OFF; cd "$TMP/hk6" && echo g >> f.txt && hk_git add f.txt && hk_git commit -qm t ); then ok "MERGE_HEAD 存在 → guard 早退（merge 收尾不被擋）"; else bad "merge 進行中被誤擋"; fi
+
+# --- linked worktree：hooks 在 common-dir、操作狀態在 absolute-git-dir，兩者不可互換 ---
+hk_repo hk7
+mkdir -p "$TMP/hk7/.git/hooks"
+printf '#!/bin/sh\necho WT-CHAIN >&2\nexit 0\n' > "$TMP/hk7/.git/hooks/pre-commit"; chmod 755 "$TMP/hk7/.git/hooks/pre-commit"
+( cd "$TMP/hk7" && git worktree add -q --detach "$TMP/hk7-wt" HEAD 2>/dev/null )
+out="$( unset DOTFILES_PRECOMMIT_OFF; cd "$TMP/hk7-wt" && "$HOOKS_DIR/pre-commit" 2>&1 )"
+if grep -q "WT-CHAIN" <<< "$out"; then ok "worktree 內仍 chain 到 common-dir 的 repo hook"; else bad "worktree 內 chain 失效（common-dir 解析錯）"; fi
+touch "$(cd "$TMP/hk7-wt" && git rev-parse --absolute-git-dir)/MERGE_HEAD"
+( unset DOTFILES_PRECOMMIT_OFF; cd "$TMP/hk7-wt" && "$HOOKS_DIR/pre-commit" >/dev/null 2>&1 ); hk_rc=$?
+assert_eq "worktree-specific 的 MERGE_HEAD 能停用 guard" "0" "$hk_rc"
+( cd "$TMP/hk7" && git worktree remove --force "$TMP/hk7-wt" >/dev/null 2>&1 )
 
 echo ""
 echo "════════════════════════════"

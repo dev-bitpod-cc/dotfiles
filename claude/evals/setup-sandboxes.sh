@@ -65,6 +65,10 @@
 #
 set -euo pipefail
 
+# 同 tests/run.sh：本檔約 30 處在 main 上 commit（含 g8 刻意的「誤 commit 在 main」fixture），
+# 全域 core.hooksPath 生效後會被 guard 擋下。只停 guard、不影響 repo 自己的 hook。
+export DOTFILES_PRECOMMIT_OFF=1
+
 ROOT="${1:-$(mktemp -d /tmp/skill-evals.XXXXXX)}"
 INSTANCE="${2:-run}"
 mkdir -p "$ROOT"
