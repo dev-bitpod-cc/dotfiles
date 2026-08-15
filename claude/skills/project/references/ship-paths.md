@@ -261,15 +261,41 @@ git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash/re
 gh pr view <PR-number|URL> -R "$repo_slug" --json mergeStateStatus,mergeable -q .mergeStateStatus
 ```
 
+**`BLOCKED` 不是單一成因，拿到它就必須再追問一句。** CI 還在跑、required check 失敗、protection 真的擋——三者在 `mergeStateStatus` 眼中長得一模一樣，正解卻相反（等／停／可 bypass）。**Never read a bare `BLOCKED` as "protection is really blocking"**：
+
+```bash
+# --required 只看 protection 實際在意的 check
+gh pr checks <PR-number|URL> -R "$repo_slug" --required
+# exit 0 = required check 全綠｜exit 8 = 還有 pending｜其他非零 = 有 check 失敗（或查詢失敗）
+```
+
+判準吃 **exit code**，不要自己數 `statusCheckRollup`——rollup 單筆沒有 `isRequired` 欄位（分不出必要與非必要：非必要 check 還在跑會讓你空等、非必要 check 失敗會讓你誤停）、同名 check 會有多筆（被取代的 workflow run 仍留在清單裡）、且它混了 check run 與 legacy commit status 兩種型別（後者用 `state`/`context`，拿 `status != "COMPLETED"` 去篩對它恆真）。`gh pr checks` 已把這三件事正規化。
+
 | 狀態 | 意思 | 「merge」 | 「bypass merge」 |
 |---|---|---|---|
-| `CLEAN` / `HAS_HOOKS` / `UNSTABLE` | 沒有硬性阻擋 | 直接 merge | 直接 merge（`--admin` 用不到） |
-| `BLOCKED` | protection 真的擋（缺 review／必要檢查） | **停**，回報並告知可用「bypass merge」 | 加 `--admin` 重試 |
+| `CLEAN` / `HAS_HOOKS` / `UNSTABLE` | 沒有硬性阻擋（`UNSTABLE` = **非必要** check 有問題，protection 不在意——與上面 `--required` 是同一判準的兩面） | 直接 merge | 直接 merge（`--admin` 用不到） |
+| `BLOCKED` ＋ checks **exit 8** | **CI 還在跑，不是 protection 擋** | **等它跑完再 merge**（見下方等待策略） | **一樣等**——`--admin` 在此繞過的是還沒跑完的測試，不是規則 |
+| `BLOCKED` ＋ checks **其他非零** | required check 失敗 | 停，回報是哪個 check 失敗 | **一樣停**——繞過等於把沒通過測試的變更送進 default |
+| `BLOCKED` ＋ checks **exit 0** | protection 真的擋（缺 review／其他規則） | **停**，回報並告知可用「bypass merge」 | 加 `--admin` 重試 |
 | `DIRTY` | 有衝突 | 停，回報 | **一樣停**——`--admin` 不解決衝突 |
 | `BEHIND` | base 落後、protection 要求最新 | 停，回報 | **一樣停**——該做的是更新 branch，不是繞過 |
-| 其他／查詢失敗 | 無從判定 | 停，回報實際錯誤 | 停，回報 |
+| `DRAFT` | 這是 draft PR，本來就不能 merge | 停，問「要我先 `gh pr ready` 轉正式嗎」——**不自行轉** | 一樣停——`--admin` 不能 merge draft |
+| 其他／查詢失敗（含 `UNKNOWN`） | 無從判定 | 停，回報實際錯誤 | 停，回報 |
 
-- **`--admin` 只在「bypass merge」＋ `BLOCKED` 這一格出現。** Never reach for it on any other row, and never as a retry after an unexplained failure. 它需要 admin 權限；ruleset 也可設成連 admin 都不能繞——兩種情況都是失敗即停、回報，不再想別的辦法。
+- **`--admin` 只在「bypass merge」＋「`BLOCKED` 且 required check 全綠」這一格出現。** Never reach for it on any other row, and never as a retry after an unexplained failure. 它需要 admin 權限；ruleset 也可設成連 admin 都不能繞——兩種情況都是失敗即停、回報，不再想別的辦法。
+- **`BLOCKED` ＋ CI 還在跑時的等待策略**（`--watch` 自己輪詢，不要手寫迴圈）：
+  ```bash
+  gh pr checks <PR-number|URL> -R "$repo_slug" --required --watch --interval 15 --fail-fast
+  # 回來之後重查一次狀態再決定 merge——判準看 check，不看上一次 merge 失敗沒有
+  gh pr view <PR-number|URL> -R "$repo_slug" --json mergeStateStatus -q .mergeStateStatus
+  ```
+  - **刻意不封頂**：跑到 check 收斂為止。agent 全程在場、使用者隨時可中斷，那就是上限。
+  - **NEVER wrap the wait in `timeout` / `gtimeout`.** Neither exists on macOS, and `command not found` is exit 127 — the whole wait silently never runs while the exit code still reads like a pass. 需要停就中斷，不要引入 `timeout`。
+  - **NEVER re-run `gh pr merge` while waiting.** 這正是本節標題那條「不做失敗就 retry」的具體化：判準是 check 狀態，不是上一次 merge 失敗與否；重試只是多一次 API 呼叫，還把「還是被擋」的假訊號餵回自己。
+  - 「有的還在跑、有的已失敗」同時成立時 exit code 只會回一個。**不論回哪個，處置都不是 `--admin`**——差別只在「等」還是「立刻回報」；`--fail-fast` 會讓 watch 在第一個失敗就返回。
+- **required check 失敗時要把回程路線一起講**：回報附一句「check 修綠之後跟我說一聲 **merge**，我接手最後一哩」。使用者之後說「merge」即是說法表的授權——**重查一次現況**（不沿用本輪快照）再走「Merge 最後一哩」，**不必重跑整個 `/project`**。
+- **`--auto` 預設不用。** GitHub 的錯誤訊息會建議它，但 merge 真正發生時 agent 已經結束，「Merge 最後一哩」剩下的三步（切回 default、`pull` 同步、刪 branch）沒有人做——本地 default 落後、feature branch 殘留，要等下一輪 `ship-state.sh` 的 `stale-branches:` 才補報。只有在 CI 明顯很慢、使用者不想等時才提供它當選項，並在回報明說「本地 default 與 branch 清理要你之後自己做」。
+- **`BLOCKED` 缺的是什麼，去讀規則與 check，NEVER infer it from an empty PR field.** `reviewDecision: ""` 不等於「缺 approval」——`required_approving_review_count: 0` 的 repo 它本來就一直是空的（2026-08-14 與 08-15 兩次實地誤診同一來源）。要確認 protection 要求什麼就直接讀：`gh api repos/{owner}/{repo}/rulesets`（再取 `/rulesets/{id}` 看內容）與上面〈Branch protection 偵測〉那組指令。
 - **動用了 `--admin` 就必須在送出回報裡明說「這次繞過了 protection」。** 繞過本身要留在使用者看得到的地方。
 - **失敗即停**：gh 帳號無 write 權限、其他未列狀態 → 停下回報實際錯誤。**Never bypass checks by other means, never fall back to pushing the default branch directly.**
 - 多 repo（多個 PR 同輪開出）：先確認使用者的 merge 指令涵蓋哪些 PR，勿一句 merge 就全 merge。

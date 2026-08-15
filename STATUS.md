@@ -12,7 +12,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-(無進行中工作項——2026-08-14 的 dossier／always-on 治理已收斂,見里程碑。)
+(無進行中工作項——2026-08-15 的 `BLOCKED` 分流拆解已收斂,見里程碑。)
 
 > 更早的凍結計畫:`docs/plans/2026-08-09-repo-contract-extraction.md`、
 > `docs/plans/2026-08-10-dossier-portability.md`。
@@ -26,6 +26,15 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-15 `BLOCKED` 的成因判準吃 `gh pr checks --required` 的 exit code**(0 全綠／8 pending／
+  其他非零 失敗;否決 `statusCheckRollup` 計數的理由見死路節)。`mergeStateStatus: BLOCKED` 聚合三種
+  成因(CI 還在跑／required check 失敗／protection 真的擋),**正解相反**,而舊分流表一律解成第三種
+  → 把「再等 90 秒就會自己消失」的阻塞誤診成權限問題並導向 `--admin`(＝讓沒跑完測試的變更進
+  default)。krepo PR #127 實地踩到、#129 二度發生;#129 那輪答對是 agent **自行繞過分流表**多查
+  一步——**正解可推導卻沒被編碼**,那正是要寫進去的理由。
+- **2026-08-15 等 CI 刻意不封頂**(同批)。`gh pr checks --watch` 跑到 check 收斂為止,agent 全程
+  在場、使用者隨時可中斷即是上限。**不封頂是兩害相權**:macOS 無 `timeout`/`gtimeout`,包一層就是
+  exit 127——整段沒跑卻回一個看起來像通過的碼,比不封頂更糟。
 - **2026-08-15 dotfiles 轉入 `jjshen-eland`,用所有權消掉 gh 雙帳號碰撞,不加 wrapper**。active gh
   account 是**機器全域可變狀態**,工作 repo 的平行 session 會切走它 → ship 個人帳號的 repo 就吃到
   `protection: UNKNOWN` 與 `pr create` 失敗。**否決 wrapper**:爆炸半徑只有兩個 repo,解法卻要
@@ -46,19 +55,10 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   **repo 既有的 shipping skill**,複製等於製造第二份會漂移的 pressure-tested 邏輯(同
   `/project log 包裝 /uap` 那條死路的形狀)。**觸發:Codex 端出現真的走不動的情境**——屆時再做,
   且優先重用同一套 mutation 腳本而非另寫。
-- **2026-08-11 驗證「重排後內容零遺失」只有 token 級檢查有效**。滑動窗口(剝非中文後比對)與
-  語意片段(按標點切)兩種都被重排大量假陽性淹沒——前者把原本被英文分隔的中文黏成原文不存在的串
-  (**與 xref-gate 檔頭警告的「整檔併成一串」同源,只是反過來造成假遺失**),後者對「含→涵蓋」
-  「逗號→分號」這類改寫全數判缺。有效的是抽 `code` 識別字與日期逐一比對(99/99、3/3)。
-  下次做搬遷驗證直接用 token 級,別再繞前兩種。
-
 > 以下六條為 2026-08-14 從「已知缺口」**歸位**——它們記的是「決定先不做、理由是什麼、什麼條件
 > 下重議」,那是決策語意。放在缺口節會永久滯留(缺口沒有出口),放這裡才吃得到歸檔判準。
 > 標的日期是原始事件日,推導與實測數字沉 git history(歸位前的全文在 STATUS.md 的 git log)。
 
-- **2026-08-11 同型掃描的 R5 終止路徑刻意不設 behavior eval**。比照 d7 預造假 fix commit 的話,
-  受測 agent 沒真做過那幾輪修復、**填不出自己沒做過的處置**,測到的會是 fixture 缺陷而非 skill
-  行為。該路徑改由 `tests/run.sh` 第 1f 節的靜態 gate 守(只驗結構,不驗內容誠實度)。
 - **2026-08-11「規則的對稱面／使用點」不補文字原則,要做就訊號化**。文字是最易被跳過的那層
   ——實證:Step 2 抓到 `add -A` 例外的使用點缺口純屬偶然,同 session 的 #43 走過同一個 Step 2
   仍漏兩條 blocking。訊號化的形狀＝偵測變更集含契約檔時印對稱面候選、不判語意(同 `dossier-flag`)。
@@ -71,11 +71,6 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 - **2026-08-09 `Generated docs never win` 是存量違例,記著但不 churn**。已上線卻從未測過
   (G5 隨 OpenWiki 一起 DEFER),屬 `No failing scenario, no instruction` 的存量違例——**不刪,
   也不為它補 eval**。(2026-08-14 補:OpenWiki 官方定位確認為 derived 層,與 dossier 正交,此條不動。)
-- **2026-08-08 buried 的 review 痕跡不實作自動壓平**(夾在語意 commit 中間時 `reset --soft`
-  碰不到)。`rebase -i` 配 `GIT_SEQUENCE_EDITOR` 完全非互動、每顆 buried 標 `fixup` 折進前一顆
-  語意 commit 即可、衝突為零是結構保證,**做得到但沒做**——代價是語意 commit 的 hash 與內容都會變、
-  「squash 絕不動語意 commit」從結構保證退成測試保證、多一條 rebase 回滾路徑、branch 首顆是
-  buried 時無目標;而實測多為 none/top-contiguous。不變式因此只做到「壓得掉的一律壓」。
 
 ## 死路(試過但放棄——防重工)
 
@@ -83,6 +78,10 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 > 分層照 `claude/known-hazards.md`「分工」對「已知地雷」的做法:死路要能在你沒想到要查的當下
 > 擋住你,**規則不在 always-on 就不生效**,故結論留此、證據外移。
 
+- **拿 `gh pr view --json statusCheckRollup` ＋ jq 計數判 CI 狀態**(2026-08-15 否決,改用
+  `gh pr checks --required` 的 exit code):rollup 單筆**沒有 `isRequired`**,必要與非必要 check
+  分不開 → 空等或誤停,**正是本次要修的誤診換個方向**;另有同名多筆與混型別兩坑。三條理由與
+  翻案條件見 `docs/dead-ends.md`。
 - **用 direnv(`.envrc` 注入 `GH_TOKEN`)解 gh 雙帳號**:direnv hook 掛在 zsh precmd 上,而
   `ship-state.sh`／`gh pr create` 都是 agent 的一次性 Bash 呼叫,**precmd 不觸發**。**推廣:靠
   rc／prompt hook 的方案對 agent 執行路徑一律無效。**
@@ -95,16 +94,11 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 - **依外部提案的診斷改 `handoff` 的 W1(anchor 集合判準)**:三輪 eval 全部 GREEN 而放棄
   (依 Iron Law:no failing eval, no skill change)。**這條的價值在於「實地確實在寫入端失手,但
   fixture 重現不了」是兩件事,後者才是改 body 的門檻**。日後事故復發,**先讓 fixture 紅起來再動 W1**。
-- **無 observed RED 的明示規則**(2026-08-13 一天內加兩條、當天全撤;同形狀第三次)。
-  **共同形狀:RED 來源本身證明了規則不必要**,判準是**成對實驗**——兩條都是 baseline 臂一樣做對。
-  **「觀察到失效面」≠「需要新規則」**:正確的問法是**既有規則接不接得住**。例外只有「把 body
-  陳述錯的事實改對」那半(修正錯誤陳述不需 RED)。
-  **2026-08-14 第四次,但這次流程贏了**:「已決議暫不做屬決策節、不是已知缺口」這條判準,
-  在寫進 `dossier.md` **之前**先建 u6 沙盒跑成對實驗(Scenario 17),v2 四輪兩臂零差異——
-  baseline 自己就把現況缺陷放缺口、決定不修放決策並交叉引用,判準因此沒寫。前三次是寫了才撤,
-  這次是**先測再決定**;差別在於前三次有「實地出過事」的印象在推,這次刻意先讓 fixture 說話。
-  ⚠️ **順帶推翻了自己的診斷**:實測顯示 Sonnet 分類分得很清楚,所以缺口節那 8 條的滯留
-  **不是寫入時分錯**,較可能是「先寫成缺口、後來做了決定卻在原地追加而沒搬家」。新假設待測。
+- **無 observed RED 的明示規則**(2026-08-13 兩條當天全撤,同形狀第三次;2026-08-14 第四次改成
+  **先跑成對實驗再決定**,零差異故沒寫)。**共同形狀:RED 來源本身證明了規則不必要**——
+  **「觀察到失效面」≠「需要新規則」**,正確的問法是**既有規則接不接得住**,判準是成對實驗。
+  例外只有「把 body 陳述錯的事實改對」那半(修正錯誤陳述不需 RED)。四次的逐條經過、eval 編號
+  與那個被推翻的診斷見 `docs/dead-ends.md`。
 - **收窄「已知缺口」定義(加上「我方」主體)**:G10 成對實驗,驗收批次 control 僅 **1/4** 落缺口
   (門檻 ≥3/4)→ 不改。**真正的發現是行為不穩定**——同一 fixture／query／模型,pilot 兩輪全落缺口、
   驗收四輪只有一輪落,**多數行為在兩批間反轉**。候選臂確實引用了收窄定義,所以不是定義沒用,
@@ -189,22 +183,15 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-13 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-15 `/project` 分流表把 `BLOCKED` 拆成三格(CI 還在跑／check 失敗／protection 真的擋)
+  ＋補 `DRAFT` 一列,判準改吃 `gh pr checks --required` 的 exit code。同批補上會紅的 eval:
+  Scenario 18 ＋ `gh-stub-blocked-pending`,並修好 `gh-stub` 缺 `pr checks`／default 分支的洞
+  (舊 stub 會讓 Scenario 15 **為錯的理由通過**)。三臂 Sonnet 全 PASS,兩臂對同一個 `BLOCKED`
+  給出相反處置,證明判準真被讀到。1034 PASS。
 - ✅ 2026-08-15 修 `tests/run.sh:4199` 的 stat 跨平台順序(GNU `-c` 先於 BSD `-f`)。
   Linux 上該條恆紅:GNU 的 `stat -f` 遇無效格式雖回 rc=1、卻已把 filesystem 統計吐進 stdout,
   與 fallback 的輸出相連。**與 `:3758` 註解描述的「假成功」機制不同**,已在註解分清。
   同批完成 hook 的全機隊散佈(14 台)＋跨平台實測(Linux／Darwin 皆正確擋下)。
-- ✅ 2026-08-14 治理落地兩件(計畫的①經 G10 否決,見死路節):`ship-state.sh` 加 always-on 量體
-  訊號(純資訊、三態、worktree 可辨識);`.githooks/dispatcher` 全域 hook 代理＋default-branch
-  guard,經 `git/config` 一行宣告式散佈。+26 條迴歸(第 24 節 19 條),含 fail-open、chain exit
-  code、三個刻意 false negative 的邊界固定。正反兩向突變測試皆命中。1022 PASS。
-- ✅ 2026-08-14 dossier 治理一整批(起點:使用者反映「一直在處理 dossier flag、很花時間」)。
-  **工具**:`ship-state.sh` 條目 flag 兩修(邊界止於非續行區塊、補建議目標 680)＋全檔 flag 帶
-  收斂順序＋歸檔孤兒反向守門(krepo 13.0s→2.5s);+13 條迴歸。**存量**:死路節分層外移
-  `docs/dead-ends.md`(5123→3006)、已知缺口六條歸位到決策;全檔 24318→22843,零遺失以 token
-  級檢查確認(103/103)。**規範**:兩組成對實驗**都判零差異而不採用**——Scenario 17(缺口 vs 決策
-  判準)與 G9(內容路由決策樹);後者副產物測出「已知缺口」節名歧義。外部 findings 七條落地兩條,
-  其餘五條的判定見決策節同日三條。996 PASS。
-
 ## 已知缺口
 
 - **codex reviewer 跑得動測試、但跑不完**(2026-08-13 C1 實測):PR #94 的 profile 解決了「建不了 cache」

@@ -66,7 +66,7 @@
 | d8 | deep-review | fixer 端輸入空間軸（F22）：兩個 finding 皆**全 repo 僅一處呼叫**，命中點軸真的清了；一個輸入空間有限（列舉）、一個無限（根治） |
 | d9 | deep-review | 命中點軸全修（F23）：同一條規則（`shell=True` 拼接）散在**四個檔案**，注入的 reviewer 只指一處且**不註明已掃過**；另三處在與 finding 無關的檔案 |
 | d10 | deep-review | 跨 repo 適用性（F20e）：**非 dotfiles** repo（完成判定是 pytest，無 `tests/run.sh`／`evals.md`），只改根 `CLAUDE.md` 一段 prose |
-| u4 | project（log） | 說法即授權：已 push 的 branch + 頂端 2 顆 review 痕跡 + PR 已開（Scenario 13/15/16；附 `gh-stub` 與 `gh-stub-blocked`，後者 `mergeStateStatus=BLOCKED`） |
+| u4 | project（log） | 說法即授權：已 push 的 branch + 頂端 2 顆 review 痕跡 + PR 已開（Scenario 13/15/16/18；附 `gh-stub`、`gh-stub-blocked`＝`BLOCKED` ＋ required check 全綠、`gh-stub-blocked-pending`＝`BLOCKED` ＋ `gh pr checks` exit 8。後兩者對應的 15/18 成對跑，只有查 check 才分得開） |
 | u5 | project（log） | 同 u4，另有「R5 終止」anchor —— 說法覆蓋不了的事實前提（Scenario 14） |
 | q1 | ready4quit | 催促下不 rubber-stamp（Q1）；Q2（背景任務證據來源）亦用此沙盒，另給 instance |
 | q3 | ready4quit | memory / dossier 路由（Q3）：git 乾淨 + repo 有 STATUS.md + 沙盒版 memory 目錄；Q4a/Q4b（證據強度 × 殘留）與 Q5（memory 同主題更新既有 `existing-pref.md`）亦用此沙盒，各給 instance |

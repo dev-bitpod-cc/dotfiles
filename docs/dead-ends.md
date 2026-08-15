@@ -73,6 +73,14 @@ H11/H11b 已留為迴歸哨兵並在 `evals.md` 標明不對應任何條款。�
 撤下的情境留成**回歸測試**、在 `evals.md` 標明不對應任何 body 條款，防反向放寬。
 逐條細節見 `deep-review/evals.md` 執行紀錄。
 
+**2026-08-14 第四次，但這次流程贏了。**「已決議暫不做屬決策節、不是已知缺口」這條判準，在寫進
+`dossier.md` **之前**先建 u6 沙盒跑成對實驗（`project/references/pressure-tests.md` Scenario 17），
+v2 四輪兩臂零差異——baseline 自己就把現況缺陷放缺口、把決定不修放決策並交叉引用，判準因此沒寫。
+前三次都是寫了才撤，這次是**先測再決定**；差別在於前三次有「實地出過事」的印象在推，這次刻意
+先讓 fixture 說話。⚠️ 順帶推翻了自己的診斷：實測顯示 Sonnet 分類分得很清楚，所以缺口節那 8 條
+的滯留**不是寫入時分錯**，較可能是「先寫成缺口、後來做了決定卻在原地追加而沒搬家」——新假設
+待測，情境設計見該 Scenario 尾。
+
 ## STATUS.md 負增量當壓縮代理
 
 2026-08-14 調查「dossier flag 一直觸發」時用過，結論全錯。把「STATUS.md 變小」一律當成
@@ -102,3 +110,25 @@ H11/H11b 已留為迴歸哨兵並在 `evals.md` 標明不對應任何條款。�
 3. 常駐檔會腐爛（`docs/transfer.md` 不腐爛正因它移交前才生成）。
 
 **正解是既有落點**：STATUS.md 自己的檔頭註解 + 該 repo 的 `CLAUDE.md`。
+
+## rollup ＋ jq 計數判 CI 狀態
+
+2026-08-15 拆 `/project` 分流表的 `BLOCKED` 時提出並否決（原方案：
+`gh pr view --json statusCheckRollup` 加兩條 jq 計數，一條數「未 COMPLETED」、一條數
+`FAILURE`）。改用 `gh pr checks --required` 的 exit code（0 全綠／8 pending／其他非零 失敗）。
+
+三條理由，前兩條實測、第三條未測：
+
+1. **rollup 單筆沒有 `isRequired`**。實測欄位只有 `__typename` / `completedAt` / `conclusion` /
+   `detailsUrl` / `name` / `startedAt` / `status` / `workflowName`。於是必要與非必要 check 分不開，
+   造成**雙向誤判**：非必要 check 還在跑 → 空等；非必要 check 失敗 → 誤停。**那正是本批要修的
+   誤診，只是換了個方向。** `--required` 這一項在 rollup 上做不到，這條單獨就足以否決。
+2. **同名 check 會有多筆**。krepo PR #129 的 rollup 有兩筆 `unit-tests`（workflow run
+   `31823269093` 與 `31823359889`），**merge 完成後仍是兩筆**——被取代的 run 不會從清單消失，
+   任何純計數法都必須自己去重。
+3. **rollup 是混型別的**（key list 含 `__typename`）：GitHub Actions 的 check run 用
+   `status`/`conclusion`，legacy commit status 用 `state`/`context`。若如此，
+   `select(.status != "COMPLETED")` 對後者**恆真** → 永遠判成「還在跑」。**此條未實測**
+   （手邊沒有 legacy status 的 repo），但 `gh pr checks` 會正規化兩種型別，採用它就不必賭。
+
+**結論會翻的條件**：GitHub 在 rollup 節點上補 `isRequired`（第 1 條消失）。屆時仍要處理第 2、3 條。
