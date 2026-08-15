@@ -26,6 +26,15 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-16 `autoMode.environment` 以權威機器身分固定**。`/auto-mode-setup` 把它寫進
+  `~/.claude/settings.json`,而該檔是指向本 repo 的 symlink——於是它直接落在 working tree
+  成為 drift,下次 `brewup` 的 `git checkout -- claude/settings.json` 便把它丟掉,setup
+  因此重複詢問(同一台機器被問兩次)。commit 讓它隨 pull 散佈全機隊。
+- **2026-08-16 `autoMode.environment` 的 repo-scoped 三行刻意不改**。Repository visibility /
+  Trusted repo / Source control 三行綁死本 repo,散佈全機隊後在 `elandcomtw/*` 等其他 repo
+  工作時語境會偏差——它會宣稱唯一可信 repo 是 dotfiles、且當前為公開 repo。偏差方向**保守**
+  (把私有當公開→更謹慎)、非危險方向,故不阻擋送出。**重議條件**:改寫成 repo-agnostic 措辭
+  (獨立工作項),或 `/auto-mode-setup` 日後支援 per-repo 分層時一併處理。
 - **2026-08-15 dossier 與 backlog 依生命週期分家,不動門檻**。技術債＋已知缺口是**待辦**
   ——只壓得短、條目不會少,直到做掉為止,量體門檻對它無效(實測佔 STATUS.md 47%、26 條無一
   已解決,近 25 次 commit 有 8 次落在門檻 98–99.8%)。**否決兩條「讓門檻」的路**(治理計畫的
