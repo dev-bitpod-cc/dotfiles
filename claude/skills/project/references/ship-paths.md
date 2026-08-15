@@ -269,14 +269,16 @@ gh pr checks <PR-number|URL> -R "$repo_slug" --required
 # exit 0 = required check 全綠｜exit 8 = 還有 pending｜其他非零 = 有 check 失敗（或查詢失敗）
 ```
 
+⚠️ **exit 1 有兩個意思，必須看輸出才分得開**（2026-08-15 實戰撞到）：真的有 check 失敗會列出那些 check；而**這個 repo 根本沒有 required check** 時，輸出是 `no checks reported on the '<branch>' branch`、**exit 同樣是 1**。後者代表阻擋與 check 無關 → **當成「全綠」走第三列**（protection 的其他規則），不是「測試失敗」。**Never read a bare exit 1 as a failing test** —— 對「有 required review、沒有 CI」的 repo，那個誤讀會把「缺 approval」報成「哪個 check 壞了」，而使用者根本找不到那個 check。
+
 判準吃 **exit code**，不要自己數 `statusCheckRollup`——rollup 單筆沒有 `isRequired` 欄位（分不出必要與非必要：非必要 check 還在跑會讓你空等、非必要 check 失敗會讓你誤停）、同名 check 會有多筆（被取代的 workflow run 仍留在清單裡）、且它混了 check run 與 legacy commit status 兩種型別（後者用 `state`/`context`，拿 `status != "COMPLETED"` 去篩對它恆真）。`gh pr checks` 已把這三件事正規化。
 
 | 狀態 | 意思 | 「merge」 | 「bypass merge」 |
 |---|---|---|---|
 | `CLEAN` / `HAS_HOOKS` / `UNSTABLE` | 沒有硬性阻擋（`UNSTABLE` = **非必要** check 有問題，protection 不在意——與上面 `--required` 是同一判準的兩面） | 直接 merge | 直接 merge（`--admin` 用不到） |
 | `BLOCKED` ＋ checks **exit 8** | **CI 還在跑，不是 protection 擋** | **等它跑完再 merge**（見下方等待策略） | **一樣等**——`--admin` 在此繞過的是還沒跑完的測試，不是規則 |
-| `BLOCKED` ＋ checks **其他非零** | required check 失敗 | 停，回報是哪個 check 失敗 | **一樣停**——繞過等於把沒通過測試的變更送進 default |
-| `BLOCKED` ＋ checks **exit 0** | protection 真的擋（缺 review／其他規則） | **停**，回報並告知可用「bypass merge」 | 加 `--admin` 重試 |
+| `BLOCKED` ＋ checks **其他非零，且列出了失敗的 check** | required check 失敗 | 停，回報是哪個 check 失敗 | **一樣停**——繞過等於把沒通過測試的變更送進 default |
+| `BLOCKED` ＋ checks **exit 0**，或 **`no checks reported`**（見上方 ⚠️） | protection 真的擋（缺 review／其他規則），與 check 無關 | **停**，回報並告知可用「bypass merge」 | 加 `--admin` 重試 |
 | `DIRTY` | 有衝突 | 停，回報 | **一樣停**——`--admin` 不解決衝突 |
 | `BEHIND` | base 落後、protection 要求最新 | 停，回報 | **一樣停**——該做的是更新 branch，不是繞過 |
 | `DRAFT` | 這是 draft PR，本來就不能 merge | 停，問「要我先 `gh pr ready` 轉正式嗎」——**不自行轉** | 一樣停——`--admin` 不能 merge draft |
