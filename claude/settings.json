@@ -3,19 +3,6 @@
     "defaultMode": "auto"
   },
   "model": "opus[1m]",
-  "enabledPlugins": {
-    "swift-lsp@claude-plugins-official": true,
-    "skill-creator@claude-plugins-official": true,
-    "codex@openai-codex": true
-  },
-  "extraKnownMarketplaces": {
-    "openai-codex": {
-      "source": {
-        "source": "github",
-        "repo": "openai/codex-plugin-cc"
-      }
-    }
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -30,11 +17,51 @@
       }
     ]
   },
+  "enabledPlugins": {
+    "swift-lsp@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "codex@openai-codex": true
+  },
+  "extraKnownMarketplaces": {
+    "openai-codex": {
+      "source": {
+        "source": "github",
+        "repo": "openai/codex-plugin-cc"
+      }
+    }
+  },
   "language": "繁體中文",
   "alwaysThinkingEnabled": true,
   "skipDangerousModePermissionPrompt": true,
   "remoteControlAtStartup": true,
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
-  "useAutoModeDuringPlan": true
+  "useAutoModeDuringPlan": true,
+  "autoMode": {
+    "environment": [
+      "### Org-wide",
+      "**Organization**: None configured",
+      "**Cloud provider(s)**: None configured",
+      "**Repository visibility**: PUBLIC — jjshen-eland/dotfiles (github.com) — any push here is publishing",
+      "**Internal sharing / snippet hosting**: None configured — treat public paste/gist services as outside the trust boundary",
+      "**Secrets management**: None configured — repo notes API keys live in ~/.env (600 perms, local only, never committed)",
+      "**Default / protected branches**: main (default). No rulesets or branch protection listed via gh — treat main as unprotected at the platform level; the repo's own CLAUDE.md kernel forbids committing directly to it regardless",
+      "**CI/CD deploy targets**: None configured",
+      "**Network posture**: None configured",
+      "**Source control**: The trusted repo (jjshen-eland/dotfiles) and its origin remote only — no additional orgs configured",
+      "**Trusted internal domains**: None configured",
+      "**Trusted cloud buckets**: None configured",
+      "**Key internal services**: None configured",
+      "**Internal package registry**: None configured",
+      "**Sensitive data locations & audiences**: ~/.env (API keys, 600 perms), any .env/.env.local files (gitignored); SSH private keys and CA material referenced in CLAUDE.md (id_github_com, id_personal, id_autogen, host_ca, user_ca) — never commit; share only with audiences cleared at the [named+specifics] bar",
+      "**Data retention / declassification**: None configured",
+      "**Sensitive remote targets**: any namespace, host, or container whose name carries `prod` or `production` as a whole word or name segment",
+      "**Protected deployment namespaces / environments**: None configured — fall back to the Sensitive remote targets heuristic",
+      "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries `prod` or `production` as a whole word or name segment",
+      "### User-specific",
+      "**Primary use of Claude Code**: software development (dotfiles/environment tooling — shell config, SSH/CA infrastructure automation, Claude/Codex skill authoring)",
+      "**Trusted repo**: jjshen-eland/dotfiles (public) and its origin remote (github.com:jjshen-eland/dotfiles.git) — public repo, so only this repo's own work belongs here; do not port content from other repos (elandcomtw/*, elandinfo/* etc.) into it",
+      "**Org-specific CLIs**: None configured — project-specific wrapper scripts (brewup, dotsync, allup, tmuxls) are this repo's own tooling, not org CLIs"
+    ]
+  }
 }
