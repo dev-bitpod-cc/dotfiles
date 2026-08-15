@@ -118,7 +118,7 @@ Do not re-run the underlying git commands one by one — the script IS the check
 | 事實 | 出口 |
 |------|------|
 | **user** / **feedback** 型 | memory —— machine-local 正是對的層 |
-| **project** 型：本 session 的關鍵決策 / 死路 / 新增技術債，且屬某個**有 STATUS.md 的 repo** | 該 repo 的 **STATUS.md** 對應章節，不進 memory |
+| **project** 型：本 session 的關鍵決策 / 死路 / 新增技術債，且屬某個**有 STATUS.md 的 repo** | 該 repo 的 **STATUS.md** 對應章節，不進 memory（該 repo 有 `docs/backlog.md` 時，技術債／缺口寫那裡）|
 | **project** 型：該 repo **無** STATUS.md | 暫存 memory，**且報告必須明說「此 repo 無 dossier，這筆跨不了主機」**並建議跑 `/project spec` 建檔後搬過去。**不在這裡建 STATUS.md** |
 | **reference** 型 | 綁專案 → STATUS.md；綁使用者工作流 → memory |
 

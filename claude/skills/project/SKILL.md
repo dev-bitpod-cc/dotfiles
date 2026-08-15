@@ -58,7 +58,7 @@ Project Log 進度：
 
 - 單一 repo；
 - 變更集 ≤3 檔、或純 docs/chore 文檔性變更；
-- 本次無關鍵決策／死路／技術債要記入 dossier。
+- 本次無關鍵決策／死路要記入 dossier，也無新增技術債／缺口要記入 backlog。
 
 **Light path relaxes ceremony only, NEVER Critical.** Branch-first, never-push-default, the Step 4 authorization requirement, `verdict: STOP`, and Unknown=protected all apply unchanged — "it's just a small change" is never a reason to skip a guardrail.
 
@@ -184,10 +184,11 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 由**完整變更集**（已 commit + 未 commit）識別涉及模組，更新文檔（防禦原則：**先讀、只改相關段落、無需更新就跳過，不硬塞**）：
 
 - **STATUS.md（dossier；章節語意見 `references/dossier.md`）**：
-  - 本次工作的**關鍵決策（附理由）／死路／新增技術債** → 寫入對應章節。若工作過程已依全域規則**事件當下就地記錄**，本步為**核對補漏**而非重建；未記錄的部分此刻 session 記憶還在，是最後時機。只記 git 推不出來的（為什麼、放棄了什麼、還欠什麼），進度細節留給 commit。
+  - 本次工作的**關鍵決策（附理由）／死路** → 寫入對應章節；**新增技術債／已知缺口**→ repo 有 `docs/backlog.md` 就寫那裡，沒有就照舊寫 STATUS.md 對應節（分家判準見 `references/dossier.md`「1. 檔案角色分工」）。若工作過程已依全域規則**事件當下就地記錄**，本步為**核對補漏**而非重建；未記錄的部分此刻 session 記憶還在，是最後時機。只記 git 推不出來的（為什麼、放棄了什麼、還欠什麼），進度細節留給 commit。
   - 里程碑達成 → 「進行中」項收斂或移入「已完成」；「下一步」隨進度改寫（跨主機接續的交接點就在這裡）。
   - 衛生檢查（總量治理）：偵測訊號取 Step 1 同一份腳本輸出的 `dossier:` / `dossier-flag:` / `dossier-sections:` 行——**門檻常數與逐 flag 處置的單一來源都是 ship-state.sh**：每則 flag 自帶處置，條目 flag 另附**行號**、全檔 flag 另附**建議收斂目標**；全檔超標時另印 `dossier-sections:` 各節佔比，**動手前先看它決定收哪一節、別憑印象挑**。references 若提及數字僅為說明性引用、以腳本為準；章節語意與收斂規則見 `references/dossier.md`。**照 flag 訊息處置，結果一律列入 Step 4 附註告知**。兩個例外：①`簽章不符`（撞名領域產物）→ **停下告知、勿當 dossier 改**；②**使用者明說不要動 STATUS.md** → 尊重（dossier 是使用者的檔案），但附註**如實保留 flag 事實**，不得回報「衛生檢查通過」（見 `references/pressure-tests.md` Scenario 12）。
   - `dossier: NONE` 且 repo 非 trivial（有持續開發跡象）→ 在 Step 4 摘要「附註」建議從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立，**不出題、不自動建**（使用者要就下輪說）。
+- **`backlog-flag:`（`docs/backlog.md` 缺章節）**：該檔**刻意沒有量體門檻**（待辦壓不動，門檻對它無效），代價是整節被誤刪時沒有第二道訊號 —— 這個 flag 就是唯一的一道，出現即停下確認是不是誤刪。⚠️ **backlog 的「量」不是 ship 的事**：不吃門檻、不出題、不列入 Step 4 待辦，條目多寡由使用者自己排。無該檔的 repo 完全不會看到這行。
 - **`always-on:`（Step 1 的那行）是純資訊 —— 本輪不處置、不列入 Step 4 待辦、不出題。** 它量的是 root `CLAUDE.md`／`AGENTS.md` 與全域 `CLAUDE.md` 的 bytes，目的是讓「這些檔在長大」看得見（它們**沒有任何量體 gate**，而不自動載入的 STATUS.md 反而有五層）。**NEVER 因為看到這行就去壓 always-on 檔的內容** —— 砍了沒有 gate 守著，兩週後會漲回來，而被砍掉的通常是規則本身。要調整它們是獨立的工作項，不是 ship 的順手事。
 - **殘留 branch 衛生（兩個訊號，來源不同、指令也不同）**：
   - `stale-branches:`（祖先關係判定：已完全併入 default）→ 附 `cleanup-cmd:`，整行照抄。
@@ -287,7 +288,7 @@ Ship 摘要：
 **commit 歸屬（同 Spec 模式）**：本模式**只寫檔、不 commit**——補齊的 dossier 段落與產出的 `docs/transfer.md` 留在 working tree，由 Log 模式一起送出（走它的 branch-first／PR 路徑）。**Credentials 檔（gitignored）永遠不進 commit**，見下方第 2 點。
 
 1. **Dossier 完整度檢查**：讀 STATUS.md 逐節評估（判準見 `references/dossier.md`）：
-   - 關鍵決策是否附理由、死路是否記錄、技術債/已知缺口是否誠實反映
+   - 關鍵決策是否附理由、死路是否記錄、技術債/已知缺口是否誠實反映（已分家的 repo 看 `docs/backlog.md`）
    - 「進行中」是否反映現況（過期 → 先補齊再移交；接手者最需要的就是「為什麼這樣設計、哪些路不通」）
    - 缺漏列成清單與使用者確認，逐項補齊
 2. **Credentials 盤點**：檢查 `.env.example` 覆蓋度、掃描無硬編碼 secrets。**Credentials NEVER go into git** — 交付走 gitignored 檔（如 `tmp/transfer-credentials.md`）+ 私訊/密碼管理器。
