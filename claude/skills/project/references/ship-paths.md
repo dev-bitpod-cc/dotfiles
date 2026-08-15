@@ -261,6 +261,8 @@ git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash/re
 gh pr view <PR-number|URL> -R "$repo_slug" --json mergeStateStatus,mergeable -q .mergeStateStatus
 ```
 
+⚠️ **本流程一定是「push → 開 PR → 查狀態」這個順序，所以第一次查很可能拿到 `UNKNOWN`**——GitHub 的 mergeability 是收到 push 後才非同步算的（2026-08-15 實戰即撞到，重查一次就變 `CLEAN`）。**那是暫態，不是查詢失敗**：重查（隔幾秒，最多三次）拿到實態再分流。**Never report a first-poll `UNKNOWN` as "無從判定" and stop** —— 那會讓每一次 ship 都可能卡在最後一哩。
+
 **`BLOCKED` 不是單一成因，拿到它就必須再追問一句。** CI 還在跑、required check 失敗、protection 真的擋——三者在 `mergeStateStatus` 眼中長得一模一樣，正解卻相反（等／停／可 bypass）。**Never read a bare `BLOCKED` as "protection is really blocking"**：
 
 ```bash
@@ -282,7 +284,8 @@ gh pr checks <PR-number|URL> -R "$repo_slug" --required
 | `DIRTY` | 有衝突 | 停，回報 | **一樣停**——`--admin` 不解決衝突 |
 | `BEHIND` | base 落後、protection 要求最新 | 停，回報 | **一樣停**——該做的是更新 branch，不是繞過 |
 | `DRAFT` | 這是 draft PR，本來就不能 merge | 停，問「要我先 `gh pr ready` 轉正式嗎」——**不自行轉** | 一樣停——`--admin` 不能 merge draft |
-| 其他／查詢失敗（含 `UNKNOWN`） | 無從判定 | 停，回報實際錯誤 | 停，回報 |
+| `UNKNOWN`，**且剛 push／剛開 PR** | GitHub 還在算 mergeability（非同步，數秒內解析）——**暫態，不是查詢失敗** | **重查**（隔幾秒，最多三次），拿到實態再依本表分流 | 同左 |
+| 其他／查詢失敗（含**重查後仍** `UNKNOWN`） | 無從判定 | 停，回報實際錯誤 | 停，回報 |
 
 - **`--admin` 只在「bypass merge」＋「`BLOCKED` 且 required check 全綠」這一格出現。** Never reach for it on any other row, and never as a retry after an unexplained failure. 它需要 admin 權限；ruleset 也可設成連 admin 都不能繞——兩種情況都是失敗即停、回報，不再想別的辦法。
 - **`BLOCKED` ＋ CI 還在跑時的等待策略**（`--watch` 自己輪詢，不要手寫迴圈）：
