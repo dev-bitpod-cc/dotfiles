@@ -128,6 +128,11 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   `brewup.sh` 這個呼叫點才會自己正規化(見 CLAUDE.md「不在 `inventory.conf` 的機器怎麼跟上」
   第 ② 步),現在拆掉就只剩 GitHub 轉移 redirect 撐著。⚠️ **本條初版的移除條件只寫「14 台」、
   漏掉那兩台**,2026-08-15 當天差點據以移除——`dotsync` 的涵蓋範圍不等於機隊全體。
+- [ ] **`BLOCKED` ＋ `no checks reported` 這一格沒有 eval 覆蓋**(2026-08-15 加)。判準已寫進
+  `ship-paths.md`(exit 1 要看輸出才分得出「check 失敗」與「這 repo 沒有 required check」),但
+  Scenario 15 的 stub 回的是全綠 exit 0,**測不到這一格**。補法:`gh-stub` 加 `CHECKS_RC=1` ＋
+  `no checks reported` 輸出的變體,配一則情境。⚠️ **這個洞是實戰撞出來的、不是 fixture 抓到的**
+  ——本批三臂 eval 全綠仍漏了它,因為三臂都沒有「repo 沒有 CI」的形狀。
 - [ ] **`tests/run.sh` 平時只在 macOS 跑,跨平台分支的 Linux 行為無人驗**(2026-08-15 發現:
   `:4199` 的 stat 順序寫反,在 Linux 上恆紅了不知多久,直到 hook 那批第一次上 Linux 才浮出)。
   **危害是它會掩蓋真失敗**——往後在 Linux 看到 FAIL=1 會先當成已知那條。dotsync 後任何一台
