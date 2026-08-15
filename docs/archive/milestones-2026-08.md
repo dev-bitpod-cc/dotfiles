@@ -75,3 +75,14 @@
 - ✅ 2026-08-13 Codex shipping 授權對齊:kernel push 條改為指向 repo 授權表、`codex/AGENTS.md`
   改為重用 repo 既有 shipping workflow(無則 commit 並停)、`claude/CLAUDE.md` 移除「只有 Claude
   能 ship」的過期 note。四份 kernel 維持 byte-identical(975 PASS;理由見決策節同日兩條)。
+- ✅ 2026-08-14 治理落地兩件(計畫的①經 G10 否決,見死路節):`ship-state.sh` 加 always-on 量體
+  訊號(純資訊、三態、worktree 可辨識);`.githooks/dispatcher` 全域 hook 代理＋default-branch
+  guard,經 `git/config` 一行宣告式散佈。+26 條迴歸(第 24 節 19 條),含 fail-open、chain exit
+  code、三個刻意 false negative 的邊界固定。正反兩向突變測試皆命中。1022 PASS。
+- ✅ 2026-08-14 dossier 治理一整批(起點:使用者反映「一直在處理 dossier flag、很花時間」)。
+  **工具**:`ship-state.sh` 條目 flag 兩修(邊界止於非續行區塊、補建議目標 680)＋全檔 flag 帶
+  收斂順序＋歸檔孤兒反向守門(krepo 13.0s→2.5s);+13 條迴歸。**存量**:死路節分層外移
+  `docs/dead-ends.md`(5123→3006)、已知缺口六條歸位到決策;全檔 24318→22843,零遺失以 token
+  級檢查確認(103/103)。**規範**:兩組成對實驗**都判零差異而不採用**——Scenario 17(缺口 vs 決策
+  判準)與 G9(內容路由決策樹);後者副產物測出「已知缺口」節名歧義。外部 findings 七條落地兩條,
+  其餘五條的判定見決策節同日三條。996 PASS。
