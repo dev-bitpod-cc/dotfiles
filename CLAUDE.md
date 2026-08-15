@@ -105,29 +105,20 @@ glog=git log --oneline --graph --decorate
 > Caveat：在權威機器上要先 `commit` 再跑 `brewup`，否則未提交的刻意改動會被丟棄。
 - `dotsync` - 同步 dotfiles 到所有遠端主機（並行 SSH pull + 重新套用 config）
 
-> **不在 `inventory.conf` 的機器（個人 MacBook）怎麼跟上**——`dotsync` 涵蓋不到它們，而且**打 `brewup` 沒有用**：
-> 那些機器的 rc 裡還留著舊的 `brewup` alias，而 alias 展開優先於 function 查找，跑到的是不含 helper 的舊一行版。
-> 補齊一律**用絕對路徑呼叫腳本**繞過 alias：
+> **不在 `inventory.conf` 的機器（個人 MacBook）怎麼跟上**——`dotsync` 涵蓋不到它們，要自己跑一次：
 >
 > ```bash
-> # ① 只有「從未跟上 2026-08-08 GitHub 身分收斂」的機器需要這步，而且必須在 ② 之前。
-> #    cp 不要 mv——新舊並存，任一步失敗都不會斷線。
-> cp ~/.ssh/id_github_work ~/.ssh/id_github_com   # 舊名 → 新名
-> cp ~/.ssh/id_github      ~/.ssh/id_personal
-> # ② pull + 部署（brewup.sh 會跑 ensure-ssh-config / rc-source / codex-skills / codex-guidance / lftprc）
-> #    ⚠ 前面那個 `git pull &&` 是功能性的、不是排版：brewup.sh 自己也會 pull，但**執行中的
-> #    bash 會跑完舊版**，落後的機器因此要跑兩次才部署到 helper。先獨立 pull 就只需一次。
-> #    （新版 brewup.sh 已會偵測自身更新並 exec 重跑，但那段程式碼要先進到機器上才有用。）
 > git -C ~/.dotfiles pull && bash ~/.dotfiles/scripts/brewup.sh
-> # ③ 把該機器上所有 repo 的 remote 換成標準 URL（預設 dry-run，確認後才 --apply）
-> bash ~/.dotfiles/scripts/migrate-github-remotes.sh --apply
-> # ④ 驗兩個身分都認得對，才刪舊 key（順序不可顛倒）
-> ssh -T git@github.com; ssh -T git@github-me
 > ```
 >
-> ② 跑完之後 rc 的舊 alias 已由 `ensure-rc-source.sh` 移除，之後打 `brewup` 就是 functions.sh 的版本、會自己帶 helper——
-> **這台機器從此不需要再手動補齊**。若 ① 漏做，`ensure-ssh-config.sh` 會擋下並印出缺哪一把 key（它拒絕拿可用的
-> 認證換成壞的），不會把機器弄斷。
+> **絕對路徑是給「rc 還沒 source 過 `functions.sh`」的機器用的**（那時還沒有 `brewup` function）。
+> 已部署過的機器**直接打 `brewup` 就好**——2026-08-15 實測兩台個人 MacBook 皆已是 function 版（`type brewup`），
+> 舊 alias 早由 `ensure-rc-source.sh` 清掉；同次也確認 `brewup.sh` 偵測自身更新會 `exec` 新版重跑（印 `↻` 那行），
+> 故舊說法「落後的機器要跑兩次」亦已不成立。**前面那個 `git pull &&` 仍建議保留**：它是功能性的、不是排版——
+> `brewup.sh` 自己也會 pull，但**執行中的 bash 握著舊 inode**，先獨立 pull 才保證這一輪就跑新版。
+>
+> 2026-08-08 GitHub 身分收斂的一次性步驟（SSH key 改名、`scripts/migrate-github-remotes.sh --apply` 換各 repo 的
+> remote、`ssh -T` 雙身分驗證）**兩台皆已完成**，不再列於此；未來若有全新機器需要，序列見 git history。
 - `dotsync eagle03 db01` - 只同步指定主機
 - `tmuxls` - 列出各主機的 tmux session（`tmuxls eagle03 db01` 只看指定主機）
 - `allup` - 批次系統更新：各主機依 OS 跑 `brewup`（Linux 另加 `sysup`）。無引數＝本機＋全部遠端（本機若在 inventory 清單則自動以 IP 比對扣除，避免重複）；`allup eagle03 db01` 只跑指定主機（不含本機）；`ALLUP_DRYRUN=1 allup` 只預覽計畫不執行
