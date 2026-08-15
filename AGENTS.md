@@ -35,7 +35,8 @@
 |---|---|---|
 | Agent behaviour, git discipline | this file's **Kernel** | Nothing may relax the safety floor. A repo may only be **stricter** |
 | Repo conventions, architecture, commands | `CLAUDE.md` / `AGENTS.md`（root，其次最接近改動位置的那份） | 最近者勝 |
-| Project state, decisions, dead ends, debt | `STATUS.md`（若有） | |
+| Project state, decisions, dead ends（**歷史**） | `STATUS.md`（若有） | |
+| Debt & known gaps（**未結案待辦**） | `docs/backlog.md`（若有；未分家的 repo 在 `STATUS.md` 對應節） | 生命週期不同故分家，判準見 dossier 規範 |
 | Install & usage for humans | `README.md` | |
 | Dated design docs / discussion snapshots | `docs/plans/*.md`（若有） | **Write-once**：frozen at publication，被更新的權威取代，但不就地改寫 |
 | Handover | `docs/transfer.md`（若有） | 移交期間才存在 |

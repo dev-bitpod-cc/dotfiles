@@ -216,6 +216,38 @@ detect_protection() {
     fi
 }
 
+# 標題掃描前剝 fenced code block（```/~~~ 圍欄內的範例標題不算章節），印到 stdout。
+# CommonMark 規則：closer 須與 opener 同字元且長度 ≥ opener——單純 toggle 會被
+# 四反引號外層包三反引號範例的巢狀圍欄誤判提前關欄（C3 審查實證）。
+#
+# 剝除方式是**前綴 \001 哨兵**，不是丟棄、也不是清空——兩個下游同時有要求：
+# - 行號要對齊原檔：條目 flag 得報「超標的是第幾行」，丟棄會讓後續 NR 全數位移。
+# - 長度要保留真實值：清空會讓 fence 重的章節在 dossier-sections 佔比中被低估，
+#   嚴重時排名倒轉（實測 26KB 的決策節報成 403 bytes、沉到 4.5KB 的節後面）。
+#   那正是該功能要防的「挑錯收斂對象」，清空等於讓它主動誤導。
+# 哨兵前綴打掉三個 pattern 家族（^##[[:space:]] 章節/簽章、^#{1,6} Session Log、
+# ^-[[:space:]] 條目起始），圍欄內的假標題/假條目照樣不被誤認。
+#
+# **抽成函數是因為第二個消費者出現了**（detect_backlog）。同一份圍欄規則若複製一份，
+# 兩邊必然漂移——那正是這支腳本反覆在防的形狀（SKILL.md 與腳本各寫一份處置的先例）。
+strip_fences() {
+    awk '
+        {
+            line = $0
+            sub(/^[[:space:]]*/, "", line)
+            if (line ~ /^(```|~~~)/) {
+                ch = substr(line, 1, 1)
+                n = 1
+                while (substr(line, n + 1, 1) == ch) n++
+                if (!fence) { fence = 1; fch = ch; flen = n; print "\001" $0; next }
+                if (ch == fch && n >= flen) { fence = 0 }
+                print "\001" $0
+                next
+            }
+            if (!fence) { print } else { print "\001" $0 }
+        }' "$1"
+}
+
 # dossier（STATUS.md）唯讀偵測：存在性、尺寸訊號、進行中 ✅、規範外章節、過期。
 # **量測與逐 flag 處置皆在此**（單一來源；SKILL.md Step 2 只說「照 flag 訊息做」、不複述——
 # 兩邊各寫一份必然漂移，實證：SKILL 曾把「改正常換行段落」列為處置，腳本卻明說換行不夠）。
@@ -233,39 +265,15 @@ detect_dossier() {
     bytes="$(wc -c < "$f" | tr -d ' ')"
     maxlen="$(LC_ALL=C awk '{ if (length > m) m = length } END { print m + 0 }' "$f")"
     echo "dossier: STATUS.md（${lines} 行 / ${bytes} bytes / 最長行 ${maxlen} bytes）"
-    # 標題掃描先剝 fenced code block（```/~~~ 圍欄內的範例標題不算章節）。
-    # CommonMark 規則：closer 須與 opener 同字元且長度 ≥ opener——單純 toggle 會被
-    # 四反引號外層包三反引號範例的巢狀圍欄誤判提前關欄（C3 審查實證）
-    #
-    # 剝除方式是**前綴 \001 哨兵**，不是丟棄、也不是清空——兩個下游同時有要求：
-    # - 行號要對齊原檔：條目 flag 得報「超標的是第幾行」，丟棄會讓後續 NR 全數位移。
-    # - 長度要保留真實值：清空會讓 fence 重的章節在 dossier-sections 佔比中被低估，
-    #   嚴重時排名倒轉（實測 26KB 的決策節報成 403 bytes、沉到 4.5KB 的節後面）。
-    #   那正是該功能要防的「挑錯收斂對象」，清空等於讓它主動誤導。
-    # 哨兵前綴打掉三個 pattern 家族（^##[[:space:]] 章節/簽章、^#{1,6} Session Log、
-    # ^-[[:space:]] 條目起始），圍欄內的假標題/假條目照樣不被誤認。讀 unfenced 的 code site
-    # 共五處：簽章 grep、分節 awk、條目 awk、✅ awk、Session Log grep。
+    # 標題掃描先剝 fenced code block（機制與哨兵設計見 strip_fences 檔內註解）。
+    # 讀 unfenced 的 code site 共五處：簽章 grep、分節 awk、條目 awk、✅ awk、Session Log grep。
     # **新增消費者時記得也吃 unfenced**——漏一個就是誤報（✅ 偵測就漏過一次）。
     # 例外：上面三個全檔量測（行數/bytes/最長行）刻意讀原檔——它們量的是檔案本身的體積，
     # fence 內容同樣佔預算。副作用：fence 裡的長行（長指令/base64/URL）會觸發最長行 flag，
     # 該處置提示對 code block 無意義，人工判斷即可。
     # 代價：fenced 內容計入條目與分節 bytes——那是對的，那些 bytes 真的佔 dossier 預算。
     local unfenced
-    unfenced="$(awk '
-        {
-            line = $0
-            sub(/^[[:space:]]*/, "", line)
-            if (line ~ /^(```|~~~)/) {
-                ch = substr(line, 1, 1)
-                n = 1
-                while (substr(line, n + 1, 1) == ch) n++
-                if (!fence) { fence = 1; fch = ch; flen = n; print "\001" $0; next }
-                if (ch == fch && n >= flen) { fence = 0 }
-                print "\001" $0
-                next
-            }
-            if (!fence) { print } else { print "\001" $0 }
-        }' "$f")"
+    unfenced="$(strip_fences "$f")"
     # dossier 簽章（回流自 clean-room 盲寫版）：雙訊號——「進行中」章節 + 任一 dossier
     # 專屬章節（STATUS.md 命名互斥規則見 references/dossier.md）。flag 缺席即被當
     # dossier 編輯，誤放行比誤攔截危險（攔截只是停下告知），故：
@@ -458,6 +466,31 @@ detect_dossier() {
         fi
     fi
 }
+# backlog（docs/backlog.md）唯讀偵測：**只驗章節完整性，刻意不量體**。
+# 為什麼這裡沒有 bytes／行數門檻：待辦是未結案狀態，你只能把字數壓短、條目數不會少，
+# 直到真的把它做掉。量體門檻對它無效，而每次 ship 又都得走一遍那個檢查——2026-08-15 實測
+# 本 repo 的 STATUS.md 有 11018 bytes（47%）是技術債＋已知缺口、26 條無一已解決，
+# dossier 因此長期貼著門檻飛（8 次 commit 落在門檻的 98–99.8%）。分家正是為了消掉那個
+# 結構下限（見 `references/dossier.md`「1. 檔案角色分工」），**在新檔重設一套門檻等於把
+# 問題原樣搬過來**。治理靠關閉與歸檔慣例，那是 model 的判斷層、不是腳本的。
+# 保留的唯一機械保障是章節完整性：2026-08-06 實地「一次 lines 操作吃掉兩整節、尺寸 flag
+# 抓不到（那些只管上限）、一路 merge 進 main」的失效面對新檔同樣成立，而它完全靜默——
+# 這裡更該守，因為本檔連尺寸 flag 這個間接訊號都沒有。
+# repo 沒有 `docs/backlog.md` 就零輸出：未分家的 repo 完全不受影響、零回填。
+detect_backlog() {
+    local repo="$1" f="$1/docs/backlog.md"
+    [ -f "$f" ] || return 0
+    local unfenced sec missing=""
+    unfenced="$(strip_fences "$f")"
+    for sec in 技術債 已知缺口; do
+        grep -qE "^##[[:space:]].*${sec}" <<< "$unfenced" || missing="${missing}${sec} "
+    done
+    if [ -n "$missing" ]; then
+        echo "backlog-flag: docs/backlog.md 缺少章節：${missing}（**先確認是不是被誤刪**——本檔刻意無尺寸 flag，整節消失沒有第二道訊號會提醒你）"
+    fi
+    return 0
+}
+
 # always-on 量體：這個 repo 的 root `CLAUDE.md`（Claude 每個 session 自動載入）與 `AGENTS.md`
 # （Codex 每次讀），外加「該 repo 就是全域 CLAUDE.md 的來源」時的那一份。**只量 Claude 側是
 # 半套**——這個工作流是雙 agent 的。
@@ -948,6 +981,9 @@ check_repo() {
 
     # -- dossier 偵測（Step 2 衛生檢查；門檻見檔頭常數，單一來源）--
     detect_dossier "$repo"
+
+    # -- backlog 偵測（分家後的待辦落點；只驗章節完整性、無量體門檻，無該檔則靜默）--
+    detect_backlog "$repo"
 
     # -- 殘留 branch 衛生（已併入 default 的 local/remote branch；無殘留則靜默）--
     detect_stale_branches "$repo" "$remote" "$default" "$branch" "$toplevel"

@@ -1199,6 +1199,74 @@ PYEOF
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-full" 2>/dev/null)"
 if grep -q "缺少規範章節" <<< "$out" && grep -q "已知缺口" <<< "$out" && grep -q "移交準備" <<< "$out"; then ok "整節被刪 → 印缺少規範章節並列出是哪幾節"; else bad "整節被刪未被抓到（尺寸 flag 抓不到、簽章也放行）"; fi
 
+# --- backlog（docs/backlog.md）章節完整性 ---
+# 分家後待辦落在這個檔，而它**刻意沒有尺寸 flag**（待辦壓不動，量體門檻對它無效——那正是
+# 分家要消掉的東西）。代價是整節消失時沒有第二道訊號，比 2026-08-06 那個 dossier 事故更靜默，
+# 所以這道章節檢查是本檔唯一的機械保障。
+mkdir -p "$TMP/bl-full/docs"
+cat > "$TMP/bl-full/STATUS.md" <<'DOSSIER'
+# STATUS.md
+專案一句話定位(更新日期:2026-08-15)
+
+## 進行中
+- 一個工作項
+
+## 關鍵決策(附理由)
+- 一條決策
+
+## 死路(試過但放棄——防重工)
+- 一條死路
+
+## 技術債
+> 條目已移至 docs/backlog.md
+
+## 已完成(里程碑)
+- ✅ 一個里程碑
+
+## 已知缺口
+> 條目已移至 docs/backlog.md
+
+## 移交準備度
+(暫無)
+DOSSIER
+cat > "$TMP/bl-full/docs/backlog.md" <<'BACKLOG'
+# Backlog
+
+## 技術債
+- [ ] 一條債
+
+## 已知缺口
+- 一條缺口
+BACKLOG
+git init --bare -q "$TMP/bl-full-origin.git"
+(cd "$TMP/bl-full" && git init -q -b main . && "${GITC[@]}" add STATUS.md docs/backlog.md && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/bl-full-origin.git" && git push -qu origin main)
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bl-full" 2>/dev/null)"
+if grep -q "backlog-flag:" <<< "$out"; then bad "完整的 backlog 誤報缺章節"; else ok "backlog 兩節齊全 → 不報 flag"; fi
+# 分家後的 STATUS.md（兩節只剩指標）仍須通過 dossier 章節完整性——這是「保留標題」的用意，
+# 未分家與已分家的 repo 走同一條檢查，工具面零分叉。
+if grep -q "缺少規範章節" <<< "$out"; then bad "已分家的 STATUS.md（兩節留指標）被誤報缺章節"; else ok "分家後 STATUS.md 保留標題 → 章節檢查照常通過"; fi
+# 未分家的 repo 必須完全看不到 backlog 訊號——零回填是這個設計能落地的前提
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ds-full" 2>/dev/null)"
+if grep -q "backlog" <<< "$out"; then bad "無 docs/backlog.md 的 repo 仍印 backlog 訊號（未分家 repo 應零影響）"; else ok "無 docs/backlog.md → 零輸出（未分家 repo 零回填）"; fi
+# 刪掉一節 → 必須抓到
+python3 - "$TMP/bl-full/docs/backlog.md" <<'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text()
+p.write_text(s[:s.index("## 已知缺口")])
+PYEOF
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bl-full" 2>/dev/null)"
+if grep -q "backlog-flag:" <<< "$out" && grep -q "已知缺口" <<< "$out"; then ok "backlog 整節被刪 → 印 backlog-flag 並列出是哪一節"; else bad "backlog 整節被刪未被抓到（本檔無尺寸 flag，沒有第二道訊號）"; fi
+# fenced 內的假標題不算章節：驗新消費者確實吃 strip_fences 的輸出。
+# 「新增消費者忘了吃 unfenced」在 dossier 端已漏過一次（✅ 偵測），同一個洞不該在新檔重開。
+python3 - "$TMP/bl-full/docs/backlog.md" <<'PYEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text() + "\n```markdown\n## 已知缺口\n- 圍欄內的範例，不算章節\n```\n")
+PYEOF
+out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/bl-full" 2>/dev/null)"
+if grep -q "backlog-flag:" <<< "$out"; then ok "fenced 內的假標題不算章節（backlog 走 strip_fences）"; else bad "圍欄內的範例標題被當成真章節 → 缺節誤放行"; fi
+
 # --- dossier 條目上限：邊界須止於條目本身，不得吃進其後的獨立區塊 ---
 # 實地（krepo-mops-major-news 2026-08-13）：一條 280B 的決策 ＋ 其後 524B 的**歸檔指標
 # blockquote** 被算成同一條 804B，報超標 4 bytes。處置指引「涵蓋多個決策 → 拆成多條」

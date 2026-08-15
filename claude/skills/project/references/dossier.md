@@ -17,9 +17,26 @@
 |------|------|------|----------|
 | `README.md` | 對外說明(是什麼、怎麼裝、怎麼用) | 外部使用者 | 低 |
 | `CLAUDE.md` | 慣例與指令(架構、工具、規則) | AI agent | 低 |
-| `STATUS.md` | **dossier**:狀態+spec+決策+死路+債 | 未來的自己、AI、下一任 owner | 中 |
+| `STATUS.md` | **dossier**:狀態+spec+決策+死路+里程碑(**歷史**) | 未來的自己、AI、下一任 owner | 中 |
+| `docs/backlog.md` | **待辦**:技術債 + 已知缺口(**未結案**) | 排下一步的自己 | 中 |
 | `docs/plans/*.md` | 帶日期的設計文件(spec 定稿) | 設計討論的存檔 | 寫後不改 |
 | `docs/transfer.md` | 移交指南(見 transfer-guide-template) | 接手的同事 | 移交前 |
+
+**dossier 與 backlog 分家的判準是生命週期,不是主題**(2026-08-15 立)。dossier 收的是**歷史**——
+決策、死路、里程碑發生後只會蒸餾或歸檔,**壓得動**,所以量體門檻(`scripts/ship-state.sh` 的
+`DOSSIER_MAX_*` 常數)對它有效。backlog 收的是**未結案狀態**——你只能把字數壓短、條目數不會少,
+**直到真的把它做掉**。把壓不動的東西關進「當次收斂」的門檻裡,每次 ship 都會在同一半內容上
+反覆磨:實測 dotfiles 的 STATUS.md 有 47% 是這兩節、26 條無一已解決,8 次 commit 落在門檻的
+98–99.8%,而 2026-08-14 的治理計畫已量到「不可歸檔存量 72%,在不違反自身判準的前提下達不到
+建議目標」。分家把結構下限降到只剩死路一節,門檻因此重新變得可達。
+
+- **`docs/backlog.md` 刻意沒有量體門檻**——在新檔重設一套等於把問題原樣搬過來。治理靠關閉與
+  歸檔慣例(見該檔檔首),機械面只保留章節完整性檢查(`backlog-flag:`),因為「整節被誤刪」
+  在沒有尺寸 flag 當第二道訊號時**更靜默**(2026-08-06 dossier 實地事故的同型)。
+- **STATUS.md 保留那兩節的標題與一行指標**,不刪標題:簽章與章節完整性檢查因此零改動,
+  未分家的 repo **零回填**——沒有 `docs/backlog.md` 就完全不觸發 backlog 訊號。
+- **分家不是必做**。小型／低產出的 repo 兩節留在 STATUS.md 完全合理;會需要它的訊號是
+  **待辦節長期佔住預算、而全檔反覆貼著門檻**。
 
 **Naming is exclusive.** `STATUS.md` means the dossier and nothing else. Domain artifacts
 (e.g. crawler-config checklists) MUST use another name (`CRAWL-CONFIG.md`). A file named
@@ -33,9 +50,13 @@ STATUS.md that is not a dossier will be mis-consumed by tooling and humans alike
   spec 區是給 AI 的工作合約——任務描述得夠清楚,agent 的工作就從「猜意圖」變成「執行合約」。
 - **關鍵決策(附理由)**:選了什麼、為什麼、放棄了什麼。沒有理由的決策會被未來 session 翻案。
 - **死路**:試過但放棄的路 + 原因。dossier 最值錢的一節,防重工。
-- **技術債**:欠什麼、影響範圍與償還時機,供排序。
+- **技術債**:欠什麼、影響範圍與償還時機,供排序。**已分家的 repo 只留一行指標**,
+  條目寫進 `docs/backlog.md`「技術債」。
 - **已完成(里程碑)**:附日期與 commit/PR 對應。
-- **已知缺口**:功能面或資料面的已知限制,尚無解決計畫者。
+- **已知缺口**:功能面或資料面的已知限制,尚無解決計畫者。**已分家的 repo 同技術債**,
+  條目寫進 `docs/backlog.md`「已知缺口」。
+  ⚠️ 對一條缺口做出「決定先不做＋重議條件」的決議時,**那是決策語意,搬回關鍵決策節**——
+  待辦沒有出口、決策有(2026-08-14 已有六條這樣歸位過)。
 - **移交準備度**:輕量 checklist,平時可空;`/project transfer` 的檢查依據。
 
 ## 3. 維護時機
@@ -44,7 +65,9 @@ STATUS.md that is not a dossier will be mis-consumed by tooling and humans alike
 |------|------|--------|
 | 開工(非 trivial 工作項) | spec 區寫入進行中章節 | `/project spec` 或對話中直接編輯 |
 | 工作中發現死路/做出決策 | 對話一句話順手記入 | 主 agent(不需 skill) |
-| ship 收尾 | 本次的決策/死路/債/里程碑同步;進行中項收斂 | `/project log`(Step 2) |
+| 工作中發現債/缺口 | 記入 backlog(未分家的 repo 記入 STATUS.md 對應節) | 主 agent(不需 skill) |
+| 償還債/補上缺口 | backlog 條目**整條移除**,成果一行寫進里程碑 | 動手當下 |
+| ship 收尾 | 本次的決策/死路/里程碑同步;進行中項收斂 | `/project log`(Step 2) |
 | 移交前 | 完整度檢查 + 產出移交指南 | `/project transfer` |
 
 記錄時點:**事件當下 > 收尾補記**——決策/死路/坑在發生當下就地寫入(working tree 即可、不需 commit,收尾由 `/project log` 一起送出)。Do NOT defer dossier notes to ship time: context may be compacted before then — a decision not written down when made is a decision lost. ship 收尾的 Step 2 因此是「核對補漏」而非重建。
