@@ -122,12 +122,12 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 ## 技術債
 
-- [ ] **`scripts/ensure-dotfiles-remote.sh` 一次性遷移殘留,全機隊跟上後移除**(2026-08-15 加,掛
-  `dotfiles-sync.sh`＋`brewup.sh`)。**移除條件**:inventory 的 14 台**＋不在 inventory 的兩台
-  MacBook** origin 皆已是 `jjshen-eland`。14 台當天即完成;**兩台 MacBook 尚未**——它們正是靠
-  `brewup.sh` 這個呼叫點才會自己正規化(見 CLAUDE.md「不在 `inventory.conf` 的機器怎麼跟上」
-  第 ② 步),現在拆掉就只剩 GitHub 轉移 redirect 撐著。⚠️ **本條初版的移除條件只寫「14 台」、
-  漏掉那兩台**,2026-08-15 當天差點據以移除——`dotsync` 的涵蓋範圍不等於機隊全體。
+- [ ] **`scripts/ensure-dotfiles-remote.sh` 一次性遷移殘留,移除條件已滿足、待動手**(2026-08-15 加,
+  掛 `dotfiles-sync.sh`＋`brewup.sh`)。條件是 inventory 的 14 台**＋不在 inventory 的兩台 MacBook**
+  origin 皆為 `jjshen-eland`:14 台當天完成,兩台 MacBook **同日確認已跟上**(它們正是靠 `brewup.sh`
+  這個呼叫點自己正規化的)。**尚未拆**——要同時清兩個呼叫點與 `tests/run.sh` 第 23b 節,列為獨立
+  工作項。⚠️ **本條初版的移除條件只寫「14 台」、漏掉那兩台**,當天差點據以移除——`dotsync` 的
+  涵蓋範圍不等於機隊全體。
 - [ ] **`BLOCKED` ＋ `no checks reported` 這一格沒有 eval 覆蓋**(2026-08-15 加)。判準已寫進
   `ship-paths.md`(exit 1 要看輸出才分得出「check 失敗」與「這 repo 沒有 required check」),但
   Scenario 15 的 stub 回的是全綠 exit 0,**測不到這一格**。補法:`gh-stub` 加 `CHECKS_RC=1` ＋
