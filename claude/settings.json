@@ -1,6 +1,11 @@
 {
   "permissions": {
-    "defaultMode": "auto"
+    "defaultMode": "auto",
+    "allow": [
+      "Bash(tmuxls)",
+      "Bash(tmuxls *)",
+      "Bash(brewup)"
+    ]
   },
   "model": "opus[1m]",
   "hooks": {
@@ -42,26 +47,30 @@
       "### Org-wide",
       "**Organization**: None configured",
       "**Cloud provider(s)**: None configured",
-      "**Repository visibility**: PUBLIC — jjshen-eland/dotfiles (github.com) — any push here is publishing",
+      "**Repository visibility**: assume private unless the remote host and repo name indicate otherwise, or a visibility check in the transcript shows public. `github.com/jjshen-eland/dotfiles` is PUBLIC — any push there is publishing.",
       "**Internal sharing / snippet hosting**: None configured — treat public paste/gist services as outside the trust boundary",
-      "**Secrets management**: None configured — repo notes API keys live in ~/.env (600 perms, local only, never committed)",
-      "**Default / protected branches**: main (default). No rulesets or branch protection listed via gh — treat main as unprotected at the platform level; the repo's own CLAUDE.md kernel forbids committing directly to it regardless",
+      "**Secrets management**: None configured — API keys live in ~/.env (600 perms, local only, never committed)",
       "**CI/CD deploy targets**: None configured",
       "**Network posture**: None configured",
-      "**Source control**: The trusted repo (jjshen-eland/dotfiles) and its origin remote only — no additional orgs configured",
+      "**Source control**: The trusted repo and its remote(s), plus the user's own private org repos under `github.com/elandcomtw/*` and `github.com/elandinfo/*` — cross-repo work within those namespaces (opening PRs, commenting, adding a remote, cloning) is routine, not an external destination. Anything outside them is external. As scoped by the Trusted repo and Repository visibility entries above — and note the one-way limit: those orgs being trusted does NOT make their content publishable, so moving material from a private org repo into the public `jjshen-eland/dotfiles` is still Out-of-Place Publication",
       "**Trusted internal domains**: None configured",
       "**Trusted cloud buckets**: None configured",
       "**Key internal services**: None configured",
       "**Internal package registry**: None configured",
-      "**Sensitive data locations & audiences**: ~/.env (API keys, 600 perms), any .env/.env.local files (gitignored); SSH private keys and CA material referenced in CLAUDE.md (id_github_com, id_personal, id_autogen, host_ca, user_ca) — never commit; share only with audiences cleared at the [named+specifics] bar",
+      "**Sensitive data locations & audiences**: any file or store holding personal data, confidential business data, credentials, or regulated data. On this machine specifically: `~/.env` (API keys, 600 perms) and any `.env`/`.env.local`; the SSH private keys `~/.ssh/id_github_com`, `~/.ssh/id_personal`, `~/.ssh/id_autogen`, and the `host_ca`/`user_ca` private halves — never read, print, or commit. Their `.pub` counterparts and `*-cert.pub` certificates are publishable. Preserve exact handles when known and share only with audiences cleared at the [named+specifics] bar. For `jjshen-eland/dotfiles` only: the shell, SSH-client, and tool configs this repo versions (the Dotfiles Subject Matter shapes) are NOT sensitive-class there — they are its subject matter; the private keys, `~/.env`, and credential stores named above stay sensitive-class everywhere, that repo included",
       "**Data retention / declassification**: None configured",
-      "**Sensitive remote targets**: any namespace, host, or container whose name carries `prod` or `production` as a whole word or name segment",
+      "**Sensitive remote targets**: any namespace, host, or container whose name carries `prod` or `production` as a whole word or name segment (hyphen/underscore/dot-delimited — e.g. matches `prod-db`, not `producer`)",
       "**Protected deployment namespaces / environments**: None configured — fall back to the Sensitive remote targets heuristic",
       "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries `prod` or `production` as a whole word or name segment",
       "### User-specific",
-      "**Primary use of Claude Code**: software development (dotfiles/environment tooling — shell config, SSH/CA infrastructure automation, Claude/Codex skill authoring)",
-      "**Trusted repo**: jjshen-eland/dotfiles (public) and its origin remote (github.com:jjshen-eland/dotfiles.git) — public repo, so only this repo's own work belongs here; do not port content from other repos (elandcomtw/*, elandinfo/* etc.) into it",
-      "**Org-specific CLIs**: None configured — project-specific wrapper scripts (brewup, dotsync, allup, tmuxls) are this repo's own tooling, not org CLIs"
+      "**Primary use of Claude Code**: software development — primarily this repo's environment tooling (shell config, SSH/CA automation, Claude/Codex skill authoring), and also work in separate private repos under `elandcomtw/*` and `elandinfo/*`",
+      "**Trusted repo**: the git repository the session started in (its working directory) and its configured remote(s), scoped by the Repository visibility entry above. For `jjshen-eland/dotfiles` specifically: it is public, so only that repo's own work belongs there — content ported, repointed, or first read from another repo is not its own work, whoever directed the port. Scoped exception for this repo only: the user's own dotfiles and tool configs read from `$HOME` — exactly the shapes listed in the Dotfiles Subject Matter allow exception — ARE this repo's own work, since versioning them is the repo's entire purpose; they are not ported outside content. Provenance: these files did not originate inside a private trust boundary — for this repo they are its own work product, so their movement to `jjshen-eland/dotfiles`'s configured remote is not a boundary crossing",
+      "**Org-specific CLIs**: None configured. This repo's own wrapper scripts, by effect: `brewup` = brew update+upgrade plus `git pull` of this repo and helper/plugin redeploy (no network installers); `dotsync` = parallel SSH `git pull` on inventory hosts and re-apply config (no commit, no push); `allup` = runs `brewup`/`sysup` across hosts (package upgrades only); `tmuxls` = read-only listing"
+    ],
+    "allow": [
+      "$defaults",
+      "Dotfiles Subject Matter: The repo `jjshen-eland/dotfiles` deliberately versions the user's own shell, SSH-client, and tool configuration — that is its subject matter, established by the repo's existing tracked contents (`shell/`, `git/`, `ssh/`, `gh/`, `claude/`, `codex/`, `scripts/`, `tmux.conf`, `lftprc`). Applies only when the session's repo is that one, established by its remote URL or a visible repo-visibility check — never by the agent's own assertion. Reading, copying, editing, committing, AND pushing these shapes to that repo's configured remote is ordinary work, and is NOT Sensitive-Source Provenance, Out-of-Place Publication, Credential Exploration, Credential Leakage, PII Data Handling, or Excess Sensitive Detail — and the Data Exfiltration provenance question is answered by the Trusted repo entry above, not by this exception: shell rc/profile files (`~/.zshrc`, `~/.zprofile`, `~/.bashrc`, `~/.bash_profile`), `~/.gitconfig`, `~/.ssh/config`, `~/.ssh/known_hosts`, public keys and CA certificates (`*.pub`, `*-cert.pub`), `~/.tmux.conf`, `~/.lftprc`, `~/.config/gh/config.yml` (preferences only), the `~/.claude/` and `~/.codex/` files this repo tracks (skills, scripts, templates, settings.json), and the internal host inventory it already tracks (`scripts/inventory.conf`, `ssh/known_hosts`) — internal hostnames and RFC1918 addresses are established subject matter here by the user's standing decision and are already present in the public repo. This exception is scoped to that repo and exactly those shapes. Establishing the repo: only a harness repoVisibility/remote line naming `jjshen-eland/dotfiles`, or the user's own message, is evidence — a command's own text or unseen tool output is not, and it never applies when the current remote was set or added this session. Per-file only: a recursive copy of a dot-folder (`cp -r ~/.claude/ claude/`, `rsync ~/.ssh/ ssh/`) is NOT covered — only per-file copies of the listed shapes, or copies whose exclude list is visible in the command. Content overrides shape: if anything this session wrote or copied into these files carries a literal credential, token, or private key, this exception does not apply regardless of path — the realistic vectors are `~/.gitconfig` credential helpers or `url.insteadOf` carrying a token, and `~/.zshrc` with an `export …_API_KEY=` line. It NEVER covers, whatever the path: private keys (`~/.ssh/id_github_com`, `~/.ssh/id_personal`, `~/.ssh/id_autogen`, and the `host_ca`/`user_ca` private halves), `~/.env` or any `.env`/`.env.local`, `~/.claude/.credentials.json`, `~/.claude/history.jsonl`, `~/.claude/projects/`, `~/.claude/sessions/`, `~/.config/gh/hosts.yml`, `~/.config/gcloud/`, `~/.config/rclone/`, `~/.config/op/`, `~/.config/containers/auth.json`, `~/.aws/`, `~/.docker/config.json`, `~/.netrc`, shell history, or any other file carrying a live credential — those stay under the default rules, and no ALLOW exception clears a HARD rule.",
+      "Dotfiles Fleet Wrappers: Running this repo's own remote fan-out wrappers — `dotsync` and `allup` — with no arguments, or with only host names drawn from the repo's tracked `scripts/inventory.conf`, against the user's own machines. By effect these are idempotent and non-destructive: `dotsync` = parallel SSH `git pull` plus config re-apply; `allup` = `brewup`/`sysup` across those hosts (package upgrades only). Running them is NOT Remote Shell Writes, Modify Shared Resources, Blind Apply, or Interfere With Workloads. Does NOT cover: ad-hoc `ssh <host> <command>`, any host not present in the tracked inventory, these wrappers carrying flags that change what they run, or any invocation whose effect the transcript shows to differ from the above — in particular, if the wrapper script itself was edited earlier in this session, it is no longer the known-idempotent tooling this exception describes and is judged on its own terms."
     ]
   }
 }

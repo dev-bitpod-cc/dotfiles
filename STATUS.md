@@ -30,11 +30,25 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   `~/.claude/settings.json`,而該檔是指向本 repo 的 symlink——於是它直接落在 working tree
   成為 drift,下次 `brewup` 的 `git checkout -- claude/settings.json` 便把它丟掉,setup
   因此重複詢問(同一台機器被問兩次)。commit 讓它隨 pull 散佈全機隊。
-- **2026-08-16 `autoMode.environment` 的 repo-scoped 三行刻意不改**。Repository visibility /
-  Trusted repo / Source control 三行綁死本 repo,散佈全機隊後在 `elandcomtw/*` 等其他 repo
-  工作時語境會偏差——它會宣稱唯一可信 repo 是 dotfiles、且當前為公開 repo。偏差方向**保守**
-  (把私有當公開→更謹慎)、非危險方向,故不阻擋送出。**重議條件**:改寫成 repo-agnostic 措辭
-  (獨立工作項),或 `/auto-mode-setup` 日後支援 per-repo 分層時一併處理。
+- **2026-08-16 repo-scoped 三行當天就改回動態措辭,推翻同日稍早「刻意不改」的判斷**。原判斷
+  是「偏差方向保守、非危險方向,故不阻擋送出」;`claude auto-mode critique` 推翻它——寫死 repo
+  會讓其他 repo 的 origin 掉出 trust boundary(routine push 被當 Data Exfiltration 判),且預設的
+  `Repository visibility` 本是**決策程序**(assume private unless…),被單一 repo 事實換掉後其他
+  repo 連 fallback 都沒有。**判準修正:「偏差方向保守」不構成留著的理由**——保守的代價就是每次
+  操作都被問,而那正是 auto mode 要消除的東西。
+- **2026-08-16 `autoMode` 各段是取代語意,`allow` 用 `$defaults` sentinel 繼承內建**。實測:直接
+  自訂一條 allow → `config` 的 allow 從 17 掉到 1,`Read-Only Operations`／`Git Push Destination`
+  等核心豁免全被踢掉、**零警告**,結果比不設定還麻煩。正解是把字面字串 `"$defaults"` 放在陣列
+  首位——實測展開後與內建 17 條**逐字相符**,升版自動跟上、不必存複本。⚠️ **`environment` 不適用**:
+  同樣放 `$defaults` 是**純附加、不覆寫**,實測出現兩行 `**Trusted repo**:` 且內容互斥,故它只能
+  全量寫出就地改(這正是 `/auto-mode-setup` 把每個 slot 含 `None configured` 都列出的原因)。
+- **2026-08-16 fleet wrappers 依風險分兩條路,不全塞 classifier**。`permissions.allow` 命中的規則
+  在 auto mode 下**直接放行、不進 classifier**(零 token);原始碼判準:規則被停用只有三種情形——
+  `classifyAllShell=true`(預設 false)、全域 wildcard、或規則涵蓋 26 個危險命令(`python*`/`node`/
+  `bash`/`sh`/`ssh`/`eval`/`exec`/`env`/`xargs`/`sudo`…)。故 `tmuxls`(唯讀)、`brewup`(本機)進
+  `permissions.allow`;`dotsync`／`allup` **留在 autoMode 規則**——比對只看規則字串,`Bash(dotsync)`
+  不命中 `ssh` 卻會把它內部的 fan-out 一併放行,而 classifier 規則才表達得了「腳本本 session 被
+  改過就不適用」這種條件。**省 token 與可表達的條件是對價關係**,按風險挑邊。
 - **2026-08-15 dossier 與 backlog 依生命週期分家,不動門檻**。技術債＋已知缺口是**待辦**
   ——只壓得短、條目不會少,直到做掉為止,量體門檻對它無效(實測佔 STATUS.md 47%、26 條無一
   已解決,近 25 次 commit 有 8 次落在門檻 98–99.8%)。**否決兩條「讓門檻」的路**(治理計畫的
