@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-16)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-17)
 
 ---
 
@@ -26,6 +26,17 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-17 唯讀 allowlist 放全機隊層,否決 project-scoped**。50 份 transcript 統計出 16 條唯讀規則
+  (自家 skill 狀態腳本、`shellcheck`、`crontab -l`、`shasum`)。`.claude/settings.json` 被本 repo
+  `.gitignore` 第 2 行擋掉、是 machine-local 的,而 dotfiles 在 14 台上都要跑 `tests/run.sh`——放那裡
+  等於只有這台生效。⚠️ 頻率最高的幾個**刻意不放行**:`uv run pytest`(1073 次)、`awk`(199)、`gh api`／
+  `curl`／`ssh`／`docker exec` 全是任意程式碼執行(`awk` 有 `system()`,不算唯讀工具);`verify-tests.sh`
+  同理——它轉呼各 repo 的測試框架。
+- **2026-08-17 `Bash(./tests/run.sh)` 明知放大仍保留**。相對路徑進 user 層＝「當前 repo 說了算」。
+  仍保留的理由:**那道權限提示擋不住它看起來擋得住的東西**——提示只顯示指令字串、不顯示腳本內容,
+  有沒有它你都是依「我剛叫它跑測試」按核准,安全訊號的差額接近零;且實測全機只有 2 個 `tests/run.sh`
+  (本 repo 與 ml-env),`~/Projects` 20 個 remote 全在自有 org。**復活條件:哪天 clone 外部 repo 進來
+  就重看這兩行**——clone 的當下沒人會回頭讀 allowlist,那是它唯一的殘留風險。
 - **2026-08-16 `autoMode.environment` 以權威機器身分固定**。`/auto-mode-setup` 把它寫進
   `~/.claude/settings.json`,而該檔是指向本 repo 的 symlink——於是它直接落在 working tree
   成為 drift,下次 `brewup` 的 `git checkout -- claude/settings.json` 便把它丟掉,setup
