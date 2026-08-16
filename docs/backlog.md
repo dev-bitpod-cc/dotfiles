@@ -32,6 +32,14 @@ backlog.md — 專案待辦(技術債 + 已知缺口)。與 STATUS.md(dossier)�
 
 ## 技術債
 
+- [ ] **`settings.json` 的 `autoMode.environment` 固化了 20 個內建 slot 的複本,升版不會自動跟上**
+  (2026-08-16 加)。`allow` 那半邊已用 `$defaults` sentinel 解掉(見 STATUS.md 同日決策),但
+  **`environment` 不吃 sentinel**——放了是純附加,會出現兩行同名 slot 且內容互斥,所以只能全量
+  寫出。代價:官方調整內建 slot 措辭時我們不會跟著變,**且無訊號**。偵測法:
+  `diff <(claude auto-mode defaults | jq -r '.environment[]' | sed 's/:.*//') <(claude auto-mode config | jq -r '.environment[]' | sed 's/:.*//')`
+  ——比 slot 名可抓到新增/更名,措辭漂移則要逐條比。**可能的收法**:`brewup.sh` 加一道比對提示
+  (與 bun 落後提示同性質,只提示不自動改)。⚠️ 若日後 `environment` 也支援覆寫語意,這條連同那
+  20 條複本都該直接刪掉。
 - [ ] **`scripts/ensure-dotfiles-remote.sh` 一次性遷移殘留,移除條件已滿足、待動手**(2026-08-15 加,
   掛 `dotfiles-sync.sh`＋`brewup.sh`)。條件是 inventory 的 14 台**＋不在 inventory 的兩台 MacBook**
   origin 皆為 `jjshen-eland`:14 台當天完成,兩台 MacBook **同日確認已跟上**(它們正是靠 `brewup.sh`
