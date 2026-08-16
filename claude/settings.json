@@ -4,7 +4,23 @@
     "allow": [
       "Bash(tmuxls)",
       "Bash(tmuxls *)",
-      "Bash(brewup)"
+      "Bash(brewup)",
+      "Bash(~/.claude/skills/project/scripts/ship-state.sh *)",
+      "Bash(claude/skills/project/scripts/ship-state.sh *)",
+      "Bash(./tests/run.sh)",
+      "Bash(./tests/run.sh *)",
+      "Bash(shellcheck *)",
+      "Bash(~/.claude/skills/handoff/scripts/handoff-anchor.sh survey)",
+      "Bash(~/.claude/skills/handoff/scripts/handoff-anchor.sh survey *)",
+      "Bash(~/.claude/skills/handoff/scripts/handoff-anchor.sh verify *)",
+      "Bash(~/.claude/skills/handoff/scripts/handoff-anchor.sh anchors *)",
+      "Bash(crontab -l)",
+      "Bash(crontab -l *)",
+      "Bash(~/.claude/skills/deep-review/scripts/review-state.sh *)",
+      "Bash(~/.claude/skills/deep-review/scripts/review-anchor.sh show *)",
+      "Bash(~/.claude/skills/deep-review/scripts/review-anchor.sh squash-cmd *)",
+      "Bash(~/.claude/skills/ready4quit/scripts/git-hygiene.sh *)",
+      "Bash(shasum *)"
     ]
   },
   "model": "opus[1m]",
