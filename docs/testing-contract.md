@@ -254,11 +254,22 @@ cleanup-cmd 前置 `fetch --prune`、**當前 branch 的 remote 對應不得列�
 改比對 merged PR 的 `headRefOid` == 本地 tip，不符只印診斷不列入、fork 不採信、達 limit 標
 `partial` **絕不印 `none`**。fixture 前提自檢「祖先判定確實看不到它」，否則後續斷言全是假的。
 
+**多 remote（B1c）**：非 canonical remote 上的 branch **只列訊號、不得產生 cleanup-cmd**——
+`branch -r` 列所有 remote，只剝 canonical 前綴時 `fork/x` 會被當成 branch 名傳給只認 canonical
+的清理腳本，指令必然 STOP。判準刻意釘**行為**而非文字：**凡印出的 cleanup-cmd，照抄執行必須
+exit 0**（既有單 remote 端到端斷言的推廣——「指令長得對」不等於「跑得動」，且不論日後改採
+哪種修法都適用）。另驗 canonical 側不被誤過濾、兩條偵測路徑（祖先／squash）都不靜默吞掉
+foreign、附上 `git remote remove` 的出路。**fixture 必須有第二個 remote**——單 remote 下
+「tracking ref 路徑」與「canonical 上的 branch 名」恰好等價，整條缺陷不成立。
+
 ### cleanup-stale-branch.sh
 
 破壞性刪除的唯一入口。三道前提：branch 存在／執行當下 tip == expected SHA／local 不得是
 checked-out——任一不成立即 STOP 零 mutation。remote 走 `ls-remote` 重驗 + `--force-with-lease`
 雙重比對。**lease 是第二道防線，故前置比對另立斷言**——否則整段前置檢查可被刪光而全綠。
+傳進 remote-tracking ref 路徑（`fork/x`）時，STOP 訊息須指出**是 remote 錯了、不是名字打錯**：
+那個案例裡名字其實是對的，「確認名字是否正確」會把人導向錯誤的排查方向（發射端已過濾，
+這條守的是手打指令的人）。
 
 ### 照抄行的 shell quoting
 

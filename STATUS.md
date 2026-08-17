@@ -26,6 +26,17 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-17 非 canonical remote 的殘留只列訊號、不發刪除指令**。病灶:候選來自 `branch -r`
+  (列**所有** remote)、組 cleanup-cmd 卻只剝 canonical 前綴 → `fork/x` 傳給只認 canonical 的
+  `cleanup-stale-branch.sh`,永遠 `verdict: STOP`。**否決「把 remote 一起傳過去」**:它把「刪別人
+  repo 上的 branch」變成可照抄的一行,與 SKILL remote 假設(不擅自對 fork 動作)衝突;實地
+  (pilot-api 5 支殘留全在同事 fork、一支還是那 repo 的 `main`)採用的是 `git remote remove fork`
+  ——那個能力方向本身就是錯的。**否決「不列入偵測」**:會丟掉使用者確實想要的訊號。
+- **2026-08-17 foreign 訊號另立一段,不在 stale/squash 兩段各留分支**。那些 ref 屬於另一個 repo,
+  「是否已併入我的 default」不構成處置依據;集中也避免訊號分裂——同批發現 squash 段的
+  `${remotes_un//origin\//}` 是**全域替換**且對 `fork/x` 無效,帶前綴的名字在 `$2 == b` 比對就
+  `continue`,實測(owner 相同、SHA 相符、條件全齊)**整段不印、連 `skipped:` 都沒有**,是靜默漏報
+  而非「被 owner 檢查擋住」。
 - **2026-08-17 唯讀 allowlist 放全機隊層,否決 project-scoped**。50 份 transcript 統計出 16 條唯讀規則
   (自家 skill 狀態腳本、`shellcheck`、`crontab -l`、`shasum`)。`.claude/settings.json` 被本 repo
   `.gitignore` 第 2 行擋掉、是 machine-local 的,而 dotfiles 在 14 台上都要跑 `tests/run.sh`——放那裡
