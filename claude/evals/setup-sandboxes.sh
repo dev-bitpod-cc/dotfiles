@@ -35,6 +35,9 @@
 #   q3  ready4quit Q3         git 乾淨 + repo 有 STATUS.md（memory/dossier 路由）
 #   c1  check-crawl-quality C1  120 筆 JSON、3 來源、其一 80% boilerplate
 #   n1  nc-notify N1          空白專案目錄
+#   dp1 deep-plan reviewer 端  一份尚未動工的計畫 + 它要動的 repo，埋進 planner-brief.md 七條
+#                             失效模式的觸發點（每條都要回 repo 查證兩到三步才浮得出來）。
+#                             P4 的合成替身、E1/E2/E3 共用的 fixture；repo 對 reviewer 唯讀
 #   h1  handoff H1            WIP repo + handoffs 目錄（write-side 交接）
 #   h2  handoff H2            交接檔錨點已 DRIFTED（記錄 HEAD 後 repo 又前進）
 #   h5  handoff H5            續寫交接：archive 有前一份（帶死路）+ repo 有 STATUS.md
@@ -1958,7 +1961,282 @@ EOF
     done
 }
 
+# --- dp1：deep-plan 的 reviewer 端 fixture（P4 的合成替身 + E1/E2/E3 的共用計畫）---
+# 一份**尚未動工**的實作計畫 + 它要動的 repo。計畫刻意埋進 planner-brief.md 七條失效模式的
+# 觸發點，每一條都要**回 repo 查證兩到三步**才浮得出來（明擺在計畫裡的話兩臂都會抓到，
+# 成對實驗就失去鑑別力——實地那條 5.7 正是「論證存在於 repo，但沒人去讀」的形狀）。
+#
+#   5.7+§6  新豁免以「跟既有 pending-setup 一致」正當化 → D-3 的論證建立在「會自動脫離」
+#           （補件完成後 classify() 自己轉 ok），而新 kind 的 merge_target 子類沒有任何路徑
+#           會讓它轉回 ok。**這一步要自己推**，見下方 v2 的說明
+#   5.1     計畫斷言 V017 的 merge_target 為空 → 那是 tests/fixtures/ 的值，真實 snapshot 有值
+#   5.2     動機數字「2026-07 發了 62 次」→ D-5 記載三天延後上線後已降到每月 11 次
+#   5.3     計畫自己駁倒「單一時間點快照推不出何時進入該狀態」，接著在「具體個體確認」
+#           斷言 V017 從 2026-06 起就是 awaiting-upstream（同一型推論的重犯）
+#   5.4     Part B 自己寫明「屆時不豁免也只佔週報一列」——Part A 的收益在 B 落地後歸零，
+#           但永久靜默的副作用留著，而計畫強制 A 先合併上線
+#   5.5     「現有三支測試全綠＝沒有回歸」——無一支走新 kind，改完必然全綠
+#   5.6     紅先行測試 import 尚不存在的 classify_suppression → ImportError 而非 assertion failure
+#
+# 測試零外部依賴（stdlib unittest，`python3 tests/test_alerts.py` 真的跑得起來）——
+# fixture 自洽性的判準是「跑一遍」，而 uv/pytest 那條路要嘛需要網路、要嘛會在唯讀 repo 內建 .venv。
+#
+# ⚠️ **v2（2026-08-18）堵掉了 5.7 的旁路。** 初版把「合併案永不脫離、且告警是唯一提醒管道」
+# 明文寫在 upstream.py 的 docstring 與 D-7 兩處，於是 reviewer 不必走 5.7 就正面撞到核心結論
+# ——E2 首跑四臂全中、量不出差異（結果與根因見 deep-plan/evals.md）。現在那兩處都中性化：
+#   - 兩種成因仍可從 classify() 的兩個分支讀到（§6 的 ground truth 保住了）
+#   - 「其中一類永不脫離」要自己推：merge_target 是上游給的欄位，沒有任何路徑會讓它消失；
+#     且 data/ 放了 2026-07 與 2026-08 兩期快照，比對可見 V022 已自行恢復、V017 兩期都卡著
+#   - D-7 不再提「靠每日告警提醒」，故「有沒有替代提醒管道」也要自己查
+# **證據必須留著、只是要拼**——全刪就連 §6 都沒有 oracle 了。
+make_dp1() {
+    local dir="$ROOT/dp1-$INSTANCE"
+    mkdir -p "$dir/work"/{src,tests/fixtures,data,docs/plans}
+    (
+        cd "$dir/work"
+        cat > CLAUDE.md <<'EOF'
+# 供應商目錄同步服務
+
+每天從上游目錄 API 拉一次供應商資料，比對後對異常狀態發告警。
+
+- 測試：`python3 tests/test_alerts.py`（stdlib only，無外部依賴）
+- 決策紀錄：`docs/decisions.md`；運維處置：`docs/runbook.md`
+EOF
+        cat > src/alerts.py <<'EOF'
+"""供應商同步的告警判準。
+
+每天 sync 跑完之後，對每一筆狀態異常的供應商決定要不要發告警。
+增減 SUPPRESS_KINDS 的成員前，先讀 docs/decisions.md 的 D-3。
+"""
+
+
+SUPPRESS_KINDS = {"pending-setup"}
+
+# 2026-07-14 起：連續異常滿三天才發第一次告警（見 docs/decisions.md D-5）
+ALERT_AFTER_DAYS = 3
+
+
+def should_alert(record, today):
+    """record: {"vendor_id", "kind", "first_seen"}；today: datetime.date。"""
+    if record["kind"] in SUPPRESS_KINDS:
+        return False
+    age = (today - record["first_seen"]).days
+    return age >= ALERT_AFTER_DAYS
+
+
+def alert_message(record):
+    if record["kind"] == "pending-setup":
+        return "供應商尚未完成建檔，等待對方補件即可，無需處理。"
+    return "供應商 {} 同步異常（{}），請查。".format(record["vendor_id"], record["kind"])
+EOF
+        cat > src/upstream.py <<'EOF'
+"""上游目錄 API 的封裝與狀態分類。
+
+欄位語意：
+  in_current_snapshot  該供應商有沒有出現在本期目錄快照裡。
+  merge_target         上游把這個統編併到哪個存續統編底下（沒有合併就是 null）。
+  fetch_error          本次抓取該筆時的錯誤訊息。
+"""
+
+
+def classify(row):
+    if row.get("fetch_error"):
+        return "sync-error"
+    if row.get("merge_target"):
+        return "awaiting-upstream"
+    if row.get("in_current_snapshot") is False:
+        return "awaiting-upstream"
+    return "ok"
+EOF
+        cat > src/sync.py <<'EOF'
+"""每日同步進入點：拉上游快照 → classify → 決定告警。"""
+
+from src.upstream import classify
+from src.alerts import should_alert
+
+
+def run(rows, today):
+    out = []
+    for row in rows:
+        rec = {
+            "vendor_id": row["vendor_id"],
+            "kind": classify(row),
+            "first_seen": row["first_seen"],
+        }
+        if rec["kind"] != "ok" and should_alert(rec, today):
+            out.append(rec)
+    return out
+EOF
+        cat > tests/test_alerts.py <<'EOF'
+import os
+import sys
+import unittest
+from datetime import date
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.alerts import should_alert  # noqa: E402
+
+
+class TestShouldAlert(unittest.TestCase):
+    def test_suppressed_kind_never_alerts(self):
+        r = {"vendor_id": "V001", "kind": "pending-setup", "first_seen": date(2026, 1, 1)}
+        self.assertFalse(should_alert(r, date(2026, 8, 1)))
+
+    def test_stale_record_alerts(self):
+        r = {"vendor_id": "V002", "kind": "sync-error", "first_seen": date(2026, 7, 20)}
+        self.assertTrue(should_alert(r, date(2026, 8, 1)))
+
+    def test_fresh_record_does_not_alert(self):
+        r = {"vendor_id": "V003", "kind": "sync-error", "first_seen": date(2026, 7, 31)}
+        self.assertFalse(should_alert(r, date(2026, 8, 1)))
+
+
+if __name__ == "__main__":
+    unittest.main()
+EOF
+        cat > tests/fixtures/vendors.json <<'EOF'
+[
+  {"vendor_id": "V017", "name": "大昌五金", "in_current_snapshot": false, "merge_target": null},
+  {"vendor_id": "V022", "name": "宏程機械", "in_current_snapshot": false, "merge_target": null},
+  {"vendor_id": "V031", "name": "泰豐塑膠", "in_current_snapshot": true, "merge_target": null}
+]
+EOF
+        cat > data/upstream_snapshot_2026-07.json <<'EOF'
+{
+  "snapshot_month": "2026-07",
+  "vendors": [
+    {"vendor_id": "V017", "name": "大昌五金", "in_current_snapshot": false, "merge_target": "V104", "fetch_error": null},
+    {"vendor_id": "V022", "name": "宏程機械", "in_current_snapshot": false, "merge_target": null, "fetch_error": null},
+    {"vendor_id": "V031", "name": "泰豐塑膠", "in_current_snapshot": true, "merge_target": null, "fetch_error": null}
+  ]
+}
+EOF
+        cat > data/upstream_snapshot_2026-08.json <<'EOF'
+{
+  "snapshot_month": "2026-08",
+  "vendors": [
+    {"vendor_id": "V017", "name": "大昌五金", "in_current_snapshot": false, "merge_target": "V104", "fetch_error": null},
+    {"vendor_id": "V022", "name": "宏程機械", "in_current_snapshot": true, "merge_target": null, "fetch_error": null},
+    {"vendor_id": "V058", "name": "永信實業", "in_current_snapshot": false, "merge_target": "V077", "fetch_error": null},
+    {"vendor_id": "V066", "name": "立群電子", "in_current_snapshot": false, "merge_target": null, "fetch_error": null},
+    {"vendor_id": "V031", "name": "泰豐塑膠", "in_current_snapshot": true, "merge_target": null, "fetch_error": null},
+    {"vendor_id": "V091", "name": "順昌儀器", "in_current_snapshot": false, "merge_target": null, "fetch_error": "upstream 502"}
+  ]
+}
+EOF
+        cat > docs/decisions.md <<'EOF'
+# 決策紀錄
+
+## D-3（2026-05-12）pending-setup 不設期限、不發告警
+
+`pending-setup` 代表供應商資料已建立、但對方尚未回傳文件。曾經量過兩種替代判準，
+兩種都不成立：
+
+- **設 30 天上限，逾期升級為告警**——量 2026-04 全月，實際完成建檔的天數中位數是
+  41 天，設 30 天會讓超過一半的正常案例變成噪音。
+- **依供應商規模分層設不同期限**——規模欄位有 38% 是空的，分不了層。
+
+故採「無期限、不發告警」。值班同事不需要對這個狀態做任何事，補件完成後
+`classify()` 會自己把它轉成 `ok`。
+
+## D-5（2026-07-14）告警延後三天發
+
+原本狀態一異常當天就發。改成連續滿三天才發第一次（`ALERT_AFTER_DAYS = 3`）。
+上線後 2026-07 下半月的 `awaiting-upstream` 告警量從每月 60 餘次降到 **11 次**——
+多數異常在三天內就自己恢復了。
+
+## D-7（2026-08-02）合併案的人工處理暫無自動化
+
+上游標記為合併（`merge_target` 有值）的供應商，需要人工把兩邊的歷史單據併起來。
+評估過接工單系統，這一季排不進去，先維持人工處理。
+EOF
+        cat > docs/runbook.md <<'EOF'
+# 告警處置 runbook
+
+收到 `src/alerts.py` 發出的告警時，依 kind 對照下表處置：
+
+| kind | 意思 | 值班要做的事 |
+|---|---|---|
+| `sync-error` | 上游 API 回錯或欄位缺漏 | 看 log，必要時重跑當日 sync |
+| `awaiting-upstream` | 上游本期快照沒有這家 | 對照上游來函確認狀態；多數會在下一期自動恢復 |
+| `pending-setup` | 對方尚未補件 | 不會收到告警（見 D-3） |
+
+> 每季重新盤點一次本表與 `SUPPRESS_KINDS` 是否一致。
+EOF
+        cat > docs/plans/vendor-alert-exemption.md <<'EOF'
+# 供應商同步告警：新增 awaiting-upstream 豁免
+
+> 狀態：待審查，**尚未開始實作**
+> 作者：平台組
+
+## 背景與動機
+
+每天 `src/sync.py` 從上游目錄拉一次供應商資料，`src/alerts.py` 的 `should_alert()`
+決定哪些異常要發告警。目前只有 `pending-setup` 一個 kind 被豁免。
+
+2026-07 我們對 `awaiting-upstream` 這個 kind 發了 **62 次**告警（同一家在連續多天符合
+條件時會重複告警，實際只對應十幾家）。逐筆看過之後確認全部都是雜訊：上游還沒把該
+供應商收進本期快照，我們這邊什麼都不用做，下一期快照就會補上。值班同事每天都要
+確認一遍，累積起來每月約 3 小時。
+
+我原本想從 `data/` 底下的快照推出「哪幾家是什麼時候開始卡住的」——**那是錯的**，
+單一時間點的快照只說得出當下狀態，推不出任何一家是何時進入這個狀態的。
+
+## 目標
+
+讓 `awaiting-upstream` 不再發告警，把值班的人工檢查時間從每月 3 小時降到 20 分鐘。
+
+## Part A：把 awaiting-upstream 加進豁免清單
+
+`src/alerts.py` 的 `SUPPRESS_KINDS`（L8）目前是 `{"pending-setup"}`，改成
+`{"pending-setup", "awaiting-upstream"}`。
+
+這跟既有的 `pending-setup` 豁免一致：兩者都是「我們這邊沒有任何動作可做、等外部
+完成就會自動恢復」的狀態，所以同樣採無期限、不發告警、不設升級路徑。
+
+`alert_message()` 也補一格，讓文案跟 runbook 對得上：
+
+    if record["kind"] == "awaiting-upstream":
+        return "上游尚未收錄該供應商，等下一期快照即可，無需處理。"
+
+### 具體個體確認
+
+`V017`（大昌五金）是目前最典型的一筆：它從 2026-06 起就是 `awaiting-upstream`，
+`merge_target` 欄位是空的，屬於單純等待上游收錄。改完之後它不會再發告警，
+這正是我們要的效果。
+
+## Part B：告警改成週報彙總
+
+Part A 之後仍有 `sync-error` 等 kind 會每天發，值班還是得每天看信。第二階段把
+即時告警改成每週一彙總一次，值班只需要看一份週報。屆時 `awaiting-upstream` 就算
+不豁免，也只會在週報裡佔一列，不再構成每天的干擾。
+
+**Part A 必須先合併並上線觀察一週**，確認豁免沒有誤殺，再開始 Part B。
+
+## 驗證方式
+
+1. 先加測試 `tests/test_alerts.py::test_awaiting_upstream_suppressed`，它會
+   `from src.alerts import classify_suppression`（Part A 新增的輔助函式），
+   確認它在改動前是紅的。
+2. 改 `SUPPRESS_KINDS` 與 `alert_message()`，確認該測試轉綠。
+3. 跑 `python3 tests/test_alerts.py`，現有三支測試全綠即代表沒有回歸——
+   它們已經守住 `should_alert()` 的行為。
+
+## 風險
+
+- 豁免範圍過大：目前判斷風險低，因為 `awaiting-upstream` 的成因單一，
+  都是「等上游下一期收錄」。
+EOF
+        git init -q -b main .
+        git config user.name "sandbox"
+        git config user.email "sandbox@test.local"
+        git add -A && git commit -qm "chore: seed vendor sync service"
+    )
+}
+
 make_u1; make_u2; make_u3; make_u4; make_u5; make_u6; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_d10; make_d11; make_q1; make_q3; make_q6; make_c1; make_n1
+make_dp1
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10; make_h11; make_h12
 make_g1b; make_g1a; make_g4; make_g4b; make_g8; make_g9; make_g10
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
