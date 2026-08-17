@@ -12,15 +12,15 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-- **`deep-plan` skill——紀律情境已 GREEN,成對實驗未跑**(2026-08-17 建立)。`claude/skills/deep-plan/`
-  三檔就緒、`tests/run.sh` 綠;**P1／P2／P3／P5／P6／P7 六個紀律情境在 Sonnet(樓層)全 GREEN**
-  (含截獲驗證:零 SendMessage、洩漏字全 0、計畫內文零洩漏、沙盒零 mutation)。首跑另修掉 body 一處
-  硬矛盾(Step 1「不要讀計畫」vs Step 2「判斷是否判準類」)。
+- **`deep-plan` skill——紀律情境已 GREEN,E2 已驗證,E1／E3 未跑**(2026-08-17 建立)。
+  `claude/skills/deep-plan/` 三檔就緒、`tests/run.sh` 綠;**P1／P2／P3／P5／P6／P7 六個紀律情境在
+  Sonnet(樓層)全 GREEN**(含截獲驗證:零 SendMessage、洩漏字全 0、計畫內文零洩漏、沙盒零 mutation)。
+  首跑另修掉 body 一處硬矛盾(Step 1「不要讀計畫」vs Step 2「判斷是否判準類」)。
+  **2026-08-18 跑完 E2**(結論見關鍵決策節),並把 fixture 落地成 `claude/evals/setup-sandboxes.sh`
+  的 **dp1** 沙盒——evals 從此可重跑,不再手建於 scratchpad(session 一結束就沒了)。
   **尚未完成的**:①**P4** 需 krepo 側的 fixture(凍結計畫檔進 `docs/plans/` + 登記 commit hash 與四處
-  證據位置,私有內容不進本 repo);②**E1–E3 成對實驗**——SKILL.md「待驗事項」的三條推論(N=2、brief
-  進 prompt、2 輪上限)在實驗前不得當成已驗證的規則引用(Iron Law)。**E2 最該先跑**:實地量到有效的是
-  **不含 brief** 的薄 prompt,且首跑觀察到樓層模型五度做出 body 沒教而正確的推理 ⇒ brief 的邊際價值
-  可能比預期小,預設立場是「brief 需要自證」。③**同日 `/deep-review` 的五條結構性 blocking 未處置**
+  證據位置,私有內容不進本 repo);②**E1／E3** 未跑(N 的邊際收益、第二輪的實際產出),在實驗前不得
+  當成已驗證的規則引用(Iron Law);③**同日 `/deep-review` 的五條結構性 blocking 未處置**
   (Step 0/1 落點順序、brief 缺 Blocking 欄、輸出契約缺層別欄、立場累積殘留管道、無 dossier repo 無
   出路)——全部會改行為契約,逐條與修法見 `docs/backlog.md`「技術債」首條。
 
@@ -52,11 +52,11 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   (一整類個體從此永久靜默)。**挖得淺的 reviewer 也會給條件式 approve,外觀與挖到底的完全一樣。**
   ⇒ 通過判定改看 findings 的處置狀態(修/駁+理由/接受+dossier 落點)與第二輪結果。**否決「用
   verdict 三態當 exit criteria」**——那正是被證偽的那個訊號。
-- **2026-08-17 `planner-brief.md` 進 prompt 標為待驗,不當既成事實**。實地量到有效的是**不含 brief**
-  的薄 prompt(七條失效模式裡 reviewer 自發抓到六條)。仍寫進 body 的唯一理由:第 7 條
-  (「跟既有 X 一致」正當化新行為)是**全數 reviewer 皆漏、事後自我診斷才浮現**的,有獨立 RED。
-  ⇒ 預設立場是「brief 需要自證」而非無罪推定;成對實驗兩臂零差異就撤回,只留給 orchestrator 檢查
-  findings 完整度。
+- **2026-08-17 `planner-brief.md` 進 prompt 標為待驗 → 2026-08-18 成對實驗判定「保留」**。
+  E2 實測(Sonnet,A/B 各 2 次):阻斷級 findings 兩臂**零差異**——樓層模型自己就抓得到最嚴重那條;
+  但 5.7／5.5／5.4 三條 A 臂 5.5/6、B 臂 **0/6**。⇒ **brief 買到的是覆蓋面,不是核心 finding**。
+  ⚠️ 首跑因 fixture 給 5.7 留了旁路而作廢,判準在重跑前寫死;矩陣與嚴重度刻度的附帶發現見該
+  skill 的 evals.md。
 - **2026-08-17 非 canonical remote 的殘留只列訊號、不發刪除指令**。病灶:候選來自 `branch -r`
   (列**所有** remote)、組 cleanup-cmd 卻只剝 canonical 前綴 → `fork/x` 傳給只認 canonical 的
   `cleanup-stale-branch.sh`,永遠 `verdict: STOP`。**否決「把 remote 一起傳過去」**:它把「刪別人
