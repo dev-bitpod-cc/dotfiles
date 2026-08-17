@@ -302,6 +302,6 @@ Ship 摘要：
 
 - 本 skill 是 **ship / dossier 階段**，不自己跑 review。大變更未審查 → 建議使用者先 `/deep-review`，但不強制。
 - 與 `/deep-review` 銜接：deep-review 結尾 = feature branch + 乾淨 commit + 未 push → Log 模式多走 Step 2（dossier+docs）+ Step 4/5（ship）。
-- 典型流程：`/project spec`（開工）→ 實作 → `/deep-review` → `/project log`（ship）→ `/handoff`（同主機延續）或 STATUS.md 下一步（跨主機延續）→ `/ready4quit`。
+- 典型流程：`/project spec`（開工）→ `/deep-plan`（開工前審計畫，非必經）→ 實作 → `/deep-review` → `/project log`（ship）→ `/handoff`（同主機延續）或 STATUS.md 下一步（跨主機延續）→ `/ready4quit`。
 - 歷史：Log 模式的前身是 `/uap`（2026-07 併入本 skill，防護內容原文搬遷）。本 skill 為 `disable-model-invocation`（description 不進 model context，無語意觸發）——「uap」「ship」等字面由全域 CLAUDE.md 技能載入指標路由（建議使用者執行 `/project log`）；slash 相容形式為裸 `/project`（預設 log 模式）。
 - 詳細 git/gh 指令與邊界 → `references/ship-paths.md`；紀律驗收情境 → `references/pressure-tests.md`；dossier 規範 → `references/dossier.md`。

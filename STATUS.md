@@ -6,13 +6,23 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-17)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-18)
 
 ---
 
 ## 進行中
 
-(無進行中工作項——2026-08-15 的 `BLOCKED` 分流拆解已收斂,見里程碑。)
+- **`deep-plan` skill——紀律情境已 GREEN,成對實驗未跑**(2026-08-17 建立)。`claude/skills/deep-plan/`
+  三檔就緒、`tests/run.sh` 綠;**P1／P2／P3／P5／P6／P7 六個紀律情境在 Sonnet(樓層)全 GREEN**
+  (含截獲驗證:零 SendMessage、洩漏字全 0、計畫內文零洩漏、沙盒零 mutation)。首跑另修掉 body 一處
+  硬矛盾(Step 1「不要讀計畫」vs Step 2「判斷是否判準類」)。
+  **尚未完成的**:①**P4** 需 krepo 側的 fixture(凍結計畫檔進 `docs/plans/` + 登記 commit hash 與四處
+  證據位置,私有內容不進本 repo);②**E1–E3 成對實驗**——SKILL.md「待驗事項」的三條推論(N=2、brief
+  進 prompt、2 輪上限)在實驗前不得當成已驗證的規則引用(Iron Law)。**E2 最該先跑**:實地量到有效的是
+  **不含 brief** 的薄 prompt,且首跑觀察到樓層模型五度做出 body 沒教而正確的推理 ⇒ brief 的邊際價值
+  可能比預期小,預設立場是「brief 需要自證」。③**同日 `/deep-review` 的五條結構性 blocking 未處置**
+  (Step 0/1 落點順序、brief 缺 Blocking 欄、輸出契約缺層別欄、立場累積殘留管道、無 dossier repo 無
+  出路)——全部會改行為契約,逐條與修法見 `docs/backlog.md`「技術債」首條。
 
 > 更早的凍結計畫:`docs/plans/2026-08-09-repo-contract-extraction.md`、
 > `docs/plans/2026-08-10-dossier-portability.md`。
@@ -26,6 +36,27 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-17 `deep-plan` 用「並行 N 個 fresh reviewer」,否決「一個 reviewer 迭代多輪」**。
+  這不是採樣次數的取捨,是避開一個實地量到的失效:**同一 session 連續審修訂版本會累積正當化**。
+  實地(krepo 孤兒告警計畫)——該 reviewer 第一、二輪都指出「這類 finding 移到 deferred 後不會發
+  通知」,接著接受作者「跟既有 pre-listing 豁免一致」的類比,**最後一輪還建議加測試把那個行為釘死**;
+  同一份計畫給兩個 fresh reviewer,兩個都在第一條 finding 判它阻斷。
+- **2026-08-17 由「累積正當化」推出 `deep-plan` 的兩條 body 規則**(承上條)。每輪都有作者的解釋在旁,
+  疑慮被回應一次、被類比一次就鬆一次 ⇒ ①**NEVER resume reviewer**:fresh context 是機制、不是優化
+  (與 deep-review「不把上輪 findings 傳給 subagent」同形狀但**理由不同**——那裡防洩題,這裡防立場
+  累積);②作者的解釋**絕不進 reviewer prompt**,那是傳染途徑。⚠️ 已知未封的殘留管道:「接受為
+  trade-off」寫進 dossier 後,第二輪 reviewer 依 brief §4.4 會主動去讀它(2026-08-17 review 抓到,
+  待處置)。
+- **2026-08-17 `deep-plan` 不把 reviewer 的 verdict 當通過條件**。實地六次獨立審查有**三次**給了
+  「修完這幾條就可以執行」的條件式 approve,而那三張 green light 全都會放行同一條阻斷級缺陷
+  (一整類個體從此永久靜默)。**挖得淺的 reviewer 也會給條件式 approve,外觀與挖到底的完全一樣。**
+  ⇒ 通過判定改看 findings 的處置狀態(修/駁+理由/接受+dossier 落點)與第二輪結果。**否決「用
+  verdict 三態當 exit criteria」**——那正是被證偽的那個訊號。
+- **2026-08-17 `planner-brief.md` 進 prompt 標為待驗,不當既成事實**。實地量到有效的是**不含 brief**
+  的薄 prompt(七條失效模式裡 reviewer 自發抓到六條)。仍寫進 body 的唯一理由:第 7 條
+  (「跟既有 X 一致」正當化新行為)是**全數 reviewer 皆漏、事後自我診斷才浮現**的,有獨立 RED。
+  ⇒ 預設立場是「brief 需要自證」而非無罪推定;成對實驗兩臂零差異就撤回,只留給 orchestrator 檢查
+  findings 完整度。
 - **2026-08-17 非 canonical remote 的殘留只列訊號、不發刪除指令**。病灶:候選來自 `branch -r`
   (列**所有** remote)、組 cleanup-cmd 卻只剝 canonical 前綴 → `fork/x` 傳給只認 canonical 的
   `cleanup-stale-branch.sh`,永遠 `verdict: STOP`。**否決「把 remote 一起傳過去」**:它把「刪別人
@@ -130,6 +161,12 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 > 分層照 `claude/known-hazards.md`「分工」對「已知地雷」的做法:死路要能在你沒想到要查的當下
 > 擋住你,**規則不在 always-on 就不生效**,故結論留此、證據外移。
 
+- **把 deep-review「skill-authoring batch 不進修復循環」的判準套到 plan review**(2026-08-17 否決)。
+  推論鏈是「計畫是 prose → 對 prose 重跑對抗式 review 永不收斂 → plan review 只能跑一次診斷」,
+  **實測推翻**:plan 的 findings 絕大多數是「計畫對 repo 現況的陳述錯了」,oracle 在 repo 裡、二元的;
+  約 30 條 findings 幾乎沒有措辭/完整度深井。⇒ 那條判準管的是**無界完整度**(skill 是常駐規則,
+  reviewer 永遠能問「這情境沒涵蓋嗎」),不是**有限事實查核**。**別再從「它是 .md」推論收斂性**——
+  要看 findings 的 oracle 在哪。⚠️ 但迭代仍被否決,理由完全不同(累積正當化,見關鍵決策節)。
 - **只給待辦節加歸檔出口(已解決的移入 `docs/archive/`)而不分家**(2026-08-15 否決):當日實測
   26 條技術債／已知缺口**無一帶完成標記**,故它今天釋出 **0 bytes**;且處置形狀是在超標時多問
   一題「這條還做不做」,與「Step 2 太花時間」的訴求**方向相反**。**慣例本身沒被丟掉**——
