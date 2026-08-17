@@ -1771,6 +1771,70 @@ if grep -qE "^  remote: origin/feat/squashed.*未驗證" <<< "$out"; then
 else bad "ls-remote 失敗時把 remote 行靜默丟掉、或未標未驗證：$out"; fi
 (cd "$TMP/sqs-work" && git remote set-url origin "$TMP/sqs-origin.git")
 
+# --- B1c：多 remote —— 非 canonical remote 的 branch 不得產生刪除指令 ---
+# 病灶（2026-08-16 實地重現）：候選來自 `branch -r`，它列**所有** remote 的 tracking ref，
+# 但組 cleanup-cmd 時只剝 canonical 前綴 → `fork/feat/x` 原樣被當成 branch 名傳給
+# cleanup-stale-branch.sh，而後者自己把 remote 解析成 canonical → 等於
+# `ls-remote origin fork/feat/x`，必然落空、verdict: STOP。訊號說「可清」、指令永遠清不掉。
+# 既有 fixture 全是單 remote，兩種認知恰好等價，故此路徑一直沒現形。
+# 判準刻意釘在**行為**而非文字：凡印出的 cleanup-cmd，照抄執行必須 exit 0。這是 B1 那條
+# 端到端斷言的推廣——「指令長得對」不等於「指令跑得動」，後者才是訊號的價值所在；
+# 釘行為也讓判準不隨修法搖擺（不論選擇不發指令、或發一條帶對 remote 的指令，都適用）。
+git init --bare -q "$TMP/mrb-origin.git"
+git init --bare -q "$TMP/mrb-fork.git"
+git init -q -b main "$TMP/mrb-work"
+(cd "$TMP/mrb-work" \
+    && echo a > f.txt && "${GITC[@]}" add f.txt && "${GITC[@]}" commit -qm init \
+    && git remote add origin "$TMP/mrb-origin.git" && git push -qu origin main \
+    && git remote add fork "$TMP/mrb-fork.git" \
+    && git push -q origin main:feat/canon-merged \
+    && git push -q fork main:feat/fork-merged \
+    && git switch -qc feat/fork-unmerged && echo b > f.txt && "${GITC[@]}" commit -qam "feat: 未併入" \
+    && git push -q fork feat/fork-unmerged \
+    && git switch -q main && git branch -q -D feat/fork-unmerged \
+    && git fetch -q --all)
+make_gh_prlist_stub "$TMP/gh-mrb" deadbeef acme 0
+out="$(SHIP_STATE_GH="$TMP/gh-mrb" "$SS_SCRIPT" "$TMP/mrb-work")"
+mrb_cmds="$(grep -E '^  cleanup-cmd: .*cleanup-stale-branch\.sh ' <<< "${out}")"
+
+# canonical 側不得因本修法被誤傷（它才是唯一該給刪除指令的來源）
+if grep -qE '^  remote: origin/feat/canon-merged' <<< "${out}"; then
+    ok "多 remote：canonical remote 的殘留照常列出"
+else bad "多 remote：canonical 側殘留被誤過濾掉：${out}"; fi
+
+# 非 canonical 的 ref 不得出現在任何 cleanup-cmd 的引數裡——那正是永遠 STOP 的那條
+if grep -q 'fork/' <<< "${mrb_cmds}"; then
+    bad "非 canonical remote 的 ref 被當成 branch 名塞進 cleanup-cmd：${mrb_cmds}"
+else ok "多 remote：非 canonical 的 ref 不進 cleanup-cmd"; fi
+
+# 訊號不因「不可清」而消失。fork-merged 走祖先路徑、fork-unmerged 走 squash 路徑——
+# 兩條路徑都要說得出它們存在（後者原本在名字比對就 `continue`，是靜默漏報）
+if grep -q 'fork/feat/fork-merged' <<< "${out}" && grep -q 'fork/feat/fork-unmerged' <<< "${out}"; then
+    ok "多 remote：非 canonical 上的殘留仍被列出（兩條偵測路徑都不靜默）"
+else bad "非 canonical remote 的殘留被靜默丟棄，使用者不知道它們存在：${out}"; fi
+
+# 只說「不給刪除指令」不夠——要指出合法出路，否則使用者只能自己猜
+if grep -q 'remote remove' <<< "${out}"; then
+    ok "多 remote：附上停止追蹤的出路（不是只丟一句不處理）"
+else bad "非 canonical 殘留只被列出、未給任何出路：${out}"; fi
+
+# 通則（破壞性，故放最後）：凡印出的 cleanup-cmd，照抄執行必須 exit 0
+if [ -z "$mrb_cmds" ]; then
+    bad "多 remote fixture 未產生任何 cleanup-cmd（fixture 前提失效——canonical 側應有殘留）"
+else
+    mrb_bad=0; mrb_last=""
+    while IFS= read -r mrb_line; do
+        [ -n "$mrb_line" ] || continue
+        mrb_args="${mrb_line#*cleanup-stale-branch.sh }"
+        # `$0` 帶路徑、引數維持原樣照抄（同 B1 的做法）
+        bash -c '"$0" '"$mrb_args" "$ROOT/claude/skills/project/scripts/cleanup-stale-branch.sh" >/dev/null 2>&1 \
+            || { mrb_bad=$((mrb_bad + 1)); mrb_last="$mrb_line"; }
+    done <<< "$mrb_cmds"
+    if [ "$mrb_bad" -eq 0 ]; then
+        ok "多 remote：每一條 cleanup-cmd 照抄都跑得動（exit 0）"
+    else bad "多 remote：有 ${mrb_bad} 條 cleanup-cmd 照抄後失敗（例：${mrb_last}）"; fi
+fi
+
 # --- B2：cleanup-stale-branch.sh（破壞性刪除，執行當下重驗）---
 # 為何要專用腳本而非照抄 `git branch -D`：偵測與刪除之間有 TOCTOU 窗口——ship-state 印出
 # 訊號後，另一個 session（或使用者自己）可能在那支 branch 上又 commit 了東西。照抄的 `-D`
@@ -1836,6 +1900,16 @@ mkdir -p "$TMP/cl-notgit"
 if ! "$CL_SCRIPT" "$TMP/cl-notgit" local feat/gone "$cl_tip" >/dev/null 2>&1; then ok "非 git repo → 非 0 退出"; else bad "非 git repo 卻回報成功"; fi
 out="$("$CL_SCRIPT" "$TMP/cl-work" local feat/nonexistent "$cl_tip" 2>&1)"
 if grep -q "STOP" <<< "$out"; then ok "branch 不存在 → STOP（不當成已刪成功）"; else bad "branch 不存在未給 STOP（${out}）"; fi
+
+# 傳進 remote-tracking ref 的路徑（`fork/x`）→ STOP 訊息要指出 **remote 錯了**，不是名字錯。
+# 發射端已過濾掉這種輸入，這條測的是 defence in depth：手打指令的人仍可能踩，而
+# 「確認名字是否正確」在這個案例裡名字其實是對的，會把人導向錯誤的排查方向。
+(cd "$TMP/cl-work" && git remote add fork "$TMP/cl-work-origin.git")
+out="$("$CL_SCRIPT" "$TMP/cl-work" remote fork/feat/gone "$cl_tip" 2>&1)"
+if grep -q "STOP" <<< "$out"; then ok "傳 tracking ref 路徑 → STOP（零 mutation）"; else bad "傳 tracking ref 路徑未給 STOP（${out}）"; fi
+if grep -q "remote-tracking ref" <<< "$out"; then
+    ok "STOP 訊息指出是 remote-tracking ref 路徑（不誤導成名字打錯）"
+else bad "STOP 訊息仍只說「確認名字是否正確」，把人導向錯誤的排查方向（${out}）"; fi
 
 # --- bootstrap 偵測（全新空 repo 的第一次 ship；default 定位不到時才觸發）---
 # 兩種「default: NONE」的正確處置完全相反：遠端零 branch → 可建 baseline；遠端有

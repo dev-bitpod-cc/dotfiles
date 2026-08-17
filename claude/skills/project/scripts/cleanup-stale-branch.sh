@@ -80,6 +80,19 @@ if ! LS="$(git -C "$REPO" ls-remote --heads "$REMOTE" "$BRANCH" 2>&1)"; then
     die_stop "ls-remote 失敗（網路/認證？）：$(printf '%s' "$LS" | head -1)——無法確認遠端狀態，不刪"
 fi
 if [ -z "$LS" ]; then
+    # 防呆：`<branch>` 要的是「canonical remote 上的 branch 名」，不是 remote-tracking ref
+    # 的路徑。傳錯時名字其實是對的、**remote 才是錯的**，而「確認名字是否正確」會把人導向
+    # 錯誤的排查方向（2026-08-16 實地：發射端漏過濾，`fork/feat/x` 原樣傳進來）。發射端已
+    # 修，這裡是 defence in depth——手打指令的人仍可能踩。最長前綴比對 `git remote` 實際
+    # 清單，不用 `${BRANCH%%/*}`：remote 名本身可以含 `/`。
+    HINT=""
+    while IFS= read -r r; do
+        [ -n "$r" ] || continue
+        case "$BRANCH" in "${r}/"*) [ "${#r}" -gt "${#HINT}" ] && HINT="$r" ;; esac
+    done <<< "$(git -C "$REPO" remote)"
+    if [ -n "$HINT" ] && [ "$HINT" != "$REMOTE" ]; then
+        die_stop "「${BRANCH}」看起來是 remote-tracking ref 的路徑（remote「${HINT}」），不是 ${REMOTE} 上的 branch 名——本腳本的 <branch> 參數要的是後者。非 canonical remote 上的 branch 本流程不代刪，請自行對該 remote 執行"
+    fi
     die_stop "遠端沒有 branch「${BRANCH}」——確認名字是否正確；不存在不等於已刪成功"
 fi
 ACTUAL="$(printf '%s\n' "$LS" | head -1 | awk '{print $1}')"

@@ -722,7 +722,7 @@ detect_branch_diverged() {
 # 不在此列（誤報會誘導刪掉未送出的成果）。
 detect_stale_branches() {
     local repo="$1" remote="$2" default="$3" branch="$4" toplevel="$5"
-    local locals remotes_merged n_local n_remote cmd b name tip
+    local locals remotes_merged n_local n_remote cmd b name tip kept
     locals="$(git -C "$repo" branch --merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
         | grep -vxF "$default" | grep -vxF "$branch")" || locals=""
     # `branch -r` 會把 <remote>/HEAD 的 short form 印成**裸 remote 名**（如 "origin"）——
@@ -732,6 +732,21 @@ detect_stale_branches() {
     # 照抄 cleanup-cmd 就會把「本次正要送出的那條」從遠端砍掉。local 側早已排除，remote 側漏了。
     remotes_merged="$(git -C "$repo" branch -r --merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
         | grep -vxF "$remote/$default" | grep -vxF "$remote" | grep -vxF "$remote/$branch" | grep -v '/HEAD$')" || remotes_merged=""
+    # 非 canonical remote 的 ref 在此**整批剔除**——它們是**另一個 repo 的內容**，訊號改由
+    # detect_foreign_remote_branches 集中處理（只列出、不發刪除指令）。
+    # 病灶（2026-08-16 實地）：漏了這道過濾時，候選來自 `branch -r`（列**所有** remote），
+    # 但下面組 cleanup-cmd 只剝 canonical 前綴 → `fork/feat/x` 原樣被當成 branch 名傳給
+    # cleanup-stale-branch.sh，而後者自己把 remote 解析成 canonical → 等於
+    # `ls-remote origin fork/feat/x`，必然落空、永遠 verdict: STOP。單 remote 下「tracking
+    # ref 路徑」與「canonical 上的 branch 名」恰好等價，故這條認知不一致潛伏至今。
+    # 字面前綴比對而非 grep 正則：remote 名允許含 `.`（`my.fork`），`^my.fork/` 會誤配
+    # `myXfork/…`——那種誤判是靜默的。
+    kept=""
+    while IFS= read -r b; do
+        [ -n "$b" ] || continue
+        case "$b" in "${remote}/"*) kept="${kept}${b}"$'\n' ;; esac
+    done <<< "$remotes_merged"
+    remotes_merged="$(printf '%s' "$kept")"
     [ -z "$locals" ] && [ -z "$remotes_merged" ] && return
     n_local=$([ -n "$locals" ] && printf '%s\n' "$locals" | wc -l | tr -d ' ' || echo 0)
     n_remote=$([ -n "$remotes_merged" ] && printf '%s\n' "$remotes_merged" | wc -l | tr -d ' ' || echo 0)
@@ -792,7 +807,7 @@ SQUASH_PR_LIMIT=200
 
 detect_squash_merged_branches() {
     local repo="$1" remote="$2" default="$3" branch="$4" toplevel="$5"
-    local locals_un remotes_un names slug prs n_rows scan
+    local locals_un remotes_un names slug prs n_rows scan b kept_un names_r
     local n name tip pr_num pr_oid pr_owner owner row hits listed skipped
     local rheads rheads_ok rc
 
@@ -801,7 +816,24 @@ detect_squash_merged_branches() {
         | grep -vxF "$default" | grep -vxF "$branch")" || locals_un=""
     remotes_un="$(git -C "$repo" branch -r --no-merged "$remote/$default" --format='%(refname:short)' 2>/dev/null \
         | grep -vxF "$remote/$default" | grep -vxF "$remote" | grep -vxF "$remote/$branch" | grep -v '/HEAD$')" || remotes_un=""
-    names="$(printf '%s\n%s\n' "$locals_un" "${remotes_un//${remote}\//}" | grep -v '^$' | sort -u)"
+    # 同 detect_stale_branches：非 canonical remote 的 ref 整批剔除（訊號歸
+    # detect_foreign_remote_branches）。原寫法 `${remotes_un//${remote}\//}` 有兩個獨立缺陷：
+    #   ① 它是**全域**替換而非剝前綴——branch 名裡再出現一次 `origin/` 也會被吃掉；
+    #   ② 對 `fork/x` 完全無效，帶前綴的名字於是流進下游，拿去比對 merged PR 的
+    #      headRefName 必然落空 → `[ -n "$row" ] || continue` **靜默略過**。
+    # ②的實測（2026-08-16，PR owner 相同、headRefOid 與 tip 相符、條件全部齊備）是整段
+    # 不印、連 skipped: 都沒有——**不是被下方的 owner 檢查擋住，是根本走不到那裡**。
+    # 故此處同時修掉兩者：只留 canonical、逐條 `${b#<remote>/}` 剝前綴。
+    kept_un=""; names_r=""
+    while IFS= read -r b; do
+        [ -n "$b" ] || continue
+        case "$b" in "${remote}/"*)
+            kept_un="${kept_un}${b}"$'\n'
+            names_r="${names_r}${b#"${remote}"/}"$'\n' ;;
+        esac
+    done <<< "$remotes_un"
+    remotes_un="$(printf '%s' "$kept_un")"
+    names="$(printf '%s\n%s\n' "$locals_un" "$names_r" | grep -v '^$' | sort -u)"
     [ -z "$names" ] && return
 
     # remote 行以**遠端事實**為準，不拿本地 tracking ref 當證據。
@@ -897,6 +929,50 @@ detect_squash_merged_branches() {
     echo "  scan: ${scan}"
 }
 
+# 非 canonical remote 上的 branch：只列訊號、**不發刪除指令**。
+#
+# 為何自成一段，而不是在上面兩段各留一條 foreign 分支：那些 ref 屬於**另一個 repo**，
+# 「是否已併入我的 default」對它們不構成任何處置依據。實地（2026-08-16，pilot-api）：5 支
+# 殘留全在同事的 fork 上、其中一支還是那個 repo 的 `main`，而 stale 段的措辭「已完全併入
+# default，內容零損失可清」讀起來像本地垃圾。集中成一段也讓上面兩段各自回到單純的
+# canonical-only 邏輯，訊號才不會分裂成「祖先路徑講得出、squash 路徑靜默漏報」。
+#
+# **刻意不給刪除指令**：刪 fork 上的 branch 是對外破壞性操作、動到的是別人的 repo，
+# 而本 skill 的 remote 假設已明訂 fork 場景「不擅自對 fork 開 PR、不對唯讀 upstream push」
+# ——一鍵刪除更在其外。這裡缺的從來不是「刪得掉的指令」，是「這是別人的東西」這個資訊。
+# 純本地判定、不碰網路（與 detect_stale_branches 同一原則）。
+detect_foreign_remote_branches() {
+    local repo="$1" remote="$2"
+    local all remotes_all b r rem foreign="" rems="" n
+    all="$(git -C "$repo" branch -r --format='%(refname:short)' 2>/dev/null | grep -v '/HEAD$')" || all=""
+    [ -n "$all" ] || return
+    remotes_all="$(git -C "$repo" remote)" || return
+    while IFS= read -r b; do
+        [ -n "$b" ] || continue
+        # 歸屬用**最長前綴**比對 `git remote` 的實際清單，不用 `${b%%/*}`：remote 名本身
+        # 可以含 `/`，切第一段會歸錯家。落不進任何 remote 的（如 <remote>/HEAD 的 short
+        # form＝裸 remote 名）rem 為空，直接略過。
+        rem=""
+        while IFS= read -r r; do
+            [ -n "$r" ] || continue
+            case "$b" in "${r}/"*) [ "${#r}" -gt "${#rem}" ] && rem="$r" ;; esac
+        done <<< "$remotes_all"
+        [ -n "$rem" ] || continue
+        [ "$rem" = "$remote" ] && continue
+        foreign="${foreign}  branch: ${b}"$'\n'
+        grep -qxF "$rem" <<< "$rems" || rems="${rems}${rem}"$'\n'
+    done <<< "$all"
+    [ -n "$foreign" ] || return
+    n="$(grep -c . <<< "$foreign")"
+    echo "foreign-remote-branches: ${n}（在非 canonical remote 上——**另一個 repo 的內容**，只列出、不發刪除指令）"
+    printf '%s' "$foreign"
+    while IFS= read -r rem; do
+        [ -n "$rem" ] || continue
+        echo "  note: 要停止追蹤「${rem}」（本地不再列出，對方 repo 完全不動）：git -C $(shq "$repo") remote remove $(shq "$rem")"
+    done <<< "$rems"
+    echo "  note: 真要刪除那些 branch 需明確意圖（會動到別人的 repo）——本流程不代勞，請自行對該 remote 執行"
+}
+
 check_repo() {
     local repo="$1"
 
@@ -988,6 +1064,7 @@ check_repo() {
     # -- 殘留 branch 衛生（已併入 default 的 local/remote branch；無殘留則靜默）--
     detect_stale_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
     detect_squash_merged_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
+    detect_foreign_remote_branches "$repo" "$remote"
     detect_review_residue "$repo" "$remote" "$default" "$toplevel"
     detect_review_terminal "$repo"
 
