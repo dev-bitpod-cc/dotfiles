@@ -20,9 +20,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   的 **dp1** 沙盒——evals 從此可重跑,不再手建於 scratchpad(session 一結束就沒了)。
   **尚未完成的**:①**P4** 需 krepo 側的 fixture(凍結計畫檔進 `docs/plans/` + 登記 commit hash 與四處
   證據位置,私有內容不進本 repo);②**E1／E3** 未跑(N 的邊際收益、第二輪的實際產出),在實驗前不得
-  當成已驗證的規則引用(Iron Law);③**同日 `/deep-review` 的五條結構性 blocking 未處置**
-  (Step 0/1 落點順序、brief 缺 Blocking 欄、輸出契約缺層別欄、立場累積殘留管道、無 dossier repo 無
-  出路)——全部會改行為契約,逐條與修法見 `docs/backlog.md`「技術債」首條。
+  當成已驗證的規則引用(Iron Law)。
+  **2026-08-18 處置完五條結構性 blocking**(走 TDD,情境 P8–P12 ＋沙盒 dp2/dp3/dp4/dp5):
+  **只有兩條在樓層模型上紅得起來**——B2(四級表缺 Blocking 欄)、B3(輸出契約缺層別欄),兩條
+  RED → 修 → GREEN 走完;B1／B4／B5 實測未紅,**不加規則**,只修「原文說錯或說不清」的部分
+  (理由見決策節)。回歸 P1／P3／P7 全 GREEN。
 
 > 更早的凍結計畫:`docs/plans/2026-08-09-repo-contract-extraction.md`、
 > `docs/plans/2026-08-10-dossier-portability.md`。
@@ -52,6 +54,12 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   (一整類個體從此永久靜默)。**挖得淺的 reviewer 也會給條件式 approve,外觀與挖到底的完全一樣。**
   ⇒ 通過判定改看 findings 的處置狀態(修/駁+理由/接受+dossier 落點)與第二輪結果。**否決「用
   verdict 三態當 exit criteria」**——那正是被證偽的那個訊號。
+- **2026-08-18 `/deep-review` 判 blocking 的五條裡,只有兩條進了 body**。逐條跑 TDD 後:
+  **B2／B3 在 Sonnet 上真的紅** → 修;**B1／B4／B5 兩次以上實測皆未紅** → **不加規則**,只修
+  「原文說錯或說不清」的部分。三條的不紅理由**各不相同、別混成一條**(B1 樓層模型自己先定目標
+  repo;B4 它自己就只寫取捨事實;**B5 是既有全域 kernel 接住的**),逐字說詞在該 skill 的 `evals.md`。
+  **判準**:診斷判 blocking 是「值得查」、不是「該進 body」;**「實地出過事」不等於「fixture 紅得起來」**。
+  ⚠️ 這批踩出兩條 fixture 旁路,**都是補一個沒有旁路的臂之後才敢下結論**。
 - **2026-08-17 `planner-brief.md` 進 prompt 標為待驗 → 2026-08-18 成對實驗判定「保留」**。
   E2 實測(Sonnet,A/B 各 2 次):阻斷級 findings 兩臂**零差異**——樓層模型自己就抓得到最嚴重那條;
   但 5.7／5.5／5.4 三條 A 臂 5.5/6、B 臂 **0/6**。⇒ **brief 買到的是覆蓋面,不是核心 finding**。
@@ -79,29 +87,7 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   有沒有它你都是依「我剛叫它跑測試」按核准,安全訊號的差額接近零;且實測全機只有 2 個 `tests/run.sh`
   (本 repo 與 ml-env),`~/Projects` 20 個 remote 全在自有 org。**復活條件:哪天 clone 外部 repo 進來
   就重看這兩行**——clone 的當下沒人會回頭讀 allowlist,那是它唯一的殘留風險。
-- **2026-08-16 `autoMode.environment` 以權威機器身分固定**。`/auto-mode-setup` 把它寫進
-  `~/.claude/settings.json`,而該檔是指向本 repo 的 symlink——於是它直接落在 working tree
-  成為 drift,下次 `brewup` 的 `git checkout -- claude/settings.json` 便把它丟掉,setup
-  因此重複詢問(同一台機器被問兩次)。commit 讓它隨 pull 散佈全機隊。
-- **2026-08-16 repo-scoped 三行當天就改回動態措辭,推翻同日稍早「刻意不改」的判斷**。原判斷
-  是「偏差方向保守、非危險方向,故不阻擋送出」;`claude auto-mode critique` 推翻它——寫死 repo
-  會讓其他 repo 的 origin 掉出 trust boundary(routine push 被當 Data Exfiltration 判),且預設的
-  `Repository visibility` 本是**決策程序**(assume private unless…),被單一 repo 事實換掉後其他
-  repo 連 fallback 都沒有。**判準修正:「偏差方向保守」不構成留著的理由**——保守的代價就是每次
-  操作都被問,而那正是 auto mode 要消除的東西。
-- **2026-08-16 `autoMode` 各段是取代語意,`allow` 用 `$defaults` sentinel 繼承內建**。實測:直接
-  自訂一條 allow → `config` 的 allow 從 17 掉到 1,`Read-Only Operations`／`Git Push Destination`
-  等核心豁免全被踢掉、**零警告**,結果比不設定還麻煩。正解是把字面字串 `"$defaults"` 放在陣列
-  首位——實測展開後與內建 17 條**逐字相符**,升版自動跟上、不必存複本。⚠️ **`environment` 不適用**:
-  同樣放 `$defaults` 是**純附加、不覆寫**,實測出現兩行 `**Trusted repo**:` 且內容互斥,故它只能
-  全量寫出就地改(這正是 `/auto-mode-setup` 把每個 slot 含 `None configured` 都列出的原因)。
-- **2026-08-16 fleet wrappers 依風險分兩條路,不全塞 classifier**。`permissions.allow` 命中的規則
-  在 auto mode 下**直接放行、不進 classifier**(零 token);原始碼判準:規則被停用只有三種情形——
-  `classifyAllShell=true`(預設 false)、全域 wildcard、或規則涵蓋 26 個危險命令(`python*`/`node`/
-  `bash`/`sh`/`ssh`/`eval`/`exec`/`env`/`xargs`/`sudo`…)。故 `tmuxls`(唯讀)、`brewup`(本機)進
-  `permissions.allow`;`dotsync`／`allup` **留在 autoMode 規則**——比對只看規則字串,`Bash(dotsync)`
-  不命中 `ssh` 卻會把它內部的 fan-out 一併放行,而 classifier 規則才表達得了「腳本本 session 被
-  改過就不適用」這種條件。**省 token 與可表達的條件是對價關係**,按風險挑邊。
+
 - **2026-08-15 dossier 與 backlog 依生命週期分家,不動門檻**。技術債＋已知缺口是**待辦**
   ——只壓得短、條目不會少,直到做掉為止,量體門檻對它無效(實測佔 STATUS.md 47%、26 條無一
   已解決,近 25 次 commit 有 8 次落在門檻 98–99.8%)。**否決兩條「讓門檻」的路**(治理計畫的
@@ -109,30 +95,7 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   dossier 管轄範圍**:兩節移入 `docs/backlog.md`。④⑤ 因此降級為**暫不需要**(非否決),
   復活條件是分家後的 dossier 又長期貼門檻。代價與未驗證面見
   `docs/plans/2026-08-14-dossier-governance.md`「v2 追記」。
-- **2026-08-15 `BLOCKED` 的成因判準吃 `gh pr checks --required` 的 exit code**(0 全綠／8 pending／
-  其他非零 失敗;否決 `statusCheckRollup` 計數的理由見死路節)。`mergeStateStatus: BLOCKED` 聚合三種
-  成因(CI 還在跑／required check 失敗／protection 真的擋),**正解相反**,而舊分流表一律解成第三種
-  → 把「再等 90 秒就會自己消失」的阻塞誤診成權限問題並導向 `--admin`(＝讓沒跑完測試的變更進
-  default)。krepo PR #127 實地踩到、#129 二度發生;#129 那輪答對是 agent **自行繞過分流表**多查
-  一步——**正解可推導卻沒被編碼**,那正是要寫進去的理由。
-- **2026-08-15 等 CI 刻意不封頂**(同批)。`gh pr checks --watch` 跑到 check 收斂為止,agent 全程
-  在場、使用者隨時可中斷即是上限。**不封頂是兩害相權**:macOS 無 `timeout`/`gtimeout`,包一層就是
-  exit 127——整段沒跑卻回一個看起來像通過的碼,比不封頂更糟。
-- **2026-08-15 dotfiles 轉入 `jjshen-eland`,用所有權消掉 gh 雙帳號碰撞,不加 wrapper**。active gh
-  account 是**機器全域可變狀態**,工作 repo 的平行 session 會切走它 → ship 個人帳號的 repo 就吃到
-  `protection: UNKNOWN` 與 `pr create` 失敗。**否決 wrapper**:爆炸半徑只有兩個 repo,解法卻要
-  shadow 掉 `gh` 散到 14 台,正是 CLAUDE.md 自己禁的 PATH shadowing;且 `UNKNOWN → PROTECTED → PR`
-  恰等於預設路徑,實際後果為零。⚠️ `github-me`／`id_personal` 原樣保留(理由見 CLAUDE.md);
-  iOS App 仍在個人帳號,它若也從雙帳號機器 ship 會重演,屆時同一條前綴即解。
-- **2026-08-14 always-on 量體訊號放 ship-state、且刻意無條件印**。治理的對象一直是錯的:兩份
-  `CLAUDE.md` 每 session 載入卻**零 gate**,而不自動載入的 STATUS.md 有五層。放 SessionStart hook
-  不行(那支的契約是「無事發生就無輸出」)。**背離「只在超標時印」原則**是因為它是 baseline 觀測
-  而非處置訊號。⚠️ 升級成 flag 前要先解決「結構下限出口」——機隊最大 102968,貿然設門檻會有
-  七八個 repo 常亮。
-- **2026-08-14 外部 findings 七條落地兩條,其餘五條不做**。逐條判定見
-  `docs/plans/2026-08-14-dossier-governance.md`「DROP」;兩個要點:軟目標訊號**要先有「已達結構
-  下限」的出口**(否則對 always-on 佔 72% 的本 repo 只是第二個常亮 flag),per-repo 覆寫要走
-  krepo 豁免條款的形狀(帶理由與失效條件)而非純數字。
+
 - **2026-08-13 不建 Codex 版 project skill,等真實 RED**。既然 Codex 已可 ship,直覺下一步是把
   Claude 的 `project` workflow 複製一份給它;不做的理由是 `codex/AGENTS.md` 改後已指向
   **repo 既有的 shipping skill**,複製等於製造第二份會漂移的 pressure-tested 邏輯(同
@@ -225,6 +188,10 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-13 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-18 `deep-plan` 五條結構性 blocking 處置完畢:新增情境 **P8–P12** 與沙盒
+  **dp2／dp3／dp4／dp5**(dp5 為補上的判定臂)。body 改動:brief §3 加 Blocking 欄、輸出契約加必填
+  「層別」、Step 3 加 `NEVER re-classify a finding yourself`、落點改跟目標 repo、修正 scratchpad
+  落點的錯誤外推、揭露 dossier 這條已知殘留管道。八次 Sonnet 實跑(含回歸 P1/P3/P7),1046 PASS。
 - ✅ 2026-08-15 dossier／backlog 分家落地:新增 `docs/backlog.md`(待辦兩節＋關閉歸檔慣例)、
   `ship-state.sh` 的 `detect_backlog`(**只驗章節完整性、刻意無量體門檻**)與抽出共用的
   `strip_fences`,規範同步 `references/dossier.md`／SKILL Step 2／`STATUS-template.md`＋

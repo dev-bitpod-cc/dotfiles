@@ -24,6 +24,8 @@ allowed-tools: Bash, Read, Glob, Grep, Write, Agent, AskUserQuestion
 
 > 與 `/deep-review` Step 4「不把上一輪 findings 傳給 subagent」形狀相同、**理由不同**：那裡防的是洩題（輪次、剩餘輪數）；這裡防的是**立場累積**。兩個理由都成立，**NEVER resume a reviewer across rounds — a fresh context is not an optimization, it is the mechanism.**
 
+> **一條已知殘留——不要把第二輪講成完全隔離。** Step 4 的「接受為 trade-off」會寫進 repo 的決策存放處，而第二輪 fresh reviewer 依 brief 會**主動去讀既有決策**：作者的取捨於是以「repo 既有決策」的身分抵達它，比進 prompt 更具權威。這條管道**封不掉**（dossier 本來就該被讀），實測（2026-08-18）第二輪 reviewer 是回頭**查證那條決策的前提**、不是被它說服，故不另設寫法限制——但報告別宣稱第二輪零污染。
+
 ### The reviewers' verdict is NOT the pass condition
 
 Reviewers 常會自發給出「修完這幾條就可以執行」這種條件式 approve。**那不是通過訊號，只是一份 findings 清單加一句樂觀的結論。**
@@ -40,8 +42,10 @@ Reviewer 交出的是 findings 與判斷。**一旦它交出一份改好的計�
 
 判準的完整定義在 `~/.claude/skills/deep-plan/references/planner-brief.md`（reviewer 與 orchestrator 共用同一份，**本檔不重述**）。分層的用意在此說明一次：
 
-- **可查證層 → blocking。** findings 的真假去 repo 查就知道：事實假設、完成判定、未列的相依。
+- **可查證層 → 可以 blocking。** findings 的真假去 repo 查就知道：事實假設、完成判定、未列的相依。
 - **判斷層 → non-blocking。** 步驟順序、有沒有更短的路、失敗模式沒寫。沒有 oracle，讓它 block 就是深井入口。
+
+**Blocking = 可查證層 AND 嚴重度不是「低」。** 兩個條件缺一不可，判準各在 brief 的 §2 與 §3（§3 的表有 Blocking 欄）。**A "低" finding NEVER blocks** —— 行號漂 1–2 行、路徑少一層、指標斷鏈，brief 自己說那是常態；讓它擋批配上 2 輪上限，通過條件近乎不可達（實測：第二輪只剩四條這種，受測 agent 照字面判「不通過」）。低級照列進報告交作者順手修，**不進通過判定**。
 
 實地：約 30 條 findings 裡幾乎沒有「這個設計可以更好」的深井——計畫這種 artifact 的噪音本來就低，不需要第二道防線。**但這道分層仍是硬的：一條 finding 若要靠「先做一版看看」才能判真假，它不是計畫的問題，是計畫的下一步。**
 
@@ -61,7 +65,7 @@ Deep Plan 進度：
 
 ### 0. 計畫落成檔案
 
-計畫還在對話裡（plan mode 的產出、使用者貼上的文字）→ **先用 Write 工具寫成檔案**，再往下走。位置優先序：repo 的 `docs/plans/<slug>.md`（該目錄存在時）→ scratchpad。
+計畫還在對話裡（plan mode 的產出、使用者貼上的文字）→ **先用 Write 工具寫成檔案**，再往下走。位置優先序：**目標 repo**（計畫要動的那個，**不必然是 pwd** —— 先做 Step 1 的第一項把它定出來）的 `docs/plans/<slug>.md`（該目錄存在時）→ scratchpad。**NEVER 因為 pwd 的 repo 剛好有 `docs/plans/` 就落在那裡**：那會把別人 repo 的計畫寫進這個 repo，並被它的 ship 流程送出。
 
 兩條硬規則，理由各自不同——**不要把它們的理由混起來**：
 
@@ -106,7 +110,7 @@ Deep Plan 進度：
 **Do NOT rewrite the plan.** 你的產出是 findings 與判斷，不是一份改好的計畫。指出問題在哪、為什麼是問題、你查證的依據是什麼；要不要改、怎麼改是計畫作者的事。
 
 輸出（繁體中文）：
-1. 每條 finding：問題、嚴重程度、你的查證依據（檔案:行號 或 你跑的指令與結果）
+1. 每條 finding：問題、**層別（可查證／判斷）**、**嚴重度**（阻斷／高／中／低）、你的查證依據（檔案:行號 或 你跑的指令與結果）。層別與嚴重度**兩欄都必填**，判準見上面那份 brief。
 2. 一份「已查證為真」清單（讓作者不必重查）
 3. 明確標出哪些陳述你查不到（需要 prod DB／外部服務／即時網路）
 4. 最後給一句明確結論：這份計畫現在可不可以開始執行？
@@ -131,6 +135,7 @@ Deep Plan 進度：
 - 各 reviewer 獨有的 findings **一律保留**，不因為只有一個 reviewer 提就降級——實地獨有的那些包含了整批唯一會推翻計畫前提的一條。
 - 把「已查證為真」清單也合併呈現：它讓作者不必重查，價值不低於 findings。
 - **You are stitching, not filtering.** 不加工、不篩選、不淡化嚴重度、不替 reviewer 判 false positive。
+- **層別與嚴重度一律沿用 reviewer 給的值。** 分流（Step 4／5）只讀這兩欄，**NEVER re-classify a finding yourself** —— 判「這條要不要先做一版才知真假」正是你被禁止形成的判斷。某條缺欄位 → 在報告標明「該條層別／嚴重度未標」交作者裁決，**NEVER fill it in for them**。
 
 ### 4. 逐條處置
 
@@ -140,7 +145,7 @@ Deep Plan 進度：
 |---|---|---|
 | **修** | 改計畫 | 改的是 Step 0 那份檔案 |
 | **駁** | 判為 false positive | **必須附理由**，且理由要指向 repo 事實 |
-| **接受** | 確認是真的，但選擇當 trade-off 帶著走 | 寫進該 repo 的 dossier（STATUS.md 決策節）；**沒有落點的「接受」不算處置** |
+| **接受** | 確認是真的，但選擇當 trade-off 帶著走 | 寫進該 repo **既有的**決策存放處（STATUS.md 決策節、`docs/decisions.md`……依該 repo 慣例；repo 沒有這種存放處時**不要開一個**，落點改成報告中獨立的一節——這是全域 kernel 的既有規定，本檔不重述）；**沒有落點的「接受」不算處置** |
 
 **"Noted" / "看過了" / silence is NOT a disposition.** 一條 blocking finding 沒有上述三種處置之一 → 這批不通過，不進 Step 5。
 
@@ -180,7 +185,7 @@ Deep Plan 進度：
 ## 與其他 skill 的關係
 
 - `/project spec`（開工寫 spec）→ **本 skill**（開工前審 spec/plan）→ 實作 → `/deep-review`（審已寫出來的 code）→ `/project log`（ship）
-- 本 skill **不寫計畫、不改計畫、不 commit**。Step 4 的修改由計畫作者執行；Step 0 產生的計畫檔留在 working tree，由 `/project log` 一起送出。
+- 本 skill **不寫計畫、不改計畫、不 commit**。Step 4 的修改由計畫作者執行。Step 0 產生的計畫檔**落在目標 repo 時**留在該 repo 的 working tree，由 `/project log` 一起送出；**落在 scratchpad 時它不在任何 working tree**，任何 ship 流程都帶不走它——報告要明講這件事，要保留就由使用者決定搬去哪個 repo。
 - `/deep-review` 審的是 code，本 skill 審的是還沒寫成 code 的計畫。**兩者的判準不通用**——不要把 `~/.claude/skills/deep-review/references/reviewer-brief.md` 交給 plan reviewer。
 
 ## 待驗事項

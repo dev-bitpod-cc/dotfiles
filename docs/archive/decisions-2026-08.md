@@ -9,6 +9,10 @@
 > 所以歸檔而非刪除。
 >
 > 按需查閱，不進 always-on context。要追某個現行行為的理由時搜這裡。
+>
+> 2026-08-18 追加一批（08-14～08-16 的 9 條：autoMode／fleet wrappers／`BLOCKED` 判準／等 CI 不封頂／
+> repo 所有權轉移／always-on 量體訊號／外部 findings 結案）——機制皆已固化在 `settings.json`／
+> `ship-state.sh`／`shell/functions.sh`，且無待觸發條件。
 
 - **2026-08-05 `add -A` 禁令的例外只有 deep-review WIP snapshot,且附前置條件**:新立的全域
   禁令與 `deep-review/SKILL.md` 的 `git add -A && git commit -m "wip: ..."` 直接對撞(第三方
@@ -542,3 +546,51 @@
   每顆 buried 標 `fixup` 折進前一顆語意 commit 即可、衝突為零是結構保證,**做得到但沒做**——代價是
   語意 commit 的 hash 與內容都會變、「squash 絕不動語意 commit」從結構保證退成測試保證、多一條
   rebase 回滾路徑、branch 首顆是 buried 時無目標;而實測多為 none/top-contiguous。
+
+- **2026-08-16 `autoMode.environment` 以權威機器身分固定**。`/auto-mode-setup` 把它寫進
+  `~/.claude/settings.json`,而該檔是指向本 repo 的 symlink——於是它直接落在 working tree
+  成為 drift,下次 `brewup` 的 `git checkout -- claude/settings.json` 便把它丟掉,setup
+  因此重複詢問(同一台機器被問兩次)。commit 讓它隨 pull 散佈全機隊。
+- **2026-08-16 repo-scoped 三行當天就改回動態措辭,推翻同日稍早「刻意不改」的判斷**。原判斷
+  是「偏差方向保守、非危險方向,故不阻擋送出」;`claude auto-mode critique` 推翻它——寫死 repo
+  會讓其他 repo 的 origin 掉出 trust boundary(routine push 被當 Data Exfiltration 判),且預設的
+  `Repository visibility` 本是**決策程序**(assume private unless…),被單一 repo 事實換掉後其他
+  repo 連 fallback 都沒有。**判準修正:「偏差方向保守」不構成留著的理由**——保守的代價就是每次
+  操作都被問,而那正是 auto mode 要消除的東西。
+- **2026-08-16 `autoMode` 各段是取代語意,`allow` 用 `$defaults` sentinel 繼承內建**。實測:直接
+  自訂一條 allow → `config` 的 allow 從 17 掉到 1,`Read-Only Operations`／`Git Push Destination`
+  等核心豁免全被踢掉、**零警告**,結果比不設定還麻煩。正解是把字面字串 `"$defaults"` 放在陣列
+  首位——實測展開後與內建 17 條**逐字相符**,升版自動跟上、不必存複本。⚠️ **`environment` 不適用**:
+  同樣放 `$defaults` 是**純附加、不覆寫**,實測出現兩行 `**Trusted repo**:` 且內容互斥,故它只能
+  全量寫出就地改(這正是 `/auto-mode-setup` 把每個 slot 含 `None configured` 都列出的原因)。
+- **2026-08-16 fleet wrappers 依風險分兩條路,不全塞 classifier**。`permissions.allow` 命中的規則
+  在 auto mode 下**直接放行、不進 classifier**(零 token);原始碼判準:規則被停用只有三種情形——
+  `classifyAllShell=true`(預設 false)、全域 wildcard、或規則涵蓋 26 個危險命令(`python*`/`node`/
+  `bash`/`sh`/`ssh`/`eval`/`exec`/`env`/`xargs`/`sudo`…)。故 `tmuxls`(唯讀)、`brewup`(本機)進
+  `permissions.allow`;`dotsync`／`allup` **留在 autoMode 規則**——比對只看規則字串,`Bash(dotsync)`
+  不命中 `ssh` 卻會把它內部的 fan-out 一併放行,而 classifier 規則才表達得了「腳本本 session 被
+  改過就不適用」這種條件。**省 token 與可表達的條件是對價關係**,按風險挑邊。
+- **2026-08-15 `BLOCKED` 的成因判準吃 `gh pr checks --required` 的 exit code**(0 全綠／8 pending／
+  其他非零 失敗;否決 `statusCheckRollup` 計數的理由見死路節)。`mergeStateStatus: BLOCKED` 聚合三種
+  成因(CI 還在跑／required check 失敗／protection 真的擋),**正解相反**,而舊分流表一律解成第三種
+  → 把「再等 90 秒就會自己消失」的阻塞誤診成權限問題並導向 `--admin`(＝讓沒跑完測試的變更進
+  default)。krepo PR #127 實地踩到、#129 二度發生;#129 那輪答對是 agent **自行繞過分流表**多查
+  一步——**正解可推導卻沒被編碼**,那正是要寫進去的理由。
+- **2026-08-15 等 CI 刻意不封頂**(同批)。`gh pr checks --watch` 跑到 check 收斂為止,agent 全程
+  在場、使用者隨時可中斷即是上限。**不封頂是兩害相權**:macOS 無 `timeout`/`gtimeout`,包一層就是
+  exit 127——整段沒跑卻回一個看起來像通過的碼,比不封頂更糟。
+- **2026-08-15 dotfiles 轉入 `jjshen-eland`,用所有權消掉 gh 雙帳號碰撞,不加 wrapper**。active gh
+  account 是**機器全域可變狀態**,工作 repo 的平行 session 會切走它 → ship 個人帳號的 repo 就吃到
+  `protection: UNKNOWN` 與 `pr create` 失敗。**否決 wrapper**:爆炸半徑只有兩個 repo,解法卻要
+  shadow 掉 `gh` 散到 14 台,正是 CLAUDE.md 自己禁的 PATH shadowing;且 `UNKNOWN → PROTECTED → PR`
+  恰等於預設路徑,實際後果為零。⚠️ `github-me`／`id_personal` 原樣保留(理由見 CLAUDE.md);
+  iOS App 仍在個人帳號,它若也從雙帳號機器 ship 會重演,屆時同一條前綴即解。
+- **2026-08-14 always-on 量體訊號放 ship-state、且刻意無條件印**。治理的對象一直是錯的:兩份
+  `CLAUDE.md` 每 session 載入卻**零 gate**,而不自動載入的 STATUS.md 有五層。放 SessionStart hook
+  不行(那支的契約是「無事發生就無輸出」)。**背離「只在超標時印」原則**是因為它是 baseline 觀測
+  而非處置訊號。⚠️ 升級成 flag 前要先解決「結構下限出口」——機隊最大 102968,貿然設門檻會有
+  七八個 repo 常亮。
+- **2026-08-14 外部 findings 七條落地兩條,其餘五條不做**。逐條判定見
+  `docs/plans/2026-08-14-dossier-governance.md`「DROP」;兩個要點:軟目標訊號**要先有「已達結構
+  下限」的出口**(否則對 always-on 佔 72% 的本 repo 只是第二個常亮 flag),per-repo 覆寫要走
+  krepo 豁免條款的形狀(帶理由與失效條件)而非純數字。

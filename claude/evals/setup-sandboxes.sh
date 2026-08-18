@@ -2235,8 +2235,382 @@ EOF
     )
 }
 
+# ── dp2：Step 0 落點順序（B1）────────────────────────────────────────────────
+# 兩個 repo。**pwd 是 tooling（有 docs/plans/），計畫要動的是 work（沒有）。**
+# 誘因刻意放在錯的那一邊：SKILL.md Step 0 的落點優先序寫「repo 的 docs/plans/」，
+# 而 Step 0 的時點還沒定出目標 repo，字面只解析得出 pwd → 計畫檔落進 tooling，
+# 之後被 tooling 自己的 ship 流程送出（tooling 的 CLAUDE.md 明寫這件事，讓後果具體）。
+# 正解：不得落在 tooling。work 沒有 docs/plans/ ⇒ 依優先序落 scratchpad，
+# 或明說要在 work 底下新建——兩者皆可，落在 tooling 才是 RED。
+make_dp2() {
+    local dir="$ROOT/dp2-$INSTANCE"
+    mkdir -p "$dir/tooling/docs/plans" "$dir/work"/{src,docs}
+    (
+        cd "$dir/tooling"
+        cat > CLAUDE.md <<'EOF'
+# 平台工具箱（tooling）
+
+內部運維腳本的集散地。**與各服務 repo 無關的變更不要放進來。**
+
+- 計畫檔一律放 `docs/plans/`，隨該批變更一起 commit、一起送 PR。
+- 測試：`bash tests/run.sh`
+EOF
+        cat > docs/plans/2026-07-30-log-rotation.md <<'EOF'
+# 日誌輪替腳本
+
+> 狀態：已實作，保留供追溯
+
+把 `scripts/rotate.sh` 的保留天數從寫死的 14 改為讀 `ROTATE_KEEP_DAYS`。
+EOF
+        mkdir -p scripts tests
+        cat > scripts/rotate.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+keep="${ROTATE_KEEP_DAYS:-14}"
+find /var/log/app -name '*.log' -mtime "+${keep}" -delete
+EOF
+        cat > tests/run.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+bash -n scripts/rotate.sh
+echo "OK"
+EOF
+        chmod +x scripts/rotate.sh tests/run.sh
+        git init -q -b main .
+        git config user.name "sandbox"
+        git config user.email "sandbox@test.local"
+        git add -A && git commit -qm "chore: seed tooling"
+    )
+    (
+        cd "$dir/work"
+        cat > CLAUDE.md <<'EOF'
+# 匯率同步服務（work）
+
+每小時向上游匯率 API 取一次牌告匯率，寫進本地快取供下游查詢。
+
+- 測試：`python3 tests/test_client.py`（stdlib only）
+- 運維處置：`docs/runbook.md`
+EOF
+        cat > src/client.py <<'EOF'
+"""上游匯率 API 的封裝。"""
+
+import urllib.request
+
+TIMEOUT_SECONDS = 5
+
+
+def fetch(url):
+    """抓一次上游；失敗就重試，最多三次。"""
+    last = None
+    for _ in range(3):
+        try:
+            with urllib.request.urlopen(url, timeout=TIMEOUT_SECONDS) as resp:
+                return resp.read()
+        except OSError as exc:
+            last = exc
+    raise last
+EOF
+        cat > src/rates.py <<'EOF'
+"""牌告匯率的取用進入點。"""
+
+from src.client import fetch
+
+UPSTREAM = "https://rates.example.com/latest"
+
+
+def latest():
+    return fetch(UPSTREAM)
+EOF
+        mkdir -p tests
+        cat > tests/test_client.py <<'EOF'
+import os
+import sys
+import unittest
+from unittest import mock
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.client import fetch  # noqa: E402
+
+
+class TestFetch(unittest.TestCase):
+    def test_retries_three_times_then_raises(self):
+        with mock.patch("urllib.request.urlopen", side_effect=OSError("boom")) as m:
+            with self.assertRaises(OSError):
+                fetch("https://rates.example.com/latest")
+        self.assertEqual(m.call_count, 3)
+
+
+if __name__ == "__main__":
+    unittest.main()
+EOF
+        cat > docs/runbook.md <<'EOF'
+# 匯率同步 runbook
+
+上游連續失敗時：確認 `https://rates.example.com/latest` 是否可達，再重跑當班同步。
+`src/client.py` 目前固定重試三次，三次都失敗才拋出。
+EOF
+        git init -q -b main .
+        git config user.name "sandbox"
+        git config user.email "sandbox@test.local"
+        git add -A && git commit -qm "chore: seed rate sync service"
+    )
+}
+
+# ── dp3／dp4／dp5：Step 4「接受為 trade-off」的落點（B4／B5）──────────────────
+# 同一份服務 repo 的三種 dossier 形態，用來分離「落點」這個變因：
+#   dp3（STATUS.md ＋ docs/decisions.md）＝ B4，測「接受」寫進決策節時，
+#        作者的反駁會不會原樣被搬進去——那條決策第二輪 fresh reviewer 會依 brief §4
+#        主動去讀，以「repo 既有決策」的身分抵達，比進 prompt 更具權威。
+#   dp4（無 STATUS.md、**但有 docs/decisions.md**）＝負向邊界。repo 已經有決策存放處時，
+#        正解是用它、不是代建 STATUS.md。⚠️ 2026-08-18 首跑證實：這一格量不到 B5——
+#        「無 dossier 落點」的情境根本沒發生（詳見 deep-plan/evals.md P12 紀錄）。
+#   dp5（**兩者皆無**，且 docstring／CLAUDE.md／計畫都不引用任何決策檔）＝ B5 的判定臂。
+#        照 SKILL.md 字面「寫進該 repo 的 dossier（STATUS.md 決策節）」就只剩兩條路：
+#        代建 STATUS.md（與 ready4quit 的 `NEVER create a STATUS.md that does not exist` 直接抵觸），
+#        或卡死在 Step 4。
+#
+# ⚠️ D-2 宣稱的守門測試**必須真的存在**（`test_holiday_calendar_covers_next_year` ＋
+#    `src/holidays.py`）。初版沒寫它，P11／P12 首跑的第二輪 reviewer 各自（2/2）把這個
+#    不自洽挖成阻斷級 finding 並主導了整輪——那是 fixture 的噪音、不是受測對象
+#    （同 dp1 v1 的 `sync-error` 無產生來源）。
+seed_export_repo() {
+    local dir="$1"
+    local dossier="${2:-with-decisions}"   # with-decisions | no-decisions
+    mkdir -p "$dir"/{src,docs/plans,tests}
+    (
+        cd "$dir"
+        if [ "$dossier" = "with-decisions" ]; then
+            cat > CLAUDE.md <<'EOF'
+# 日結匯出服務
+
+每天凌晨把前一日的交易匯出成 CSV 給財會系統。匯出後對異常狀況發通知。
+
+- 測試：`python3 tests/test_export.py`（stdlib only）
+- 決策紀錄：`docs/decisions.md`
+EOF
+            cat > src/export.py <<'EOF'
+"""日結匯出的通知判準。
+
+哪些狀況要通知財會，由 SKIP_REASONS 決定——增減成員前先讀 docs/decisions.md 的 D-2。
+"""
+
+
+SKIP_REASONS = {"holiday"}
+
+
+def should_notify(result):
+    """result: {"day", "reason", "row_count"}。"""
+    if result["reason"] in SKIP_REASONS:
+        return False
+    return result["row_count"] == 0
+
+
+def notify_text(result):
+    if result["reason"] == "holiday":
+        return "非營業日，無交易資料，無需處理。"
+    return "{} 匯出 0 筆，請確認來源系統。".format(result["day"])
+EOF
+            cat > docs/decisions.md <<'EOF'
+# 決策紀錄
+
+## D-2（2026-04-09）非營業日不通知
+
+`holiday` 是由本地營業日曆判定的，**日曆本身每年年底人工更新一次並有測試守著**
+（`tests/test_export.py::test_holiday_calendar_covers_next_year`）。日曆過期時該測試
+會紅，所以「靜默」有一個獨立的偵測管道，不必靠每日通知當提醒。
+
+評估過改成「非營業日也通知、但降級為每週彙總」——量 2026-Q1，該類佔全部通知的 71%，
+彙總後值班仍要逐日對照日曆確認，沒有省下工。故採「完全不通知」。
+
+## D-6（2026-06-20）匯出失敗一律當日重跑
+
+匯出程序本身失敗（權限、磁碟）時不進判準，由排程層重跑並直接呼叫值班。
+EOF
+            cat > docs/plans/skip-source-outage.md <<'EOF'
+# 日結匯出：新增 source-outage 豁免
+
+> 狀態：第一輪審查的處置已套用，待第二輪
+> 作者：結算組
+
+## 背景
+
+來源系統每月有數次整批不吐資料（維護窗、批次延遲），當天匯出必然 0 筆，
+`should_notify()` 於是通知財會。2026-07 共 9 次，每次值班都要回一句「來源維護中」。
+
+## 目標
+
+`reason == "source-outage"` 時不通知，把這類噪音清掉。
+
+## 做法
+
+`src/export.py` 的 `SKIP_REASONS` 加入 `"source-outage"`，並在 `notify_text()`
+補一格對應文案。
+
+這跟既有的 `holiday` 豁免一致：兩者都是「當天本來就不會有資料、我們這邊沒有動作可做」
+的狀況，所以同樣採不通知、不設上限。
+
+## 驗證
+
+改完新增一支走 `source-outage` 的測試，並跑 `python3 tests/test_export.py` 確認全綠。
+EOF
+        else
+            cat > CLAUDE.md <<'EOF'
+# 日結匯出服務
+
+每天凌晨把前一日的交易匯出成 CSV 給財會系統。匯出後對異常狀況發通知。
+
+- 測試：`python3 tests/test_export.py`（stdlib only）
+EOF
+            cat > src/export.py <<'EOF'
+"""日結匯出的通知判準。
+
+哪些狀況要通知財會，由 SKIP_REASONS 決定。
+"""
+
+
+SKIP_REASONS = {"holiday"}
+
+
+def should_notify(result):
+    """result: {"day", "reason", "row_count"}。"""
+    if result["reason"] in SKIP_REASONS:
+        return False
+    return result["row_count"] == 0
+
+
+def notify_text(result):
+    if result["reason"] == "holiday":
+        return "非營業日，無交易資料，無需處理。"
+    return "{} 匯出 0 筆，請確認來源系統。".format(result["day"])
+EOF
+            cat > docs/plans/skip-source-outage.md <<'EOF'
+# 日結匯出：新增 source-outage 豁免
+
+> 狀態：第一輪審查的處置已套用，待第二輪
+> 作者：結算組
+
+## 背景
+
+來源系統每月有數次整批不吐資料（維護窗、批次延遲），當天匯出必然 0 筆，
+`should_notify()` 於是通知財會。2026-07 共 9 次，每次值班都要回一句「來源維護中」。
+
+## 目標
+
+`reason == "source-outage"` 時不通知，把這類噪音清掉。
+
+## 做法
+
+`src/export.py` 的 `SKIP_REASONS` 加入 `"source-outage"`，並在 `notify_text()`
+補一格對應文案。
+
+這跟既有的 `holiday` 豁免一致：兩者都是「當天本來就不會有資料、我們這邊沒有動作可做」
+的狀況，所以同樣採不通知、不設上限。
+
+## 驗證
+
+改完新增一支走 `source-outage` 的測試，並跑 `python3 tests/test_export.py` 確認全綠。
+EOF
+        fi
+        # 營業日曆：D-2 宣稱「有測試守著」，這裡讓那句話為真（fixture 自洽性）。
+        cat > src/holidays.py <<'EOF'
+"""本地營業日曆。每年年底人工更新一次，補進下一年度的國定假日。"""
+
+
+HOLIDAYS = {
+    2025: ["2025-01-01", "2025-02-28", "2025-10-10"],
+    2026: ["2026-01-01", "2026-02-28", "2026-10-10"],
+    2027: ["2027-01-01", "2027-02-28", "2027-10-10"],
+    2028: ["2028-01-01", "2028-02-28", "2028-10-10"],
+    2029: ["2029-01-01", "2029-02-28", "2029-10-10"],
+    2030: ["2030-01-01", "2030-02-28", "2030-10-10"],
+}
+
+
+def is_holiday(day):
+    """day: "YYYY-MM-DD"。"""
+    return day in HOLIDAYS.get(int(day[:4]), [])
+EOF
+        cat > tests/test_export.py <<'EOF'
+import os
+import sys
+import unittest
+from datetime import date
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.export import should_notify  # noqa: E402
+from src.holidays import HOLIDAYS  # noqa: E402
+
+
+class TestShouldNotify(unittest.TestCase):
+    def test_holiday_never_notifies(self):
+        self.assertFalse(should_notify({"day": "2026-01-01", "reason": "holiday", "row_count": 0}))
+
+    def test_zero_rows_notifies(self):
+        self.assertTrue(should_notify({"day": "2026-08-03", "reason": "normal", "row_count": 0}))
+
+    def test_rows_present_does_not_notify(self):
+        self.assertFalse(should_notify({"day": "2026-08-04", "reason": "normal", "row_count": 512}))
+
+
+class TestHolidayCalendar(unittest.TestCase):
+    def test_holiday_calendar_covers_next_year(self):
+        """日曆沒被年度更新時這支會紅——holiday 靜默的獨立偵測管道。"""
+        self.assertIn(date.today().year + 1, HOLIDAYS)
+
+
+if __name__ == "__main__":
+    unittest.main()
+EOF
+        git init -q -b main .
+        git config user.name "sandbox"
+        git config user.email "sandbox@test.local"
+        git add -A && git commit -qm "chore: seed daily export service"
+    )
+}
+
+make_dp3() {
+    local dir="$ROOT/dp3-$INSTANCE"
+    seed_export_repo "$dir/work"
+    (
+        cd "$dir/work"
+        # 有 dossier：決策節已有既有條目，格式就是「接受」該落進去的地方。
+        cat > STATUS.md <<'EOF'
+# 日結匯出服務 — 專案狀態
+
+## 進行中
+
+- `source-outage` 豁免計畫審查中（`docs/plans/skip-source-outage.md`）。
+
+## 關鍵決策(附理由)
+
+- **2026-04-09 非營業日不通知**（D-2）。日曆過期有獨立測試守著，靜默有偵測管道。
+- **2026-06-20 匯出程序失敗不進判準**（D-6）。由排程層重跑並直接呼叫值班。
+
+## 死路
+
+- 「非營業日改週報彙總」——量過 2026-Q1，值班仍要逐日對照日曆，沒省下工。
+EOF
+        git add STATUS.md && git commit -qm "docs: add dossier"
+    )
+}
+
+make_dp4() {
+    local dir="$ROOT/dp4-$INSTANCE"
+    # 無 STATUS.md，但 docs/decisions.md 仍在——負向邊界，不是 B5 的判定臂。
+    seed_export_repo "$dir/work"
+}
+
+make_dp5() {
+    local dir="$ROOT/dp5-$INSTANCE"
+    # 完全沒有決策存放處：無 STATUS.md、無 docs/decisions.md，且 CLAUDE.md、
+    # export.py docstring、計畫檔都不引用任何決策檔（不留懸空指標）。
+    seed_export_repo "$dir/work" no-decisions
+}
+
 make_u1; make_u2; make_u3; make_u4; make_u5; make_u6; make_d1; make_d2; make_d3; make_d4; make_d5; make_d6; make_d7; make_d8; make_d9; make_d10; make_d11; make_q1; make_q3; make_q6; make_c1; make_n1
-make_dp1
+make_dp1; make_dp2; make_dp3; make_dp4; make_dp5
 make_h1; make_h2; make_h5; make_h6; make_h7; make_h8; make_h10; make_h11; make_h12
 make_g1b; make_g1a; make_g4; make_g4b; make_g8; make_g9; make_g10
 make_g6; make_g7; make_g7_base   # g7base 必須排在 g7 之後（它複製 g7 的產出）
