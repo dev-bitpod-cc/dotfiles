@@ -184,6 +184,11 @@ Deep Plan 進度：
 
 ## 與其他 skill 的關係
 
+- **計畫從哪來——本 skill 不產計畫**（plan mode 的產出、使用者自己寫、或請 agent 寫）。兩種入口：
+  - **計畫還在對話裡** → 直接 `/deep-plan`，Step 0 會用 Write 落檔。**不必複製貼上**——內容已經在 context 裡。
+  - **要讓計畫檔進目標 repo 的 working tree**（推薦：只有這樣 `/project log` 才帶得走它）→ 先請 agent 寫進該 repo 的 `docs/plans/`，再 `/deep-plan <計畫檔路徑>`。
+  - ⚠️ **NEVER invoke this skill while still in plan mode** —— plan mode 是唯讀的，而 Step 0 必須寫檔；要先離開它。
+  - ⚠️ 核准 `ExitPlanMode` 之後 agent 預設**直接開始實作**，而那正是你想先審一輪才做的事。先煞車（「先別動手」），或不核准、自行切回一般模式後再落檔——計畫內容不會因為不核准而消失。
 - `/project spec`（開工寫 spec）→ **本 skill**（開工前審 spec/plan）→ 實作 → `/deep-review`（審已寫出來的 code）→ `/project log`（ship）
 - 本 skill **不寫計畫、不改計畫、不 commit**。Step 4 的修改由計畫作者執行。Step 0 產生的計畫檔**落在目標 repo 時**留在該 repo 的 working tree，由 `/project log` 一起送出；**落在 scratchpad 時它不在任何 working tree**，任何 ship 流程都帶不走它——報告要明講這件事，要保留就由使用者決定搬去哪個 repo。
 - `/deep-review` 審的是 code，本 skill 審的是還沒寫成 code 的計畫。**兩者的判準不通用**——不要把 `~/.claude/skills/deep-review/references/reviewer-brief.md` 交給 plan reviewer。
