@@ -32,32 +32,11 @@ backlog.md — 專案待辦(技術債 + 已知缺口)。與 STATUS.md(dossier)�
 
 ## 技術債
 
-- [ ] **`deep-plan` 有五條結構性 blocking findings 未處置**(2026-08-17 加,來源:同日 `/deep-review`
-  對該 skill 首批變更的診斷,判 FAIL/6 中等)。**已處置的三條不在此**(dossier 條目拆分、`SKILL.md:68`
-  的錯誤外推、待驗事項移出 body)。剩下五條**都會改行為契約**,故依 skill-authoring batch 條款未當場
-  修,要走 TDD(先加會紅的 eval 再改 body):
-  1. **Step 0 的計畫落點決定在 Step 1 定目標 repo 之前** —— body 寫「repo 的 `docs/plans/`」但該時點
-     只能解析成 pwd;dotfiles 自己就有 `docs/plans/`,於是他人 repo 的計畫會落進 dotfiles 並被 ship
-     ——**正是 `deep-plan/evals.md` 明文禁止的事**。附帶:落在 scratchpad 時 `SKILL.md:182` 的「由
-     `/project log` 一起送出」不成立(scratchpad 不在任何 working tree)。
-  2. **`planner-brief.md` §3 的四級表沒有 Blocking 欄** —— 對照 `deep-review/references/reviewer-brief.md`
-     有該欄。缺了它,`SKILL.md` 的「可查證層 → blocking」會讓一條「低」級(行號漂 1–2 行,brief 自己
-     說是常態)擋掉整批,而上限 2 輪 ⇒ 通過條件近乎不可達。
-  3. **reviewer 輸出契約不含「層別」欄位,orchestrator 卻被禁止自己判** —— 要分流就得自己歸層,而
-     歸層要判「這條要不要先做一版才知真假」,那正是 `SKILL.md:79` 禁止的;`:132`「stitching, not
-     filtering」又禁止加工。**三條規則互鎖,agent 只能任選一條違反。** 修法:模板輸出加必填層別欄。
-  4. **立場累積的殘留管道未被承認** —— Step 4 的「接受」把作者的正當化寫進 dossier,而 brief §4.4
-     要第二輪 fresh reviewer **主動去讀既有決策** ⇒ 作者的解釋以「repo 既有決策」的身分抵達 reviewer,
-     比進 prompt 更具權威。修法:比照 `deep-review`「已知殘留,不要宣稱成完全隔離」明列,並要求
-     dossier 條目只陳述取捨事實、不寫成對某條 finding 的反駁。
-  5. **「接受」強制 STATUS.md 落點,對無 dossier 的 repo 無出路** —— 照字面補落點就會代建 STATUS.md,
-     與 `ready4quit/SKILL.md` 的 `NEVER create a STATUS.md that does not exist` 直接抵觸;不補則整批
-     永遠卡在 Step 4。修法:加 fallback(落點改報告一節 + 建議跑 `/project spec`,NEVER 代建)。
-  ⚠️ **改完至少要重跑 P1／P3／P7**(現有 GREEN 是對改動前的 body 量的)。另 `deep-plan/evals.md`
-  **未經那場審查**(batch 條款禁止 eval 檔進 reviewer prompt),要不要單獨審是獨立決定。
-
+- [ ] **`deep-plan/evals.md` 未經 2026-08-17 那場 `/deep-review`**(batch 條款禁止 eval 檔進 reviewer
+  prompt)。要不要單獨審是獨立決定,尚未做。⚠️ 2026-08-18 該檔又大幅擴充(P8–P12 ＋ 八次實跑紀錄),
+  未審的面積比當初更大。
 - [ ] **`settings.json` 的 `autoMode.environment` 固化了 20 個內建 slot 的複本,升版不會自動跟上**
-  (2026-08-16 加)。`allow` 那半邊已用 `$defaults` sentinel 解掉(見 STATUS.md 同日決策),但
+  (2026-08-16 加)。`allow` 那半邊已用 `$defaults` sentinel 解掉(該決策已歸檔至 `docs/archive/decisions-2026-08.md`),但
   **`environment` 不吃 sentinel**——放了是純附加,會出現兩行同名 slot 且內容互斥,所以只能全量
   寫出。代價:官方調整內建 slot 措辭時我們不會跟著變,**且無訊號**。偵測法:
   `diff <(claude auto-mode defaults | jq -r '.environment[]' | sed 's/:.*//') <(claude auto-mode config | jq -r '.environment[]' | sed 's/:.*//')`

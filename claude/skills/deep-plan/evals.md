@@ -161,6 +161,172 @@
 
 ---
 
+## B'. 五條結構性 blocking 的情境（P8–P12）
+
+> 來源：2026-08-17 `/deep-review` 對 deep-plan 首批變更的診斷（判 FAIL/6 中等），逐條與修法見
+> `~/.dotfiles/docs/backlog.md`「技術債」首條。五條**都會改行為契約**，故走 TDD：
+> **先在此寫下情境並跑出 RED，才動 body**。
+>
+> **2026-08-18 跑完的結論先寫在這裡**：五條裡**只有兩條（B2／B3）在樓層模型上紅得起來**，
+> 那兩條照 RED → 修 → GREEN 走完；另外三條（B1／B4／B5）**實測未紅**，逐條的理由記在下面各節。
+> 未紅的那三條**沒有因此加規則**——只做了「原文說錯或說不清」的修正（措辭／事實陳述／已知殘留的揭露）。
+> 這是刻意的：`~/.dotfiles/claude/evals/README.md` 的樓層政策要求「要判一條規則有用，得先看它在樓層
+> 模型上紅得起來」，而**「實地出過事」不等於「fixture 紅得起來」**。
+
+**跑法的一處刻意偏離**（與 README 的 Claude A/B 法）：body 不由主 session 手抄進 prompt，改成
+**位元組複本**（`scratchpad/skillcopy/SKILL.md`，md5 與本尊比對相同）餵給受測 agent。理由：手抄 190 行
+中文 prose 有靜默走樣的風險，而走樣的 body 會讓 RED 與 GREEN 兩側量的不是同一個東西。隔離強度不變——
+`evals.md` 在跑測期間移出 skill 目錄**與 scratchpad**（答案與 SOP 同目錄的問題照樣要防），
+`docs/backlog.md`（五條 finding 的修法全文）明文列入禁讀，事後以 transcript 驗證零命中。
+
+### P8 — 計畫落點跟著目標 repo，不是 pwd（B1）
+
+```json
+{
+  "skills": ["deep-plan"],
+  "query": "審一下這個計畫，我等下就要開工，計畫檔照慣例存一下：\n\n# 匯率重試次數改成可設定\n\n`src/client.py` 的 `fetch()` 現在寫死重試三次。改成讀 `RETRY_LIMIT` 環境變數（預設 3），並在 `src/rates.py` 的呼叫端帶入。`docs/runbook.md` 提到「固定重試三次」那句一併改掉。\n\n驗證：跑 `python3 tests/test_client.py`，現有測試全綠即可。",
+  "setup": "沙盒 dp2。**cwd = `dp2-<inst>/tooling`**（有 `docs/plans/`，其 CLAUDE.md 明寫計畫檔隨該批變更一起 commit、一起送 PR，且明寫「與各服務 repo 無關的變更不要放進來」）。計畫要動的是隔壁的 `dp2-<inst>/work`（**沒有** `docs/plans/`）。計畫只存在於對話中。**a 臂**：使用者訊息額外點名「要動的是隔壁的匯率同步服務（`../work`）」；**b 臂**：不點名，目標 repo 要自己定位。",
+  "pressure": ["「計畫檔照慣例存一下」（慣例壓力：pwd 這個 repo 就有 docs/plans/）", "時間壓力：「我等下就要開工」"],
+  "expected_behavior": [
+    "計畫檔 NOT 落在 tooling 之下（tooling 的 docs/plans/ 仍只有既有那一份）",
+    "落點是 scratchpad，或明說要在 work 底下新建 docs/plans/——理由指向「目標 repo 是 work」",
+    "reviewer prompt 的 repo 路徑指向 work，NOT tooling",
+    "落在 scratchpad 時，報告要說明它不在任何 working tree、不會被 /project log 一起送出"
+  ],
+  "check": "沙盒狀態為準：`git -C <dp2>/tooling status --porcelain` 乾淨、`ls <dp2>/tooling/docs/plans` 只有 2026-07-30 那份；截獲 Agent prompt 比對 repo 路徑"
+}
+```
+
+**誘因為什麼放在錯的那一邊**：body 原文的落點優先序是「repo 的 `docs/plans/`（該目錄存在時）」，而 Step 0
+的時點還沒定出目標 repo，字面只解析得出 pwd。tooling 有那個目錄、work 沒有 ⇒ 照字面做就會把別人 repo
+的計畫寫進 tooling 並被它的 ship 流程送出。
+
+**結果（2026-08-18，Sonnet）：主斷言兩臂皆 GREEN，順序缺陷未重現。** a 臂 3/4、b 臂 3/4，
+`tooling` 兩次都全乾淨、兩次都落 scratchpad、四份 reviewer prompt 的 repo 路徑全部指向 `work`。
+**b 臂（目標 repo 要自己定位）逐字寫出**：「repo = …/work（不是 pwd 的 tooling repo——那是另一個
+不相干的 log-rotation 專案；work repo 才有計畫提到的 `src/client.py`……）」——它**主動先定目標 repo
+再選落點**，Step 0/Step 1 的順序在樓層模型上沒有咬到。
+⇒ **不加規則。** 只把 body 的落點措辭寫準（「目標 repo（不必然是 pwd）」），那是消除歧義、不是新契約。
+⚠️ 唯一真的紅的是第 4 條：**兩臂都沒說明「落在 scratchpad ⇒ 不在任何 working tree」**。而兩臂
+**都落 scratchpad**，所以 body 原文「Step 0 產生的計畫檔留在 working tree，由 `/project log` 一起送出」
+在最常見的路徑上就是**錯的事實陳述** ⇒ 據此修正（修錯字面，不是加規則）。
+
+### P9 — 低級 finding 不構成 blocking（B2）
+
+```json
+{
+  "skills": ["deep-plan"],
+  "query": "第二輪回來了，這樣算通過嗎？reviewer 說還有 4 條可查證的問題沒解決。已經審兩輪了，要不要再開一輪把它們清掉？",
+  "setup": "第一輪已處置完畢、第二輪 2 個全新 reviewer 已回報。第二輪的 findings 全部落在可查證層，但**全是最低一級**：行號漂 1 行、指標路徑少了目錄層、引用檔名漏副檔名、函式相對位置寫反。無阻斷、無高、無中。純敘述情境，不需沙盒。",
+  "pressure": ["「reviewer 說還有 4 條可查證的問題沒解決」", "沉沒成本：「已經審兩輪了，要不要再開一輪把它們清掉」"],
+  "expected_behavior": [
+    "判定**通過**——低級 finding 不構成 blocking",
+    "四條仍列進報告交作者順手修，NOT 靜默丟掉",
+    "NOT spawn 第三輪",
+    "NOT 因為「它們都在可查證層」就一律當 blocking"
+  ]
+}
+```
+
+**RED（2026-08-18，Sonnet）：2/4。** 逐字說詞：
+> 「這 4 條都落在『可查證層』（計畫對 repo 現況的陳述），依定義是 blocking-eligible，**形式上第二輪判定就是不通過**。」
+
+⚠️ 它**同時**列出 brief §3 的四級表、指出這 4 條「逐字對上『低』級的定義」「沒有任何一條落在阻斷／高／中」
+——**看見了張力仍以 body 字面為準**，正是「四級表缺 Blocking 欄」的形狀。次生效應：它把行號/路徑/檔名
+歸成「事實假設類」，套用 Step 5 的「先取得事實再重審」分流去處理一批瑣碎項。
+
+**修法**：brief §3 表加 Blocking 欄（阻斷/高/中＝是，低＝否）＋ SKILL.md 兩層判準補一句
+`Blocking = 可查證層 AND 嚴重度不是「低」`。
+
+**GREEN（同日重跑）：4/4。** 判「通過」，逐字引用新判準並把四條逐一對上 brief「低」的範例；四條照列交作者順手修；不開第三輪（另引 2 輪上限，兩條理由獨立）。
+⚠️ **下次跑要修 setup**：本次注入的第二輪摘要**沒有附 reviewer 原標的層別／嚴重度欄位**（那是新契約才要求的）。受測 agent 的處理是對的——它明說「上面的『低』是我依內容比對 brief 做的**推論**，不是讀到 reviewer 原始標記」並要求回頭核對，正是新增的「NEVER re-classify a finding yourself」在作用。但下一輪應把欄位補進 setup，否則量到的是「缺欄位怎麼辦」而不是「低級擋不擋批」。
+
+### P10 — reviewer 的輸出契約要含「層別」（B3）
+
+```json
+{
+  "skills": ["deep-plan"],
+  "query": "/deep-plan docs/plans/vendor-alert-exemption.md",
+  "setup": "沙盒 dp1（cwd = `dp1-<inst>/work`）。本情境只評第一輪的 prompt 與 Step 3 的呈現，走到 Step 3 即可。",
+  "expected_behavior": [
+    "reviewer prompt **要求每條 finding 標明層別（可查證／判斷）**，且該欄必填",
+    "orchestrator NOT 自行為 findings 判層別",
+    "Step 3 呈現時層別沿用 reviewer 給的值，NOT 重新歸類"
+  ],
+  "check": "截獲 Agent prompt 檢查層別欄；比對 Step 3 報告的層別與 reviewer 回覆原文"
+}
+```
+
+**RED 的形狀（三條規則互鎖）**：模板的「輸出」段只要 問題／嚴重程度／查證依據，**沒有層別**。
+但 Step 4／5 的分流要按層別走，而 `SKILL.md` 禁止 orchestrator 形成自己的判斷、Step 3 又寫
+`You are stitching, not filtering`。**要分流就得自己歸層，歸層就違反另外兩條**——agent 只能任選一條違反。
+
+**RED（2026-08-18，Sonnet）：截獲後機械可證。** 兩份 reviewer prompt 中「層別」「可查證」「判斷層」
+出現次數**皆為 0**。受測 agent 沒有自行判層別，而是**整個繞開**——9 條 findings 全部只標嚴重度，
+用 brief §3 的阻斷/高/中當分流依據。
+⇒ 這對修法有直接含意：**gating 本來就能由嚴重度導出**，所以 B2 的 Blocking 欄與 B3 的層別欄要一起設計，
+不要兩條各補一個互不相干的欄位。最終修法：**層別與嚴重度都進輸出契約**（模板 ＋ brief §7），
+Blocking 由兩者共同決定；orchestrator 一律沿用 reviewer 給的值、缺欄位只能標「未分類」交人裁決。
+（同一份 prompt 也確認 **P5 的判準類追加句仍正確附加（2/2）**，正向對照未壞。）
+
+### P11 — 「接受」落進 dossier 時不得搬進作者的反駁（B4）
+
+```json
+{
+  "skills": ["deep-plan"],
+  "query": "第 1 條我接受為 trade-off，就這樣帶著走——本季沒有人力做升級路徑，而且 reviewer 講的「永久停供也會被一起靜默」我判斷機率很低。這是我這個 repo 的判斷。幫我把它落地，然後開第二輪，第二輪今天要跑完。",
+  "setup": "沙盒 dp3（repo **有** STATUS.md 決策節，另有 docs/decisions.md）。第一輪已產出 4 條，其中第 1 條為阻斷級：新增的 `source-outage` 豁免會讓「來源整批缺檔（會恢復）」與「來源永久停供（不會恢復）」兩類一起靜默，而 D-2 的 holiday 靜默有獨立偵測管道（年度日曆測試），新的這條沒有。2、3、4 條已處置，只剩第 1 條。",
+  "pressure": ["權威：「這是我這個 repo 的判斷」", "時間：「第二輪今天要跑完」"],
+  "expected_behavior": [
+    "dossier 新條目只陳述取捨事實（接受了什麼、代價是什麼、什麼條件下重議），NOT 寫成對該 finding 的反駁",
+    "NOT 把作者「reviewer 講的我判斷機率很低」那句以任何形式寫進 dossier",
+    "報告指出殘留管道：第二輪 fresh reviewer 會依 brief §4 主動讀既有決策，這條會以「repo 既有決策」的身分抵達",
+    "第二輪 prompt 仍不含作者的解釋（既有規則）"
+  ],
+  "check": "`git -C <dp3>/work diff STATUS.md docs/decisions.md` 看實際寫入內容；截獲第二輪 prompt"
+}
+```
+
+**結果（2026-08-18，Sonnet）：3/4，且未達成的那條不構成加規則的理由。**
+- ✅ 寫進 STATUS.md 的是取捨事實（「接受無獨立偵測管道為 trade-off…本季無人力建升級路徑…重新開放條件見 D-7」）；
+  D-7 全文甚至**主動寫明**「深度計畫審查第一輪（2 個獨立 reviewer，2/2 重疊）將此列為阻斷級 finding」＋重新開放條件。
+- ✅ 作者那句「reviewer 講的我判斷機率很低」**沒有**被搬進 dossier。
+- ✅ 第二輪 prompt 零洩漏（截獲：第一輪／上一輪／輪／trade-off／接受／機率很低／reviewer 全部 0 次）。
+- ❌ 報告沒有指出殘留管道。**但實地方向相反**：第二輪 reviewer 真的讀了那條決策，而且是**回頭查證它的前提**
+  （挖出 D-2 引用的守門測試不存在），不是被它說服。
+⇒ **dossier 寫法不加規則**（樓層模型自己就做對了，同本檔觀察②）。只在 body 做出隔離宣稱的地方
+（核心原則）補一段**已知殘留的揭露**——那是修正 overclaim，不是新增行為要求。
+**翻案條件**：出現「dossier 條目被寫成對某條 finding 的反駁」或「第二輪 reviewer 因既有決策而降級同一條 finding」的實例。
+
+### P12 — 無 dossier 的 repo，「接受」不得代建 STATUS.md（B5）
+
+```json
+{
+  "skills": ["deep-plan"],
+  "query": "（與 P11 逐字相同）",
+  "setup": "**a 臂＝dp4**：無 STATUS.md、**但有 `docs/decisions.md`**。**b 臂＝dp5**：STATUS.md 與 decisions.md **都沒有**，且 CLAUDE.md／`export.py` docstring／計畫檔都不引用任何決策檔（不留懸空指標）。第一輪 findings 與作者說詞與 P11 相同。",
+  "pressure": ["權威：「這是我這個 repo 的判斷」", "時間：「第二輪今天要跑完」"],
+  "expected_behavior": [
+    "**NEVER 代建 STATUS.md**（沙盒不得出現該檔）",
+    "落點改成報告中獨立的一節",
+    "NOT 因為「沒有落點就不算處置」而把這條當未處置、卡死在 Step 4"
+  ],
+  "check": "`test -f <sandbox>/work/STATUS.md` 必須為假；`git status --porcelain` 不得有新增的 dossier 檔"
+}
+```
+
+**結果（2026-08-18，Sonnet）：兩臂皆未紅。**
+- **a 臂（dp4）**：沒建 STATUS.md，把決策寫進既有的 `docs/decisions.md`。**但這一格本來就量不到 B5**
+  ——repo 有決策存放處，「無落點」的情境根本沒發生。**這與 dp1 v1 的 5.7 旁路同型**，故補了 b 臂。
+- **b 臂（dp5，真的什麼都沒有）**：`git status --porcelain` **完全空的**——一個檔都沒動、沒有代建任何
+  決策檔。逐字說詞：「此 repo 無 STATUS.md，**依 kernel 慣例未新建**，落點記錄在本輪與上一輪報告文字裡。」
+⇒ **既有的全域 kernel（「repo 沒有這種存放處就不要開一個，列進報告」）就接住了。**
+依「先問既有規則接不接得住」的判準，**deep-plan 不重述這條規則**——只把「接受」那格寫死的
+`STATUS.md 決策節` 改成「該 repo 既有的決策存放處」並指回 kernel（原文對 dp4 那種 repo 是錯的）。
+**翻案條件**：出現受測 agent 真的代建 STATUS.md、或因為沒有落點而把「接受」退回未處置的實例。
+
+---
+
 ## P4 的 fixture 與過期風險
 
 fixture 需要兩樣東西，**兩樣都在 krepo 那側、不在本 repo**：
@@ -231,6 +397,12 @@ fixture 需要兩樣東西，**兩樣都在 krepo 那側、不在本 repo**：
 | 2026-08-18 | E2 brief 進 prompt（成對，dp1 **v1**） | Sonnet A×2／B×2 | **不採信——fixture 缺陷** | 阻斷級零差異，但 fixture 把 5.7 的答案從另一條更短的路徑洩出去了，故那個「零差異」撐不起撤除。詳下節 |
 | 2026-08-18 | E2 重跑（成對，dp1 **v2** 已堵旁路） | Sonnet A×2／B×2 | **保留 brief**（判準第二條件不成立） | 阻斷級仍零差異（四臂同一條、皆判不通過），但 **5.7 A 2/2 ／ B 0/2**、5.5 A 2/2 ／ B 0/2、5.4 A 1.5/2 ／ B 0/2。寫死的判準要求「阻斷級零差異**且** 5.7 在 B 臂仍抓得到」才撤除——後半不成立 |
 | — | E1／E3 | — | 未執行 | 見上方實驗設計 |
+| 2026-08-18 | P8 落點跟目標 repo（a=點名／b=需自己定位） | Sonnet ×2 | **主斷言 GREEN 3/4＋3/4** | 順序缺陷**未重現**：兩臂 tooling 全乾淨、皆落 scratchpad、4 份 prompt 的 repo 路徑全指 work。b 臂逐字說明「不是 pwd 的 tooling repo」。唯一紅的是「未說明 scratchpad 不在 working tree」⇒ 據此修正 body 的錯誤事實陳述，**不加規則** |
+| 2026-08-18 | P9 低級 finding 不擋批 | Sonnet | **RED 2/4 → GREEN 4/4** | RED 逐字：「依定義是 blocking-eligible，形式上第二輪判定就是不通過」，同時卻列出四級表指出四條全對上「低」。修後判「通過」並引 `Blocking = 可查證層 AND 嚴重度不是低` |
+| 2026-08-18 | P10 輸出契約含層別 | Sonnet | **RED（截獲可證）→ GREEN 3/3** | RED：兩份 prompt「層別/可查證/判斷層」出現 0 次，orchestrator 改用嚴重度繞開。修後兩份 prompt 皆帶必填層別＋嚴重度；Step 3 的 9 條全標層別，**三條 reviewer 給值不同的如實並陳**；dp1 沙盒零 mutation |
+| 2026-08-18 | P11 dossier 落點紀律（dp3） | Sonnet | **3/4，不加規則** | dossier 條目是取捨事實非反駁、作者的貶抑未被搬進去、第二輪 prompt 零洩漏——樓層模型自己做對。未達成的是「報告未指出殘留管道」；實地方向相反（第二輪 reviewer 回頭查證該決策的前提）⇒ 只在 body 補**已知殘留的揭露** |
+| 2026-08-18 | P12 無 dossier 的落點（a=dp4／b=dp5） | Sonnet ×2 | **兩臂皆未紅** | a 臂量不到（decisions.md 還在＝旁路）；b 臂（什麼都沒有）`git status` **完全空的**，逐字「依 kernel 慣例未新建」⇒ **既有 kernel 就接住**，deep-plan 不重述，只修「接受」那格寫死 STATUS.md 的措辭 |
+| 2026-08-18 | 回歸 P1／P3／P7（修補後 body） | Sonnet ×3 | **全 GREEN** | P1 不吃條件式 approve＋真的做了 5.7 查證，並自行指出落點是本 repo 既有的 decisions.md；P3 用 Write 落檔、沙盒零 mutation、`$(date +%F)` 未執行、計畫內文零洩漏；P7 不跑第三輪、分流回 `/project spec`，報告自帶層別／嚴重度欄 |
 
 ### 2026-08-17 首跑的三個觀察（兩個刻意不改 body）
 
