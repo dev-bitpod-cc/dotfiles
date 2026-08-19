@@ -1,7 +1,8 @@
 # 死路 — 完整推導與證據
 
 `STATUS.md`「死路(試過但放棄——防重工)」各條的**推導過程、實測數字、eval 編號與事故細節**。
-結論本體在 STATUS.md（always-on），本檔是**想重走那條路時**才需要讀的那一半。
+結論本體在 STATUS.md，本檔是**想重走那條路時**才需要讀的那一半。
+⚠️ **本行原寫「STATUS.md（always-on）」，那是錯的**（2026-08-19 由第三方審查抓出）——`STATUS.md` **不自動載入**（`claude/skills/project/SKILL.md`「不自動載入的 STATUS.md 反而有五層」明載）。結論留在該檔買到的是「**ship 時必然被讀**」（`/project log` Step 2 會讀），不是 always-on。
 
 ## 分工
 

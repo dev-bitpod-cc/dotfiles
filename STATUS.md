@@ -15,8 +15,8 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 - **`deep-plan` 本體已無待辦**(2026-08-17 建立,2026-08-19 收斂)。紀律情境 P1–P12 於樓層模型全 GREEN、
   三項參數實驗(E1／E2／E3)全部有數據、fixture 落地成 dp1–dp5 沙盒、2026-08-19 首次真實執行完成。
   結論散在決策節與該 skill 的 `evals.md`／`field-log.md`,此處不重述。**剩下的只有兩個等待觸發的
-  項目,都已在 `docs/backlog.md`**:P4 待實例化(等「判準類 + 阻斷級」合流,2026-08-19 核對過一次
-  未達標)、模型層級待獨立決定。
+  項目,都已在 `docs/backlog.md`**:P4 **2026-08-19 已實例化**(krepo-mops-announcement;是否
+  改用 dotfiles 內的 fixture 待決)、模型層級待獨立決定。
 
 > 更早的凍結計畫:`docs/plans/2026-08-09-repo-contract-extraction.md`、
 > `docs/plans/2026-08-10-dossier-portability.md`。
@@ -112,8 +112,11 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 ## 死路(試過但放棄——防重工)
 
 > 各條的推導、實測數字與 eval 編號在 `docs/dead-ends.md`「分工」,本節只留**會擋住你的那一句**。
-> 分層照 `claude/known-hazards.md`「分工」對「已知地雷」的做法:死路要能在你沒想到要查的當下
-> 擋住你,**規則不在 always-on 就不生效**,故結論留此、證據外移。
+> 分層照 `claude/known-hazards.md`「分工」對「已知地雷」的做法。⚠️ **但那個類比不完全成立**
+> (2026-08-19 第三方審查抓出):known-hazards 的對應面 `claude/CLAUDE.md`「已知地雷」**真的是
+> always-on**,而 **`STATUS.md` 不自動載入**。所以結論留此買到的是「**ship 時必然被讀**」
+> (`/project log` Step 2),不是 always-on。**「沒想到要查時擋住你」現行機制其實並未達成**——
+> 那需要機械觸發(候選見 `docs/backlog.md`「決策/死路的機械召回」)。
 
 - **讓 handoff 的 archive 排序也改用 mtime**(2026-08-19 否決):歸檔前綴＝**消費時刻**、
   mtime＝**最後寫入**,audit trail 要前者、active 清單要後者,**兩邊刻意用不同鍵、不是不一致**。
