@@ -20,6 +20,14 @@
 #                                              # 其次 archive 最新一輪）；無命中印 NONE（＝首輪）
 #   （SKILL.md 一律走 survey；兩個原語留給除錯與既有守門測試）
 #
+# active 行格式（survey／list 共用，此處為唯一權威）：
+#   active: <檔名> — 更新 <YYYY-MM-DD HH:MM> — <N>d — OK|EXPIRED(…)
+#     path:  <完整路徑>            # verify/consume 直接吃
+#     title: <標題>                # 無 `# Handoff:` 行則整行省略
+#   created 無法解析者第三欄改印 `created 無法解析 — SUSPECT`；零份 active 印 `active: none`。
+#   **時戳欄取 mtime（最後寫入），`<N>d` 取 created（最後一次蓋錨點的日期）——兩欄來源不同。**
+#   清單依 mtime **新到舊**排序，同秒退回檔名升冪。
+#
 # verify 逐錨點輸出判定：
 #   FRESH      — 記錄的 HEAD == 現在的 HEAD（內容可信）
 #   DRIFTED    — 記錄的 HEAD 是現在 HEAD 的祖先（repo 已前進 N commits；列出中間 commit 供比對）
@@ -419,27 +427,68 @@ emit_predecessor() {  # <slug> <dir>
     fi
 }
 
+# emit_active：時戳欄取 **mtime**（最後寫入），排序依它由新到舊。
+#
+# 為什麼不用 created：它只有**日粒度**（cmd_anchors 寫 `date +%Y-%m-%d`），同日多份必然
+# 平手——而「多份 active 分不出先後」正是要解的情境。注意 created **不是**「首次蓋錨點」的
+# 時間：W2 每輪都跑、W3 把輸出原樣貼入，故它恆等於**最後一次蓋錨點的日期**（81 份真實交接檔
+# 實測，created 與 mtime 的日期 0 份不一致）。所以 mtime 相對 created 買到的只有**同日的
+# 時分解析度**。age／EXPIRED 一律仍由 created 算，兩者來源不同故顯示上分成兩欄。
 emit_active() {  # <dir>
-    local dir="$1" found=0 f base created age flag title
+    local dir="$1" rows="" f mt base created age flag title ts
+
+    # 先蒐 `<mtime>\t<path>` 兩欄再排序。⚠ 三個踩過的坑，改動這段前先讀：
+    # (1) **不可寫成 `… | sort | while read`**：迴圈落進 subshell，任何跨迴圈存活的狀態
+    #     （原本的 found 旗標）都會在迴圈結束後歸零 → 列完全部項目又多印一行 `active: none`。
+    #     prune_archive 用 `< <(find …)` 而非 pipe 是同一個理由。
+    # (2) **空 rows 不可進迴圈**：herestring 餵空字串仍會產生**一次空行迭代**，
+    #     反過來讓 `active: none` 消失。故 rows 為空時直接走 none 分支、不進迴圈。
+    # (3) **mtime 取不到一律以 0 佔位、不得留空**：tab 是 IFS whitespace，空的第一欄會被
+    #     `IFS=$'\t' read` 吃掉，讓路徑整批推移到 mtime 欄（同 emit_worklines 的坑 (2)，見 :487）。
     for f in "$dir"/*.md; do
         [ -f "$f" ] || continue
-        found=1
+        # GNU stat 先試 -c %Y（BSD 的 -c 會失敗再退 -f %m）；順序反過來 GNU 的 `stat -f %m`
+        # 會「成功」印出掛載點害 fallback 永不執行——故比照 codex-runtime-hygiene.sh 補一道
+        # 純數字守門，否則非數字會讓下面的 `-gt` 噴 integer expression error 到 stderr，
+        # 而 survey 是 W1／R1 開場的純資訊路徑，那行雜訊會直接落在使用者眼前。
+        mt="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null)" || mt=0
+        case "$mt" in ''|*[!0-9]*) mt=0 ;; esac
+        rows="${rows}${mt}"$'\t'"${f}"$'\n'
+    done
+    if [ -z "$rows" ]; then
+        echo "active: none"
+        return 0
+    fi
+
+    # LC_ALL=C：tie-break 走的是字串比較，glibc 的 en_US.UTF-8 在第一層忽略連字號等標點、
+    # 與 BSD 不同。-k1,1rn ＝ mtime 新到舊；-k2,2 讓同秒退回檔名升冪——sort 同鍵**不保證穩定**
+    # （glob 順序本身是確定性的，tie-break 防的不是它）。
+    while IFS=$'\t' read -r mt f; do
+        [ -n "$mt" ] || continue
         base="$(basename "$f")"
+        # 0 是 **sentinel、不是合法 epoch**：`date -r 0` 會**成功**回 1970-01-01，
+        # 所以不能把 0 丟進格式化再靠它失敗當缺值判定。此分支實務上不可達（`[ -f ]` 已通過、
+        # stat 幾乎不可能失敗），保留純為防禦——空值會觸發上面第 (3) 條的欄位推移，那更糟。
+        if [ "$mt" -gt 0 ]; then
+            ts="$(date -r "$mt" +'%Y-%m-%d %H:%M' 2>/dev/null \
+                  || date -d "@$mt" +'%Y-%m-%d %H:%M' 2>/dev/null || echo '未知')"
+        else
+            ts="未知"
+        fi
         created="$(sed -n 's/^created:[[:space:]]*//p' "$f" | head -1)"
         if [ -n "$created" ] && age="$(age_days_from_created "$created")"; then
             flag="OK"
             [ "$age" -gt "$EXPIRE_DAYS" ] && flag="EXPIRED（建議：確認已無用即刪，或 resume 重驗）"
-            echo "active: $base — ${age}d — $flag"
+            echo "active: $base — 更新 ${ts} — ${age}d — $flag"
         else
-            echo "active: $base — created 無法解析 — SUSPECT"
+            echo "active: $base — 更新 ${ts} — created 無法解析 — SUSPECT"
         fi
         # path：verify/consume 吃完整路徑，印出來免得讀取端自己手拼
         echo "  path: $f"
         # title：多份待選時光看 slug 分不出是哪條工作線；無標題行則整行省略
         title="$(sed -n 's/^# Handoff:[[:space:]]*//p' "$f" | head -1)"
         [ -n "$title" ] && echo "  title: $title"
-    done
-    [ "$found" -eq 0 ] && echo "active: none"
+    done <<< "$(printf '%s' "$rows" | LC_ALL=C sort -t$'\t' -k1,1rn -k2,2)"
     return 0
 }
 

@@ -323,6 +323,35 @@ dangling path。worklines 上限只截顯示並印略過筆數，**不靜默截�
 awk 聚合兩個坑：`$2 > k[$1]` 在 k 未初始化時是數值比較，key `00000000000000` 於是永不被採用；
 **tab 是 IFS whitespace**，空欄位會被 `read` 吃掉而讓後續欄位整批推移，故空值以 `-` 佔位。
 
+### active 清單的時戳與排序
+
+時戳欄取 **mtime**、`Nd` 取 **created**，兩欄來源不同。用 mtime 的理由是 **created 只有日粒度**
+（`cmd_anchors` 寫 `date +%Y-%m-%d`），同日多份必然平手。**不要寫成「created 不隨續寫更新」**——
+那是假的：W2 每輪都跑、W3 原樣貼入，created 恆等於最後一次蓋錨點的日期（81 份真實交接檔實測，
+與 mtime 的日期 0 份不一致）。mtime 買到的只有**同日的時分解析度**。
+
+排序 fixture 的 **mtime 順序必須與檔名字典序相反**——否則現行 glob（字典序升冪）也剛好答對，
+斷言等於虛設（同下方 `bar-foo` 的教訓）。tie-break 防的是 **`sort` 同鍵不保證穩定**，
+不是 glob 順序漂移（後者是確定性的）。
+
+**`LC_ALL=C` 不可省，而 tie-break fixture 必須含一個大小寫混排的檔名（`a-Zed`）才守得住它**：
+只有 `a-first`/`z-second` 的話，拿掉 `LC_ALL=C` 斷言照樣綠。實測同一組輸入在 C 與 UTF-8 locale
+下給出**相反**順序，**兩平台皆然**（BSD sort 2.3-Apple 與 glibc sort 都會翻），所以這一份 fixture
+同時守住 macOS 與 Linux。GNU 側另外三條原語（`stat -c %Y`、`date -d @epoch`、`date -r <epoch>`
+**必須失敗**才會退到 `-d @`）本 repo 的測試跑不到——它們在 2026-08-19 由 eagle03／db01／agent01
+三台實跑確認。
+
+**`active: none` 與 SUSPECT 兩條分支各自有斷言**：改動前兩者皆零覆蓋，而重構動到的正是決定
+`active: none` 印不印的那段——`… | sort | while read` 會讓旗標困在 subshell（列完項目又多印一行），
+空 rows 直接餵 herestring 則會產生一次空行迭代（反而讓它消失）。兩個方向都要釘。
+
+`0` 是 mtime 的 **sentinel 不是合法 epoch**（`date -r 0` 會成功回 1970），故顯示端先判再格式化；
+該分支在 `[ -f ]` 已通過的前提下不可達，**刻意不寫測試**——不可執行的驗收比沒有更糟。
+
+**空欄位推移是同一條坑的第二個觸發點**（第一個見上方 worklines 的 awk 聚合）：`<mtime>\t<path>`
+的 mtime 若留空，`IFS=$'\t' read` 會把路徑吃進 mtime 欄。故 stat 失敗一律填 `0`，並比照
+`codex-runtime-hygiene.sh` 加純數字守門（GNU `stat -f %m` 會印掛載點）。
+
 ### archive 檔名身分解析
 
 抽成兩個消費端共用的 parser。**候選 slug 不可壓成單一值**，key 逐候選各自成立。

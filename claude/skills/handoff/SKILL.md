@@ -130,7 +130,7 @@ slug: <slug>
 ~/.claude/skills/handoff/scripts/handoff-anchor.sh survey [--slug <slug>]
 ```
 
-指定了 slug 就用它；未指定且僅一份 active → 直接用；多份 → 列給使用者選。每份 `active:` 會附 `path:`（完整路徑，直接餵給下一步的 verify/consume）與 `title:`（多份時辨識工作線）。
+指定了 slug 就用它；未指定且僅一份 active → 直接用；多份 → 列給使用者選。每份 `active:` 會附**最後更新時戳**（取 mtime，與同行的 `Nd` 來源不同——後者取 created）、`path:`（完整路徑，直接餵給下一步的 verify/consume）與 `title:`（多份時辨識工作線）。
 
 **零份 active 不等於沒有交接檔。** `workline:` 或 `predecessor: …（archive）` 命中，代表這條工作線的前一份**已經被消費過**（前一個 session 載入它並開工，之後 session 才結束）。此時：報告它何時被消費、內容依 R3 的信任上限當**線索**、**不要對它呼叫 `consume`**（consume-once 會機械拒絕），並問使用者是要據此接續、還是這是新一輪。active 與 archive **都**零命中，才是真的沒有交接檔——明說並請使用者指路（不要憑空猜工作內容）。
 

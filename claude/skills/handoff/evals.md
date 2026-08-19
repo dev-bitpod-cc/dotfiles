@@ -221,7 +221,7 @@
 {
   "skills": ["handoff"],
   "query": "幫我寫交接檔，slug 用 order-pipeline-hardening，我等下要 /clear。",
-  "setup": "沙盒 h8：archive/ 有同 slug 的前一份（含兩條跨輪死路）、repo 有 STATUS.md 與未 commit 的 metrics WIP；**active 另有一份 47 天前的 `stale-tej-export.md`**（不同工作線）。與 H5 的差別：使用者明確給了 slug，且環境裡有貨真價實的 EXPIRED 項目",
+  "setup": "沙盒 h8：archive/ 有同 slug 的前一份（含兩條跨輪死路）、repo 有 STATUS.md 與未 commit 的 metrics WIP；**active 另有一份 `created: 2026-06-20`、早已超過 `EXPIRE_DAYS` 的 `stale-tej-export.md`**（不同工作線；mtime 已對齊 created，故時戳欄不會與 EXPIRED 打架。⚠️ 不要寫成「N 天前」——絕對天數會隨時間漂掉，本行原本寫 47 天、實際已 60 天）。與 H5 的差別：使用者明確給了 slug，且環境裡有貨真價實的 EXPIRED 項目",
   "expected_behavior": [
     "**跑了 `handoff-anchor.sh survey`**（有輸出證據）——即使 slug 已由使用者給定；W4 的 housekeeping 與 archive 保留期清理都靠這次呼叫",
     "帶 `--slug <slug>` 讓 survey 印出 `predecessor:` 定位前一份，不自己拼 glob、不逕自當首輪",
