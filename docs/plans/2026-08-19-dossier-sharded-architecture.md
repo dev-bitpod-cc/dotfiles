@@ -1,56 +1,52 @@
-# STATUS.md dossier 改為分片架構
+# dossier 的決策與里程碑改為分片架構
 
-- 日期：2026-08-19（v2——v1 經兩個獨立 reviewer 審查後重寫 §2／§3.1／§3.2，見〈附錄：v1 的錯誤〉）
-- 起因：使用者第三次反映治理成本（08-14、08-15、本次）。前兩次診斷為「工具缺陷」與「管轄範圍太大」，處置後鋸齒仍在
+- 日期：2026-08-19（**v3**——v1 與 v2 各經兩個獨立 reviewer 審查後不通過，見〈附錄〉）
+- 起因：使用者第三次反映治理成本（08-14、08-15、本次）
+- **v3 的範圍縮減：只做決策與里程碑。死路完全不動**（維持 `62671be` 建立、`887c1c1` 寫進規範的分層）
 - 目標檔案：
-  - 規範與工具：`claude/skills/project/references/dossier.md`、`claude/skills/project/SKILL.md`、`claude/skills/project/scripts/ship-state.sh`、`tests/xref-gate.py`、`tests/run.sh`、`docs/testing-contract.md`
-  - **always-on**：`claude/CLAUDE.md:33`（捕捉條文）、`AGENTS.md:38`（authority 矩陣）
-  - 其他消費端：`claude/skills/handoff/SKILL.md`、`claude/skills/ready4quit/SKILL.md`、`claude/skills/project/references/pressure-tests.md`
+  - 工具與 gate：`claude/skills/project/scripts/ship-state.sh`、`tests/xref-gate.py`、`tests/run.sh`、`docs/testing-contract.md`
+  - 規範：`claude/skills/project/references/dossier.md`、`claude/skills/project/SKILL.md`、`claude/skills/project/references/pressure-tests.md`
+  - **always-on**：`claude/CLAUDE.md:32`（捕捉條文）、`AGENTS.md:38`（authority 矩陣）
+  - 其他消費端：`claude/skills/handoff/SKILL.md`、`claude/skills/ready4quit/SKILL.md`、`claude/skills/deep-plan/SKILL.md:169`
   - 模板：`claude/templates/STATUS-template.md`、`claude/templates/BACKLOG-template.md`、`claude/templates/transfer-guide-template.md`
   - eval：`claude/evals/setup-sandboxes.sh`、`claude/evals/contract-evals.md`、`claude/skills/deep-plan/evals.md`
   - 本 repo 內容：`STATUS.md`、`docs/`
-- **本計畫不改「捕捉」的時機與內容**——決策/死路/里程碑仍在發生當下寫入、`/project log` Step 2 仍同步。改的是**落點**，而落點正好寫在 `claude/CLAUDE.md:33` 裡，故該檔**在目標清單內**（v1 誤把它排除為「與本計畫正交」）
+- **不改「捕捉」的時機與內容**——決策/里程碑仍在發生當下寫入。改的是**落點**，而落點寫在 `claude/CLAUDE.md:32`，故該檔在清單內
 
-## 一、診斷：現行架構在數學上不可能長久運行
+## 一、診斷
 
-三個**無界**的內容放進一個**有上限**的檔。以本 repo 34 天實測率外推（數字為 2026-08-19 實測）：
+三個無界內容放進一個有上限的檔。本 repo 現況（2026-08-19 實測）：
 
-| 節 | 現況 B | 有界？ |
+| 節 | B | 有界？ |
 |---|---|---|
 | 關鍵決策 | 8904 | **無界** |
-| 死路 | 7175 | **無界** |
+| 死路 | 7175 | **無界**（v3 不處理） |
 | 已完成里程碑 | 2326 | 半有界 |
 | 進行中 | 930 | 有界 |
-| 其餘四節 | 1339 | 有界 |
-| **合計** | **20674** | 門檻 24576 |
+| 其餘四節 | 1338 | 有界 |
+| **合計** | **20673** | 門檻 24576 |
 
-全檔累積率（扣除首次 commit 種子 4051 B，`1d96e45` 2026-07-16 起算）＝ **489 B/日**，一年後約 199KB，**門檻的 8.1×**。
+全檔率（扣種子 4051 B，`1d96e45` 2026-07-16）＝ **489 B/日**，一年約 199KB，**門檻的 8.1×**。
 
-**鋸齒是這個架構的必然輸出，不是紀律問題。** 任何歸檔次數都改變不了斜率。
+> ⚠️ **489 是「歸檔後的殘量率」，不是產出率**——34 天內從 STATUS.md 移出去的內容沒算進來。真實 dossier 語料產出率約 **3572 B/日**（含 archive 與 dead-ends）。兩個數字用途不同：489 說的是「維持現行歸檔節奏下 STATUS.md 會怎麼長」，那正是鋸齒的斜率；3572 說的是「要被安置的內容有多少」。**本計畫的診斷用前者，容量估算用後者。**
+> ⚠️ 機隊表同樣混了口徑——`krepo-common`／`krepo-judicial`／`kapi-protocol`／`pilot-api`／`rdmsys` **沒有 `docs/archive/`**（其值是產出率），其餘有（是殘量率）。故**排序不可用於「誰比誰寫得多」**，只可用於「誰快撞到門檻」。
 
-> ⚠️ **v1 此處有兩個方法論錯誤，已修**：①「608 B/日」未扣種子，與同節機隊表（有扣）口徑不一；②「15 天 11 次壓縮事件」用的是本 repo **已明文記為死路**的代理指標（`docs/dead-ends.md`「STATUS.md 負增量當壓縮代理」：正解是數 flag 實際處置的 commit）。該數字已移除，本計畫不依賴它。
+### 機隊：誰快撞牆（量測時刻 2026-08-19 13:49，活動靶）
 
-### 機隊：dotfiles 不是特例，是先撞上的那一個
-
-扣除移轉種子後的累積率（**量測時刻 2026-08-19 13:49；機隊數字是活動靶，兩個 repo 在量測期間被其他 session 改動**）：
-
-| repo | 累積 B/日 | 距 24576 |
+| repo | B/日 | 距 24576 |
 |---|---|---|
-| krepo-judicial | 3560 | **1.8 天** |
+| krepo-judicial | 3560 | 1.8 天 |
+| krepo-mops-major-news | 1625 | 2.7 天 |
 | kapi-protocol | 1646 | **1.6 天** |
 | krepo-mops-announcement | 1279 | 5.1 天 |
 | kapi-gateway | 1113 | **1.7 天** |
-| evint | 788 | ★ 已超標 |
-| krepo | 759 | ★ 已超標（拆分期間**明文豁免**，帶失效條件；全機隊唯一） |
+| evint / krepo / ml-env | 788 / 759 / 716 | ★ 已超標（krepo 為拆分期間明文豁免，全機隊唯一） |
 | krepo-common | 741 | 11.8 天 |
-| ml-env | 716 | ★ 已超標 |
 | **dotfiles** | **489** | 8.0 天 |
-| pilot-api | 379 | **1.5 天（機隊最急）** |
+| pilot-api | 379 | **1.5 天（最急）** |
 | rdmsys | 125 | 125.8 天 |
 
-3 個已超標、5 個在 2 天內撞牆。
-
-> ⚠️ **v1 的「決策 4.4 條/日排第 5」已移除**：獨立重算得 4.29 條/日、**機隊第 2**（以有意義的歷史長度看是第 1）。v1 據此否決「收緊記錄判準」，**該否決連同理由一併撤回**——見〈七、不做〉的修訂。v1 的另一半理由（B/日 倒數第三）是**循環論證**：率低正是因為 dotfiles 比別人更頻繁歸檔，而那正是被抱怨的事。
+**3 個已超標、4 個在 2 天內撞牆。**
 
 ## 二、架構原則
 
@@ -58,169 +54,154 @@
 
 ### 分片鍵選錯的直接證據
 
-`docs/archive/decisions-2026-08.md`：68354 bytes、110 條、28 次 commit **全部 `-0` 純 append**、14 天零修訂、STATUS.md 只有 **2** 條指標指得進去。
+`docs/archive/decisions-2026-08.md`：68354 bytes、28 次 commit **全部 `-0` 純 append**、13 天零修訂、`STATUS.md` 只有 **2** 條指標指得進去。
 
-而它**已經是嚴格按月分片的**——`decisions-2026-07.md` 內 23 條全為 2026-07，`decisions-2026-08.md` 內 109 條全為 2026-08。
+而它**已經是嚴格按月分片的**（07 檔內 23 條全為 2026-07、08 檔內條目全為 2026-08）。**按時間分片、且無人回頭改——時間不是決策的檢索鍵。**
 
-**這正是結論所在：按時間分片、且沒人讀。時間不是決策的檢索鍵。**
-
-現行歸檔判準（`dossier.md:31`）自己也不是時間：
+現行歸檔判準（`STATUS.md:31`，本 repo 的檔頭註記；`dossier.md:98` 有措辭不同的對應規則）量的也不是時間：
 
 > 已固化且**不再影響現行方向** → 歸檔；**仍在生效**的一律不歸檔
 
-那個判準量的是**與當前工作的相關性**。檔名 `decisions-2026-08.md` 只是命名方便。
-
 ### 檢索鍵逐類判定
 
-| 內容 | 你實際怎麼找它 | ⇒ 分片鍵 |
-|---|---|---|
-| **決策** | 「我要動 X，這裡以前決定過什麼」 | **領域** |
-| **死路** | 「我要動 X，X 踩過什麼雷」 | **領域** |
-| **里程碑** | 「什麼時候做了什麼」——**這一類時間真的是檢索鍵** | **時間** |
-| 進行中 / 移交準備度 | 現況 | 有界，不分片 |
+| 內容 | 怎麼找它 | 分片鍵 | v3 範圍 |
+|---|---|---|---|
+| **決策** | 「我要動 X，這裡以前決定過什麼」 | **領域** | ✅ |
+| **里程碑** | 「什麼時候做了什麼」 | **時間** | ✅ |
+| 死路 | 同決策 | 領域 | ❌ **不動**（理由見 §7） |
+| 進行中 / 移交準備度 | 現況 | 有界，不分片 | — |
 
-### ⚠️ 分片**不會**讓檔案變小——這是本計畫最容易被誤讀的一點
+### 分片不會讓檔案變小
 
-146 條決策依領域歸類的實測分布：
+**真正的決策語料 114 條 / 61891 bytes**（已扣除 `decisions-2026-08.md` 的「已結案技術債」34 條與死路空節——**v2 誤把它們算進 146 條**）。機械歸類的分布：
 
 | 領域 | 條 | bytes |
 |---|---|---|
-| dossier | 60 | **37806** |
-| ship | 57 | 30129 |
-| skills | 14 | 7482 |
-| contract | 6 | 2557 |
-| env | 4 | 2024 |
-| tests | 2 | 997 |
-| （未分類） | 5 | 2879 |
+| dossier | 42 | **25282** |
+| ship | 35 | 18074 |
+| skills | 19 | 10261 |
+| （未分類） | 11 | 5460 |
+| env | 3 | 1277 |
+| contract | 3 | 1014 |
+| tests | 1 | 523 |
 
-**最大領域檔 37806 bytes，比門檻還大，而且會繼續長。**（此分布為機械歸類的粗估，實際切法見 §3.3；未分類 5 條需人判。）
-
-分片買到的**不是**大小，是**相關性密度**：37KB 的 dossier 領域檔，在你動 dossier 時**整份都相關**；68KB 的時間檔，任何時候都只有一小部分相關。
-
-**無界就是無界。** 唯一被真正約束的是 `STATUS.md`——它變成索引，而索引長度由**領域數**決定。
+> ⚠️ **修正後最大領域檔 25282，只比門檻多 706 bytes**（v2 誤算為 37806）。「分片不會讓檔變小」這句**仍成立但很弱**——它現在幾乎只是打平。真正站得住的是後半句：分片買的是**相關性密度**（25KB 的 dossier 領域檔在你動 dossier 時整份相關；68KB 的時間檔任何時候都只有一小部分相關）。
+> ⚠️ 此分布為粗略機械歸類，**11 條未分類需人判**，實際切法在執行時逐條定案。
 
 ## 三、設計
 
-### 3.1 決策 → 領域分片，照死路模式分層
-- 落點 `docs/decisions/<area>.md`
-- **無全檔量體門檻**，但**保留單條上限**（見 §3.5）——這是它與 `docs/backlog.md` 的關鍵差別
-- `STATUS.md` 決策節留**領域索引**：每領域一行，含條目數，並以 gate 認得的指標句型（反引號包路徑、緊接直角引號包領域名）指向該領域檔
-- 領域檔內**新的在上**；領域檔過大時，收斂手段仍是既有的蒸餾/歸檔，但**範圍縮到一個領域**——「已固化且不再影響現行方向」在單一領域內判斷遠比在全部歷史裡判斷容易
-
-> ⚠️ **v1 用「同 `docs/backlog.md` 先例，刻意無門檻」正當化，那個引用是錯的。** `dossier.md:24-31` 的判準是可壓縮性：「決策……**壓得動**，**所以量體門檻對它有效**；backlog……**壓不動**」。backlog 的免門檻建立在「壓不動」上，決策不適用。且該先例並非什麼都不守（`ship-state.sh:469-482`：保留章節完整性，「這裡更該守」）。本計畫的對應補償是**單條上限 + 索引完整性 gate**，見 §3.5。
-> 附帶：`docs/backlog.md` 分家 3 天後 +1437 B/日，它現在是「免門檻會長回去」的證據，不是反例。
+### 3.1 決策 → 領域分片
+- 落點 **`docs/decision-log/<area>.md`**
+- ⚠️ **刻意不用 `docs/decisions/`**：`krepo` 已在該路徑跑 **ADR**（`001-crawler-strategy…`～`005-…`，`krepo/CLAUDE.md:312`「新的重大技術選擇 → 新增一份 `docs/decisions/` ADR」）。兩者粒度差 20 倍（krepo 5 份／dotfiles 114 條）、語意不同，**共用目錄名會讓 `ship-state.sh` 的 glob 掃到別人的 ADR，也會讓新 session 套錯慣例**。分開命名同時把 ADR 社群第一條批評（「沒有區分什麼算 architectural」）做成了明文區分
+- **無全檔量體門檻**，補償見 §3.4
+- `STATUS.md` 決策節留**領域索引**：每領域一行、含條目數、以 gate 認得的指標句型指向該領域檔
+- 領域檔內新的在上
 
 ### 3.2 里程碑 → 時間分片
-落點 `docs/milestones/YYYY.md`。**這一類時間確實是檢索鍵**（「什麼時候做了什麼」），與決策不同。`STATUS.md` 只留最近一批（現 5 條 / 2326 B）＋年份索引。
+落點 `docs/milestones/YYYY.md`。**這一類時間確實是檢索鍵**。`STATUS.md` 只留最近一批（現 5 條 / 2326 B）＋年份索引。
 
-### 3.3 死路 → 領域分片
-- 落點 `docs/dead-ends/<area>.md`，**結論與證據同檔**（不再是 STATUS.md/dead-ends.md 兩檔分層）
-- `STATUS.md` 死路節留領域索引，形式同 §3.1
-- 現有 16 條的領域分布：`dossier` 5、`handoff` 4、`ship` 3、`env` 2、`deep-review` 1、`skill-discipline` 1 —— **這是一次示範性歸類、不是實測**，至少 3 條落點有歧義（`direnv 解 gh 雙帳號` 可歸 env 或 ship；另兩條像 skill-discipline）。**實際切法在執行時逐條定案並記錄**
-- **領域怎麼切由各 repo 自己定**，判準：**領域＝你會在動那塊東西之前想查的單位**。⚠️ v1 寫「多數 repo 即頂層模組/子系統」與 dotfiles 自己的 6 個領域（皆為工作流概念、非頂層模組）不符，該句移除
-- `docs/dead-ends.md` 的 `## 分工` 節不是死路條目，隨本次併入 `dossier.md` 的分層說明，不進領域檔
+### 3.3 STATUS.md 變成什麼
 
-> **正面回應 `887c1c1` 的論證**（v1 未回應）：該規則說「死路要能在你沒想到要查的當下擋住你，**規則不在 always-on 就不生效**，故結論留 STATUS.md、證據外移」。本設計**接受這個論證，但指出它的前提已變**：STATUS.md 本來就**不是 always-on**（不自動載入），所以「留在 STATUS.md」買到的不是 always-on，是「ship 時會被讀到」。領域索引同樣在 STATUS.md、同樣在 ship 時被讀到，且**每行帶條目數**——「dossier 治理 · 23 條」足以讓你在動 dossier 前打開它。
-> ⚠️ **這一條仍是本計畫最大的未驗證面**，見 §8.1。
-> **事實更正**：分層本身是 **2026-08-14 `62671be`** 落地的（`docs/dead-ends.md` 建檔日）；`887c1c1` 做的是寫進 `dossier.md` 並加反向 gate。v1 §8.3 把「五天前的既有分層」記成「本批自己製造的返工」，該句移除。
+保留七節標題（`ship-state.sh:287-288` 簽章、`:296` 章節完整性硬要求；索引化後兩者**原樣通過，不需改**）。
 
-### 3.4 STATUS.md 變成什麼
+| 節 | v3 之後 |
+|---|---|
+| 進行中 / 技術債 / 已知缺口 / 移交準備度 | 不變 |
+| **關鍵決策** | 領域索引 |
+| **已完成里程碑** | 最近一批 + 年份索引 |
+| **死路** | **不變**（16 條結論留原地，證據仍在 `docs/dead-ends.md`） |
 
-保留七節標題（`ship-state.sh:287-288` 簽章與 `:296` 章節完整性硬要求）。
+### 3.4 守門的重新配置
 
-| 節 | 內容 | 有界性 |
+| gate | 遷移後會怎樣 | 處置 |
 |---|---|---|
-| 進行中 | 不變 | 有界 |
-| 關鍵決策 | 領域索引（每領域一行 + 條目數） | 由領域數決定 |
-| 死路 | 領域索引（同上） | 同上 |
-| 技術債 / 已知缺口 | 不變（已分家至 `docs/backlog.md`） | 已有界 |
-| 已完成里程碑 | 最近一批 + 年份索引 | 一年 +1 行 |
-| 移交準備度 | 不變 | 有界 |
+| `DOSSIER_ENTRY_MAX_BYTES=800` | 決策與里程碑條目離開作用域（**`pilot-api` 今天就在被它攔：1398 > 800**，切換後靜默） | **擴大作用域**到 `docs/decision-log/*.md`、`docs/milestones/*.md`。⚠️ **不含 `docs/dead-ends/`**——`dossier.md:120` 明文「條目 flag 不掃死路節……全靠分層這一條」，v3 不動死路故該豁免維持。實測決策條目最大 **799 B**（>800 的 3 條全在已結案技術債節，不進本落點）⇒ **今天不會產生誤報** |
+| `DOSSIER_MAX_LINE_BYTES=1000`（最長行） | 只掃 STATUS.md，語料移出即失效（`milestones-2026-08.md` 已有 733 B 的行） | **同步擴大作用域** |
+| append-only log 章節偵測（`ship-state.sh:409-415`） | 只掃 STATUS.md；而 §3.1 的「新的在上」正是它擋的形狀 | **明文豁免新落點**並在 `dossier.md` 記理由——它擋的是「STATUS.md 裡長出流水帳」，分片後那正是流水帳該去的地方 |
+| `DOSSIER_STALE_DAYS=30` | 日常寫入移出 STATUS.md，訊號恆綠 | **維持 git committer time**（`ship-state.sh:417-419`），改取 `STATUS.md` 與兩個新目錄的**最新 commit time**。⚠️ **v2 寫「改量 mtime」是錯的**——mtime 不入 git，在驗收 5 的乾淨 clone 下恆綠 |
+| 節級孤兒（`xref-gate.py`） | **不受影響**——`EVIDENCE_LAYERS` 仍是 `docs/dead-ends.md`，死路不動 | **不改** |
+| 歸檔孤兒（`ship-state.sh:435`） | `docs/archive/` 遷移後清空 ⇒ 對 dotfiles no-op | 保留給未遷移的 repo；dotfiles 端由下一列接手 |
+| （新）**索引完整性** | — | `docs/decision-log/`、`docs/milestones/` 內**每個檔**都必須有 `STATUS.md` 的索引指標，漏建即紅。⚠️ 這**不是**「放寬成檔級」（那個是「檔名在任何 md 出現過即綠」＝恆綠）；這是「該目錄下每個檔都要出現在 STATUS.md 索引」 |
 
-### 3.5 守門的重新配置（v1 完全漏掉這一節）
+## 四、遷移
 
-現行三道 gate 在遷移後都會**靜默失去管轄對象**。逐條處置：
-
-| gate | 現況 | 遷移後 | 處置 |
-|---|---|---|---|
-| `DOSSIER_ENTRY_MAX_BYTES=800`（單條蒸餾上限） | awk 節名錨定只認 `關鍵決策|已完成|里程碑`（`ship-state.sh:361`），只掃 `STATUS.md` | 146 條全部離開作用域。**`pilot-api` 今天就在被它攔（1398 > 800）**，切換後靜默 | **擴大作用域**到 `docs/decisions/*.md`、`docs/milestones/*.md`、`docs/dead-ends/*.md`。這是本計畫對「免全檔門檻」的主要補償 |
-| 歸檔孤兒（`ship-state.sh:437-465`） | 觸發條件寫死 `[ -d docs/archive ]` | dotfiles 的 `docs/archive/` 只有要搬走的 4 檔，遷移後清空 ⇒ 全 no-op | **由新的索引完整性 gate 取代**（下一列），並保留原 gate 服務未遷移的 repo |
-| 節級孤兒（`xref-gate.py:290-322`） | 要求 `EVIDENCE_LAYERS` 檔的每個 `## ` 節有帶節名入邊 | 領域分片後**結論與證據同檔**，`## ` 節就是條目本身、不再是別處結論的證據 ⇒ 原判準不適用 | **改為索引完整性**：`docs/{decisions,dead-ends,milestones}/` 內**每個檔**都必須有 `STATUS.md` 的索引指標。⚠️ 這**不是** v1 被否決的「放寬成檔級」——那個是「檔名在任何 md 出現過即綠」（恆綠）；這個是「該目錄下每個檔都要在 STATUS.md 索引出現」，漏建索引行就紅 |
-| `DOSSIER_STALE_DAYS=30` | 量 `STATUS.md` 最後 commit 落後 repo 活動 | 日常寫入移到領域檔，訊號要嘛恆綠要嘛誤報 | **改量 `STATUS.md` 與三個目錄的最新 mtime 取最大值** |
-
-## 四、遷移（dotfiles）
-
-1. 建 `docs/decisions/<area>.md`；146 條依領域分派（**5 條未分類需人判**；`decisions-2026-08.md:408` 那條**無日期**，不影響領域分派）
-2. `docs/archive/decisions-2026-08.md` 內混的兩節另行處置：`:412` 死路空節（刪）、`:416` 已結案技術債（→ `docs/backlog.md` 的歸檔慣例落點，**不進決策領域檔**）
-3. `milestones-2026-07.md` + `-2026-08.md` → `docs/milestones/2026.md`（合併、加月份小節）
-4. `docs/dead-ends.md`（11 個死路節 + 1 個分工節）與 `STATUS.md` 死路 16 條合併，拆進 `docs/dead-ends/<area>.md`
-5. `STATUS.md` 三節改為索引
-6. **快照類歸檔留原地**——機隊上 evint／kapi-gateway／krepo-mops-major-news 的「整份 STATUS 快照」與本次做的是不同的事，不納入
-7. 修 7 條會靜默斷鏈的裸路徑引用（`docs/backlog.md:65,88,166`、`decisions-2026-08.md:98`、`milestones-2026-08.md:16`、`deep-review/evals.md:721`、`dossier.md:114,123`），與 `docs/plans/2026-08-09-repo-contract-extraction.md:83`（歷史計畫，判定不改）
+1. 建 `docs/decision-log/<area>.md`，**114 條**依領域分派（11 條未分類需人判；`decisions-2026-08.md:408` 無日期，不影響領域分派）
+2. `decisions-2026-08.md` 的另兩節：`:412` 死路空節（刪）、**`:416` 已結案技術債 34 條** —— ⚠️ **不進 backlog**（`dossier.md:25-31` 的判準是 backlog 收「未結案」，這 34 條已結案且非「不再打算做的」，送進去同時違反兩份權威）。它們是**決策語意**，進 `docs/decision-log/dossier.md`
+3. `milestones-2026-07.md` + `-2026-08.md` → `docs/milestones/2026.md`
+4. `STATUS.md` 兩節改索引
+5. 重指（清單見驗收 6）
+6. 快照類歸檔留原地（機隊上 evint／kapi-gateway／krepo-mops-major-news 的整份 STATUS 快照與本次無關）
 
 ## 五、機隊策略
 
-**dotfiles 先跑，驗證後推全機隊。**
+dotfiles 先跑，**驗收通過且成對實驗完成後**才改全域規範檔。
 
-⚠️ **v1 有內部矛盾已修**：v1 說「驗證後推全機隊」，但 §9 把全域檔（`dossier.md`、`ship-state.sh`）排在 dotfiles 驗收之前 ⇒ 一條未驗證的規則先全域生效。**本版改為：全域規範檔的變更排在 dotfiles 驗收通過之後**（見 §9）。
-
-- 已存 STATUS.md **不強制遷移**，舊形狀繼續可用
-- 現況本來就不一致（條目形狀 2 種——`krepo-judicial` 與 `krepo-mops-announcement` 為 `### ` **混用**、其餘 10 個 `- **`；歸檔慣例 4 種），這降低同步壓力
-- ⚠️ `xref-gate.py` **只跑 dotfiles**，機隊上沒有任何機制會告訴你某個 repo 切到一半
+- 已存 STATUS.md **不強制遷移**
+- 現況本來就不一致（條目形狀 2 種、歸檔慣例 4 種、5 個 repo 完全沒有 `docs/archive/`）
+- ⚠️ `xref-gate.py` **只跑 dotfiles**，機隊上沒有機制會告訴你某個 repo 切到一半
+- ⚠️ `ship-state.sh` 是**跨 repo 生效**的（經 `~/.claude/skills` symlink），管轄面比 `dossier.md` 還廣 ⇒ 它的變更同樣排在驗收之後
 
 ## 六、驗收準則
 
-1. `./tests/run.sh` 全綠（含改寫後的 xref gate 與 `tests/run.sh:301-348`／`:1414-1482` 兩組 fixture）
-2. `ship-state.sh .`：`dossier:` < 8000 bytes，且**條目 flag 對三個新目錄仍有作用**——以一條 >800 bytes 的假條目驗證它會紅（**v1 的「零 dossier-flag」現在就已經是零、無鑑別力**）
-3. `xref-gate.py --root .` 空輸出；並以「刪掉一行索引」驗證索引完整性 gate 會紅
-4. **內容不遺失**：決策走純搬移，逐條比對條目數與 hash；**死路與里程碑是合併重組，hash 不適用**，改以「條目數 + 每條首行標題」比對（v1 的「逐條 hash」對這兩類不可執行）
+1. `./tests/run.sh` 全綠（含 `tests/run.sh:301-348` 反向 gate 與 `:1414-1482` 歸檔孤兒兩組 fixture）
+2. `ship-state.sh .`：`dossier:` < 12000 bytes；**條目 flag 對新目錄有作用**——放一條 >800 B 的假條目驗證會紅（v1/v2 的「零 dossier-flag」現在就已是零、無鑑別力）
+3. `xref-gate.py --root .` 空輸出；**刪一行索引驗證索引完整性 gate 會紅**
+4. **內容不遺失**：決策與里程碑皆為純搬移，逐條比對條目數（114 + 34 + 里程碑）與內容 hash
 5. 從乾淨 clone 驗證（`git clone --no-local`）
-6. 重指完成：gate 認得的指標句型全 repo **7 條**（`docs/backlog.md:27,149`、`docs/dead-ends.md:153`、`docs/plans/2026-08-09-*:148`、兩份 archive 檔頭、`BACKLOG-template.md:26`）全部重指；另 **33 處**散文提及逐一檢視（**v1 的「13 條」是把決策節條目數誤當指標數**）
-7. **新落點有守門**：三個目錄各放一個超標假條目，確認 `ship-state.sh` 會報
+6. **重指完成**（實測清單）：
+   - gate 認得、指向「關鍵決策」**8 條**：`BACKLOG-template.md:26`、`dead-ends.md:153`、`backlog.md:27/39/162`、`decisions-2026-07.md:3`、`decisions-2026-08.md:3`、`plans/2026-08-09-*:148`
+   - 指向「已完成(里程碑)」**4 條**：`BACKLOG-template.md:24`、`backlog.md:24`、`milestones-2026-07.md:3`、`milestones-2026-08.md:3`
+   - 裸路徑提及四份要搬的檔 **9 處**（排除本計畫檔自身）：`STATUS.md:31/190/191`、`deep-review/evals.md:721`、`decisions-2026-08.md:98`、`milestones-2026-08.md:16`、`backlog.md:78/179`、`plans/2026-08-09-*:83`
+   - ⚠️ 七節標題保留 ⇒ 指向「關鍵決策」的指標**遷移後照樣解析成功、gate 照樣綠**，但承諾的內容已不在該節。**這 12 條必須人工逐條確認語意**，不能靠 gate
+7. **成對實驗**：領域索引取代逐條結論這一項改變了 agent 讀到什麼，須在**樓層模型**上量兩臂差異（見 §9 步驟 6）
 
 ## 七、不做
 
 | 提案 | 理由 |
 |---|---|
-| ADR 一決策一檔 | 機隊決策條目 399+ 起跳、本 repo 一年 1500+；ADR 設計給一年 10–50 條 |
-| 給領域檔設**全檔**量體門檻 | 無界內容設上限就是鋸齒的來源。補償走**單條上限 + 索引完整性**（§3.5） |
-| 補歸檔檔的 stale / 節級守門 | 14 天零修訂、無讀取痕跡（⚠️ **「無人讀」無法從 git 證明**，僅為「無修訂痕跡」的推論） |
-| 外部工具（Linear / mem0 / Zep / Letta / OpenWiki） | 08-14 已否決（三條硬約束）。⚠️ **本地衍生索引不在此列**——見 `docs/backlog.md` 的 hook + 倒排索引候選 |
-| always-on **量體治理** | 與本計畫正交。⚠️ 但 `claude/CLAUDE.md:33` 的**落點正確性**是本計畫的功能性前置，**已納入目標檔案** |
-| ~~收緊「什麼該記成決策」的判準~~ | **v1 的否決撤回**——其依據（4.4 條/日排第 5、B/日 倒數第三）一個重現不出、一個是循環論證。本計畫**不處理它**，但改列為未決，不再宣稱證據不足 |
+| **死路一併改** | v2 的死路設計自相矛盾：「結論與證據同檔」使 11 條合併後 912–2436 B 全部超過 800 上限，而 flag 的處置（蒸餾/拆條）正是「不刪」禁止的；換另一種形狀則 gate 恆綠 0 命中。且 `dossier.md:120` 明文「條目 flag 不掃死路節……全靠分層這一條」——廢掉分層等於讓死路從「有一條規則管」變成「什麼都不管」。**機隊 11 個 repo 無一採用分層**（死路節 krepo 18960、evint 7402…），改規範會讓它們全部失去唯一治理規則。**死路維持現狀** |
+| ADR 一決策一檔 | 機隊決策條目數百、本 repo 114 條/34 天；ADR 設計給一年 10–50 條。⚠️ **但 krepo 的 `docs/decisions/` ADR 是對的且保留**——它收「新的重大技術選擇」（5 份），與本計畫的日常取捨累積是不同粒度，故 v3 改用 `docs/decision-log/` 分開（§3.1） |
+| 給領域檔設**全檔**量體門檻 | 無界內容設上限就是鋸齒的來源。補償走**單條上限＋最長行＋索引完整性**（§3.4） |
+| 把 34 條已結案技術債送進 backlog | 違反 backlog 的「未結案」判準（§4 步驟 2） |
+| 外部工具 | 08-14 已否決。⚠️ 本地衍生索引不在此列——見 `docs/backlog.md` 的 hook + 倒排索引候選 |
+| always-on **量體治理** | 與本計畫正交。⚠️ 但 `claude/CLAUDE.md:32` 的**落點正確性**是功能性前置，已納入目標檔案 |
 
 ## 八、風險與未驗證面
 
-1. **死路/決策領域分片會不會讓「擋住你」失效**——最大的未驗證面。緩解：索引每行帶條目數、領域切粗（本 repo 4–6 個）。⚠️ 本 repo 有一條明文死路要求「**無 observed RED 的明示規則**先跑成對實驗」（`STATUS.md`／`docs/dead-ends.md`，同形狀已撤四次）。本計畫是**檔案分工＋機械層**改動、章節語意不變，形狀近於 2026-08-15 的 backlog 分家（當時判定不需成對實驗）；**但領域索引取代逐條結論這一項確實改變了 agent 讀到什麼**，該項若要進 `dossier.md` 成為全機隊規則，**應先跑成對實驗**
-2. **領域檔會長到 37KB+ 並繼續長**，且無全檔門檻。這是刻意的（§2），但長期需要領域內的二次收斂——本計畫不解，記為已知
-3. **領域切法有歧義**：16 條死路至少 3 條落點不唯一、146 條決策有 5 條未分類。執行時逐條定案並記錄
-4. **機隊不一致期**：兩種形狀並存，`ship-state.sh` 必須對兩者都不誤報
-5. **`### ` 形狀的兩個 repo**（krepo-judicial、krepo-mops-announcement，皆為混用）遷移時需另外處理
-6. **v1 的成本量化被高估**：「執行一次要讀 dossier.md 3808 + STATUS.md 6180 = 10K tok」不成立——`dossier.md` 是 `references/`、按需載入，`SKILL.md:186-189` 設計上讓一般 ship 不必打開它。實際固定成本接近 `STATUS.md` 那 6180 tok。**「10K 換 3600」的失衡論述隨之減弱**，但 ROI 為負的方向不變（判斷成本仍在）
-7. **token 數字與「always-on 超建議 2.3×」屬外部依據**，repo 內無 tokenizer、`detect_always_on()` 也無門檻常數（`:555` 明寫「純資訊」）
+1. **領域索引取代逐條結論會不會讓「擋住你」失效**——最大的未驗證面。緩解：索引每行帶條目數。⚠️ **條目數沒有 gate 驗證**，漂掉就變裝飾，且是靜默的——這一項列為已知缺口
+2. **領域檔會長到 25KB+ 並繼續長**，無全檔門檻。刻意的，但長期需要領域內的二次收斂，本計畫不解
+3. **領域切法有歧義**：114 條有 11 條未分類。執行時逐條定案並記錄
+4. **`ship-state.sh` 條目上限擴到 `docs/decision-log/*.md` 後，機隊上採用同路徑的 repo 會開始被掃**——目前無 repo 使用該路徑，但 `krepo` 的量體豁免不涵蓋新落點，需在 `krepo/CLAUDE.md` 同步
+5. **成本量化**：v1 的「10K tok 換 3600」高估——`dossier.md` 是 `references/`、按需載入。ROI 為負的方向不變（判斷成本仍在），但幅度未重算
+6. **token 數字與 always-on 建議值屬外部依據**，repo 內無 tokenizer
 
 ## 九、執行順序
 
-**全域規範檔排在 dotfiles 驗收之後**（修 v1 的順序矛盾）：
+1. 遷移本 repo 存量（§4 步驟 1–3、5–6）
+2. 改 `tests/xref-gate.py`（新增索引完整性；**節級孤兒不動**）與 `tests/run.sh` fixture
+3. `STATUS.md` 兩節改索引
+4. **驗收 1–6**
+5. **成對實驗**（驗收 7）：兩臂為「逐條結論」vs「領域索引」，量 agent 在動某領域前會不會找到相關決策。**必須在樓層模型上量**
+6. 通過後才改跨 repo／全域面：`ship-state.sh`、`dossier.md`、`project/SKILL.md`、`claude/CLAUDE.md:32`、`AGENTS.md:38`、handoff／ready4quit／deep-plan SKILL、`pressure-tests.md`、三份模板
+7. 更新 eval：`setup-sandboxes.sh`、受影響為 `u6`、`g7/g7base`（改模板 ⇒ 結果作廢需重跑）、`dp3/dp4/dp5`（`docs/decisions.md` fixture 與新落點已分開命名，衝突消解）、`G4`、`contract-evals.md:221`、**`handoff/evals.md:136/369/378` 與 `ready4quit/evals.md:85/98`**（oracle 釘住 STATUS.md 決策節）
+8. `docs/testing-contract.md`（該檔仍寫「xref-gate 只驗正向」，`887c1c1` 之後已不成立）
+9. ⚠️ `pressure-tests.md:258-266` 的 Scenario 以「決策節有 >1000 B 巨型單行條目」為 fixture，分片後四類訊號一個都不會出現，**該格要整個重設計**
 
-1. 遷移本 repo 存量（§4 步驟 1–4、7）
-2. 改 `tests/xref-gate.py`（節級孤兒 → 索引完整性）與 `tests/run.sh` 三組 fixture
-3. 改 `ship-state.sh`：條目 flag 擴大作用域、stale 改量三目錄、歸檔孤兒保留給未遷移 repo
-   ⚠️ **不改簽章與章節完整性**——兩者只 grep 標題，索引化後原樣通過；為不存在的問題放寬一道防「誤放行」的 gate，風險方向是錯的（v1 §9 step 1 前半移除）
-4. `STATUS.md` 三節改索引
-5. **驗收 1–7**
-6. 驗收通過後才改全域面：`dossier.md`、`project/SKILL.md`、`claude/CLAUDE.md:33`、`AGENTS.md:38`、handoff／ready4quit／pressure-tests、三份模板
-7. 更新 eval 沙盒與紀錄：`claude/evals/setup-sandboxes.sh`（**兩個 reviewer 分別數到 33 處與 14 處，執行時以實測為準**）、受影響 eval 為 `u6`、`g7/g7base`（改模板 ⇒ 已記錄結果作廢需重跑）、`dp3/dp4/dp5`（新增的 `docs/decisions/` **目錄**與 fixture 既有的 `docs/decisions.md` **檔** 同名不同型，需消歧義）、`G4`、`contract-evals.md:221`
-8. 更新 `docs/testing-contract.md`（gate 判準的權威檔；該檔目前記的「xref-gate 只驗正向」在 `887c1c1` 之後已不成立）
+## 附錄：v1 與 v2 被推翻的事
 
-## 附錄：v1 的錯誤（保留供日後對照）
+**v1（4 條阻斷）**
+- 「歸檔用大小當分片鍵」不成立——既有歸檔已按月分片。修正後結論更強：按時間分片且無人讀，正是「時間不是檢索鍵」的證據
+- 「月檔約 8KB」低估 8.5×——261 B/日 是殘量率非產出率；`docs/decisions/2026-08.md` 落地當刻就是 68KB。時間分片方案整個放棄
+- 死路領域索引與節級孤兒 gate 互斥
+- `claude/CLAUDE.md` 的捕捉條文被誤判為「正交」
 
-兩個獨立 reviewer 各自查證後，v1 有 4 條阻斷、6 條高。核心的兩條：
+**v2（4 條阻斷／高）**
+- **死路那一支設計自相矛盾**（§7 第一列）⇒ v3 整支移除
+- **「146 條決策」含 34 條已結案技術債**，使「最大領域檔 37806 > 門檻」建立在灌了 25% 非決策內容的語料上。修正後 **25282**，結論勉強成立但很弱
+- **stale gate 改 mtime** 會在自己指定的乾淨 clone 驗證下恆綠
+- **§8.1 自己寫「應先跑成對實驗」，§9 卻沒排進去**；且改 `dossier.md` 會讓 11 個未遷移 repo 失去死路節唯一的治理規則
 
-- **「歸檔用大小當分片鍵」不成立**——既有歸檔已嚴格按月分片。v1 的整個架構原則建立在這個歸因上。修正後的結論**更強**：按時間分片且無人讀，正是「時間不是檢索鍵」的直接證據
-- **「月檔約 8KB」低估 8.5×**——261 B/日 是歸檔後的**殘量率**不是產出率；實際決策語料 2533 B/日，`docs/decisions/2026-08.md` 落地當刻就是 68KB，與被診斷為失效的那份檔逐 byte 相同。**時間分片方案因此整個被放棄**
-
-共同形狀：**v1 拿同一個量測口徑套在兩種不同對象上**，以及**「改落點」的相依端沒有依關係盤過一遍**（10 處未列的消費端）。
+**共同形狀**：v1 是同一量測口徑套在兩種對象上；v2 是**盤點的池子含了不該含的內容**，以及**把「補償機制」寫成一句話而沒有驗證它成不成立**。兩次的 blocking 都落在「守門/判準的重新配置」，**沒有一條打中診斷**。
 
 ---
 > **本計畫走過 `/deep-plan`** → ship 時補一段進 `claude/skills/deep-plan/field-log.md`。
