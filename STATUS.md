@@ -12,24 +12,11 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ## 進行中
 
-- **`deep-plan` skill——紀律情境已 GREEN,E2 已驗證,E1／E3 未跑**(2026-08-17 建立)。
-  `claude/skills/deep-plan/` 三檔就緒、`tests/run.sh` 綠;**P1／P2／P3／P5／P6／P7 六個紀律情境在
-  Sonnet(樓層)全 GREEN**(含截獲驗證:零 SendMessage、洩漏字全 0、計畫內文零洩漏、沙盒零 mutation)。
-  首跑另修掉 body 一處硬矛盾(Step 1「不要讀計畫」vs Step 2「判斷是否判準類」)。
-  **2026-08-18 跑完 E2**(結論見關鍵決策節),並把 fixture 落地成 `claude/evals/setup-sandboxes.sh`
-  的 **dp1** 沙盒——evals 從此可重跑,不再手建於 scratchpad(session 一結束就沒了)。
-  **2026-08-18 跑完 E1／E3**,三項參數實驗至此全部有數據(結論見決策節)。
-  **2026-08-18 P4 判定 fixture 已過期、不可重建**(去 krepo 唯讀查證):計畫原文從未 commit 成檔案
-  (session 已逝;PR body 是**修完後**的版本),且該批已 merge、缺陷在落地前就被修掉 ⇒ 拿現況重建
-  等於把答案寫進 fixture。**改為 standing recipe**,等下一次真實 `/deep-plan` 執行時實例化。
-  **2026-08-19 首次真實執行(dotfiles handoff mtime 計畫)已核對觸發條件 → 未達標、刻意未登記**:
-  兩個 AND 條件都不成立(非判準類;第一輪最高只到「高」、無阻斷級)。⇒ 這一格等的是
-  **「判準類 + 阻斷級」的合流,不是「下次跑到就算」**;逐條理由記在該 skill 的 evals.md。
-  ⇒ **deep-plan 這條線本身已無待辦**,只剩那個等待觸發的登記動作。
-  **2026-08-18 處置完五條結構性 blocking**(走 TDD,情境 P8–P12 ＋沙盒 dp2/dp3/dp4/dp5):
-  **只有兩條在樓層模型上紅得起來**——B2(四級表缺 Blocking 欄)、B3(輸出契約缺層別欄),兩條
-  RED → 修 → GREEN 走完;B1／B4／B5 實測未紅,**不加規則**,只修「原文說錯或說不清」的部分
-  (理由見決策節)。回歸 P1／P3／P7 全 GREEN。
+- **`deep-plan` 本體已無待辦**(2026-08-17 建立,2026-08-19 收斂)。紀律情境 P1–P12 於樓層模型全 GREEN、
+  三項參數實驗(E1／E2／E3)全部有數據、fixture 落地成 dp1–dp5 沙盒、2026-08-19 首次真實執行完成。
+  結論散在決策節與該 skill 的 `evals.md`／`field-log.md`,此處不重述。**剩下的只有兩個等待觸發的
+  項目,都已在 `docs/backlog.md`**:P4 待實例化(等「判準類 + 阻斷級」合流,2026-08-19 核對過一次
+  未達標)、模型層級待獨立決定。
 
 > 更早的凍結計畫:`docs/plans/2026-08-09-repo-contract-extraction.md`、
 > `docs/plans/2026-08-10-dossier-portability.md`。
@@ -43,6 +30,16 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-19 `deep-plan` 的使用判準:看「會不會產生無法從 diff 反推的宣稱」**,不看 repo 或變更大小。
+  首次真實執行的 3/9「會 ship 的缺陷」**全落在文件宣稱層、零條純程式碼**⇒ 值得跑的是 skill body／
+  契約檔／`testing-contract.md`／共用 fixture 這類「寫錯一個為什麼、測試照樣全綠」的地方;`scripts/`
+  的機械邏輯**測試就是 oracle**,事後 `/deep-review` 更便宜。⚠️ dotfiles 命中率系統性偏高(文件即產品)
+  ——那是「在這裡該用」的理由,**不是外推到一般 repo 的理由**。逐次紀錄見
+  `claude/skills/deep-plan/field-log.md`「累積結論」。
+- **2026-08-19 撤回自己提的「deep-plan 小變更走單輪」**(零 diff,不記就消失)。E3(受控)與首次真實
+  執行都量到**第二輪有第一輪拿不到的產出、含唯一阻斷級**;加上 E1 已證 N=2 是下限 ⇒ **4 次 reviewer
+  執行是這個設計的地板,成本降不下來**,剩下唯一槓桿是模型層級(已記 backlog)。附帶看清第二輪的
+  真實職能:它找到的多半不是原計畫的問題,**是處置新寫進去的論證**。
 - **2026-08-19 handoff `active:` 清單的時戳取 mtime,而 `created:` 格式維持 date-only**。
   同日多份 active 只印 `0d` 完全平手(可重建的量測:80 份 archive 兩兩取 `[mtime, consume]` 交集,
   不同 slug 重疊窗 23 對、其中 created 同日 5 對)。**mtime 買到的只有同日的時分解析度**——
@@ -214,6 +211,8 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 > 2026-07 以前的里程碑已歸檔至 `docs/archive/milestones-2026-07.md`；
 > 2026-08-05～08-13 各批已歸檔至 `docs/archive/milestones-2026-08.md`（本節只留最近一批）。
 
+- ✅ 2026-08-19 `deep-plan` 首次真實執行完成(handoff mtime 那批):9→2 blocking 兩輪、3/9 會 ship,
+  並建立 `field-log.md` 累積真實使用結果(與 evals 的受控紀錄分家)。
 - ✅ 2026-08-18 `deep-plan` 五條結構性 blocking 處置完畢:新增情境 **P8–P12** 與沙盒
   **dp2／dp3／dp4／dp5**(dp5 為補上的判定臂)。body 改動:brief §3 加 Blocking 欄、輸出契約加必填
   「層別」、Step 3 加 `NEVER re-classify a finding yourself`、落點改跟目標 repo、修正 scratchpad
