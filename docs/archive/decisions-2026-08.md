@@ -594,3 +594,22 @@
   `docs/plans/2026-08-14-dossier-governance.md`「DROP」;兩個要點:軟目標訊號**要先有「已達結構
   下限」的出口**(否則對 always-on 佔 72% 的本 repo 只是第二個常亮 flag),per-repo 覆寫要走
   krepo 豁免條款的形狀(帶理由與失效條件)而非純數字。
+
+- **2026-08-17 `planner-brief.md` 進 prompt 標為待驗 → 2026-08-18 成對實驗判定「保留」**。
+  E2 實測(Sonnet,A/B 各 2 次):阻斷級 findings 兩臂**零差異**——樓層模型自己就抓得到最嚴重那條;
+  但 5.7／5.5／5.4 三條 A 臂 5.5/6、B 臂 **0/6**。⇒ **brief 買到的是覆蓋面,不是核心 finding**。
+  ⚠️ 首跑因 fixture 給 5.7 留了旁路而作廢,判準在重跑前寫死;矩陣與嚴重度刻度的附帶發現見該
+  skill 的 evals.md。
+
+- **2026-08-17 非 canonical remote 的殘留只列訊號、不發刪除指令**。病灶:候選來自 `branch -r`
+  (列**所有** remote)、組 cleanup-cmd 卻只剝 canonical 前綴 → `fork/x` 傳給只認 canonical 的
+  `cleanup-stale-branch.sh`,永遠 `verdict: STOP`。**否決「把 remote 一起傳過去」**:它把「刪別人
+  repo 上的 branch」變成可照抄的一行,與 SKILL remote 假設(不擅自對 fork 動作)衝突;實地
+  (pilot-api 5 支殘留全在同事 fork、一支還是那 repo 的 `main`)採用的是 `git remote remove fork`
+  ——那個能力方向本身就是錯的。**否決「不列入偵測」**:會丟掉使用者確實想要的訊號。
+
+- **2026-08-17 foreign 訊號另立一段,不在 stale/squash 兩段各留分支**。那些 ref 屬於另一個 repo,
+  「是否已併入我的 default」不構成處置依據;集中也避免訊號分裂——同批發現 squash 段的
+  `${remotes_un//origin\//}` 是**全域替換**且對 `fork/x` 無效,帶前綴的名字在 `$2 == b` 比對就
+  `continue`,實測(owner 相同、SHA 相符、條件全齊)**整段不印、連 `skipped:` 都沒有**,是靜默漏報
+  而非「被 owner 檢查擋住」。
