@@ -2,6 +2,7 @@
 
 - 日期：2026-08-19（**v2**——v1 = `docs/plans/2026-08-19-dossier-governance-problem.md`，經第三方審查後**取代**它，v1 依 `AGENTS.md` write-once 凍結不改）
 - 性質：**問題陳述與選項評估**，不是實作計畫
+- ⚠️ **本檔於 2026-08-19 就地增修過一次**（加入 Design Rationale 文獻與〈附錄 C〉）。判斷是：`AGENTS.md` 的 write-once 保護的是「**已成為他人引用基準**的權威檔」，而本檔自產出起未交付、未被任何檔引用。**這個判斷本身列為待查證項**，見〈附錄 C〉
 - 目的：請第三方審查「這個問題該用什麼方式解」，而不是「這份計畫寫得對不對」
 
 ## v2 修正摘要（第三方審查，5 條全為真陽性）
@@ -107,6 +108,8 @@
 | **backlog 分家**（技術債＋已知缺口移出 `STATUS.md`） | 2026-08-15/16 | ✅ **有效**。當日 23564 → 15007 B。判準是**生命週期**：待辦「壓不動」（只能壓字數、條目數不會少），對它套量體門檻無效 |
 | **死路分層**（結論留 `STATUS.md`、證據移 `docs/dead-ends.md`） | 2026-08-14 | ⚠️ **部分有效**。死路節 5123→3006，但 5 天內回到 7175。⚠️ 機隊零採用 |
 
+> **「死路」不是本地發明**：它在 Design Rationale（DR）研究裡是核心關切，稱 **rejected alternatives**。該領域文獻明載其動機與本 repo 的「防重工」一致——*"Insufficient documentation of alternatives that were considered and rejected can lead to maintainers **reinventing the wheel** by going down the already considered paths."* 相關體系：IBIS（Rittel）、QOC（Questions-Options-Criteria）、DRed。**取得方式與待查證點見〈附錄 C〉。**
+
 ### 3.2 已明文否決（不要重提）
 
 | 提案 | 否決理由 | 出處 |
@@ -121,7 +124,7 @@
 
 | 提案 | 理由 |
 |---|---|
-| **ADR（一決策一檔）** | 機隊決策條目數百、本 repo 114 條/34 天（一年 1500+）；ADR 設計給一年 10–50 條。且 ADR 社群第一條批評（「缺乏『什麼算 architectural』的定義 → 漂移成記下每一個決定」）**本 repo 已在該狀態**。⚠️ 但 `krepo` 的 `docs/decisions/` ADR（5 份，收「新的重大技術選擇」）是對的且應保留——那是不同粒度 |
+| **ADR（一決策一檔）** | ⚠️ **理由已於 2026-08-19 更換**——原本寫「一年 1500 檔太多」，實測樣板開銷只有 +19%（MADR 最小樣板 108 B / 中位條目 552 B），**檔案數本身不是好理由**。<br>**現行理由三條**：①**ADR 只覆蓋決策**，而近 11 天成長主力已是死路（489 vs 390 B/日），決策全 ADR 化後主要成長源原封不動；②**ADR 不解召回**——68KB archive 13 天零修訂不是難找而是沒人想到要找，1500 個檔會讓「不知道要查」更嚴重；③**粒度不匹配**：114 條裡 20% 不到 400 B（多為「撤回自己提的 X，因為 Y」），叫它 ADR 會稀釋 `krepo` 那 5 份真 ADR 的訊號——**那正是 ADR 社群第一條批評的內容**。<br>⚠️ **另有一條更強但證據較弱的理由**（DR 文獻推論）：ADR 的樣板提高**每次記錄的成本**，而 intrusiveness 是文獻指認的捕捉失敗主因，**捕捉是本 repo 唯一已經解決的那一半**。**該推論的取得方式與威脅見〈附錄 C〉。**<br>⚠️ **ADR 的真實好處也要記**：沒有任何檔會長大（門檻問題永久消失）、格式統一。<br>⚠️ `krepo` 的 `docs/decisions/` ADR（5 份，收「新的重大技術選擇」）是對的且應保留——不同粒度 |
 | **收緊「什麼該記成決策」的判準** | v1 曾據「4.4 條/日排第 5、B/日 倒數第三」否決，**該否決已撤回**——前者重現不出（獨立重算為機隊第 2）、後者是循環論證（率低正因為歸檔頻繁，而那正是被抱怨的事）。**現況：未評估，不是已否決** |
 | **本地 file-based 向量庫**（sqlite-vec／LanceDB／vectorlite） | 語料僅 ~200 條/300KB，暴力算 cosine 即可，不需要 DB；且**精確路徑比對比語意相似更準**。⚠️ 三條硬約束**都不違反**（衍生物、gitignored、可從 md 重建），故不在 mem0 那條否決範圍內。真正的缺口是**觸發**不是儲存。⚠️ **v1 把後續方案埋在這一列而未指名，是 v1 的重大缺陷**——完整方案已移出，見 §5.2 |
 | **給新落點設全檔量體門檻** | 無界內容設上限就是鋸齒的來源 |
@@ -230,6 +233,14 @@ v1 曾主張死路有三條互鎖規則：①不刪 ②要能在你沒想到要�
 
 **三條硬約束都不違反**：索引是衍生物、gitignored、可從 md 重建。
 
+**為什麼這一半才是該補的**：DR 文獻的主結論與本問題陳述 v1 的框架**相反**——
+*"While **capture** of argumentative rationale remains **problematic**, **retrieval** of relevant rationale is an area where the argumentation approach has **excelled**."*
+即：捕捉才是該領域普遍失敗的那一半，檢索反而是強項。而**本 repo 剛好倒過來**——捕捉已由
+`claude/CLAUDE.md` 的「發生當下就地寫入」＋ ship 時機械強制解決（114 條/34 天），未解的是檢索。
+⇒ **要補的正是文獻認為比較好解的那一半，而不是重做已經做對的那一半。**
+⚠️ 此推論有一個明確威脅（文獻談的是人類設計者的抗拒，本 repo 的捕捉由 agent 依規則執行），
+**見〈附錄 C〉的待查證點 3**。
+
 ---
 
 ## 六、想請第三方回答的問題
@@ -238,6 +249,7 @@ v1 曾主張死路有三條互鎖規則：①不刪 ②要能在你沒想到要�
 2. **④⑤ vs 分片 vs 觸發式召回，三者的關係是什麼？** 目前的判斷是：④是訊號降級、⑤只延後撞牆、分片只解物理存放，**三者都不是單獨的正解**；長期形狀應為「無總量上限的 canonical corpus ＋ 可重建索引 ＋ bounded retrieval payload」，⑤只適合 rollout 期間的有期限豁免。這個判斷對嗎？
 3. **「無界的歷史」的長期正確形狀是什麼？** 目前的候選答案是 **event log + materialized index**：每條歷史有穩定 ID、短結論、適用路徑／glob、證據、翻案條件、supersedes 關係；實體檔可按時間或固定容量 rollover。這個形狀在「只能用 git、隨 repo 移交、不引入第二份權威」的約束下站得住嗎？
 4. **4.3 的失效形狀（盤點池子邊界、補償機制未驗證）是計畫作者的問題，還是這類改動本身的固有難點？** 如果是後者，是否該先用腳本把盤點面掃出來、而不是靠 reviewer 逐輪抓？
+5. **⚠️〈附錄 C〉那組 Design Rationale 結論站得住嗎？** 它不是從 repo 量出來的，是從**只讀過摘要層的外部文獻**推論的。附錄 C.4 列了六個我自認最可能錯的地方，其中 **C.4.3（文獻談的是人類抗拒書寫，而本 repo 的捕捉由 agent 依規則執行）我完全沒有證據排除**。請一併查證：引文有沒有被誤讀、推論鏈成不成立、以及 C.5 的連帶影響評估對不對。
 
 ---
 
@@ -310,3 +322,82 @@ done | wc -l                                    # → 21，不是 11
 `04dc437`/`4cdaddf`/`62671be`/`7b61ca7`/`956b780`(08-14) `f2e7aa0`(08-16) `887c1c1`(08-19)。
 
 **這個分類沒有機械判準，換一個人數可能不同。** 引用時應標明是手工分類。
+
+
+---
+
+## 附錄 C：Design Rationale 那組結論是怎麼得到的（**請一併查證**）
+
+本節存在的理由：§3.1／§3.3／§5.2 引入的一組結論**不是從 repo 量出來的，是從外部文獻推論的**。
+推論鏈與其弱點寫在這裡，供第三方判斷它站不站得住。
+
+### C.1 取得方式（完整、無省略）
+
+1. 使用者問「其他類型（死路／里程碑／進行中）沒有人有經驗可以參照嗎」。**在此之前，本問題陳述
+   只查過 ADR 與本地向量庫兩項外部先例，死路／里程碑／進行中三類一次都沒查過。**
+2. 兩次網路搜尋：
+   - `documenting failed approaches software "lessons learned" register never read anti-pattern catalog rejected alternatives design rationale`
+   - `design rationale capture problem IBIS QOC rejected options "intrusiveness" why rationale documentation is not used retrieval`
+3. **只讀了搜尋引擎回傳的摘要與節錄，未取得任何一篇原始論文全文。** 下列引文均來自該摘要層。
+
+### C.2 依賴的四段引文（原文照錄）
+
+| # | 引文 | 用在哪 |
+|---|---|---|
+| A | *"While capture of argumentative rationale remains problematic, retrieval of relevant rationale is an area where the argumentation approach has excelled."* | §5.2「捕捉才是普遍失敗的那一半」 |
+| B | *"Despite the known costs of not capturing rationale, it is frequently not done at all, or done as an afterthought. Knowledge workers tend to resist the requirement to document their rationale."* | 同上 |
+| C | *"The issue of intrusiveness is related to the overhead burden on designers. DRed is a simple and unobtrusive software tool…"* | §3.3「ADR 樣板提高捕捉成本」 |
+| D | *"Insufficient documentation of alternatives that were considered and rejected can lead to maintainers 'reinventing the wheel' by going down the already considered paths."* | §3.1「死路＝rejected alternatives」 |
+
+來源（皆為搜尋結果頁，未讀全文）：Capturing design rationale（ScienceDirect）／QOC Design Rationale
+Retrieval: A Cognitive Task Analysis（Semantic Scholar）／Questions, Options, and Criteria（AcaWiki）／
+Capturing Design Rationale with QOC。
+
+### C.3 推論鏈
+
+```
+A + B  →  DR 領域裡「捕捉」難、「檢索」相對可解
+本 repo 實測 114 條決策 / 34 天、ship 時機械強制  →  本 repo 的捕捉已解
+∴ 本 repo 與文獻常態相反：未解的是檢索
+∴ 該補的是檢索（§5.2），不是重做捕捉
+
+C  →  intrusiveness 是捕捉失敗主因
+ADR 樣板 = 每次記錄多一層固定成本 = intrusiveness ↑
+∴ 全面 ADR 化會傷害本 repo 唯一已解決的那一半
+```
+
+### C.4 **待查證點（這些是我認為最可能錯的地方）**
+
+1. **引文是否被正確理解？** 我只看到摘要層的節錄，沒有上下文。特別是引文 A——「retrieval has
+   excelled」可能指的是「IBIS/QOC **這類結構化標記法**讓檢索變好」，而不是「檢索問題已解」。
+   若是前者，我的「檢索相對可解」就是誤讀。⚠️ 同一批搜尋還回傳了相反方向的一段：*"the locality
+   of arguments and the lack of context in the IBIS notation led to difficulty in searching and
+   retrieving desirable information from large IBIS based systems"* —— **這段與引文 A 張力明顯，
+   我在正文只引用了對我有利的那半（用來支持「1500 個 ADR 檔難檢索」），未處理它與 A 的衝突。**
+
+2. **「本 repo 的捕捉已解」是否成立？** 依據只有「量大」（114 條/34 天）。**量 ≠ 品質**——
+   也可能是記了大量低價值條目。本問題陳述 §3.3 另有一列寫著「收緊記錄判準」的否決**已撤回、
+   現況未評估**，兩者其實互相牽制：若判準太鬆，那「捕捉已解」就講得太滿。
+
+3. **⚠️ 最大的威脅：文獻談的是「人類設計者抗拒書寫」，本 repo 的捕捉由 agent 依規則執行。**
+   引文 B 的機制是**動機**（knowledge workers resist），而 agent 沒有動機問題——它會照樣把樣板
+   填完。若如此，「ADR 樣板 → intrusiveness ↑ → 捕捉率 ↓」這條**在本 repo 不成立**，
+   §3.3 那條「更強的理由」就整條垮掉，只剩原本那三條。**這一點我沒有任何證據可以排除。**
+
+4. **DRed 的 "unobtrusive" 是產品定位語，不是對照實驗結論。** 我用它反推「先前工具被認為有摩擦」，
+   那是從行銷語言做的推論。
+
+5. **里程碑對到 Keep a Changelog、進行中判為「不適用（違反 git-only 約束）」——這兩項我沒有查證，
+   是憑既有認知寫的。** 尤其「進行中」那類，可能存在我不知道的先例。
+
+6. **本檔就地增修（未另開 v3）的判斷是否違反 `AGENTS.md` write-once。** 我的理由是「未交付、
+   未被引用」，但那是我自己下的界線；同一份契約在本 session 已被我違反過兩次（見〈附〉）。
+
+### C.5 若上述任一點被推翻，會影響什麼
+
+| 被推翻的點 | 連帶失效的結論 |
+|---|---|
+| 1（誤讀引文 A） | §5.2「該補檢索」的文獻支撐消失；但**實測支撐仍在**（68KB archive 13 天零修訂、只有 2 條指標） |
+| 2（捕捉未必已解） | §3.3 的「ADR 傷捕捉」與 §5.2 的「不必重做捕捉」同時鬆動 |
+| **3（agent 無動機問題）** | **§3.3 那條「更強的理由」整條垮掉**——但原本三條（只覆蓋決策／不解召回／粒度不匹配）不受影響，ADR 仍然不是單獨的解 |
+| 5（其他類型有先例） | 可能存在更好的方案沒被納入候選集合——**這正是 v1 犯過的錯（把 hook 候選埋起來）** |
