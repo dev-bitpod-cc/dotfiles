@@ -797,6 +797,10 @@ anchor: $dir/work main $sha dirty=0
 ## 涉及檔案
 - （尚未新建）
 EOF
+    # mtime 對齊 created：active 行的時戳欄取 mtime，不對齊的話這份會印成
+    # 「更新 <今天> — <幾十>d — EXPIRED」——「剛更新」與「早就過期」並列，
+    # 而 h8 存在的理由正是造出一個貨真價實的 EXPIRED 項目（見 README）
+    touch -t 202606201200 "$dir/handoffs/stale-tej-export.md"
 }
 
 # h6：多 repo 混合 verdict——repo-a 錨點未動（FRESH）、repo-b 錨點後又前進（DRIFTED，

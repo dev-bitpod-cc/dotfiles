@@ -2931,7 +2931,11 @@ touch -t 202601011200 "$TMP/ha-handoffs/archive/20260101-dead.md"
 printf 'consumed\n' > "$TMP/ha-handoffs/archive/recent.md"
 out="$("$HA_SCRIPT" list "$TMP/ha-handoffs")"
 assert_rc "list → exit 0" 0 $?
-if echo "$out" | grep -q "active: fresh.md — 0d — OK"; then ok "list 新檔標 OK"; else bad "list 新檔標記錯誤"; fi
+# 時戳欄的值會變（取 mtime），故用 pattern 吃掉；但 `0d` 與 `OK` **仍必須被斷言**——
+# 只留 `grep -q "active: fresh.md"` 也會全綠，那格從此不再守 age 與 flag
+if echo "$out" | grep -qE '^active: fresh\.md — 更新 [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} — 0d — OK$'; then
+    ok "list 新檔標 OK（含 mtime 時戳欄）"
+else bad "list 新檔標記錯誤或缺時戳欄"; fi
 if echo "$out" | grep "active: old.md" | grep -q "EXPIRED"; then ok "list 過期檔標 EXPIRED"; else bad "list 未標 EXPIRED"; fi
 if [ ! -f "$TMP/ha-handoffs/archive/20260101-dead.md" ] && [ -f "$TMP/ha-handoffs/archive/recent.md" ]; then
     ok "list 清超過保留期的 archive、留新的"
@@ -3167,6 +3171,69 @@ assert_rc "survey 多餘位置參數 → exit 2" 2 $?
 out="$("$HA_SCRIPT" survey "$TMP/no-such-dir")"
 assert_rc "survey 目錄不存在 → exit 0" 0 $?
 if grep -q "handoffs: NONE" <<< "$out"; then ok "survey 無目錄 → NONE"; else bad "survey 無目錄輸出錯誤"; fi
+
+# --- active 清單的「最後更新時戳」與 mtime 排序 ---
+# **獨立 fixture**：沿用 $SV 會改變上面那批斷言依賴的 active 集合（§13 記過同型教訓）。
+# 時戳取 mtime 而非 created，因為 created 只有日粒度（`cmd_anchors` 寫 `date +%Y-%m-%d`），
+# 同日多份必然平手——而那正是「多份 active 選不出來」的實地情境。
+SVM="$TMP/ha-sv-mtime"; mkdir -p "$SVM"
+svm_mk() {  # <檔名> <touch -t 時戳>
+    printf -- '---\nslug: %s\ncreated: %s\n---\n# Handoff: %s\n' \
+        "${1%.md}" "$(date +%Y-%m-%d)" "${1%.md}" > "$SVM/$1"
+    touch -t "$2" "$SVM/$1"
+}
+# ⚠️ mtime 順序必須與檔名**字典序相反**：否則現行 glob（字典序升冪）也剛好答對，斷言等於虛設
+# （同 §13 記過的 `bar-foo` 教訓）
+svm_mk "a-oldest.md" 202601010900
+svm_mk "b-middle.md" 202602021000
+svm_mk "c-newest.md" 202603031100
+out="$("$HA_SCRIPT" survey "$SVM")"
+assert_rc "survey（mtime fixture）→ exit 0" 0 $?
+assert_eq "active 依 mtime 新到舊排序" "c-newest.md b-middle.md a-oldest.md" \
+    "$(awk '/^active: /{printf "%s%s", sep, $2; sep=" "}' <<< "$out")"
+if grep -qE '^active: c-newest\.md — 更新 2026-03-03 11:00 — [0-9]+d — OK$' <<< "$out"; then
+    ok "時戳欄取自 mtime、精確到分"
+else bad "時戳欄缺漏或格式錯（$(grep '^active: c-newest' <<< "$out")）"; fi
+# 排序改的是外層迴圈次序，縮排子行若在迴圈外組裝就會與父行錯配
+assert_eq "path/title 子行跟著各自的 active 行（排序後不錯配）" "OK" \
+    "$(awk '/^active: /{f=$2}
+            /^  path: /{n=$2; sub(/.*\//, "", n); if (n != f) e=1}
+            /^  title: /{if ($2 != substr(f, 1, length(f)-3)) e=1}
+            END{print e ? "MISMATCH" : "OK"}' <<< "$out")"
+# 有項目時**不得**印 none：`... | sort | while read` 會讓 found 困在 subshell，
+# 結果是列完全部項目後再多印一行 active: none
+assert_eq "有 active 檔時不得印 active: none" "0" "$(grep -c '^active: none$' <<< "$out")"
+
+# SUSPECT 分支（created 無法解析）同樣要帶時戳——這條分支先前零測試、零文件
+printf 'no frontmatter here\n' > "$SVM/d-suspect.md"
+touch -t 202604041200 "$SVM/d-suspect.md"
+out="$("$HA_SCRIPT" survey "$SVM")"
+if grep -qE '^active: d-suspect\.md — 更新 2026-04-04 12:00 — created 無法解析 — SUSPECT$' <<< "$out"; then
+    ok "SUSPECT 分支也帶時戳"
+else bad "SUSPECT 分支格式錯（$(grep '^active: d-suspect' <<< "$out")）"; fi
+
+# tie-break：同 mtime → 檔名升冪。⚠️ 這條在改動前**本來就綠**（glob 即字典序），
+# 它是回歸護欄、不是紅先行測試；真正防的是 sort 同鍵不保證穩定
+SVT2="$TMP/ha-sv-tie"; mkdir -p "$SVT2"
+# ⚠️ `a-Zed` 是讓 `LC_ALL=C` **可被觀測**的那一份，不是湊數：只有 `a-first`/`z-second` 的話，
+# 拿掉 LC_ALL=C 這條斷言照樣綠（＝虛設）。實測同一組輸入 C 與 UTF-8 locale 給出**相反**順序，
+# 兩平台皆然（BSD sort 2.3-Apple 與 glibc sort 都會翻），故它同時守住 macOS 與 Linux 兩條路。
+for n in z-second a-first a-Zed; do
+    printf -- '---\ncreated: %s\n---\n' "$(date +%Y-%m-%d)" > "$SVT2/$n.md"
+done
+touch -t 202605051300 "$SVT2/z-second.md" "$SVT2/a-first.md" "$SVT2/a-Zed.md"
+out="$("$HA_SCRIPT" survey "$SVT2")"
+assert_eq "同 mtime → 檔名升冪（C locale 序，穩定可重跑）" "a-Zed.md a-first.md z-second.md" \
+    "$(awk '/^active: /{printf "%s%s", sep, $2; sep=" "}' <<< "$out")"
+
+# active: none —— 先前零測試覆蓋。它是 R1 的硬依賴（SKILL.md「零份 active 不等於沒有交接檔」）
+# 與 eval H3 的判定證據。空 rows 若照 `done <<< "$rows"` 讀會產生**一次空行迭代**，
+# found 被誤設為 1、這一行反而消失
+SVN="$TMP/ha-sv-none"; mkdir -p "$SVN"
+out="$("$HA_SCRIPT" survey "$SVN")"
+assert_rc "survey 空目錄 → exit 0" 0 $?
+assert_eq "目錄存在但無交接檔 → active: none 恰印一次" "1" "$(grep -c '^active: none$' <<< "$out")"
+assert_eq "印了 none 就不得同時列出項目" "1" "$(grep -c '^active: ' <<< "$out")"
 
 # --- consume 子指令（R4 消費歸檔：驗位置 → mkdir archive → mv 加秒級時戳前綴 → 印 archived:）---
 
