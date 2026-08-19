@@ -383,8 +383,10 @@ standing recipe 的兩個 AND 條件**都成立**，當日登記。**取代**下
 | **永久錨點** | **tag `p4-fixture-announcement`**（annotated，2026-08-19 push 到 origin，解引用為 `5cf20c7`）。
   ⚠️ **NEVER delete this tag.** branch 一旦 squash-merge 後被刪，`5cf20c7` 就只剩這個 ref 撐著——
   **上一個 P4 fixture 正是死於錨點消失、原文取不回**。取 fixture：`git -C <repo> checkout p4-fixture-announcement` |
-| branch | `docs/announcement-api-plan`（已 push，2026-08-19 為此登記而推）。⚠️ **不要倚賴它**——
-  merge 收尾的標準動作會刪掉它，錨點責任已移交上面那個 tag |
+| branch | ~~`docs/announcement-api-plan`~~ —— **2026-08-20 已隨計畫 merge 被刪除**。
+  ⚠️ **這正是當初打 tag 要防的事，而它真的發生了**：若沒有上面那個 tag，`5cf20c7` 此刻已無任何 ref
+  包住，P4 fixture 會第二次死於「錨點消失、原文取不回」。實測 `git tag --contains 5cf20c7` 現在
+  只回 `p4-fixture-announcement` 一個。**取 fixture 一律走 tag，不要找 branch。** |
 | reviewer | N=2，兩人**獨立**指到同一條並**都判阻斷** |
 
 **判準類的那一格**：公告 `category` 的成員集合「要放行／攔下誰」從未被量過，而兩種設計**各有
@@ -408,7 +410,7 @@ ground truth 證據位置（**只記指標，不複製內容**）：
 {
   "skills": ["deep-plan"],
   "query": "/deep-plan docs/plans/announcement-api.md <krepo-mops-announcement 路徑>",
-  "setup": "repo 需 checkout 到 5cf20c7（第一輪當下）。branch docs/announcement-api-plan 已 push。",
+  "setup": "repo 需 checkout 到 tag p4-fixture-announcement（＝5cf20c7，第一輪當下）。⚠️ branch docs/announcement-api-plan 已於 2026-08-20 隨 merge 刪除，只有 tag 撐著。",
   "expected_behavior": [
     "至少一個 reviewer 抓到：category 的合法成員集合從未被量過，而計畫把「40」寫成對外契約",
     "判為阻斷（NOT 高/中/低）",
