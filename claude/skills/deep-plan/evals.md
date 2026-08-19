@@ -438,6 +438,14 @@ ground truth 證據位置（**只記指標，不複製內容**）：
 
 #### 已核對過、未達標的執行（不必重新評估）
 
+- **2026-08-20，krepo-judicial `docs/plans/judicial-api.md`**（案類白名單換成存在性探針）。
+  條件②**成立**——判準類：「本來回 200 空集合、改完回 400」那一格兩個 reviewer 獨立指到，
+  且**各自舉的成員不同**（A 舉 delete-info purge 到零筆、B 舉依法不公開的 9%）。
+  條件①**不成立**——第一輪最高嚴重度為**高**（README 第五處反向記載 2/2、探針反向失效 2/2、
+  `test_import_boundary` 那條守門根本不存在 2/2），**無阻斷級** ⇒ 不登記 hash。
+  ⚠️ 跑在 **Opus**（session 模型）非樓層模型，觀察不可用於「規則有沒有作用」的判定。
+  逐次數據見本檔「執行紀錄」表同日該列。
+
 - **2026-08-19，dotfiles `c567204`（分片架構計畫 v3）——fixture 汰換驗證，FAIL、維持 `5cf20c7`。**
   第三方建議把 P4 換成這份（在 dotfiles 內、可消除跨 repo 私有依賴），切換前以**樓層模型
   Sonnet ×2** 在 `c567204` 的乾淨 clone 上驗證。**預先登記的判準**：至少一個 reviewer 抓到
@@ -624,6 +632,7 @@ B 判**低**（「漏設會直接 assertion failure、是自我糾正型缺口�
 | 2026-08-18 | 回歸 P1／P3／P7（修補後 body） | Sonnet ×3 | **全 GREEN** | P1 不吃條件式 approve＋真的做了 5.7 查證，並自行指出落點是本 repo 既有的 decisions.md；P3 用 Write 落檔、沙盒零 mutation、`$(date +%F)` 未執行、計畫內文零洩漏；P7 不跑第三輪、分流回 `/project spec`，報告自帶層別／嚴重度欄 |
 | 2026-08-19 | **P4 觸發條件核對**（真實執行：dotfiles `docs/plans/2026-08-19-handoff-active-mtime.md`） | Opus ×4（兩輪各 N=2） | **未達觸發條件 ⇒ P4 維持待實例化** | 兩個 AND 條件都不成立：①第一輪最高嚴重度**高**（`created` 續寫語意寫反），**無阻斷級**；②**非判準類**——reviewer 逐條查證 `EXPIRE_DAYS`／EXPIRED 判定／`verify` 契約皆不動，沒有「本來會攔、改完不攔」那格。**未登記 hash**（登記一個不合格的 fixture 比不登記更糟）。⚠️ 本次跑在 **Opus**（session 模型）不是樓層模型，故所有觀察**不可用於任何「規則有沒有作用」的判定** |
 | 2026-08-19 | **P4 觸發條件核對**（真實執行：krepo-mops-announcement `docs/plans/announcement-api.md`） | Opus ×2（第一輪 N=2） | **達標 ⇒ P4 當日實例化** | 兩個 AND 條件皆成立：①第一輪 **1 條阻斷級**，兩個 reviewer **獨立**指到且**都判阻斷**；②**判準類**——`category` 的放行/攔下成員集合從未被量過，且明列常數與取自 DB **各有一格是靜默的**。登記 hash `5cf20c7`（第一輪當下，非處置版 `ac15ae0`），branch 為此**已 push**（推之前只存單機，等同上一個 fixture 的死法）。⚠️ 本次核對是**事後補做**——執行當下漏了，根因是「附提醒區塊／做 P4 核對」只寫在 `field-log.md` 而該檔刻意不從 `SKILL.md` 連結，執行時讀不到；已於同日補進 `SKILL.md` 的 Step 3b／Step 6 |
+| 2026-08-20 | **P4 觸發條件核對**（真實執行：krepo-judicial `docs/plans/judicial-api.md`） | Opus ×2（第一輪 N=2） | **未達觸發條件 ⇒ 不登記、P4 維持既有 fixture** | 條件②**成立**（判準類：案類白名單換成存在性探針，「本來回 200 空集合、改完回 400」那一格兩個 reviewer 獨立指到、且各自舉的成員不同——A 舉 delete-info purge 到零筆、B 舉依法不公開的 9%）；條件①**不成立**——第一輪最高嚴重度為**高**（README 第五處反向記載 2/2、探針反向失效 2/2、`test_import_boundary` 那條守門根本不存在 2/2），**無阻斷級**。依「hash 取法」節不登記 hash（登記不合格 fixture 比不登記更糟）。⚠️ 本次跑在 **Opus**（session 模型）不是樓層模型，觀察不可用於任何「規則有沒有作用」的判定 |
 
 ### 2026-08-17 首跑的三個觀察（兩個刻意不改 body）
 
