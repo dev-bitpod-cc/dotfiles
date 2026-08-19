@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-19)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-20)
 
 ---
 
@@ -17,6 +17,13 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   結論散在決策節與該 skill 的 `evals.md`／`field-log.md`,此處不重述。**剩下的只有兩個等待觸發的
   項目,都已在 `docs/backlog.md`**:P4 **2026-08-19 已實例化**(krepo-mops-announcement;是否
   改用 dotfiles 內的 fixture 待決)、模型層級待獨立決定。
+
+- **dossier 治理**(2026-08-14 起,2026-08-20 轉向)。使用者第三次反映治理成本後,四版分片計畫
+  皆被判不通過 ⇒ **停止選架構,改做四臂 pilot**(現況／全文檢索／一 record 一檔＋結構化索引／
+  加 hook),設計見 `docs/plans/2026-08-20-dossier-governance-problem-v5.md`。**下一步:v5 交第三方
+  審查中**;通過後跑 20–30 條分層 pilot,再決定 canonical storage。⚠️ 兩個未解不會被 pilot 回答:
+  **跨 agent(Codex)的共同 enforcement point 沒有已知候選**(pre-commit／ship script 都在修改之後)、
+  以及 cold start(既有約 200 條散文無 `applies_to`)。
 
 > 更早的凍結計畫:`docs/plans/2026-08-09-repo-contract-extraction.md`、
 > `docs/plans/2026-08-10-dossier-portability.md`。
@@ -30,6 +37,25 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-20 分片計畫四版全部不通過,退回「pilot 設計」**。四輪第三方審查、**29 條 findings、25 條
+  真陽性**,而**沒有一條打中診斷**(「無界內容放進有上限的檔」四輪皆未被質疑)——全部落在
+  **在沒有量測的情況下反覆選架構**:v1 時間分片(歸因被推翻)→v2 加死路(800B 上限與「不刪」自我
+  抵銷)→v3 縮範圍(只買 31 天)→v4 event log(過早選定,且漏評「一 record 一檔＋Git history」)。
+  ⇒ 產出改為四臂 pilot 設計,見 `docs/plans/2026-08-20-dossier-governance-problem-v5.md`。
+- **2026-08-20 eval fixture 的永久錨點一律用 annotated tag,不用 branch**。為保存而 push branch
+  **會被 merge 收尾自己抵消**——標準動作就是刪 remote branch。實測:8/19 為登記 P4 而 push
+  `docs/announcement-api-plan`,隔天計畫 merge 後 `fetch --prune` 直接印 `[deleted]`,當時若沒
+  另打 tag,`5cf20c7` 已無任何 ref 包住、P4 會**第二次**死於同一死因。理由寫進 tag message
+  (拿到該 repo 的人不必有 dotfiles 也讀得到),eval 的 setup 寫 `checkout <tag>` 而非 hash。
+- **2026-08-19 規則要放在「執行當下讀得到」的檔,不是放在記錄它的檔**。`deep-plan` 的 ship 提醒
+  區塊與 P4 核對原本只寫在 `field-log.md`,而該檔**刻意不從 SKILL.md 連結** ⇒ 實地漏過一次
+  (krepo-mops-announcement 的計畫在 field-log 建立**一小時後**執行,機制已存在卻讀不到)。
+  已補進 SKILL.md 的 Step 3b／Step 6。**「runtime 不需要知道自己被記錄」對紀錄的內容成立,
+  對「要附一個區塊」這個動作不成立**——後者是 runtime 必須執行的步驟。
+- **2026-08-19 P4 fixture 汰換驗證 FAIL,刻意不改用較寬的原始門檻**。第三方建議換成 dotfiles 內的
+  `c567204`,跑前先登記判準「抓到且判阻斷」;結果 Sonnet A 抓到但判**高**、B 沒抓到 ⇒ 未達標,
+  維持 `5cf20c7`。⚠️ 原始 krepo 版門檻其實是「阻斷**或高**」、是登記 announcement 那份時我收緊的
+  ——**用原門檻 A 會過,但事後挑對自己有利的門檻正是這套紀律要防的事**。
 - **2026-08-19 分層證據檔的節級孤兒改由 `tests/xref-gate.py` 反向守門**,不放 ship-state.sh。
   歸檔孤兒的觸發條件是「檔案在 `docs/archive/`」,**放寬成檔級也恆綠**(STATUS.md 節頭提了
   檔名,整檔永遠有入邊)——失效只發生在節級。首掃 12 節中 **5 節孤兒**。三個刻意的邊界:
