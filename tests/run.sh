@@ -298,6 +298,55 @@ if [ -n "$xref_g7" ] && ! grep -q '圍欄內的假節名' <<< "$xref_g7"; then
 else
     bad "closer 後未限定只允許空白 → 圍欄提前結束，內文被當正文誤報／圍欄外的死指標漏抓"
 fi
+# -- 反向守門：分層證據檔的節級孤兒（EVIDENCE_LAYERS）--
+# 自己的 root，因為反向只在**全 repo 掃描**時跑（無 files 引數），而 $XR 下那堆 r*.md 是
+# 刻意壞掉的正向 fixture，全掃會被它們的 finding 淹掉。
+mkdir -p "$XR/rev/docs" "$XR/nolayer"
+cat > "$XR/rev/docs/dead-ends.md" <<'XREFFIX'
+# 死路 — 完整推導與證據
+
+## 分工
+
+| 問題 | 權威 |
+|---|---|
+
+## 有人指名的節
+
+推導內容。
+
+## 只被內文引用的節
+
+這一行是會被內文比對命中的規則原文。
+
+## 沒人指的節
+
+推導內容。
+
+### 節內細分不該被當成一個單位
+
+level 3 不是「一條結論的證據層」。
+XREFFIX
+cat > "$XR/rev/STATUS.md" <<'XREFFIX'
+# STATUS
+
+## 死路(試過但放棄——防重工)
+
+- **甲**:結論一句。推導見 `docs/dead-ends.md`「有人指名的節」。
+- **乙**:結論一句。見 `docs/dead-ends.md`「這一行是會被內文比對命中的規則原文」。
+XREFFIX
+cat > "$XR/nolayer/README.md" <<'XREFFIX'
+# 未採用分層的 repo
+
+沒有 docs/dead-ends.md。
+XREFFIX
+xref_rev="$(python3 "$XREF_GATE" --root "$XR/rev" 2>/dev/null)"
+if grep -q '沒人指的節' <<< "$xref_rev"; then ok "反向 gate：無人指名的節 → 命中孤兒"; else bad "節級孤兒漏抓（歸檔孤兒只掃 docs/archive/，分層證據檔全靠這道）"; fi
+if grep -q '只被內文引用的節' <<< "$xref_rev"; then ok "反向 gate：只被內文引用（非節名）→ 仍算孤兒"; else bad "把 has_body 命中當成接上了那一節——指到內文不等於指名該節，會放行真孤兒"; fi
+if ! grep -q '有人指名的節' <<< "$xref_rev"; then ok "反向 gate：被節名指到 → 不報"; else bad "入邊未記錄（正向判活、反向判孤兒，同一條指標兩個相反結論）"; fi
+if ! grep -q '節內細分' <<< "$xref_rev"; then ok "反向 gate：level 3 不納入（不是一條結論的證據層）"; else bad "h2_sections 收了非 level-2 heading → 製造無法行動的 finding"; fi
+if [ -z "$(python3 "$XREF_GATE" --root "$XR/rev" "$XR/rev/STATUS.md" 2>/dev/null)" ]; then ok "反向 gate：指定 files 子集 → 反向不跑（inbound 不完整會誤報真指標）"; else bad "子集掃描仍跑反向——會叫人去補一條本來就存在的指標，或更糟：以為那節可以刪"; fi
+if [ -z "$(python3 "$XREF_GATE" --root "$XR/nolayer" 2>/dev/null)" ]; then ok "反向 gate：無 docs/dead-ends.md → 零輸出（未採用分層的 repo 零回填）"; else bad "未採用分層的 repo 被誤報"; fi
+
 # 真實掃描：本 repo 的治理指標必須全部可解析
 xref_hits="$(python3 "$XREF_GATE" --root "$ROOT")"
 xref_rc=$?

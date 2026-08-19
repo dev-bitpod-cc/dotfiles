@@ -8,8 +8,13 @@
 2 條指向 repo 內有兩份同名檔的基名引用（reviewer-brief.md 有 Claude 端與 Codex 端兩份，
 那是「review 刻意隔離」下故意不同的兩套判準，指錯即破壞 blind review）。
 
+兩個方向：
+  - **正向**（一律跑）：指標指到的檔／節在不在。
+  - **反向**（僅全 repo 掃描）：分層證據檔的節有沒有人指——見 EVIDENCE_LAYERS。
+
 用法：
     xref-gate.py --root <dir> [files...]     # files 省略 → 在 root 下遞迴掃 *.md
+                                             # 給了 files → 只跑正向（見 orphan_sections）
 
 輸出契約（tests/run.sh 依賴，勿改）：
     exit 0 — 掃描完成。**stdout 只放 blocking findings**，空輸出即通過。
@@ -55,6 +60,22 @@ TILDE_MAP = (
 )
 
 SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__"}
+
+# 反向守門：**分層證據檔的節級孤兒**——檔內某個 `## 節` 沒有任何 md 用可解析的指標指到它。
+#
+# 為什麼既有的兩道都掃不到：
+#   - ship-state.sh 的歸檔孤兒觸發條件是「檔案位於 `docs/archive/`」，這些檔不在那裡；
+#     就算放寬成檔級也**恆綠**——STATUS.md 的節頭 blockquote 提到了檔名，整檔永遠有入邊。
+#     真正的失效發生在節級。
+#   - 本 gate 原本只驗正向（指標指到的東西在不在），對「沒人指」的節完全無感。
+# 觸發路徑很具體：`dossier.md` 說死路「只在確認不再適用時移除」——移除 STATUS.md 那條的
+# 當下，證據檔對應節就靜默變孤兒，即「內容還在 git 裡但走不到，等於不存在」。
+# 2026-08-19 首次掃描實測 12 節中 5 節孤兒（08-14 分層當時建的節從未補上帶節名的指標）。
+#
+# ⚠️ **`claude/known-hazards.md` 刻意不在此列**（實測同樣 8/9 節無入邊）。它的指標慣例不同：
+# `claude/CLAUDE.md`「已知地雷」用**單一檔級指標**涵蓋全節，個別條目不各自指。改成逐節指標
+# 要動 always-on 檔（而 always-on 量體本身尚無治理），那是獨立決定、不是本 gate 順手做的事。
+EVIDENCE_LAYERS = ("docs/dead-ends.md",)
 
 
 def fence_mask(lines):
@@ -179,6 +200,16 @@ class Doc:
         want = norm(section)
         return any(want in norm(line) for line in self.target_lines())
 
+    def h2_sections(self):
+        """(行號, 原文節名) — 只取 level 2。level 1 是檔標題、level 3+ 是節內細分，
+        兩者都不是「一條結論的證據層」這個單位，納入只會製造無法行動的 finding。"""
+        for i, line in enumerate(self.lines):
+            if self.fence[i]:
+                continue
+            m = HEADING_RE.match(blank_out(line, self.comments[i]))
+            if m and line.startswith("## "):
+                yield i + 1, m.group(1).strip()
+
 
 def resolve(target, src_path, root):
     """回傳 (絕對路徑 or None, 理由)。理由非 None 時即為 finding 說明。"""
@@ -210,9 +241,12 @@ def resolve(target, src_path, root):
     )
 
 
-def scan(files, root):
+def scan(files, root, full_scan=False):
     findings = []
     cache = {}
+    # target realpath -> set(norm(節名))，只收**解析成功**的指標。用 realpath 當鍵，
+    # 因為同一個目標可經基名／相對路徑／`~/` 前綴三種寫法抵達。
+    inbound = {}
     for src in sorted(files):
         try:
             doc = Doc(src)
@@ -238,7 +272,10 @@ def scan(files, root):
                     except (OSError, UnicodeDecodeError) as exc:
                         raise RuntimeError("讀取失敗 %s: %s" % (path, exc))
                 tgt = cache[path]
+                # 入邊在**節名命中**時才記——指到內文一行的合法引用（has_body）不算把
+                # 那一節接上，孤兒判定要的是「有人指名這一節」。
                 if tgt.has_section(section):
+                    inbound.setdefault(path, set()).add(norm(section))
                     continue
                 # 節名不中 → 退一步比對內文：引用一條規則而非節名是合法寫法
                 if tgt.has_body(section):
@@ -246,7 +283,42 @@ def scan(files, root):
                 findings.append(
                     "%s — 目標檔的 heading 與內文皆無此字串（節名改過？權威搬家？）" % here
                 )
+    findings.extend(orphan_sections(root, inbound, cache, full_scan))
     return findings
+
+
+def orphan_sections(root, inbound, cache, full_scan):
+    """分層證據檔的節級孤兒。見 EVIDENCE_LAYERS 檔頭註解。
+
+    **只在全 repo 掃描時執行。** 指定 files 子集時 inbound 只含那幾份的指標，其餘來源的
+    入邊全部看不見 → 會把有人指的節報成孤兒。這種 gate 的假陽性代價是「叫人去補一條本來
+    就存在的指標，或更糟——以為那一節可以刪」（同 ship-state.sh 歸檔孤兒 pattern 的取捨）。
+    """
+    if not full_scan:
+        return []
+    out = []
+    for rel in EVIDENCE_LAYERS:
+        path = os.path.realpath(os.path.join(root, rel))
+        if not os.path.isfile(path):
+            continue  # 未採用分層的 repo／fixture：零輸出，不是錯誤
+        if path not in cache:
+            try:
+                cache[path] = Doc(path)
+            except (OSError, UnicodeDecodeError) as exc:
+                raise RuntimeError("讀取失敗 %s: %s" % (path, exc))
+        wants = inbound.get(path, set())
+        for lineno, heading in cache[path].h2_sections():
+            hn = norm(heading)
+            # 比對語意與 has_section 一致（指標節名是 heading 的子字串即命中），
+            # 否則正向判活、反向判孤兒，同一條指標得到兩個相反結論。
+            if any(w in hn for w in wants):
+                continue
+            out.append(
+                "%s:%d: ## %s — 節級孤兒：無任何 md 以 `%s`「節名」指到它"
+                "（分層證據檔的每一節都該有對應結論指過來；補指標、或確認該節已隨結論移除）"
+                % (rel, lineno, heading, rel)
+            )
+    return out
 
 
 def collect(root):
@@ -271,13 +343,14 @@ def main(argv):
     if not os.path.isdir(root):
         print("--root 不是目錄：%s" % root, file=sys.stderr)
         return 2
+    full_scan = not args.files          # 反向守門的前提，見 orphan_sections
     files = [os.path.abspath(f) for f in args.files] or collect(root)
     missing = [f for f in files if not os.path.isfile(f)]
     if missing:
         print("輸入檔不存在：%s" % "、".join(missing), file=sys.stderr)
         return 2
     try:
-        findings = scan(files, root)
+        findings = scan(files, root, full_scan=full_scan)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 2

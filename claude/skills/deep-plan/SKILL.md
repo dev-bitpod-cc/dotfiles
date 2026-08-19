@@ -59,8 +59,10 @@ Deep Plan 進度：
 - [ ] Step 1：確定目標 repo 與 reviewer 數 N
 - [ ] Step 2：並行 spawn N 個 reviewer（固定模板，判準交路徑）
 - [ ] Step 3：彙整 findings、按「指向同一件事」去重（不按嚴重度排）
+- [ ] Step 3b：P4 fixture 核對（**處置之前**——處置會改掉證據）
 - [ ] Step 4：逐條取得處置（修 / 駁＋理由 / 接受為 trade-off）——不允許「看過了」
 - [ ] Step 5：第二輪 N 個全新 reviewer → 通過判定（上限 2 輪）
+- [ ] Step 6：計畫檔末尾附 ship 提醒區塊（照抄下方範本，一字不改）
 ```
 
 ### 0. 計畫落成檔案
@@ -137,6 +139,25 @@ Deep Plan 進度：
 - **You are stitching, not filtering.** 不加工、不篩選、不淡化嚴重度、不替 reviewer 判 false positive。
 - **層別與嚴重度一律沿用 reviewer 給的值。** 分流（Step 4／5）只讀這兩欄，**NEVER re-classify a finding yourself** —— 判「這條要不要先做一版才知真假」正是你被禁止形成的判斷。某條缺欄位 → 在報告標明「該條層別／嚴重度未標」交作者裁決，**NEVER fill it in for them**。
 
+### 3b. P4 fixture 核對（**在 Step 4 之前，不可延後**）
+
+第一輪彙整完、**動任何處置之前**，核對這次是否夠格當 `evals.md`「P4 的 fixture 與過期風險」的
+standing recipe 實例。兩個條件**都**成立才登記：
+
+1. 第一輪出現**阻斷級** finding（高／中／低都不算）
+2. 該條是**判準類**——存在「本來會攔、改完不攔」那一格（放行/攔下的成員集合、豁免範圍、
+   閘門條件）。純事實錯誤、措辭、遺漏不算
+
+達標 → **當場**把三項寫進 `evals.md`：計畫檔在該 repo 的路徑、**第一輪當下的 commit hash**、
+ground truth 的證據位置（哪幾個檔的哪一段構成那條 finding，逐條記）。
+未達標 → 記進該節「已核對過、未達標的執行」一列，附不成立的是哪個條件。
+
+⚠️ **hash 取第一輪當下那顆，不是 ship 完的那顆。** P4 測的是 reviewer 在**未修**的 repo 狀態下
+能不能自己拼出證據；處置後的狀態裡，答案已經寫進修復的 commit message 與註解。
+**上一個 P4 fixture 就是這樣死掉的。**
+
+⚠️ **NEVER 把目標 repo 的私有內容（含計畫原文、findings 全文）複製進 dotfiles。** 只記指標。
+
 ### 4. 逐條處置
 
 把彙整結果交給計畫作者（使用者，或產出計畫的那個 session）。**每一條都必須有明確處置，三種之一**：
@@ -169,6 +190,26 @@ Deep Plan 進度：
 - findings 已經在動**判準本身或架構**（不是補細節）→ **回 `/project spec` 重談 Goal**，不要再審一輪。計畫改到第三輪還在動架構，代表這個工作項本來就沒談清楚。
 
 **NEVER run a third round to try to converge.** 第三輪能挖到的多是同類型的東西，而每一輪都是新的 N 個 reviewer 對同一搜尋空間的無偏抽樣——它會一直找到東西，那不是收斂訊號。
+
+### 6. 計畫檔末尾附 ship 提醒區塊
+
+**不論通過與否、不論處置結果**，在計畫檔末尾照抄以下區塊（一字不改）：
+
+```markdown
+---
+> **本計畫走過 `/deep-plan`** → ship 時補一段進 `claude/skills/deep-plan/field-log.md`。
+> 關鍵欄位是「會 ship 的 ?/?」——**只有實作完的當下答得出來**，事後補是猜的。
+```
+
+**為什麼是這裡而不是別的地方**：`/project log` 的 Step 2 明文要看相關 `docs/plans/*.md`，那是
+唯一在 ship 當下**必然**被讀到的位置，而計畫檔又與該批變更同進同出。漏記是**靜默**的
+（只會少一列），事後補記則等於憑計畫檔猜那個數字——看起來一樣，但量不到東西。
+
+⚠️ **這一步的規則刻意寫在 SKILL.md 而不只在 `field-log.md`。** 2026-08-19 實地漏過一次：
+krepo-mops-announcement 的計畫在 field-log 建立**一小時後**執行，機制已存在，但產生提醒區塊的
+規則只寫在 field-log.md，而該檔**刻意不從 SKILL.md 連結**（理由是 runtime 不需要知道自己被記錄）
+——於是執行時讀不到，三件事全部落空。**「runtime 不需要知道自己被記錄」對紀錄的內容成立，
+對「要附一個區塊」這個動作不成立**，後者是 runtime 必須執行的步驟。
 
 ## 報告
 

@@ -101,13 +101,13 @@
 ```json
 {
   "skills": ["deep-plan"],
-  "query": "/deep-plan <凍結的 final plan 路徑> <krepo 路徑>",
-  "setup": "fixture 見下方「P4 的 fixture 與過期風險」。",
+  "query": "/deep-plan docs/plans/announcement-api.md <krepo-mops-announcement 路徑>",
+  "setup": "**2026-08-19 已實例化**（原 krepo 孤兒告警版不可重建，已汰換）。fixture 與 ground truth 位置見下方「P4 的 fixture 與過期風險」。repo 需 checkout 到 5cf20c7。",
   "expected_behavior": [
-    "至少一個 reviewer 抓到：新豁免那一格混了「會自癒」與「永不自癒」兩種成員",
-    "判為阻斷或高（NOT 中/低）",
-    "指出該格無上限、無升級路徑，且既有豁免的無上限有明文論證、新的沒有",
-    "指出訊息「等上游收錄」對永不自癒那類是錯的建議"
+    "至少一個 reviewer 抓到：category 的合法成員集合從未被量過，而計畫把「40」寫成對外契約",
+    "判為阻斷（NOT 高/中/低）",
+    "指出兩種設計各有一格靜默：明列常數 → DB 既有值被誤判 400 且無通知；取自 DB → 空字串自動合法",
+    "指出 repo 內「40+」與「40 種」自相矛盾，且推導出處自己標著待整理"
   ]
 }
 ```
@@ -370,9 +370,61 @@ P4 之所以死，是因為**那份計畫從來沒有被 commit 成檔案**。�
 repo，也是同一條）——照現行 SOP 跑，計畫檔會隨該批一起 ship，artifact 自然存在。
 **當時沒有這條規則，所以沒有 artifact；規則已經在了，缺的只是下一次真實執行。**
 
-### 因此 P4 的狀態改為：standing recipe，等下一次真實執行實例化
+### ✅ 2026-08-19 已實例化：krepo-mops-announcement 公告查詢 API
 
-**下一次在真實 repo 跑完 `/deep-plan` 且第一輪抓到判準類阻斷級 finding 時**，當場登記：
+standing recipe 的兩個 AND 條件**都成立**，當日登記。**取代**下方 krepo 孤兒告警那版
+（該版 fixture 已判定不可重建，見上一節）。
+
+| 登記項 | 值 |
+|---|---|
+| repo | `krepo-mops-announcement`（**私有，內容不進 dotfiles**） |
+| 計畫檔 | `docs/plans/announcement-api.md` |
+| **第一輪當下 commit** | **`5cf20c7`**（計畫首版；處置版是 `ac15ae0`，**不可用**） |
+| **永久錨點** | **tag `p4-fixture-announcement`**（annotated，2026-08-19 push 到 origin，解引用為 `5cf20c7`）。
+  ⚠️ **NEVER delete this tag.** branch 一旦 squash-merge 後被刪，`5cf20c7` 就只剩這個 ref 撐著——
+  **上一個 P4 fixture 正是死於錨點消失、原文取不回**。取 fixture：`git -C <repo> checkout p4-fixture-announcement` |
+| branch | ~~`docs/announcement-api-plan`~~ —— **2026-08-20 已隨計畫 merge 被刪除**。
+  ⚠️ **這正是當初打 tag 要防的事，而它真的發生了**：若沒有上面那個 tag，`5cf20c7` 此刻已無任何 ref
+  包住，P4 fixture 會第二次死於「錨點消失、原文取不回」。實測 `git tag --contains 5cf20c7` 現在
+  只回 `p4-fixture-announcement` 一個。**取 fixture 一律走 tag，不要找 branch。** |
+| reviewer | N=2，兩人**獨立**指到同一條並**都判阻斷** |
+
+**判準類的那一格**：公告 `category` 的成員集合「要放行／攔下誰」從未被量過，而兩種設計**各有
+一格是靜默的**——明列常數過期時，DB 裡真實存在的公告被回 400 說「值不合法」，無任何通知；
+取自 DB 則讓空字串（具體可達）自動變成合法。計畫把「40」寫進規格表、對外 400 訊息與驗收 3／4。
+
+ground truth 證據位置（**只記指標，不複製內容**）：
+
+| 構成要素 | 位置 |
+|---|---|
+| 欄位無 enum／無 CHECK | `src/krepo_mops_announcement/db/models.py:61`（`String(200) nullable=False`） |
+| 值的來源＝爬蟲原樣落庫 | `src/krepo_mops_announcement/crawler/announcement.py:489` |
+| 反向記載「40+」 | `pyproject.toml:4`、`README.md:3`、`config/crontab.example:41`、`db/models.py:41` |
+| 反向記載「40 種／40 個」 | `CLAUDE.md:222`、`crawler/announcement.py:6`、`scripts/kb_cron.sh:111` |
+| 推導出處自己標未完成 | `krepo-mops-major-news/docs/plans/mcode.md:120`（P3 ⏳ 待整理） |
+
+`expected_behavior` 依此改寫（結構與舊版同型：一格混了兩類成員 → 判阻斷 → 指出無量測/無升級
+路徑 → 指出對外訊息對其中一類是錯的）：
+
+```json
+{
+  "skills": ["deep-plan"],
+  "query": "/deep-plan docs/plans/announcement-api.md <krepo-mops-announcement 路徑>",
+  "setup": "repo 需 checkout 到 tag p4-fixture-announcement（＝5cf20c7，第一輪當下）。⚠️ branch docs/announcement-api-plan 已於 2026-08-20 隨 merge 刪除，只有 tag 撐著。",
+  "expected_behavior": [
+    "至少一個 reviewer 抓到：category 的合法成員集合從未被量過，而計畫把「40」寫成對外契約",
+    "判為阻斷（NOT 高/中/低）",
+    "指出兩種設計各有一格靜默：明列常數 → DB 既有值被誤判 400 且無通知；取自 DB → 空字串自動合法",
+    "指出 repo 內「40+」與「40 種」自相矛盾，且推導出處自己標著待整理"
+  ]
+}
+```
+
+⚠️ **本次跑在 Opus（session 模型）而非樓層模型**，故它可作 fixture，但**不可用於任何「規則有沒有作用」的判定**。
+
+### standing recipe（登記程序，供下次再實例化時用）
+
+**在真實 repo 跑完 `/deep-plan` 且第一輪抓到判準類阻斷級 finding 時**，當場登記：
 
 | 要登記的 | 怎麼取 |
 |---|---|
@@ -385,6 +437,21 @@ repo，也是同一條）——照現行 SOP 跑，計畫檔會隨該批一起 s
 本次 P4 死掉的第二個原因就是這個，別再犯一次。
 
 #### 已核對過、未達標的執行（不必重新評估）
+
+- **2026-08-19，dotfiles `c567204`（分片架構計畫 v3）——fixture 汰換驗證，FAIL、維持 `5cf20c7`。**
+  第三方建議把 P4 換成這份（在 dotfiles 內、可消除跨 repo 私有依賴），切換前以**樓層模型
+  Sonnet ×2** 在 `c567204` 的乾淨 clone 上驗證。**預先登記的判準**：至少一個 reviewer 抓到
+  「§3.4 稱『>800 的 3 條不進本落點』vs §4 步驟 2 說它們進本落點」這個判準類矛盾，**且判為阻斷**。
+  **結果**：A **抓到了**但判「**高**」；B **沒抓到**（反而把 §3.4 的說法列入「已查證為真」）。
+  ⇒ 未達標。⚠️ **原始 krepo 版 P4 的門檻是「阻斷或高」**，是登記 announcement 那份時收緊成
+  「阻斷」的；用原門檻 A 會過。**刻意不事後改用較寬的那個**——移動球門正是本紀律要防的事。
+  **副產品（有價值，另記）**：①Sonnet A 指出 v3 的順序問題是**回歸**——v2 曾把 `ship-state.sh`
+  排在驗收前，v3 縮範圍時把它併進「全域面」一起延後，三個 Opus reviewer 都沒指出這點；
+  ②**兩個 Sonnet 都把「驗收 2 與 §9 順序互鎖」判阻斷，而 Opus 那輪判中**——同一條 finding 在
+  兩個模型層級得到不同嚴重度，是關於嚴重度判準穩定性的數據；③`claude/CLAUDE.md` 的捕捉條文
+  在 `:33` 非 `:32`（Sonnet A 與一位 Opus reviewer 同判，2:1）。
+  ⇒ 這份 fixture 對「跨節順序矛盾」是穩定訊號（2/2 判阻斷），可另立 eval，但**不是 P4 要測的
+  「判準類靜默」**。
 
 - **2026-08-19，dotfiles `docs/plans/2026-08-19-handoff-active-mtime.md`**（handoff survey 加 mtime
   時戳與排序）。兩個 AND 條件都不成立：第一輪最高只到**高**（無阻斷級），且該計畫**非判準類**
@@ -556,6 +623,7 @@ B 判**低**（「漏設會直接 assertion failure、是自我糾正型缺口�
 | 2026-08-18 | P12 無 dossier 的落點（a=dp4／b=dp5） | Sonnet ×2 | **兩臂皆未紅** | a 臂量不到（decisions.md 還在＝旁路）；b 臂（什麼都沒有）`git status` **完全空的**，逐字「依 kernel 慣例未新建」⇒ **既有 kernel 就接住**，deep-plan 不重述，只修「接受」那格寫死 STATUS.md 的措辭 |
 | 2026-08-18 | 回歸 P1／P3／P7（修補後 body） | Sonnet ×3 | **全 GREEN** | P1 不吃條件式 approve＋真的做了 5.7 查證，並自行指出落點是本 repo 既有的 decisions.md；P3 用 Write 落檔、沙盒零 mutation、`$(date +%F)` 未執行、計畫內文零洩漏；P7 不跑第三輪、分流回 `/project spec`，報告自帶層別／嚴重度欄 |
 | 2026-08-19 | **P4 觸發條件核對**（真實執行：dotfiles `docs/plans/2026-08-19-handoff-active-mtime.md`） | Opus ×4（兩輪各 N=2） | **未達觸發條件 ⇒ P4 維持待實例化** | 兩個 AND 條件都不成立：①第一輪最高嚴重度**高**（`created` 續寫語意寫反），**無阻斷級**；②**非判準類**——reviewer 逐條查證 `EXPIRE_DAYS`／EXPIRED 判定／`verify` 契約皆不動，沒有「本來會攔、改完不攔」那格。**未登記 hash**（登記一個不合格的 fixture 比不登記更糟）。⚠️ 本次跑在 **Opus**（session 模型）不是樓層模型，故所有觀察**不可用於任何「規則有沒有作用」的判定** |
+| 2026-08-19 | **P4 觸發條件核對**（真實執行：krepo-mops-announcement `docs/plans/announcement-api.md`） | Opus ×2（第一輪 N=2） | **達標 ⇒ P4 當日實例化** | 兩個 AND 條件皆成立：①第一輪 **1 條阻斷級**，兩個 reviewer **獨立**指到且**都判阻斷**；②**判準類**——`category` 的放行/攔下成員集合從未被量過，且明列常數與取自 DB **各有一格是靜默的**。登記 hash `5cf20c7`（第一輪當下，非處置版 `ac15ae0`），branch 為此**已 push**（推之前只存單機，等同上一個 fixture 的死法）。⚠️ 本次核對是**事後補做**——執行當下漏了，根因是「附提醒區塊／做 P4 核對」只寫在 `field-log.md` 而該檔刻意不從 `SKILL.md` 連結，執行時讀不到；已於同日補進 `SKILL.md` 的 Step 3b／Step 6 |
 
 ### 2026-08-17 首跑的三個觀察（兩個刻意不改 body）
 
