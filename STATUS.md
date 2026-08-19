@@ -6,7 +6,7 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 # STATUS.md
 
-個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-18)
+個人 dotfiles——內網主機(清單見 `scripts/inventory.conf`,現 14 台)開發環境與 Claude Code 工作流(skills/hooks/templates)的單一來源(更新日期:2026-08-19)
 
 ---
 
@@ -22,6 +22,9 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
   **2026-08-18 P4 判定 fixture 已過期、不可重建**(去 krepo 唯讀查證):計畫原文從未 commit 成檔案
   (session 已逝;PR body 是**修完後**的版本),且該批已 merge、缺陷在落地前就被修掉 ⇒ 拿現況重建
   等於把答案寫進 fixture。**改為 standing recipe**,等下一次真實 `/deep-plan` 執行時實例化。
+  **2026-08-19 首次真實執行(dotfiles handoff mtime 計畫)已核對觸發條件 → 未達標、刻意未登記**:
+  兩個 AND 條件都不成立(非判準類;第一輪最高只到「高」、無阻斷級)。⇒ 這一格等的是
+  **「判準類 + 阻斷級」的合流,不是「下次跑到就算」**;逐條理由記在該 skill 的 evals.md。
   ⇒ **deep-plan 這條線本身已無待辦**,只剩那個等待觸發的登記動作。
   **2026-08-18 處置完五條結構性 blocking**(走 TDD,情境 P8–P12 ＋沙盒 dp2/dp3/dp4/dp5):
   **只有兩條在樓層模型上紅得起來**——B2(四級表缺 Blocking 欄)、B3(輸出契約缺層別欄),兩條
@@ -40,6 +43,18 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 
 > 較舊條目已歸檔至 `docs/archive/decisions-2026-08.md`（機制皆已固化在 skill／腳本／tests／CLAUDE.md，從程式碼可反推；歸檔保存的是「當初為什麼這樣決定」）。**歸檔判準**：已固化且不再影響現行方向 → 歸檔；仍在生效的一律不歸檔（死路＝防重工、技術債＝未解決，移出 always-on 即失效）。超標時**優先歸檔、不要為幾百 bytes 去壓無關舊條目**——那個動作重複幾次本身就是訊號。
 
+- **2026-08-19 handoff `active:` 清單的時戳取 mtime,而 `created:` 格式維持 date-only**。
+  同日多份 active 只印 `0d` 完全平手(可重建的量測:80 份 archive 兩兩取 `[mtime, consume]` 交集,
+  不同 slug 重疊窗 23 對、其中 created 同日 5 對)。**mtime 買到的只有同日的時分解析度**——
+  `created` 並非「首次蓋錨點」而是**最後一次**(W2 每輪跑、W3 原樣貼入;81 份實測與 mtime 日期
+  0 份不一致),所以改 created 帶時分那條路買不到東西,還要讓 `date_to_epoch` 多養一種格式。
+  ⇒ created 與 EXPIRED 判定一律不動,mtime 只用於顯示與排序。
+- **2026-08-19 撤回「在 handoff SKILL.md R1 補一句依更新時間排序」**(同批)。R1 現行契約是
+  「多份 → 列給使用者選」,補排序等於給出排名、可能誘使 agent 直接挑第一份——**那是行為誘因的
+  改動**,依本檔既有的證據門檻要成對實驗才動,而本次沒有觀察到相關失效。改為只補 `:133`
+  **既有欄位列舉**(漏一欄是敘述不完整,與誘因無關),格式權威新增在腳本檔頭。
+  ⚠️ 這兩件事先前被併成一句「不改 SKILL.md、格式權威在檔頭」,**那個前提是假的**:`:133`
+  本來就在列舉欄位,而檔頭當時根本沒有 active 行格式。拆開後才各自成立。
 - **2026-08-17 `deep-plan` 用「並行 N 個 fresh reviewer」,否決「一個 reviewer 迭代多輪」**。
   這不是採樣次數的取捨,是避開一個實地量到的失效:**同一 session 連續審修訂版本會累積正當化**。
   實地(krepo 孤兒告警計畫)——該 reviewer 第一、二輪都指出「這類 finding 移到 deferred 後不會發
@@ -78,22 +93,6 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
   修在 kind 層,第二輪 2/2 重疊指出**限縮後的那一格自己也可能是混的**(純等待裡還有「永久不會
   回來」的第三類),reviewer 逐字:「同一種問題換個位置重新出現」。⇒ **每收窄一次判準,新的那一格
   都要重問一次同樣的問題**——這是第一輪的抽樣(不論 N 多大)到不了的,它要先有那個處置才存在。
-- **2026-08-17 `planner-brief.md` 進 prompt 標為待驗 → 2026-08-18 成對實驗判定「保留」**。
-  E2 實測(Sonnet,A/B 各 2 次):阻斷級 findings 兩臂**零差異**——樓層模型自己就抓得到最嚴重那條;
-  但 5.7／5.5／5.4 三條 A 臂 5.5/6、B 臂 **0/6**。⇒ **brief 買到的是覆蓋面,不是核心 finding**。
-  ⚠️ 首跑因 fixture 給 5.7 留了旁路而作廢,判準在重跑前寫死;矩陣與嚴重度刻度的附帶發現見該
-  skill 的 evals.md。
-- **2026-08-17 非 canonical remote 的殘留只列訊號、不發刪除指令**。病灶:候選來自 `branch -r`
-  (列**所有** remote)、組 cleanup-cmd 卻只剝 canonical 前綴 → `fork/x` 傳給只認 canonical 的
-  `cleanup-stale-branch.sh`,永遠 `verdict: STOP`。**否決「把 remote 一起傳過去」**:它把「刪別人
-  repo 上的 branch」變成可照抄的一行,與 SKILL remote 假設(不擅自對 fork 動作)衝突;實地
-  (pilot-api 5 支殘留全在同事 fork、一支還是那 repo 的 `main`)採用的是 `git remote remove fork`
-  ——那個能力方向本身就是錯的。**否決「不列入偵測」**:會丟掉使用者確實想要的訊號。
-- **2026-08-17 foreign 訊號另立一段,不在 stale/squash 兩段各留分支**。那些 ref 屬於另一個 repo,
-  「是否已併入我的 default」不構成處置依據;集中也避免訊號分裂——同批發現 squash 段的
-  `${remotes_un//origin\//}` 是**全域替換**且對 `fork/x` 無效,帶前綴的名字在 `$2 == b` 比對就
-  `continue`,實測(owner 相同、SHA 相符、條件全齊)**整段不印、連 `skipped:` 都沒有**,是靜默漏報
-  而非「被 owner 檢查擋住」。
 - **2026-08-17 唯讀 allowlist 放全機隊層,否決 project-scoped**。50 份 transcript 統計出 16 條唯讀規則
   (自家 skill 狀態腳本、`shellcheck`、`crontab -l`、`shasum`)。`.claude/settings.json` 被本 repo
   `.gitignore` 第 2 行擋掉、是 machine-local 的,而 dotfiles 在 14 台上都要跑 `tests/run.sh`——放那裡
@@ -142,6 +141,15 @@ transfer 的 portability 步驟 **DEFER**——逐條的觸發條件與理由見
 > 分層照 `claude/known-hazards.md`「分工」對「已知地雷」的做法:死路要能在你沒想到要查的當下
 > 擋住你,**規則不在 always-on 就不生效**,故結論留此、證據外移。
 
+- **讓 handoff 的 archive 排序也改用 mtime**(2026-08-19 否決)。理由**不是**「`mv` 不保證保留
+  mtime」(那不精確——POSIX `mv` 保留,實測 archive 檔的 mtime 確實是歸檔前最後寫入);
+  真正的理由是**語意不同**:歸檔前綴＝**消費時刻**、mtime＝**最後寫入**,audit trail 要前者。
+  active 清單要的才是後者,故兩邊刻意用不同鍵。
+- **替 handoff active 行的「mtime 讀不到」降級路徑寫測試**(2026-08-19 放棄)。`[ -f ]` 已通過後
+  `stat` 幾乎不可能失敗(只剩 glob 與 stat 之間的刪除競態),**沒有可執行的構造方式**;
+  原本還寫進驗收準則,等於一條永遠做不到的驗收。⇒ 防禦碼保留(空值會造成欄位推移,比印 1970 更糟)、
+  以註解標明不可達,**不寫測試也不列驗收**。順帶記一條:`0` 不能靠 `date` 失敗來判缺值,
+  `date -r 0` 會**成功**回 1970-01-01。
 - **把 deep-review「skill-authoring batch 不進修復循環」的判準套到 plan review**(2026-08-17 否決)。
   推論鏈是「計畫是 prose → 對 prose 重跑對抗式 review 永不收斂 → plan review 只能跑一次診斷」,
   **實測推翻**:plan 的 findings 絕大多數是「計畫對 repo 現況的陳述錯了」,oracle 在 repo 裡、二元的;

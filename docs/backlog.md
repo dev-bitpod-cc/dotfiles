@@ -7,7 +7,7 @@ backlog.md — 專案待辦(技術債 + 已知缺口)。與 STATUS.md(dossier)�
 
 # Backlog
 
-待辦清單:技術債與已知缺口(更新日期:2026-08-18)
+待辦清單:技術債與已知缺口(更新日期:2026-08-19)
 
 > **為什麼與 `STATUS.md` 分家**:兩者的生命週期不同。dossier 的內容是**歷史**——決策、死路、
 > 里程碑發生後只會蒸餾或歸檔,壓得動,所以量體門檻(`ship-state.sh` 的 `DOSSIER_MAX_BYTES`
@@ -32,10 +32,20 @@ backlog.md — 專案待辦(技術債 + 已知缺口)。與 STATUS.md(dossier)�
 
 ## 技術債
 
+- [ ] **handoff `survey`／`list` 等價 gate 的前綴白名單是寫死的**(2026-08-19 加)。
+  `tests/run.sh` 那條「survey 的 active 區段與 list 逐字等價」用
+  `grep -E '^(active: |  path: |  title: )'` 兩邊比對,**任何新增的縮排子行都不在名單內、
+  天生豁免於這道 gate**。本次(mtime 時戳)只加欄位、未加子行故未受影響,但附錄評估過的
+  「錨點 repo 欄」(`repos: dotfiles, krepo`——多份 active 時最強的辨識訊號)一旦要做,
+  必須連同這個缺陷一起處理:擴白名單、或改成「比對兩邊全部 active 相關行」。
+  ⇒ 該欄本次刻意不做,理由與取捨見 `docs/plans/2026-08-19-handoff-active-mtime.md`。
 - [ ] **P4 待實例化**(2026-08-18 加,取代原本的「P4 需 krepo fixture」)。原 fixture 已判過期且
   不可重建(理由見 `claude/skills/deep-plan/evals.md`「P4 的 fixture 與過期風險」)。**觸發條件**:下一次在真實 repo
   跑完 `/deep-plan`、且第一輪抓到判準類阻斷級 finding 時,當場登記計畫檔路徑、**第一輪當下**的
   commit hash、逐條證據位置。⚠️ hash 取錯時點(ship 後)整個 eval 就作廢——那正是本次死掉的原因之一。
+  **2026-08-19 已核對過一次真實執行(dotfiles handoff mtime 計畫),兩個 AND 條件都不成立(非判準類、
+  第一輪最高只到「高」)⇒ 未登記**。這一格等的是「判準類 + 阻斷級」的合流,不是「下一次跑到就算」;
+  逐條理由見 `claude/skills/deep-plan/evals.md`「P4 的 fixture 與過期風險」。
 - [ ] **`deep-plan` 的 N 預設值待一個獨立決定**(2026-08-18 加)。E1 實測阻斷級聯集 N=2→5.00、
   N=3→6.00,**判準寫的「沒有新增就維持 2」條件不成立**,而它只定義了那一個分支 ⇒ 預設維持 2 未動。
   要決定的是成本 vs 覆蓋:多出來的**全是嚴重度分歧、不是新問題**(核心那條 4/4 全中、四臂結論一致),
