@@ -53,11 +53,12 @@
 - git 完全無變更時**不得直接收工**——session 記憶中有本輪已 ship 的變更時，
   文檔可能落後（docs-only 情境），需以已 ship 的 commit 重建變更集、只跑文檔同步
 
-### F4 Log 模式——dossier 與文檔同步
-- 由變更集識別受影響模組，同步 STATUS.md（決策/死路/技術債/里程碑）與模組文檔
+### F4 Log 模式——active/history/backlog 與文檔同步
+- 由變更集識別受影響模組：`STATUS.md` 只同步 active／paused；decision、dead end、milestone 寫入
+  event-month history shard；未結案項同步 `docs/backlog.md`
 - 防禦原則：先讀、只改相關段落、無需更新就跳過，不硬塞
-- dossier 衛生：完成項不得留在「進行中」、全檔過長需收斂、過期（長期未更新而 repo
-  持續活動）需提醒——過長/過期的具體門檻須全 skill 單一來源，不得散落多處各寫一個數字
+- adopted repo 以 repo-local `audit --ship` 為唯一 doc verdict；完成項不得留在 active/backlog，history
+  record 守 stable ID、event date 與 shard。Legacy repo 才沿用既有 dossier detector
 
 ### F5 Log 模式——提交
 - 送出前 reviewed code 必須全部已 commit（不留 code 在 working tree）
@@ -72,15 +73,16 @@
 - PR 路徑：push feature branch → 偵測既有 PR → 無則開新 PR（title/body 由 commits 組）
 - 直接 push 路徑（僅確定無保護）：仍推 feature branch，附帶提示可開 PR
 - 使用者後續明說 merge → 執行標準收尾（merge → 清 branch → 同步本地 default），不得因通篇「絕不 merge」而拒絕明確授權
-  > **2026-08-06 更新**：預設 `--squash` 已被推翻——壓不壓改關鍵字分流／選項式詢問，且 merge 授權可在 Step 4 第 1 題預先給。現況見 `claude/skills/project/references/ship-paths.md`「說法表」與 STATUS.md 關鍵決策。
+  > **2026-08-06 更新**：預設 `--squash` 已被推翻——壓不壓改關鍵字分流／選項式詢問，且 merge 授權可在 Step 4 第 1 題預先給。現況見 `claude/skills/project/references/ship-paths.md`「說法表」；歷史理由用 repo-local `find` 查詢。
 
 ### F7 Spec 模式
-- 無 dossier → 從模板建立；已存在但**不是** dossier（撞名的領域產物）→ 停下告知，不覆寫
-- 與使用者釐清後寫入 spec 區；模糊處直接問、不猜
+- adopted repo 先用 repo-local `find` 查相關 decision／dead end，把命中 ID 寫入 active 關聯；不得先全讀 archive
+- 無 active state → 從模板建立；已存在但撞名為領域產物 → 停下告知，不覆寫
+- 與使用者釐清後寫入 active spec；模糊處直接問、不猜
 - 只寫 spec、不動 code、不 commit
 
 ### F8 Transfer 模式
-- dossier 完整度逐節評估（決策附理由、死路誠實、進行中反映現況），缺漏列清單補齊
+- adopted repo 評估 active／paused、history IDs、backlog 與 `find` 可定位性並跑 audit；legacy repo 依既有權威
 - credentials 盤點（.env.example 覆蓋度、無硬編碼 secrets）
 - 從模板產出移交指南；待決策事項留給移交雙方拍板，不代填
 - 本模式不 push、不 merge、不改 repo 權限

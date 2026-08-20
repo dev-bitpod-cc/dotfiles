@@ -368,12 +368,18 @@ KG="$TMP/kernel"
 
 kg_make() {   # $1=fixture 根；$2=kernel body（三份共用）；$3=覆寫給 codex 的 body（可省）
     local d="$1" body="$2" codex_body="${3:-$2}"
+    local route_body='## 文檔檢索路由
+
+先執行 doc-find。'
     mkdir -p "$d/claude" "$d/codex"
     {
         echo "# Agent Contract"
         echo "<!-- agent-contract:kernel:start v1 -->"
         printf '%s\n' "$body"
         echo "<!-- agent-contract:kernel:end -->"
+        echo "<!-- agent-contract:route:start v1 -->"
+        printf '%s\n' "$route_body"
+        echo "<!-- agent-contract:route:end -->"
         echo "<!-- agent-contract:portable:start v1 -->"
         echo "## Documentation authority"
         echo "- Generated docs never win."
@@ -384,11 +390,17 @@ kg_make() {   # $1=fixture 根；$2=kernel body（三份共用）；$3=覆寫給
     # root CLAUDE.md 也要有一份——Claude Code 自動載入它、但不自動載入 AGENTS.md（2026-08-10 實測）
     for f in "$d/CLAUDE.md" "$d/claude/CLAUDE.md" "$d/codex/AGENTS.md"; do
         b="$body"; [ "$f" = "$d/codex/AGENTS.md" ] && b="$codex_body"
+        is_root=0; [ "$f" = "$d/CLAUDE.md" ] && is_root=1
         {
             echo "# 全域規則"
             echo "<!-- agent-contract:kernel:start v1 -->"
             printf '%s\n' "$b"
             echo "<!-- agent-contract:kernel:end -->"
+            if [ "$is_root" -eq 1 ]; then
+                echo "<!-- agent-contract:route:start v1 -->"
+                printf '%s\n' "$route_body"
+                echo "<!-- agent-contract:route:end -->"
+            fi
         } > "$f"
     done
 }
@@ -406,6 +418,11 @@ assert_eq "gate 自檢：合法 fixture 無 findings" "" "$kg_out"
 # 漂移：其中一份的 body 不同
 kg_make "$KG/drift" "$kg_body" "$(printf '%s\n' "$kg_body" | sed 's/rule 8/rule 8 （偷改）/')"
 if kg_run "$KG/drift" | grep -q '漂移'; then ok "gate 自檢：複本漂移 → 命中"; else bad "gate 自檢：複本漂移未命中"; fi
+
+# doc-find route 也在兩個 repo-resident always-on 檔逐字複製；單邊漂移要紅
+kg_make "$KG/route-drift" "$kg_body"
+sed -i.bak 's/先執行 doc-find。/改走人工 archive。/' "$KG/route-drift/CLAUDE.md" && rm -f "$KG/route-drift/CLAUDE.md.bak"
+if kg_run "$KG/route-drift" | grep -q 'route block.*漂移'; then ok "gate 自檢：doc-find route 漂移 → 命中"; else bad "gate 自檢：doc-find route 漂移未命中"; fi
 
 # 三份都被掏空 → 「空 == 空」會相等，靠條目數下限擋
 kg_make "$KG/hollow" "- rule 1"
@@ -556,6 +573,17 @@ for f in "$ROOT"/scripts/*.sh "$ROOT/scripts/lib/inventory.sh" \
     bash -n "$f" || { syntax_fail=1; echo "     syntax fail: $f"; }
 done
 if [ "$syntax_fail" -eq 0 ]; then ok "bash -n 全部通過"; else bad "bash -n 有語法錯誤"; fi
+
+echo "▶ 2b. doc-governance.py deterministic suite"
+doc_test_out="$TMP/doc-governance-tests.out"
+python3 "$ROOT/tests/test_doc_governance.py" >"$doc_test_out" 2>&1
+doc_test_rc=$?
+if [ "$doc_test_rc" -eq 0 ]; then
+    ok "doc-governance synthetic + real retrieval corpus 全部通過"
+else
+    bad "doc-governance suite 失敗（exit ${doc_test_rc}）"
+    sed 's/^/     /' "$doc_test_out"
+fi
 
 echo "▶ 3. inventory.sh 解析"
 # 在子 shell 內 source，避免污染本 shell

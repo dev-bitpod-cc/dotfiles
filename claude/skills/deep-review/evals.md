@@ -485,7 +485,7 @@
 > 同族的先前觀察：`STATUS.md` 記載 krepo 連跑四輪修復時漏的正是這條；F18 的 2026-08-04 實戰 RED 是同一條規則的 reviewer 端。
 >
 > **根因是 skill 自己發的豁免，不是 agent 不自律**：`reviewer-brief.md` 舊文寫「只有一個命中也要寫明『已掃過 X，無其他命中』——讓 fixer 知道範圍已確認，**不必重掃**」。但 reviewer 掃的是**命中點軸**（規則在既有 code 的其他犯錯處），fixer 缺的是**輸入空間軸**（修復對規則的所有輸入是否成立）。兩軸同名，那句話於是被讀成兩軸都覆蓋了。
-> 對應修法：`references/reviewer-brief.md`「同型掃描」收窄作用域、`SKILL.md`「修復原則」拆成兩條軸並要求掃描先於編輯、`references/report-templates.md`「同型處置紀錄（共用區塊）」把兩軸做成必填產出物（`tests/run.sh` 第 1f 節守門五個終態模板的覆蓋率）。
+> 對應修法：`references/reviewer-brief.md`「同型掃描」收窄作用域、`references/modes-and-scope.md`「修復原則」拆成兩條軸並要求掃描先於編輯、`references/report-templates.md`「同型處置紀錄（共用區塊）」把兩軸做成必填產出物（`tests/run.sh` 第 1f 節守門五個終態模板的覆蓋率）。
 
 > **harness 是「注入式」，不讓受測 agent 自己委派 reviewer——這是 2026-08-11 首跑實證後的改版，理由見下方**。R1 的 reviewer 報告由執行者**逐字注入 prompt**（內容見「注入用 R1 reviewer 報告」），受測 agent 從 Step 5 的修復階段接手。F22 要測的本來就是**修復階段**；Step 4 的委派行為另有 F19 覆蓋，不在此重複。
 
@@ -612,7 +612,7 @@ Per `reviewer-brief.md` 通過標準: zero 嚴重 required. One 嚴重 finding a
 > 「執行 `./tests/run.sh` **全部通過**（`PASS=956 FAIL=0`）」，而它自己 events 裡的實際輸出是
 > `PASS=956 FAIL=0` **併同 `TEST_RC=1`（失敗）**——它把跑到中途的計數讀成全部通過、漏掉退出碼；
 > 956 恰好也是該 repo `docs/archive/` 裡的歷史數字，巧合地讓它看起來可信。
-> **「宣稱執行」與「跑對了東西」是兩件事。** 對應條款在 `SKILL.md`「Findings 驗證規則」下方。
+> **「宣稱執行」與「跑對了東西」是兩件事。** 對應條款在 `references/modes-and-scope.md`「Findings 驗證規則」下方。
 >
 > ⚠️ **這組是成對的，因為那條條款上線時沒有 observed RED**（實地觸發發生在同日稍後、非設計時）。
 > 既有規則「逐條讀原始碼獨立驗證、不預設 findings 正確」字面上已涵蓋，所以**必須驗證那條額外的

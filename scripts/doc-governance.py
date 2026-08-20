@@ -1,0 +1,1008 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import argparse
+from dataclasses import dataclass, field
+import datetime as dt
+import fnmatch
+from functools import cache
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import unicodedata
+CONFIG_NAME = '.doc-governance.json'
+MODES = {'loaded', 'active', 'routed', 'history', 'derived', 'governance'}
+FINAL_PLAN_STATES = {'implemented', 'superseded'}
+ACTIVE_PLAN_STATES = {'draft', 'approved', 'in-progress'}
+PLAN_STATES = FINAL_PLAN_STATES | ACTIVE_PLAN_STATES
+FENCE_RE = re.compile('^(?P<indent> {0,3})(?P<fence>`{3,}|~{3,})(?P<info>.*)$')
+HEADING_RE = re.compile('^(#{1,6})\\s+(.*)$')
+TOP_BULLET_RE = re.compile('^([-+*])\\s+(.*)$')
+COMMENT_RE = re.compile('<!--.*?-->', re.S)
+DATE_RE = re.compile('(?<!\\d)(\\d{4}-\\d{2}-\\d{2})(?!\\d)')
+STABLE_ID_RE = re.compile('\\b([DXM])-(\\d{8})-([a-z0-9][a-z0-9-]*)\\b')
+REF_RE = re.compile('`([^`\\n]+?\\.(?:md|sh))`[「『]([^」』\\n]{1,80})[」』]')
+SECTION_MIN = 2
+EVENT_SECTION = '事件記錄（event-time）'
+MAX_RESULTS = 5
+MAX_EXCERPT_BYTES = 240
+MAX_STDOUT_BYTES = 8192
+TILDE_MAP = (('~/.claude/skills/', 'claude/skills/'), ('~/.codex/skills/', 'codex/skills/'), ('~/.dotfiles/', ''))
+METRICS = ('dated_records', 'struck_records', 'checkbox_records', 'undated_records', 'h2_sections', 'empty_h2_sections', 'file_preamble_entries', 'legacy_type_file_mismatches')
+
+class ScannerError(RuntimeError):
+  """The scanner could not establish a trustworthy result."""
+
+@dataclass
+class DocClass:
+  name: str
+  mode: str
+  paths: list[str]
+  unit: str = 'h2'
+  requires_inbound: bool = False
+
+@dataclass
+class Config:
+  root: Path
+  raw: dict
+  classes: list[DocClass]
+
+  @property
+  def history_paths(self):
+    return self.raw['history_paths']
+
+@dataclass
+class Document:
+  root: Path
+  rel: str
+  path: Path
+  text: str
+  lines: list[str]
+  visible: list[str]
+  doc_class: DocClass | None = None
+
+  @classmethod
+  def read(cls, root, rel, doc_class=None):
+    path = root / rel
+    try:
+      text = path.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError) as exc:
+      raise ScannerError(f'讀取失敗 {rel}: {exc}') from exc
+    lines = text.splitlines()
+    return cls(root=root, rel=rel, path=path, text=text, lines=lines, visible=visible_lines(text), doc_class=doc_class)
+
+  def visible_line(self, index):
+    return self.visible[index]
+
+  def source_lines(self):
+    masked = fence_mask(self.lines)
+    for index, line in enumerate(self.lines):
+      if line and not masked[index]:
+        yield (index + 1, line)
+
+  def target_lines(self):
+    for index in range(len(self.lines)):
+      line = self.visible_line(index)
+      if line:
+        yield line
+
+  def has_section(self, section):
+    wanted = xref_norm(section)
+    return any(((match := HEADING_RE.match(line)) and wanted in xref_norm(match.group(2)) for line in self.target_lines()))
+
+  def has_body(self, section):
+    wanted = xref_norm(section)
+    return any((wanted in xref_norm(line) for line in self.target_lines()))
+
+  def h2_sections(self):
+    for index in range(len(self.lines)):
+      line = self.visible_line(index)
+      match = HEADING_RE.match(line)
+      if match and match.group(1) == '##':
+        yield (index + 1, match.group(2).strip())
+
+@dataclass
+class Entry:
+  path: str
+  line: int
+  title: str
+  body: str
+  section: str
+  entry_type: str
+  event_date: str = 'unknown'
+  shape: str = 'section'
+  stable_id: str | None = None
+  doc_class: DocClass | None = None
+  metadata: dict[str, str] = field(default_factory=dict)
+
+def run_git(root, args, *, allow_failure=False):
+  proc = subprocess.run(['git', '-C', str(root), *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+  if proc.returncode and (not allow_failure):
+    raise ScannerError(f"git {' '.join(args)} 失敗: {proc.stderr.strip()}")
+  return proc.stdout
+
+def resolve_root(value):
+  if value:
+    root = Path(value).expanduser().resolve()
+    if not root.is_dir():
+      raise ScannerError(f'--root 不是目錄: {root}')
+    return root
+  proc = subprocess.run(['git', 'rev-parse', '--show-toplevel'], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+  if proc.returncode:
+    raise ScannerError('無法由 cwd 解析 git toplevel')
+  return Path(proc.stdout.strip()).resolve()
+
+def validate_relpath(value, label):
+  path = Path(value)
+  if path.is_absolute() or '..' in path.parts:
+    raise ScannerError(f'config {label} 不得逃出 repo root: {value}')
+
+def need(condition, message):
+  if not condition:
+    raise ScannerError('config ' + message)
+
+def load_config(root, *, optional=False):
+  path = root / CONFIG_NAME
+  if not path.is_file():
+    if optional:
+      return None
+    raise ScannerError(f'config 不存在: {CONFIG_NAME}')
+  try:
+    raw = json.loads(path.read_text(encoding='utf-8'))
+  except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    raise ScannerError(f'config 無法解析: {exc}') from exc
+  need(raw.get('schema') == 1, 'schema 必須為 1')
+  history = raw.get('history_paths')
+  need(isinstance(history, dict) and set(history) == {'decision', 'dead_end', 'milestone'}, 'history_paths 不完整')
+  for kind, pattern in history.items():
+    need(isinstance(pattern, str) and '{YYYY-MM}' in pattern, f'history_paths.{kind} 缺 {{YYYY-MM}}')
+    validate_relpath(pattern.replace('{YYYY-MM}', '2000-01'), f'history_paths.{kind}')
+  need(isinstance(raw.get('classes'), list), 'classes 必須是 list')
+  classes = []
+  names = set()
+  for index, item in enumerate(raw['classes']):
+    need(isinstance(item, dict), f'classes[{index}] 必須是 object')
+    name, mode, paths = (item.get('name'), item.get('mode'), item.get('paths'))
+    need(isinstance(name, str) and bool(name) and name not in names, f'classes[{index}] name 無效')
+    need(mode in MODES, f'class {name} mode 無效: {mode}')
+    need(mode != 'derived' or isinstance(item.get('rebuild'), str) and item['rebuild'].strip(), f'class {name} 缺 rebuild command')
+    need(isinstance(paths, list) and bool(paths) and all((isinstance(p, str) for p in paths)), f'class {name} paths 無效')
+    for pattern in paths:
+      validate_relpath(pattern, f'class {name} path')
+    unit = item.get('unit', 'h2')
+    need(unit in {'h2', 'top_level_bullet'}, f'class {name} unit 無效: {unit}')
+    names.add(name)
+    classes.append(DocClass(name=name, mode=mode, paths=paths, unit=unit, requires_inbound=bool(item.get('requires_inbound', False))))
+  need(isinstance(raw.get('legacy_plan_blobs', {}), dict), 'legacy_plan_blobs 必須是 object')
+  searchable = raw.get('searchable_legacy_plans', [])
+  need(isinstance(searchable, list) and set(searchable) <= set(raw.get('legacy_plan_blobs', {})), 'searchable_legacy_plans 無效')
+  need(isinstance(raw.get('loaded_budgets', {}), dict), 'loaded_budgets 必須是 object')
+  need(isinstance(raw.get('governance_surface', []), list), 'governance_surface 必須是 list')
+  return Config(root=root, raw=raw, classes=classes)
+
+def tracked_markdown(root):
+  output = run_git(root, ['ls-files', '-z', '--', '*.md'])
+  return sorted((item for item in output.split('\x00') if item))
+
+def matching_classes(rel, config):
+  return [cls for cls in config.classes if any((fnmatch.fnmatchcase(rel, pattern) for pattern in cls.paths))]
+
+def fence_mask(lines):
+  mask = [False] * len(lines)
+  in_fence = False
+  fence_char = ''
+  fence_len = 0
+  for index, line in enumerate(lines):
+    match = FENCE_RE.match(line)
+    if not match:
+      mask[index] = in_fence
+      continue
+    char = match.group('fence')[0]
+    length = len(match.group('fence'))
+    if not in_fence:
+      in_fence, fence_char, fence_len = (True, char, length)
+      mask[index] = True
+    elif char == fence_char and length >= fence_len and (not match.group('info').strip()):
+      in_fence = False
+      mask[index] = True
+    else:
+      mask[index] = True
+  return mask
+
+def visible_lines(text):
+  clean = COMMENT_RE.sub(lambda match: re.sub('[^\n]', ' ', match.group()), text)
+  lines = clean.splitlines()
+  masked = fence_mask(lines)
+  return ['' if masked[index] else line for index, line in enumerate(lines)]
+
+def strip_markdown(value):
+  value = re.sub('^\\[[ xX]\\]\\s*', '', value)
+  value = value.strip().strip('~')
+  value = re.sub('[*_`]', '', value)
+  return re.sub('\\s+', ' ', value).strip()
+
+def first_date(value):
+  match = DATE_RE.search(value)
+  return match.group(1) if match else 'unknown'
+
+def parse_metadata(lines):
+  metadata = {}
+  for line in lines:
+    match = re.match('^\\s{2,}-\\s*([^:：]+)[:：]\\s*(.*)$', line)
+    if match:
+      metadata[match.group(1).strip()] = match.group(2).strip()
+  return metadata
+
+def infer_legacy_type(doc, section, shape):
+  if '技術債' in section:
+    return 'legacy-closed-debt'
+  if '死路' in section:
+    return 'legacy-dead-end'
+  h1 = next((match.group(2) for index in range(len(doc.lines)) if (match := HEADING_RE.match(doc.visible_line(index))) and match.group(1) == '#'), '')
+  if '決策' in h1 and shape in {'dated', 'struck'}:
+    return 'legacy-decision'
+  return 'legacy-unknown'
+
+def zero_metrics():
+  return dict.fromkeys(METRICS, 0)
+
+def parse_top_level_entries(doc):
+  entries: list[Entry] = []
+  metrics = zero_metrics()
+  section = 'file-preamble'
+  section_has_entry = False
+  seen_h2 = False
+  index = 0
+  while index < len(doc.lines):
+    visible = doc.visible_line(index)
+    heading = HEADING_RE.match(visible)
+    if heading and heading.group(1) == '##':
+      if seen_h2 and (not section_has_entry):
+        metrics['empty_h2_sections'] += 1
+      section = heading.group(2).strip()
+      metrics['h2_sections'] += 1
+      section_has_entry = False
+      seen_h2 = True
+      index += 1
+      continue
+    bullet = TOP_BULLET_RE.match(visible)
+    if not bullet:
+      index += 1
+      continue
+    start = index
+    block = [doc.lines[index]]
+    index += 1
+    while index < len(doc.lines):
+      candidate = doc.visible_line(index)
+      if TOP_BULLET_RE.match(candidate):
+        break
+      candidate_heading = HEADING_RE.match(candidate)
+      if candidate_heading and candidate_heading.group(1) in {'#', '##'}:
+        break
+      block.append(doc.lines[index])
+      index += 1
+    raw_title = bullet.group(2).strip()
+    checkbox = bool(re.match('^\\[[ xX]\\]\\s*', raw_title))
+    after_checkbox = re.sub('^\\[[ xX]\\]\\s*', '', raw_title)
+    struck = after_checkbox.startswith('~~')
+    title = strip_markdown(raw_title)
+    if checkbox:
+      shape = 'checkbox'
+    elif struck:
+      shape = 'struck'
+    elif re.match('^\\d{4}-\\d{2}-\\d{2}\\b', title):
+      shape = 'dated'
+    else:
+      shape = 'undated'
+    metrics[f'{shape}_records'] += 1
+    if section == 'file-preamble':
+      metrics['file_preamble_entries'] += 1
+    stable = STABLE_ID_RE.search(raw_title)
+    event_date = first_date(title)
+    metadata = parse_metadata(block[1:])
+    if stable:
+      prefix = stable.group(1)
+      stable_id = stable.group(0)
+      entry_type = {'D': 'decision', 'X': 'dead_end', 'M': 'milestone'}[prefix]
+    else:
+      stable_id = None
+      entry_type = infer_legacy_type(doc, section, shape)
+      if entry_type not in {'legacy-decision', 'legacy-unknown'} and 'decisions-' in doc.rel:
+        metrics['legacy_type_file_mismatches'] += 1
+    entries.append(Entry(path=doc.rel, line=start + 1, title=title, body='\n'.join(block), section=section, entry_type=entry_type, event_date=event_date, shape=shape, stable_id=stable_id, doc_class=doc.doc_class, metadata=metadata))
+    section_has_entry = True
+  if seen_h2 and (not section_has_entry):
+    metrics['empty_h2_sections'] += 1
+  return (entries, metrics)
+
+def parse_h2_entries(doc):
+  headings = []
+  for index in range(len(doc.lines)):
+    match = HEADING_RE.match(doc.visible_line(index))
+    if match and match.group(1) in {'#', '##'}:
+      headings.append((index, match.group(1), match.group(2).strip()))
+  entries = []
+  h1 = next((item for item in headings if item[1] == '#'), None)
+  h2s = [item for item in headings if item[1] == '##']
+  if h1:
+    end = h2s[0][0] if h2s else len(doc.lines)
+    body = '\n'.join(doc.lines[h1[0]:end])
+    entries.append(Entry(path=doc.rel, line=h1[0] + 1, title=strip_markdown(h1[2]), body=body, section='file-preamble', entry_type=doc.doc_class.name if doc.doc_class else 'document', doc_class=doc.doc_class))
+  elif doc.lines:
+    end = h2s[0][0] if h2s else len(doc.lines)
+    entries.append(Entry(path=doc.rel, line=1, title=Path(doc.rel).name, body='\n'.join(doc.lines[:end]), section='file-preamble', entry_type=doc.doc_class.name if doc.doc_class else 'document', doc_class=doc.doc_class))
+  for position, (index, _, title) in enumerate(h2s):
+    end = h2s[position + 1][0] if position + 1 < len(h2s) else len(doc.lines)
+    entries.append(Entry(path=doc.rel, line=index + 1, title=strip_markdown(title), body='\n'.join(doc.lines[index:end]), section=title, entry_type=doc.doc_class.name if doc.doc_class else 'document', doc_class=doc.doc_class))
+  metrics = zero_metrics()
+  metrics.update(h2_sections=len(h2s), file_preamble_entries=1 if entries else 0)
+  return (entries, metrics)
+
+def build_documents(config):
+  documents = []
+  classification = {}
+  for rel in tracked_markdown(config.root):
+    matches = matching_classes(rel, config)
+    classification[rel] = matches
+    documents.append(Document.read(config.root, rel, matches[0] if len(matches) == 1 else None))
+  return (documents, classification)
+
+def build_entries(documents):
+  all_entries = []
+  totals = zero_metrics()
+  for doc in documents:
+    if not doc.doc_class:
+      continue
+    if doc.doc_class.unit == 'top_level_bullet':
+      entries, metrics = parse_top_level_entries(doc)
+    else:
+      entries, metrics = parse_h2_entries(doc)
+    all_entries.extend(entries)
+    for key, value in metrics.items():
+      totals[key] += value
+  return (all_entries, totals)
+
+@cache
+def search_norm(value):
+  return ' '.join(unicodedata.normalize('NFKC', value).casefold().split())
+
+@cache
+def search_tokens(value):
+  normalized = search_norm(value)
+  tokens = set(re.findall('[a-z0-9]+(?:[-_./:][a-z0-9]+)*', normalized))
+  for run in re.findall('[\\u3400-\\u9fff]+', normalized):
+    if len(run) == 1:
+      tokens.add(run)
+    else:
+      tokens.update((run[index:index + 2] for index in range(len(run) - 1)))
+  if '✅' in normalized:
+    tokens.add('✅')
+  return tokens
+
+def expanded_query_tokens(config, query):
+  tokens = search_tokens(query)
+  normalized = search_norm(query)
+  aliases = config.raw.get('query_aliases', [])
+  if not isinstance(aliases, list):
+    raise ScannerError('config query_aliases 必須是 list')
+  for rule in aliases:
+    if not isinstance(rule, dict):
+      raise ScannerError('config query_aliases item 必須是 object')
+    required = rule.get('all', [])
+    alternatives = rule.get('any', [])
+    additions = rule.get('add', [])
+    if not all((isinstance(items, list) and all((isinstance(item, str) for item in items)) for items in (required, alternatives, additions))):
+      raise ScannerError('config query_aliases all/any/add 必須是字串 list')
+    if all((search_norm(item) in normalized for item in required)) and (not alternatives or any((search_norm(item) in normalized for item in alternatives))):
+      tokens.update(search_tokens(' '.join(additions)))
+  return tokens
+
+def entry_score(entry, query, query_tokens):
+  query_norm = search_norm(query)
+  title_norm = search_norm(entry.title)
+  body_norm = search_norm(entry.body)
+  title_tokens = search_tokens(entry.title)
+  body_tokens = search_tokens(entry.body)
+  score = 0
+  if query_norm == title_norm:
+    score += 50000
+  if entry.stable_id and query_norm == entry.stable_id.casefold():
+    score += 100000
+  if len(query_norm) >= 3 and query_norm in title_norm:
+    score += 10000
+  if len(query_norm) >= 5 and query_norm in body_norm:
+    score += 2000
+  title_hits = len(query_tokens & title_tokens)
+  body_hits = len(query_tokens & body_tokens)
+  score += title_hits * 200 + body_hits * 20
+  if query_tokens and query_tokens <= title_tokens:
+    score += 1000
+  aliases = entry.metadata.get('別名', '') + ' ' + entry.metadata.get('標籤', '')
+  score += len(query_tokens & search_tokens(aliases)) * 80
+  asks_for_reason = any((marker in query_norm for marker in ('為什麼', '原因', '理由', 'why')))
+  if score and asks_for_reason and entry.doc_class and (entry.doc_class.mode == 'history'):
+    score += 800
+  return score
+
+def bounded_text(value, byte_limit):
+  compact = re.sub('\\s+', ' ', value).strip()
+  data = compact.encode('utf-8')
+  if len(data) <= byte_limit:
+    return compact
+  clipped = data[:max(0, byte_limit - 3)]
+  while clipped:
+    try:
+      return clipped.decode('utf-8') + '...'
+    except UnicodeDecodeError:
+      clipped = clipped[:-1]
+  return '...'
+
+def cmd_find(config, query, limit):
+  documents, _ = build_documents(config)
+  excluded = hidden_legacy_plans(config)
+  documents = [doc for doc in documents if doc.rel not in excluded]
+  entries, _ = build_entries(documents)
+  query_tokens = expanded_query_tokens(config, query)
+  ranked = [(entry_score(entry, query, query_tokens), entry.path, entry.line, entry) for entry in entries]
+  ranked = [item for item in ranked if item[0] > 0]
+  ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
+  if not ranked:
+    return 1
+  output = bytearray()
+  for _, _, _, entry in ranked[:min(limit, MAX_RESULTS)]:
+    first = f'{entry.path}:{entry.line} type={entry.entry_type} event_date={entry.event_date} section={entry.section} — {entry.title}\n'
+    excerpt = f'  {bounded_text(entry.body, MAX_EXCERPT_BYTES)}\n'
+    candidate = (first + excerpt).encode('utf-8')
+    if len(output) + len(candidate) > MAX_STDOUT_BYTES:
+      break
+    output.extend(candidate)
+  sys.stdout.buffer.write(output)
+  return 0
+
+def class_findings(config, classification):
+  findings = []
+  for rel, matches in classification.items():
+    if not matches:
+      findings.append(f'unclassified: {rel}')
+    elif len(matches) > 1:
+      findings.append(f"multi-class: {rel} -> {','.join((cls.name for cls in matches))}")
+  tracked = set(classification)
+  for cls in config.classes:
+    for pattern in cls.paths:
+      if not any((fnmatch.fnmatchcase(rel, pattern) for rel in tracked)):
+        findings.append(f'class glob 無匹配: {cls.name}:{pattern}')
+  return findings
+
+def expected_history_path(config, entry_type, event_date):
+  if event_date == 'unknown' or entry_type not in config.history_paths:
+    return None
+  return config.history_paths[entry_type].replace('{YYYY-MM}', event_date[:7])
+
+def history_findings(config, entries):
+  findings = []
+  ids: dict[str, Entry] = {}
+  supersedes: list[tuple[Entry, str]] = []
+  for entry in entries:
+    if not entry.stable_id:
+      continue
+    if entry.stable_id in ids:
+      findings.append(f'duplicate history ID: {entry.stable_id} at {ids[entry.stable_id].path}:{ids[entry.stable_id].line} and {entry.path}:{entry.line}')
+    ids[entry.stable_id] = entry
+    id_date = f'{entry.stable_id[2:6]}-{entry.stable_id[6:8]}-{entry.stable_id[8:10]}'
+    if entry.event_date != id_date:
+      findings.append(f'history date mismatch: {entry.path}:{entry.line} {entry.stable_id}')
+    expected = expected_history_path(config, entry.entry_type, id_date)
+    if expected and expected != entry.path:
+      expected_family = config.history_paths[entry.entry_type].split('-')[0]
+      actual_family = entry.path.split('-')[0]
+      if expected_family != actual_family:
+        label = 'type/file mismatch'
+      else:
+        label = 'event-month/file mismatch'
+      findings.append(f'{label}: {entry.path}:{entry.line} expected {expected}')
+    if entry.section != EVENT_SECTION:
+      findings.append(f'new history record outside event-time section: {entry.path}:{entry.line}')
+    source = entry.metadata.get('日期來源')
+    if source not in {'direct', 'migration-entry', 'migration-cutover'}:
+      findings.append(f'history 日期來源 missing/invalid: {entry.path}:{entry.line}')
+    for target in re.findall('supersedes:([DXM]-\\d{8}-[a-z0-9-]+)', entry.body):
+      supersedes.append((entry, target))
+  for entry, target in supersedes:
+    if target not in ids:
+      findings.append(f'supersedes target missing: {entry.path}:{entry.line} -> {target}')
+  return findings
+
+def file_blob(root, rel):
+  return run_git(root, ['hash-object', '--', rel]).strip()
+
+def head_blob(root, rel):
+  output = run_git(root, ['ls-tree', 'HEAD', '--', rel], allow_failure=True).strip()
+  match = re.match(r'^\d+\s+blob\s+([0-9a-f]+)\t', output)
+  return match.group(1) if match else None
+
+def head_text(root, rel):
+  if not head_blob(root, rel):
+    return None
+  return run_git(root, ['show', f'HEAD:{rel}'])
+
+def history_append_findings(config, documents):
+  findings = []
+  for doc in documents:
+    if doc.doc_class and doc.doc_class.mode == 'history':
+      before = head_text(config.root, doc.rel)
+      if before is not None and not doc.text.startswith(before):
+        findings.append(f'history not append-only: {doc.rel}')
+  return findings
+
+def plan_metadata(text):
+  metadata = {}
+  for line in text.splitlines()[:20]:
+    match = re.match('^-\\s*([^:：]+)[:：]\\s*(.+)$', line)
+    if match:
+      metadata[match.group(1).strip()] = match.group(2).strip()
+  return metadata
+
+def plan_findings(config, markdown):
+  findings = []
+  plan_dir = config.raw.get('plan_dir', 'docs/plans').rstrip('/') + '/'
+  legacy = config.raw.get('legacy_plan_blobs', {})
+  active: dict[str, list[str]] = {}
+  for rel in markdown:
+    if not rel.startswith(plan_dir):
+      continue
+    expected_blob = legacy.get(rel)
+    if expected_blob and file_blob(config.root, rel) == expected_blob:
+      continue
+    if re.search('(?:-v\\d+|-final|-revised)\\.md$', rel):
+      findings.append(f'versioned plan filename: {rel}')
+    try:
+      text = (config.root / rel).read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError) as exc:
+      raise ScannerError(f'讀取失敗 {rel}: {exc}') from exc
+    meta = plan_metadata(text)
+    required = {'日期', '狀態', '工作項', '種類', '需求來源'}
+    missing = sorted(required - set(meta))
+    if missing:
+      findings.append(f"{rel}: missing plan metadata {','.join(missing)}")
+      continue
+    state = meta['狀態']
+    if state not in PLAN_STATES:
+      findings.append(f'{rel}: invalid plan status {state}')
+      continue
+    if state in ACTIVE_PLAN_STATES:
+      active.setdefault(meta['工作項'], []).append(rel)
+    if state == 'superseded' and '取代計畫' not in meta:
+      findings.append(f'{rel}: superseded plan missing replacement')
+    if state in FINAL_PLAN_STATES:
+      before = head_blob(config.root, rel)
+      if before and file_blob(config.root, rel) != before:
+        findings.append(f'closed plan mutation: {rel}')
+  for work_item, paths in active.items():
+    if len(paths) > 1:
+      findings.append(f"duplicate active plan: {work_item} -> {','.join(sorted(paths))}")
+  return findings
+
+def budget_findings(config, documents):
+  findings = []
+  budgets = config.raw.get('loaded_budgets', {})
+  for doc in documents:
+    if not doc.doc_class or doc.doc_class.mode != 'loaded':
+      continue
+    matches = [(pattern, rule) for pattern, rule in budgets.items() if fnmatch.fnmatchcase(doc.rel, pattern)]
+    if not matches:
+      findings.append(f'loaded file missing budget: {doc.rel}')
+      continue
+    pattern, rule = max(matches, key=lambda item: len(item[0]))
+    if not isinstance(rule, dict):
+      raise ScannerError(f'config loaded_budgets.{pattern} 必須是 object')
+    size = len(doc.text.encode('utf-8'))
+    lines = len(doc.lines)
+    if 'bytes' in rule and size > int(rule['bytes']):
+      findings.append(f"loaded budget bytes: {doc.rel} {size}>{rule['bytes']}")
+    if 'lines' in rule and lines > int(rule['lines']):
+      findings.append(f"loaded budget lines: {doc.rel} {lines}>{rule['lines']}")
+  return findings
+
+def xref_norm(value):
+  value = re.sub('`+', '', value)
+  value = re.sub('[*_~]+', '', value)
+  value = re.sub('^#+', '', value)
+  return re.sub('[\\s（）()【】\\[\\]「」『』]', '', value)
+
+def resolve_reference(target, source, root):
+  if target.startswith('~/'):
+    candidate = None
+    for prefix, replacement in TILDE_MAP:
+      if target.startswith(prefix):
+        candidate = root / (replacement + target[len(prefix):])
+        break
+    if candidate is None:
+      return (None, None)
+    candidates = [candidate]
+  else:
+    candidates = []
+    for candidate in (source.parent / target, root / target):
+      if candidate not in candidates:
+        candidates.append(candidate)
+  for candidate in candidates:
+    if candidate.is_file():
+      resolved = candidate.resolve()
+      if os.path.commonpath([resolved, root]) != str(root):
+        return (None, f'解析後逃出 --root（{resolved}）')
+      return (resolved, None)
+  tried = '、'.join((str(candidate.relative_to(root)) for candidate in candidates))
+  return (None, f'檔案不存在（試過：{tried}）')
+
+def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, section_aliases=None):
+  findings = []
+  cache: dict[Path, Document] = {}
+  inbound: dict[Path, set[str]] = {}
+  skipped = skip_sources or set()
+  for rel in sorted(files):
+    if rel in skipped:
+      continue
+    source = Document.read(root, rel)
+    for lineno, line in source.source_lines():
+      for match in REF_RE.finditer(line):
+        target, section = (match.group(1), match.group(2))
+        here = f'{rel}:{lineno}: `{target}`「{section}」'
+        if len(xref_norm(section)) < SECTION_MIN:
+          findings.append(f'{here} — 節名 normalize 後不足 {SECTION_MIN} 字，無法比對')
+          continue
+        path, reason = resolve_reference(target, source.path, root)
+        if reason:
+          findings.append(f'{here} — {reason}')
+          continue
+        if path is None:
+          continue
+        if path not in cache:
+          cache[path] = Document.read(root, str(path.relative_to(root)))
+        target_doc = cache[path]
+        if target_doc.has_section(section):
+          inbound.setdefault(path, set()).add(xref_norm(section))
+        elif not target_doc.has_body(section):
+          alias_matched = False
+          target_rel = str(path.relative_to(root))
+          for alias in section_aliases or []:
+            if alias['from_path'] != target_rel:
+              continue
+            if xref_norm(alias['from_section']) not in xref_norm(section):
+              continue
+            alias_path = (root / alias['to_path']).resolve()
+            if not alias_path.is_file():
+              raise ScannerError(f"xref alias 目標不存在: {alias['to_path']}")
+            if alias_path not in cache:
+              cache[alias_path] = Document.read(root, alias['to_path'])
+            alias_doc = cache[alias_path]
+            if not alias_doc.has_section(alias['to_section']):
+              raise ScannerError(f"xref alias 目標章節不存在: {alias['to_path']}「{alias['to_section']}」")
+            inbound.setdefault(alias_path, set()).add(xref_norm(alias['to_section']))
+            alias_matched = True
+            break
+          if not alias_matched:
+            findings.append(f'{here} — 目標檔的 heading 與內文皆無此字串（節名改過？權威搬家？）')
+  if not full_scan:
+    return findings
+  for rel in evidence_layers:
+    path = (root / rel).resolve()
+    if not path.is_file():
+      continue
+    if path not in cache:
+      cache[path] = Document.read(root, rel)
+    wanted = inbound.get(path, set())
+    for lineno, heading in cache[path].h2_sections():
+      normalized = xref_norm(heading)
+      if any((item in normalized for item in wanted)):
+        continue
+      findings.append(f'{rel}:{lineno}: ## {heading} — 節級孤兒：無任何 md 以 `{rel}`「節名」指到它')
+  return findings
+
+def evidence_layers(config):
+  if config is None:
+    return ['docs/dead-ends.md']
+  layers = []
+  for cls in config.classes:
+    if not cls.requires_inbound:
+      continue
+    for pattern in cls.paths:
+      if not any((char in pattern for char in '*?[')):
+        layers.append(pattern)
+  return layers
+
+def unchanged_legacy_plans(config):
+  if config is None:
+    return set()
+  legacy = config.raw.get('legacy_plan_blobs', {})
+  if not isinstance(legacy, dict):
+    raise ScannerError('config legacy_plan_blobs 必須是 object')
+  unchanged = set()
+  for rel, expected in legacy.items():
+    if not isinstance(rel, str) or not isinstance(expected, str):
+      raise ScannerError('config legacy_plan_blobs 必須是 path -> blob OID')
+    path = config.root / rel
+    if path.is_file() and file_blob(config.root, rel) == expected:
+      unchanged.add(rel)
+  return unchanged
+
+def hidden_legacy_plans(config):
+  return unchanged_legacy_plans(config) - set(config.raw.get('searchable_legacy_plans', []) if config else [])
+
+def xref_section_aliases(config):
+  if config is None:
+    return []
+  raw = config.raw.get('xref_section_aliases', [])
+  if not isinstance(raw, list):
+    raise ScannerError('config xref_section_aliases 必須是 list')
+  aliases = []
+  required = {'from_path', 'from_section', 'to_path', 'to_section'}
+  for item in raw:
+    if not isinstance(item, dict) or set(item) != required or (not all((isinstance(item[key], str) and item[key] for key in required))):
+      raise ScannerError('config xref_section_aliases item 欄位無效')
+    validate_relpath(item['from_path'], 'xref alias from_path')
+    validate_relpath(item['to_path'], 'xref alias to_path')
+    aliases.append(item)
+  return aliases
+
+def status_findings(config, documents):
+  spec = config.raw.get('status_schema')
+  if not spec:
+    return []
+  path = spec.get('path', 'STATUS.md')
+  doc = next((item for item in documents if item.rel == path), None)
+  if not doc:
+    return [f'STATUS missing: {path}']
+  headings = {heading for _, heading in doc.h2_sections()}
+  findings = []
+  for required in spec.get('required_headings', []):
+    if not any((xref_norm(required) in xref_norm(item) for item in headings)):
+      findings.append(f'STATUS required heading missing: {required}')
+  for forbidden in spec.get('forbidden_headings', []):
+    if any((xref_norm(forbidden) in xref_norm(item) for item in headings)):
+      findings.append(f'STATUS historical heading remains: {forbidden}')
+  paused = False
+  block = []
+  for line in doc.visible + ['## end']:
+    heading = HEADING_RE.match(line)
+    if heading and heading.group(1) == '##':
+      if paused and block and '恢復條件' not in '\n'.join(block):
+        findings.append(f'paused item missing restart condition: {path}')
+      paused = '暫停中' in xref_norm(heading.group(2))
+      block = []
+    elif paused and TOP_BULLET_RE.match(line):
+      if block and '恢復條件' not in '\n'.join(block):
+        findings.append(f'paused item missing restart condition: {path}')
+      block = [line]
+    elif block:
+      block.append(line)
+  return findings
+
+def backlog_findings(config, documents, entries):
+  findings = []
+  seen: dict[str, tuple[str, int]] = {}
+  for doc in documents:
+    if not doc.doc_class or doc.doc_class.name != 'backlog':
+      continue
+    section = ''
+    for index in range(len(doc.lines)):
+      visible = doc.visible_line(index)
+      heading = HEADING_RE.match(visible)
+      if heading and heading.group(1) == '##':
+        section = heading.group(2).strip()
+        continue
+      if section not in {'技術債', '已知缺口'}:
+        continue
+      bullet = TOP_BULLET_RE.match(visible)
+      if not bullet:
+        continue
+      title = bullet.group(2).strip()
+      match = re.search('B-\\d{8}-[a-z0-9-]+', title)
+      if not match:
+        findings.append(f'backlog ID missing: {doc.rel}:{index + 1}')
+        continue
+      stable_id = match.group(0)
+      if stable_id in seen:
+        first_path, first_line = seen[stable_id]
+        findings.append(f'duplicate backlog ID: {stable_id} at {first_path}:{first_line} and {doc.rel}:{index + 1}')
+      else:
+        seen[stable_id] = (doc.rel, index + 1)
+      without_id = re.sub('^\\*\\*B-\\d{8}-[a-z0-9-]+ · \\*\\*\\s*', '', title)
+      if re.match('^\\[[xX]\\]\\s*', without_id) or re.match('^\\[[ ]\\]\\s*~~', without_id):
+        findings.append(f'closed backlog item remains: {stable_id} at {doc.rel}:{index + 1}')
+    before = head_text(config.root, doc.rel)
+    if before is not None:
+      removed = set(re.findall('B-\\d{8}-[a-z0-9-]+', before)) - set(seen)
+      linked = {stable_id for entry in entries if entry.stable_id for stable_id in re.findall('B-\\d{8}-[a-z0-9-]+', entry.body)}
+      for stable_id in sorted(removed - linked):
+        findings.append(f'backlog removal missing history relation: {stable_id}')
+  return findings
+
+def audit_findings(config):
+  documents, classification = build_documents(config)
+  entries, _ = build_entries(documents)
+  markdown = tracked_markdown(config.root)
+  findings = []
+  findings.extend(class_findings(config, classification))
+  findings.extend(budget_findings(config, documents))
+  findings.extend(history_findings(config, entries))
+  findings.extend(history_append_findings(config, documents))
+  findings.extend(plan_findings(config, markdown))
+  findings.extend(status_findings(config, documents))
+  findings.extend(backlog_findings(config, documents, entries))
+  findings.extend(self_governance_findings(config))
+  findings.extend(xref_scan(config.root, markdown, full_scan=True, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config)))
+  return sorted(set(findings))
+
+def cmd_audit(config, *, shadow, ship):
+  findings = audit_findings(config)
+  if ship:
+    print(f"doc-governance: {('FINDINGS' if findings else 'OK')}")
+  for finding in findings:
+    print(f'doc-flag: {finding}')
+  if findings and (not shadow):
+    return 1
+  return 0
+
+def surface_bytes(config):
+  total = 0
+  rows = []
+  for item in config.raw.get('governance_surface', []):
+    if isinstance(item, str):
+      rel, start, end = (item, None, None)
+    elif isinstance(item, dict):
+      rel, start, end = (item.get('path'), item.get('start'), item.get('end'))
+    else:
+      raise ScannerError('config governance_surface item 必須是 path 或 object')
+    if not isinstance(rel, str):
+      raise ScannerError('config governance_surface path 缺失')
+    validate_relpath(rel, 'governance_surface')
+    path = config.root / rel
+    try:
+      data = path.read_bytes()
+    except OSError as exc:
+      raise ScannerError(f'governance surface 讀取失敗 {rel}: {exc}') from exc
+    if start is not None or end is not None:
+      text = data.decode('utf-8')
+      if not isinstance(start, str) or not isinstance(end, str):
+        raise ScannerError(f'governance surface markers 不完整: {rel}')
+      begin, finish = (text.find(start), text.find(end))
+      if begin < 0 or finish < begin:
+        raise ScannerError(f'governance surface markers 找不到: {rel}')
+      data = text[begin:finish + len(end)].encode('utf-8')
+    rows.append((rel, len(data)))
+    total += len(data)
+  return (total, rows)
+
+def self_governance_findings(config):
+  findings = []
+  maximum = config.raw.get('governance_max_bytes')
+  if maximum is not None:
+    if not isinstance(maximum, int) or maximum < 1:
+      raise ScannerError('config governance_max_bytes 必須是正整數')
+    total, _ = surface_bytes(config)
+    if total > maximum:
+      findings.append(f'governance surface bytes: {total}>{maximum}')
+  parsers = config.raw.get('markdown_parser_implementations', [])
+  if not isinstance(parsers, list) or not all((isinstance(item, str) for item in parsers)):
+    raise ScannerError('config markdown_parser_implementations 必須是 path list')
+  if parsers and len(parsers) != 1:
+    findings.append(f'markdown parser count: {len(parsers)}!=1')
+  for rel in parsers:
+    validate_relpath(rel, 'markdown parser implementation')
+    if not (config.root / rel).is_file():
+      findings.append(f'markdown parser missing: {rel}')
+  return findings
+
+def cmd_report(config):
+  documents, classification = build_documents(config)
+  _, metrics = build_entries(documents)
+  by_class: dict[str, tuple[int, int]] = {}
+  for doc in documents:
+    name = doc.doc_class.name if doc.doc_class else 'unclassified'
+    count, size = by_class.get(name, (0, 0))
+    by_class[name] = (count + 1, size + len(doc.text.encode('utf-8')))
+  print('document-families:')
+  for name, (count, size) in sorted(by_class.items()):
+    print(f'  {name}: files={count} bytes={size}')
+  print('logical-entry-shapes:')
+  for key in ('dated_records', 'struck_records', 'checkbox_records', 'undated_records', 'h2_sections', 'empty_h2_sections', 'file_preamble_entries', 'legacy_type_file_mismatches'):
+    print(f'  {key}={metrics[key]}')
+  surface, rows = surface_bytes(config)
+  print(f'governance-surface: bytes={surface}')
+  for rel, size in rows:
+    print(f'  {rel}: bytes={size}')
+  canonical = sum((len(doc.text.encode('utf-8')) for doc in documents))
+  ratio = surface * 100 / canonical if canonical else 0
+  print(f'canonical-markdown: bytes={canonical} governance-ratio={ratio:.2f}%')
+  print('loaded-context:')
+  loaded = [(len(doc.text.encode('utf-8')), len(doc.lines), doc.rel) for doc in documents if doc.doc_class and doc.doc_class.mode == 'loaded']
+  for size, lines, rel in sorted(loaded, reverse=True):
+    print(f'  {rel}: bytes={size} lines={lines}')
+  classified = sum((1 for matches in classification.values() if len(matches) == 1))
+  print(f'classification: exact={classified} total={len(classification)}')
+  return 0
+
+def slugify(value):
+  normalized = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+  words = re.findall('[a-z0-9]+', normalized.casefold())
+  return '-'.join(words) or 'record'
+
+def cmd_record_path(config, kind, date, slug):
+  try:
+    parsed = dt.date.fromisoformat(date)
+  except ValueError as exc:
+    raise ScannerError(f'date 必須是 YYYY-MM-DD: {date}') from exc
+  prefix = {'decision': 'D', 'dead_end': 'X', 'milestone': 'M'}[kind]
+  identifier = f'{prefix}-{parsed:%Y%m%d}-{slugify(slug)}'
+  path = config.history_paths[kind].replace('{YYYY-MM}', f'{parsed:%Y-%m}')
+  print(f'path={path}')
+  print(f'id={identifier}')
+  print(f'section={EVENT_SECTION}')
+  print(f'heading=- **{identifier} · {parsed:%Y-%m-%d} {slug}**:')
+  return 0
+
+def build_parser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--root')
+  subparsers = parser.add_subparsers(dest='command', required=True)
+  find_parser = subparsers.add_parser('find')
+  find_parser.add_argument('query')
+  find_parser.add_argument('--limit', type=int, default=MAX_RESULTS)
+  audit_parser = subparsers.add_parser('audit')
+  modes = audit_parser.add_mutually_exclusive_group()
+  modes.add_argument('--shadow', action='store_true')
+  modes.add_argument('--ship', action='store_true')
+  modes.add_argument('--check', choices=['xref'])
+  audit_parser.add_argument('files', nargs='*')
+  subparsers.add_parser('report')
+  record_parser = subparsers.add_parser('record-path')
+  record_parser.add_argument('--type', required=True, choices=['decision', 'dead_end', 'milestone'])
+  record_parser.add_argument('--date', required=True)
+  record_parser.add_argument('--slug', required=True)
+  return parser
+
+def main(argv):
+  parser = build_parser()
+  try:
+    args = parser.parse_args(argv)
+    root = resolve_root(args.root)
+    if args.command == 'audit' and args.check == 'xref':
+      config = load_config(root, optional=True)
+      if args.files:
+        files = []
+        for value in args.files:
+          path = Path(value)
+          if not path.is_absolute():
+            path = (Path.cwd() / path).resolve()
+          if not path.is_file():
+            raise ScannerError(f'輸入檔不存在: {path}')
+          try:
+            files.append(str(path.relative_to(root)))
+          except ValueError as exc:
+            raise ScannerError(f'輸入檔逃出 --root: {path}') from exc
+      else:
+        files = tracked_markdown(root) if config else sorted((str(path.relative_to(root)) for path in root.rglob('*.md') if '.git' not in path.parts))
+      findings = xref_scan(root, files, full_scan=not args.files, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config))
+      for finding in findings:
+        print(finding)
+      return 0
+    config = load_config(root)
+    if args.command == 'find':
+      if args.limit < 1:
+        raise ScannerError('--limit 必須大於 0')
+      return cmd_find(config, args.query, args.limit)
+    if args.command == 'audit':
+      return cmd_audit(config, shadow=args.shadow, ship=args.ship)
+    if args.command == 'report':
+      return cmd_report(config)
+    if args.command == 'record-path':
+      return cmd_record_path(config, args.type, args.date, args.slug)
+    raise ScannerError(f'未知指令: {args.command}')
+  except ScannerError as exc:
+    print(f'doc-governance error: {exc}', file=sys.stderr)
+    if 'args' in locals() and getattr(args, 'command', None) == 'audit' and getattr(args, 'ship', False):
+      print('doc-governance: BROKEN')
+    return 2
+if __name__ == '__main__':
+  sys.exit(main(sys.argv[1:]))
