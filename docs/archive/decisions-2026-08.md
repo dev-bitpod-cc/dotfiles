@@ -856,3 +856,15 @@
   - 放棄:直接執行 target repo 的 `scripts/doc-governance.py`；只靠 target 自己宣告 checksum
   - 重議:scanner 需要支援多個並存 schema version，且能建立由受信任端維護的版本 allowlist
   - 關聯:claude/skills/project/scripts/ship-state.sh;tests/test_doc_governance.py
+
+- **D-20260820-u-3295d617a292 · 2026-08-20 治理面邊界校正基線**:原本的 `governance_surface` 只量到 `detect_doc_governance`，漏掉 trusted-core 路徑、STOP 輸出與 `check_repo` 接線。以 immutable `cf99d37` 重建八段完整邊界後，基線由 49,649 bytes 校正為 52,061 bytes（差額 2,412）；上限同步校正為 52,087，保留原本 26-byte headroom。這是量測邊界修正，不把本輪修復增加的 bytes 納入基線。
+  - 日期來源:direct
+  - 放棄:維持算錯的 49,675 上限；把整支 `ship-state.sh` 納入而稀釋 doc integration 訊號；以本輪修復後大小倒推新上限
+  - 重議:治理接線改成單一可獨立計量模組，或八段 marker 無法再完整涵蓋實際執行路徑
+  - 關聯:.doc-governance.json;claude/skills/project/scripts/ship-state.sh;cf99d37a5f67d8ce45721db7f2abecbd2f021de5
+
+- **D-20260820-implementation-plan-scope-erratum · 2026-08-20 implementation plan 範圍勘誤**:凍結的 implementation plan 同時把 `docs/dead-ends.md` 列在修改清單與「刻意不改」，實際交付有修改該檔。plan 保持 write-once，不就地竄改；本 record 作為 canonical 勘誤，真實範圍以已提交 diff 為準。
+  - 日期來源:direct
+  - 放棄:修改已標 implemented 的 plan；假裝兩個互斥清單都正確
+  - 重議:plan lifecycle 改為允許結案後的結構化 errata block
+  - 關聯:docs/plans/2026-08-20-doc-governance-implementation-plan.md;docs/dead-ends.md

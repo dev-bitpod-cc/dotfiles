@@ -19,7 +19,7 @@
 # 格式為 ERE 的 alternation（無錨點），呼叫端自行加 `^(...)$`——各家取的字串來源不同
 # （%s 全行 vs 其他），錨點留給呼叫端決定才不會綁死。
 #
-# 現行格式不編輪號（中性化，見 SKILL.md「輪次隔離」）；舊 R{N} / codex R{N} 樣式一併認——
+# 現行格式不編輪號（中性化，見 `../../references/modes-and-scope.md`「迭代紀律：每輪修復後 commit」）；舊 R{N} / codex R{N} 樣式一併認——
 # 歷史 branch 上仍有舊 commit，漏認會讓兩端同時判錯。
 
 # shellcheck disable=SC2034  # 本檔只定義變數供 source 端消費，檔內不使用即為預期

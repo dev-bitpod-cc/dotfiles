@@ -4,7 +4,7 @@
 #
 # 用法：verify-tests.sh <repo-path>
 #
-# 偵測與執行（照 SKILL.md「修復後驗證」現行為，不擴權）：
+# 偵測與執行（照 `../references/modes-and-scope.md`「Autofix 模式」現行為，不擴權）：
 #   pyproject.toml 存在          → uv run pytest（pytest rc=5「no tests collected」→ SKIP）
 #   package.json .scripts.test   → bun test；test script 為 npm placeholder（no test specified）
 #                                  → SKIP 不執行；rc!=0 且輸出含「0 test files matching」→ SKIP

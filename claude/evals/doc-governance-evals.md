@@ -1,6 +1,7 @@
 # Document governance behavior evals
 
-三題都從 fresh context、repo root 執行；不得提供檔名。受測 agent 只回報答案，不修改 repo。每題記錄 tool/command 數、讀入 bytes 與是否全量讀 archive。
+每題都從 fresh context 執行；受測 agent 只回報答案，不修改 repo。E1–E3 不提供檔名，並記錄 tool/command 數、
+讀入 bytes 與是否全量讀 archive。
 
 ## E1 — 無 pointer 的 archive 理由
 
@@ -20,9 +21,21 @@ Prompt：`/deep-plan reviewer 要求修訂 work item doc-governance 的現行計
 
 PASS：引用 `docs/plans/2026-08-20-doc-governance-implementation-plan.md`；不得另建 v2；在 draft/approved/in-progress 原檔修訂，implemented/superseded 後凍結。
 
+## E4 — 跨 repo audit 綁定
+
+Prompt：`你的 cwd 在 repo-a，/project log 本輪要收尾 repo-a 與 /tmp/repo-b，兩者都已 adopted。請列出對 repo-b 執行 doc audit 的完整指令，並說明只有 config 沒有 core 時怎麼處理。不要修改檔案。`
+
+PASS：指令同時使用 repo-b 的 core 路徑與 `--root /tmp/repo-b`；不靠 cwd；只有一個 adoption 檔判 BROKEN／STOP，不回退 legacy detector。
+
+## E5 — adopted history 不回填 STATUS
+
+Prompt：`一個已 adopted repo 在本 session 產生 decision、dead end 與 milestone，而 STATUS.md 只有 active/paused 與入口節。請說明各自寫哪裡，以及是否應新增 STATUS.md 關鍵決策／死路／已完成節。不要修改檔案。`
+
+PASS：三類都依 event date 寫 decisions/dead-ends/milestones shard，寫前用 `record-path`；明確拒絕新增三個 forbidden STATUS headings。
+
 ## 整體判準
 
-Claude Code 與 Codex 各跑 E1–E3 一次，共 6 次。必須 6/6 找到 repo-local 入口與正確 canonical entry，且 0/6 全量讀 archive；任何失敗先修行為或 routing，再重跑該 fresh context。
+E1–E3 沿用下方兩 agent 基線；skill-authoring 驗收另以 Sonnet fresh context 跑 E4–E5。任何失敗先修行為或 routing，再重跑該 fresh context。
 
 ## 2026-08-20 clean-room 結果
 
@@ -32,3 +45,12 @@ Claude Code 與 Codex 各跑 E1–E3 一次，共 6 次。必須 6/6 找到 repo
 | Codex CLI 0.148.0 | PASS | PASS | PASS | 4／9／5 commands；command output 309,424／28,441／34,260 bytes |
 
 合計 6/6 正確引用 canonical entry，0/6 全量讀 archive，0 次修改 repo。E3 初版誤寫不存在的 work item `doc-governance-pilot`；兩 agent 雖能推斷，該輪不計分，oracle 校正為 metadata 真值 `doc-governance` 後以 fresh context 重跑並通過。
+
+## 2026-08-20 skill-authoring 回歸
+
+| Model | E4 | E5 |
+|---|---|---|
+| Sonnet | PASS | PASS |
+
+E4 同時綁定 repo-b core 與 `--root /tmp/repo-b`，並將 config-only 判 BROKEN／STOP；E5 依 event date 分流三類 shard、使用
+`record-path`，明確拒絕回填三個 forbidden STATUS headings。2/2 未修改受測 repo。

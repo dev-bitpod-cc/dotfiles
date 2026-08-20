@@ -53,7 +53,7 @@
 **判定順序——先看 artifact 類型，再看性質。順序不可顛倒**：
 
 1. **這條 finding 指向 prose artifact 嗎？**（SKILL.md／references／`.md` docs／runbook／README——角色是 instruction 或 reference 的 markdown）
-   - **是** → 只有**實質錯誤**才 blocking：事實錯誤、步驟自相矛盾、夾帶指令會 misbehave（見「可執行指令的執行語意」）、cross-reference 斷掉、stale 資訊。措辭清晰度 /「還可以更完整」/ 純風格 → **一律深井，即使那一行正是本輪修改的行**。
+   - **是** → 只有**實質錯誤**才 blocking：事實錯誤、步驟自相矛盾、夾帶指令會 misbehave（見本節的可執行指令判準）、cross-reference 斷掉、stale 資訊。措辭清晰度 /「還可以更完整」/ 純風格 → **一律深井，即使那一行正是本輪修改的行**。
    - **否**（是 code）→ 進 2。
 2. **code**：真正的 bug / 安全 / 契約斷裂 / 指向本輪修復觸及的行 → blocking。指向基線既有碼的完整度問題（僅 baseline 模式）→ 深井。有疑慮（可能是 bug）仍 blocking。
 

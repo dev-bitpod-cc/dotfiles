@@ -11,7 +11,7 @@
 | 這條路能不能走、為什麼不能 | `docs/archive/dead-ends-2026-08.md`「事件記錄（event-time）」 |
 | 當初怎麼判的、跑了什麼、數字是多少、什麼條件下結論會翻 | **本檔** |
 
-**本檔是延遲載入的。** 不知道路徑時先用 `scripts/doc-governance.py find <自然語言或 stable ID>`；
+**本檔是延遲載入的。** 不知道路徑時先用 `scripts/doc-governance.py find '自然語言問題或 stable ID'`；
 history 與 evidence 都以 logical entry 納入同一個檢索面，不要求人工 pointer 才算可找回。
 
 > 切分模式與先例見 `claude/known-hazards.md`「分工」——該檔對 `claude/CLAUDE.md`

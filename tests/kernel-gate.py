@@ -42,6 +42,7 @@ PORTABLE_FILE = "AGENTS.md"
 ROUTE_FILES = ("AGENTS.md", "CLAUDE.md")
 
 MIN_RULE_LINES = 8   # safety floor 6 + fallback conventions 2
+MIN_ROUTE_LINES = 2  # heading + executable route contract; blocks equal to "x" are hollow
 
 # 逐字複本的意義在於「規則只寫一次」。這些字串是規則本體的指紋——出現在 block 之外，
 # 代表有人又抄了一份（複本一旦落在 gate 管不到的地方，漂移就回來了）。
@@ -120,6 +121,12 @@ def scan(root):
         if route_body is not None:
             if not route_body.strip():
                 findings.append("%s: route block 是空的" % rel)
+            route_rules = [line for line in route_body.splitlines() if line.strip()]
+            if len(route_rules) < MIN_ROUTE_LINES:
+                findings.append("%s: route block 只有 %d 條規則行（<%d）——內容被掏空？"
+                                % (rel, len(route_rules), MIN_ROUTE_LINES))
+            if not any(token in route_body for token in ('doc-find', 'doc-governance.py find')):
+                findings.append("%s: route block 缺 executable route 規則行" % rel)
             route_bodies[rel] = route_body
     if len(route_bodies) == len(ROUTE_FILES) and route_bodies[ROUTE_FILES[0]] != route_bodies[ROUTE_FILES[1]]:
         findings.append("%s 的 doc-governance route block 與 %s 不是逐字相同——複本已漂移"

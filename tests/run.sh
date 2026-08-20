@@ -191,7 +191,8 @@ echo "▶ 1d. 交叉引用完整性 gate"
 # 重述」。那個不變式原本**全靠散文**。指標斷掉的後果不是不整潔——claude/CLAUDE.md 要求
 # 「勿憑記憶重組」，指標斷掉時重組就是唯一選擇。首次掃描實測：1 條真死指標、2 條指向
 # repo 內有兩份同名檔的基名引用（reviewer-brief.md 有 Claude／Codex 兩份，刻意隔離的兩套
-# 判準，指錯即破壞 blind review）。判準與輸出契約見 tests/xref-gate.py 檔頭。
+# 判準，指錯即破壞 blind review）。判準與反例見 `docs/testing-contract.md`「1d. 交叉引用完整性 gate」；
+# tests/xref-gate.py 檔頭只承擔 compatibility wrapper 的 exit contract。
 XREF_GATE="$ROOT/tests/xref-gate.py"
 XR="$TMP/xref"
 mkdir -p "$XR/sub"
@@ -216,7 +217,25 @@ cat > "$XR/sub/dup.md" <<'XREFFIX'
 # 同名檔（放在 root 底下的別處，不在引用檔目錄，也不在 root 直下）
 ## 某節
 XREFFIX
-xref_run() { python3 "$XREF_GATE" --root "$XR" "$@" 2>&1; }
+xref_capture() {
+    xref_out="$(python3 "$XREF_GATE" --root "$XR" "$@" 2>"$XR/xref.err")"
+    xref_rc=$?
+}
+xref_capture_at() {
+    local root="$1"; shift
+    xref_out="$(python3 "$XREF_GATE" --root "$root" "$@" 2>"$XR/xref.err")"
+    xref_rc=$?
+}
+xref_red() {
+    local file="$1" pass="$2" fail="$3"
+    xref_capture "$file"
+    if [ "$xref_rc" -eq 0 ] && [ -n "$xref_out" ]; then ok "$pass"; else bad "${fail}（exit ${xref_rc}）"; fi
+}
+xref_green() {
+    local file="$1" pass="$2" fail="$3"
+    xref_capture "$file"
+    if [ "$xref_rc" -eq 0 ] && [ -z "$xref_out" ]; then ok "$pass"; else bad "${fail}（exit ${xref_rc}）"; fi
+}
 # 掃描器自檢在前：少了 RED，掃描器被改壞而恆不匹配時，對真實檔案的空輸出一樣是「通過」。
 cat > "$XR/r1.md" <<'XREFFIX'
 見 `target.md`「這個節名根本不存在於任何地方」。
@@ -278,22 +297,24 @@ cat > "$XR/g7.md" <<'XREFFIX'
 
 見 `target.md`「圍欄外必須抓到的節名」。
 XREFFIX
-if [ -n "$(xref_run "$XR/r1.md")" ]; then ok "gate 自檢：節名與內文皆無 → 命中"; else bad "gate 失效（RED 沒被抓，真實掃描的空輸出不可信）"; fi
-if [ -n "$(xref_run "$XR/r2.md")" ]; then ok "gate 自檢：目標節名只在 fenced block → 仍是死指標"; else bad "target 端未剝 fence（圍欄裡的範例標題被當成節存在 → 假綠）"; fi
-if [ -n "$(xref_run "$XR/r3.md")" ]; then ok "gate 自檢：目標節名只在 HTML comment → 仍是死指標"; else bad "target 端未剝 comment（註解掉的模板被當成節存在 → 假綠）"; fi
-if [ -n "$(xref_run "$XR/r4.md")" ]; then ok "gate 自檢：同名檔在 root 別處但引用處解析不到 → 命中（不做全 repo 模糊搜尋）"; else bad "gate 用基名模糊搜尋放行了——repo 內兩份 reviewer-brief.md 是刻意隔離的判準，指錯無警訊"; fi
-if [ -n "$(xref_run "$XR/r5.md")" ]; then ok "gate 自檢：節名 normalize 後為空 → 命中"; else bad "空節名放行（空字串是任何字串的子字串，會恆假綠）"; fi
-if [ -n "$(xref_run "$XR/r7.md")" ]; then ok "gate 自檢：source 的 HTML comment 內死指標 → 命中"; else bad "source 端漏掃 comment（krepo 的豁免指標就寫在 comment 裡）"; fi
+xref_red "$XR/r1.md" "gate 自檢：節名與內文皆無 → 命中" "gate 失效（RED 沒被抓，真實掃描的空輸出不可信）"
+xref_red "$XR/r2.md" "gate 自檢：目標節名只在 fenced block → 仍是死指標" "target 端未剝 fence（圍欄裡的範例標題被當成節存在 → 假綠）"
+xref_red "$XR/r3.md" "gate 自檢：目標節名只在 HTML comment → 仍是死指標" "target 端未剝 comment（註解掉的模板被當成節存在 → 假綠）"
+xref_red "$XR/r4.md" "gate 自檢：同名檔在 root 別處但引用處解析不到 → 命中（不做全 repo 模糊搜尋）" "gate 用基名模糊搜尋放行了——repo 內兩份 reviewer-brief.md 是刻意隔離的判準，指錯無警訊"
+xref_red "$XR/r5.md" "gate 自檢：節名 normalize 後為空 → 命中" "空節名放行（空字串是任何字串的子字串，會恆假綠）"
+xref_red "$XR/r7.md" "gate 自檢：source 的 HTML comment 內死指標 → 命中" "source 端漏掃 comment（krepo 的豁免指標就寫在 comment 裡）"
 xref_missing_rc=0
-xref_run "$XR/nosuch-file.md" >/dev/null 2>&1 || xref_missing_rc=$?
+xref_capture "$XR/nosuch-file.md"
+xref_missing_rc=$xref_rc
 if [ "$xref_missing_rc" -eq 2 ]; then ok "gate 自檢：不存在的輸入檔 → exit 2（錯誤不得冒充零命中）"; else bad "scanner 失敗未走 exit 2（實得 ${xref_missing_rc}）——run.sh 無 set -e，空 stdout 會被判成乾淨"; fi
-if [ -z "$(xref_run "$XR/g1.md")" ]; then ok "gate 自檢：節名前綴對上帶括號補充的 heading → 不報"; else bad "子字串比對失效（heading 帶括號補充是常態寫法，會全面誤紅）"; fi
-if [ -z "$(xref_run "$XR/g2.md")" ]; then ok "gate 自檢：引用內文一行（原文含 ** 修飾）→ 不報"; else bad "normalize 未剝 inline 修飾（合法的規則引用被判紅）"; fi
-if [ -z "$(xref_run "$XR/g3.md")" ]; then ok "gate 自檢：source 的 fenced 範例 → 不報"; else bad "source 端未剝 fence（報告模板的範例被當治理指標，逼人改模板文字）"; fi
-if [ -z "$(xref_run "$XR/g5.md")" ]; then ok "gate 自檢：巢狀圍欄（4 反引號包 3）不提前關欄"; else bad "closer 未檢查同字元與長度 → 圍欄提前關，內層範例被誤報"; fi
-if [ -n "$(xref_run "$XR/g6.md")" ]; then ok "gate 自檢：四格縮排的圍欄標記不是 opener（後續正文照掃）"; else bad "縮排無上限 → 四格縮排被當 opener，後面的真死指標被吞掉"; fi
-xref_g7="$(xref_run "$XR/g7.md")"
-if [ -n "$xref_g7" ] && ! grep -q '圍欄內的假節名' <<< "$xref_g7"; then
+xref_green "$XR/g1.md" "gate 自檢：節名前綴對上帶括號補充的 heading → 不報" "子字串比對失效（heading 帶括號補充是常態寫法，會全面誤紅）"
+xref_green "$XR/g2.md" "gate 自檢：引用內文一行（原文含 ** 修飾）→ 不報" "normalize 未剝 inline 修飾（合法的規則引用被判紅）"
+xref_green "$XR/g3.md" "gate 自檢：source 的 fenced 範例 → 不報" "source 端未剝 fence（報告模板的範例被當治理指標，逼人改模板文字）"
+xref_green "$XR/g5.md" "gate 自檢：巢狀圍欄（4 反引號包 3）不提前關欄" "closer 未檢查同字元與長度 → 圍欄提前關，內層範例被誤報"
+xref_red "$XR/g6.md" "gate 自檢：四格縮排的圍欄標記不是 opener（後續正文照掃）" "縮排無上限 → 四格縮排被當 opener，後面的真死指標被吞掉"
+xref_capture "$XR/g7.md"
+xref_g7="$xref_out"
+if [ "$xref_rc" -eq 0 ] && [ -n "$xref_g7" ] && ! grep -q '圍欄內的假節名' <<< "$xref_g7"; then
     ok "gate 自檢：fence 內的 \`\`\`text 不是 closer（圍欄內不誤報、圍欄外照抓）"
 else
     bad "closer 後未限定只允許空白 → 圍欄提前結束，內文被當正文誤報／圍欄外的死指標漏抓"
@@ -339,13 +360,16 @@ cat > "$XR/nolayer/README.md" <<'XREFFIX'
 
 沒有 docs/dead-ends.md。
 XREFFIX
-xref_rev="$(python3 "$XREF_GATE" --root "$XR/rev" 2>/dev/null)"
-if grep -q '沒人指的節' <<< "$xref_rev"; then ok "反向 gate：無人指名的節 → 命中孤兒"; else bad "節級孤兒漏抓（歸檔孤兒只掃 docs/archive/，分層證據檔全靠這道）"; fi
-if grep -q '只被內文引用的節' <<< "$xref_rev"; then ok "反向 gate：只被內文引用（非節名）→ 仍算孤兒"; else bad "把 has_body 命中當成接上了那一節——指到內文不等於指名該節，會放行真孤兒"; fi
-if ! grep -q '有人指名的節' <<< "$xref_rev"; then ok "反向 gate：被節名指到 → 不報"; else bad "入邊未記錄（正向判活、反向判孤兒，同一條指標兩個相反結論）"; fi
-if ! grep -q '節內細分' <<< "$xref_rev"; then ok "反向 gate：level 3 不納入（不是一條結論的證據層）"; else bad "h2_sections 收了非 level-2 heading → 製造無法行動的 finding"; fi
-if [ -z "$(python3 "$XREF_GATE" --root "$XR/rev" "$XR/rev/STATUS.md" 2>/dev/null)" ]; then ok "反向 gate：指定 files 子集 → 反向不跑（inbound 不完整會誤報真指標）"; else bad "子集掃描仍跑反向——會叫人去補一條本來就存在的指標，或更糟：以為那節可以刪"; fi
-if [ -z "$(python3 "$XREF_GATE" --root "$XR/nolayer" 2>/dev/null)" ]; then ok "反向 gate：無 docs/dead-ends.md → 零輸出（未採用分層的 repo 零回填）"; else bad "未採用分層的 repo 被誤報"; fi
+xref_capture_at "$XR/rev"
+xref_rev="$xref_out"; xref_rev_rc=$xref_rc
+if [ "$xref_rev_rc" -eq 0 ] && grep -q '沒人指的節' <<< "$xref_rev"; then ok "反向 gate：無人指名的節 → 命中孤兒"; else bad "節級孤兒漏抓（exit ${xref_rev_rc}）"; fi
+if [ "$xref_rev_rc" -eq 0 ] && grep -q '只被內文引用的節' <<< "$xref_rev"; then ok "反向 gate：只被內文引用（非節名）→ 仍算孤兒"; else bad "把 has_body 命中當成入邊，或 scanner 失敗（exit ${xref_rev_rc}）"; fi
+if [ "$xref_rev_rc" -eq 0 ] && ! grep -q '有人指名的節' <<< "$xref_rev"; then ok "反向 gate：被節名指到 → 不報"; else bad "入邊未記錄，或 scanner 失敗（exit ${xref_rev_rc}）"; fi
+if [ "$xref_rev_rc" -eq 0 ] && ! grep -q '節內細分' <<< "$xref_rev"; then ok "反向 gate：level 3 不納入（不是一條結論的證據層）"; else bad "h2_sections 收了非 level-2 heading，或 scanner 失敗（exit ${xref_rev_rc}）"; fi
+xref_capture_at "$XR/rev" "$XR/rev/STATUS.md"
+if [ "$xref_rc" -eq 0 ] && [ -z "$xref_out" ]; then ok "反向 gate：指定 files 子集 → 反向不跑（inbound 不完整會誤報真指標）"; else bad "子集掃描誤報或失敗（exit ${xref_rc}）"; fi
+xref_capture_at "$XR/nolayer"
+if [ "$xref_rc" -eq 0 ] && [ -z "$xref_out" ]; then ok "反向 gate：無 docs/dead-ends.md → 零輸出（未採用分層的 repo 零回填）"; else bad "未採用分層的 repo 被誤報或 scanner 失敗（exit ${xref_rc}）"; fi
 
 # 真實掃描：本 repo 的治理指標必須全部可解析
 xref_hits="$(python3 "$XREF_GATE" --root "$ROOT")"
@@ -360,13 +384,13 @@ else
 fi
 
 echo "▶ 1e. agent contract kernel block 完整性 gate"
-# 契約的 kernel 必須在三處逐字存在（repo 根 AGENTS.md／全域 Claude 檔／全域 Codex 檔）——
-# 純指標方案已被 H6 實測證偽（規則不在 always-on context 就不生效）。三份自足的代價是漂移，
+# 契約的 kernel 必須在四處逐字存在（repo 根 AGENTS.md／CLAUDE.md／全域 Claude 檔／全域 Codex 檔）——
+# 純指標方案已被 H6 實測證偽（規則不在 always-on context 就不生效）。四份自足的代價是漂移，
 # 這支 gate 就是把那個代價換成機檢。判準與輸出契約見 tests/kernel-gate.py 檔頭。
 KERNEL_GATE="$ROOT/tests/kernel-gate.py"
 KG="$TMP/kernel"
 
-kg_make() {   # $1=fixture 根；$2=kernel body（三份共用）；$3=覆寫給 codex 的 body（可省）
+kg_make() {   # $1=fixture 根；$2=kernel body（四份共用）；$3=覆寫給 codex 的 body（可省）
     local d="$1" body="$2" codex_body="${3:-$2}"
     local route_body='## 文檔檢索路由
 
@@ -405,55 +429,73 @@ kg_make() {   # $1=fixture 根；$2=kernel body（三份共用）；$3=覆寫給
     done
 }
 
-kg_run() { python3 "$KERNEL_GATE" --root "$1" 2>/dev/null; }
+kg_capture() {
+    kg_out="$(python3 "$KERNEL_GATE" --root "$1" 2>"$KG/kernel.err")"
+    kg_rc=$?
+}
+kg_red() {
+    local root="$1" pattern="$2" pass="$3" fail="$4"
+    kg_capture "$root"
+    if [ "$kg_rc" -eq 0 ] && grep -q "$pattern" <<< "$kg_out"; then ok "$pass"; else bad "${fail}（exit ${kg_rc}）"; fi
+}
 
 # 八條規則的合法 body（GREEN 基準）
 kg_body="$(for i in 1 2 3 4 5 6 7 8; do echo "- rule ${i}"; done)"
 
 rm -rf "$KG"; kg_make "$KG/green" "$kg_body"
-kg_out="$(kg_run "$KG/green")"; kg_rc=$?
+kg_capture "$KG/green"
 assert_rc "gate 自檢：合法 fixture → exit 0" 0 "$kg_rc"
 assert_eq "gate 自檢：合法 fixture 無 findings" "" "$kg_out"
 
 # 漂移：其中一份的 body 不同
 kg_make "$KG/drift" "$kg_body" "$(printf '%s\n' "$kg_body" | sed 's/rule 8/rule 8 （偷改）/')"
-if kg_run "$KG/drift" | grep -q '漂移'; then ok "gate 自檢：複本漂移 → 命中"; else bad "gate 自檢：複本漂移未命中"; fi
+kg_red "$KG/drift" '漂移' "gate 自檢：複本漂移 → 命中" "gate 自檢：複本漂移未命中"
 
 # doc-find route 也在兩個 repo-resident always-on 檔逐字複製；單邊漂移要紅
 kg_make "$KG/route-drift" "$kg_body"
 sed -i.bak 's/先執行 doc-find。/改走人工 archive。/' "$KG/route-drift/CLAUDE.md" && rm -f "$KG/route-drift/CLAUDE.md.bak"
-if kg_run "$KG/route-drift" | grep -q 'route block.*漂移'; then ok "gate 自檢：doc-find route 漂移 → 命中"; else bad "gate 自檢：doc-find route 漂移未命中"; fi
+kg_red "$KG/route-drift" 'route block.*漂移' "gate 自檢：doc-find route 漂移 → 命中" "gate 自檢：doc-find route 漂移未命中"
 
-# 三份都被掏空 → 「空 == 空」會相等，靠條目數下限擋
+# 兩份 route block 同時被掏空時仍會逐字相同；內容下限必須獨立擋住這種假綠。
+kg_make "$KG/route-hollow" "$kg_body"
+for f in "$KG/route-hollow/AGENTS.md" "$KG/route-hollow/CLAUDE.md"; do
+    sed -i.bak '/agent-contract:route:start/,/agent-contract:route:end/{/agent-contract:route:/!c\
+x
+}' "$f" && rm -f "$f.bak"
+done
+kg_red "$KG/route-hollow" 'route block.*規則行' "gate 自檢：route 複本同時掏空 → 命中" "gate 自檢：route 複本同時掏空仍假綠"
+
+# 四份都被掏空 → 「空 == 空」會相等，靠條目數下限擋
 kg_make "$KG/hollow" "- rule 1"
-if kg_run "$KG/hollow" | grep -q '規則行'; then ok "gate 自檢：三份同時掏空 → 命中（空==空 的假綠）"; else bad "gate 自檢：掏空未命中——這是最關鍵的假綠"; fi
+kg_red "$KG/hollow" '規則行' "gate 自檢：四份同時掏空 → 命中（空==空 的假綠）" "gate 自檢：掏空未命中——這是最關鍵的假綠"
 
 # 缺一份
 kg_make "$KG/missing" "$kg_body"; rm -f "$KG/missing/codex/AGENTS.md"
-if kg_run "$KG/missing" | grep -q '檔案不存在'; then ok "gate 自檢：缺一份 → 命中"; else bad "gate 自檢：缺一份未命中"; fi
+kg_red "$KG/missing" '檔案不存在' "gate 自檢：缺一份 → 命中" "gate 自檢：缺一份未命中"
 
 # marker 不成對
 kg_make "$KG/unpaired" "$kg_body"
 sed -i.bak 's|<!-- agent-contract:kernel:end -->||' "$KG/unpaired/claude/CLAUDE.md" && rm -f "$KG/unpaired/claude/CLAUDE.md.bak"
-if kg_run "$KG/unpaired" | grep -q 'marker'; then ok "gate 自檢：marker 不成對 → 命中"; else bad "gate 自檢：marker 不成對未命中"; fi
+kg_red "$KG/unpaired" 'marker' "gate 自檢：marker 不成對 → 命中" "gate 自檢：marker 不成對未命中"
 
 # canary：規則本體在 block 之外又出現一份
 kg_make "$KG/canary" "$kg_body"
 # shellcheck disable=SC2016  # 反引號是 markdown 行內 code 的字面內容，單引號內不展開（正是要餵給 gate 的 canary）
 echo '- 另外提醒一下：NEVER `git add -A`' >> "$KG/canary/claude/CLAUDE.md"
-if kg_run "$KG/canary" | grep -q '指紋'; then ok "gate 自檢：block 外的複本 → 命中"; else bad "gate 自檢：block 外的複本未命中"; fi
+kg_red "$KG/canary" '指紋' "gate 自檢：block 外的複本 → 命中" "gate 自檢：block 外的複本未命中"
 
 # 可攜性：managed block 內出現私人路徑
 kg_make "$KG/private" "$(printf '%s\n- 詳見 ~/.claude/skills/project 的說明\n' "$kg_body")"
-if kg_run "$KG/private" | grep -q '私人路徑'; then ok "gate 自檢：block 內私人路徑 → 命中"; else bad "gate 自檢：block 內私人路徑未命中"; fi
+kg_red "$KG/private" '私人路徑' "gate 自檢：block 內私人路徑 → 命中" "gate 自檢：block 內私人路徑未命中"
 
 # 可攜性：Repo specifics 節（block 外）出現私人路徑 → **不得**命中，否則本 repo 那節無法寫
-if kg_run "$KG/green" | grep -q '私人路徑'; then bad "gate 自檢：誤報 block 外的私人路徑（Repo specifics 是逐 repo 重填的）"; else ok "gate 自檢：block 外的私人路徑不誤報"; fi
+kg_capture "$KG/green"
+if [ "$kg_rc" -ne 0 ]; then bad "gate 自檢：合法 fixture scanner 失敗（exit ${kg_rc}）"; elif grep -q '私人路徑' <<< "$kg_out"; then bad "gate 自檢：誤報 block 外的私人路徑（Repo specifics 是逐 repo 重填的）"; else ok "gate 自檢：block 外的私人路徑不誤報"; fi
 
 # 可攜性：跨檔指標句型（在 dotfiles 內 xref-gate 判它活著，裝到別的 repo 就是死的）
 # shellcheck disable=SC2016  # 同上：要構造的就是「指標句型」這個字面，不是命令替換
 kg_make "$KG/xref" "$(printf '%s\n- 完整條文見 `ship-paths.md`「說法表」\n' "$kg_body")"
-if kg_run "$KG/xref" | grep -q '跨檔指標'; then ok "gate 自檢：block 內跨檔指標 → 命中"; else bad "gate 自檢：block 內跨檔指標未命中"; fi
+kg_red "$KG/xref" '跨檔指標' "gate 自檢：block 內跨檔指標 → 命中" "gate 自檢：block 內跨檔指標未命中"
 
 # scanner 自身失敗必須 exit 2（不可與「內容乾淨」的 exit 0 混用）
 python3 "$KERNEL_GATE" --root "$KG/does-not-exist" >/dev/null 2>&1
@@ -561,7 +603,7 @@ else
 fi
 
 echo "▶ 1g. doc-governance 跨檔契約"
-if grep -q 'references/modes-and-scope.md.*Codex 呼叫協議' "$ROOT/claude/skills/deep-review/SKILL.md" \
+if grep -q 'references/modes-and-scope.md.*Autocodex 模式' "$ROOT/claude/skills/deep-review/SKILL.md" \
     && ! grep -q '見上方「Codex 呼叫協議」' "$ROOT/claude/skills/deep-review/SKILL.md"; then
     ok "deep-review 的 Codex protocol 指向現行 reference"
 else
@@ -584,10 +626,11 @@ if grep -q 'doc-governance.*verdict: STOP' "$ROOT/claude/skills/project/referenc
 else
     bad "log workflow 對 doc finding 的摘要表與 STOP 清單互相矛盾"
 fi
-if ! sed -n '150,175p' "$ROOT/claude/skills/project/references/pressure-tests.md" | grep -q 'STATUS.md.*關鍵決策.*死路'; then
+scenario7="$(sed -n '/^## Scenario 7 /,/^---$/p' "$ROOT/claude/skills/project/references/pressure-tests.md")"
+if [ -n "$scenario7" ] && ! grep -q 'STATUS.md.*關鍵決策.*死路' <<< "$scenario7"; then
     ok "pressure Scenario 7 不再要求寫入 adopted STATUS 歷史節"
 else
-    bad "pressure Scenario 7 仍要求新 schema 禁止的 STATUS 歷史節"
+    bad "pressure Scenario 7 缺少正向 anchor，或仍要求新 schema 禁止的 STATUS 歷史節"
 fi
 if grep -q 'STATUS-legacy-template.md' "$ROOT/claude/skills/project/SKILL.md" \
     && [ -f "$ROOT/claude/templates/STATUS-legacy-template.md" ]; then
@@ -3344,7 +3387,7 @@ out="$("$HA_SCRIPT" survey "$SVT2")"
 assert_eq "同 mtime → 檔名升冪（C locale 序，穩定可重跑）" "a-Zed.md a-first.md z-second.md" \
     "$(awk '/^active: /{printf "%s%s", sep, $2; sep=" "}' <<< "$out")"
 
-# active: none —— 先前零測試覆蓋。它是 R1 的硬依賴（SKILL.md「零份 active 不等於沒有交接檔」）
+# active: none —— 先前零測試覆蓋。它是 R1 的硬依賴（`claude/skills/handoff/SKILL.md`「R1：定位」）
 # 與 eval H3 的判定證據。空 rows 若照 `done <<< "$rows"` 讀會產生**一次空行迭代**，
 # found 被誤設為 1、這一行反而消失
 SVN="$TMP/ha-sv-none"; mkdir -p "$SVN"

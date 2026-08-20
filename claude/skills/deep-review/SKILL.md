@@ -68,7 +68,7 @@ Deep Review 進度：
 ### 1. 確定審查範圍
 
 完整 priority、base、baseline-mode、skill-authoring 與 untracked 規則在必讀的
-`references/modes-and-scope.md`「審查範圍選擇」。只照該節與 `review-state.sh` 輸出決定：有明示 range →
+`references/modes-and-scope.md`「1. 確定審查範圍」。只照該節與 `review-state.sh` 輸出決定：有明示 range →
 working tree → 領先 default 的 branch → MUST ASK。主 agent 只讀 stat；full diff 由 reviewer 自取。
 
 ### 2. 偵測迭代輪次
@@ -147,7 +147,7 @@ cause + non-blocking items listed separately.
 
 > round number, round cap, rounds remaining, "final round", "last pass", "we're near max rounds", prior-round findings, the author's fix summary, "please verify the fixes", "only look for newly introduced problems", or any framing that the change is near completion or has already been vetted.
 
-輪次是 **orchestration 層的私有狀態**：Step 2 照常偵測，用來決定何時停、報告怎麼寫——但不進 reviewer 的上下文。同理，`fix:` commit 的 message 不編輪號（見「迭代紀律」）。
+輪次是 **orchestration 層的私有狀態**：Step 2 照常偵測，用來決定何時停、報告怎麼寫——但不進 reviewer 的上下文。同理，`fix:` commit 的 message 不編輪號（見 `references/modes-and-scope.md`「迭代紀律：每輪修復後 commit」）。
 
 **已知殘留，不要宣稱成完全隔離**：commit history 有兩條抵達 reviewer 的管道——(1) **harness 把 gitStatus（含最近 5 筆 commit 的 hash 與 subject）注入 subagent 的 system prompt**，reviewer 不做任何動作就看得到（2026-08-05 實測：`tool_uses=0` 的 subagent 能逐字複述主 repo 的 5 個 commit hash）；(2) reviewer 自行跑 `git log`（實測 6/6 都跑）。每輪恰好產生一個 fix commit，故**數同名 commit 仍可反推「已改過幾次」**。中性化擋掉的是輪號與「還剩幾輪」，擋不掉「已完成幾輪」。要完全消除得每輪 squash，那會破壞迭代紀律與 context 控制，成本大於收益，故接受此殘留。**但管道 (1) 無需 reviewer 主動、也關不掉，故 commit message 中性化是必要而非可選**——寫成 `fix: R4 review fixes` 等於把輪號零成本送進 reviewer 的 system prompt。
 
@@ -179,7 +179,7 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 3. 若未通過且已達 R5 → **先執行 `~/.claude/skills/deep-review/scripts/review-anchor.sh terminate --repo <r> --reason r5-blocking`（成功後）再輸出 autofix 終止報告**，結束（不進入 codex 階段）。
    **順序不可顛倒**——final response 之後沒有保證還能執行工具，寫成「報告後再 terminate」等於它可能永遠不會落盤。報告中標明 terminal 已落盤。
    > 這道 state 讓「終止」成為 terminal：下一次 `record` 會 STOP，不會靜默重開新 cycle（2026-08-06 實地發生過，外層重置了輪次上限）。續審同一批變更用 `resume-after-terminal`（base 不變、cycle +1）；要重建全新審查範圍才用 `clear` + `record`。
-4. 若未通過且未達上限 → 主 agent 依修復計畫執行修復 → 驗證（見「修復後驗證」）→ 測試通過才 commit → 回到 Step 4 發起下一輪審查；若驗證無法通過（反覆修仍紅或環境擋住）→ 依「修復後驗證」停止，輸出終止/blocked 報告（沿用 Autofix 終止模板，於收斂失敗分析註明是測試卡關），不進下一輪
+4. 若未通過且未達上限 → 主 agent 依修復計畫執行修復 → 驗證（見 `references/modes-and-scope.md`「Autofix 模式」）→ 測試通過才 commit → 回到 Step 4 發起下一輪審查；若驗證無法通過（反覆修仍紅或環境擋住）→ 依該節停止，輸出終止/blocked 報告（沿用 Autofix 終止模板，於收斂失敗分析註明是測試卡關），不進下一輪
    - **context 處理**：Step 3 的專案 context（CLAUDE.md、設定檔）沿用，不重新收集；diff 由**每輪全新的 subagent 自行收集**（傳同一條 range 指令即可——修復 commit 後 HEAD 前進，subagent 跑 `git diff <base>...HEAD` 拿到的自然是涵蓋最新修復的完整 diff），主 agent 不搬運 diff 內容、也不讓 subagent 沿用任何舊輪產物
    - **baseline 模式的收斂（autofix 與 autocodex 機制不同）**：autofix 的 range **不縮**（fixer 需看完整狀態確認沒改壞），改縮 **blocking 判準**——baseline 模式時，契約模板加上那個 baseline 條件行（見 Step 4 模板；它描述的是 artifact 狀態「此 diff 含既有基線」，**不提輪次、不提已審過幾次**）。此 range 機制 diff 模式不套用、照常全審；但 diff 內若含 prose artifact，其措辭/完整度 nits 仍套 Completeness 深井判準（見 `references/reviewer-brief.md`，不分模式）。
    - **成本與邊界**：autofix baseline 因 range 不縮，subagent 每輪吃 `<empty-tree>..HEAD`（整庫）diff——大型 repo 會撞 Step 4 的 context 上限。靠 Step 4「規模策略 >40」依模組分拆 subagent 緩解；若仍過大，建議全庫稽核改走 autocodex（codex 階段 C2+ 才有縮 range）。autocodex 縮 range / autofix 縮判準 的差異源於：autocodex 是無狀態第三方、autofix 的 fixer 需看完整狀態。
@@ -206,7 +206,7 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 #### 流程
 
 1. 從 Step 5 通過報告的「第三方審查資訊」取出每個 repo 的路徑
-2. 對每個 repo 跑 `review-anchor.sh codex-next --repo <repo>` 取 `codex-cmd:` 行，以背景 Bash 整行照抄執行（見 `references/modes-and-scope.md`「Codex 呼叫協議」；exit 契約與救援階梯照其 protocol 檔）
+2. 對每個 repo 跑 `review-anchor.sh codex-next --repo <repo>` 取 `codex-cmd:` 行，以背景 Bash 整行照抄執行（見 `references/modes-and-scope.md`「Autocodex 模式」；exit 契約與救援階梯照其 protocol 檔）
 3. 收到 codex findings 後，主 agent 逐條讀原始碼獨立驗證：
    - **true positive**：確實有問題，需修復
    - **false positive**：codex 誤判，不處理

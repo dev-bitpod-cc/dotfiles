@@ -3,7 +3,7 @@
 需要找 repo 的決策、死路、里程碑、規範、plan、skill reference 或 eval 時，先跑：
 
 ```sh
-scripts/doc-governance.py find '<自然語言問題或 record ID>'
+scripts/doc-governance.py find '<自然語言問題或 stable ID>'
 ```
 
 結果已限制為 logical entries，不要為了找一條理由先整批讀 `docs/archive/`。若無命中，再使用 `rg`

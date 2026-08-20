@@ -23,7 +23,7 @@ TOP_BULLET_RE = re.compile('^([-+*])\\s+(.*)$')
 COMMENT_RE = re.compile('<!--.*?-->', re.S)
 DATE_RE = re.compile('(?<!\\d)(\\d{4}-\\d{2}-\\d{2})(?!\\d)')
 STABLE_ID_RE = re.compile('\\b([DXM])-(\\d{8})-([a-z0-9][a-z0-9-]*)\\b')
-REF_RE = re.compile('`([^`\\n]+?\\.(?:md|sh))`[「『]([^」』\\n]{1,80})[」』]')
+REF_RE = re.compile('(?:(?:`(?P<quoted>[^`\\n]+?\\.(?:md|sh))`|(?P<bare>[A-Za-z0-9_./~-]+?\\.(?:md|sh)))|(?P<local>(?<![A-Za-z0-9_\\u4e00-\\u9fff])見(?:上方|下方|本檔|本節)?))[「『](?P<section>[^」』\\n]{1,80})[」』]')
 SECTION_MIN = 2
 EVENT_SECTION = '事件記錄（event-time）'
 MAX_RESULTS = 5
@@ -33,7 +33,7 @@ TILDE_MAP = (('~/.claude/skills/', 'claude/skills/'), ('~/.codex/skills/', 'code
 METRICS = ('dated_records', 'struck_records', 'checkbox_records', 'undated_records', 'h2_sections', 'empty_h2_sections', 'file_preamble_entries', 'legacy_type_file_mismatches')
 
 class ScannerError(RuntimeError):
-  """The scanner could not establish a trustworthy result."""
+  pass
 
 @dataclass
 class DocClass:
@@ -69,7 +69,7 @@ class Document:
     try:
       text = path.read_text(encoding='utf-8')
     except (OSError, UnicodeDecodeError) as exc:
-      raise ScannerError(f'讀取失敗 {rel}: {exc}') from exc
+      raise ScannerError(f'read {rel}: {exc}') from exc
     lines = text.splitlines()
     return cls(root=root, rel=rel, path=path, text=text, lines=lines, visible=visible_lines(text), doc_class=doc_class)
 
@@ -120,24 +120,24 @@ class Entry:
 def run_git(root, args, *, allow_failure=False):
   proc = subprocess.run(['git', '-C', str(root), *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
   if proc.returncode and (not allow_failure):
-    raise ScannerError(f"git {' '.join(args)} 失敗: {proc.stderr.strip()}")
+    raise ScannerError(f"git {' '.join(args)}: {proc.stderr.strip()}")
   return proc.stdout
 
 def resolve_root(value):
   if value:
     root = Path(value).expanduser().resolve()
     if not root.is_dir():
-      raise ScannerError(f'--root 不是目錄: {root}')
+      raise ScannerError(f'--root not directory: {root}')
     return root
   proc = subprocess.run(['git', 'rev-parse', '--show-toplevel'], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
   if proc.returncode:
-    raise ScannerError('無法由 cwd 解析 git toplevel')
+    raise ScannerError('no git toplevel from cwd')
   return Path(proc.stdout.strip()).resolve()
 
 def validate_relpath(value, label):
   path = Path(value)
   if path.is_absolute() or '..' in path.parts:
-    raise ScannerError(f'config {label} 不得逃出 repo root: {value}')
+    raise ScannerError(f'config {label} escapes root: {value}')
 
 def need(condition, message):
   if not condition:
@@ -148,42 +148,54 @@ def load_config(root, *, optional=False):
   if not path.is_file():
     if optional:
       return None
-    raise ScannerError(f'config 不存在: {CONFIG_NAME}')
+    raise ScannerError(f'config missing: {CONFIG_NAME}')
   try:
     raw = json.loads(path.read_text(encoding='utf-8'))
   except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-    raise ScannerError(f'config 無法解析: {exc}') from exc
-  need(raw.get('schema') == 1, 'schema 必須為 1')
+    raise ScannerError(f'config parse: {exc}') from exc
+  need(isinstance(raw, dict), 'root must be object')
+  need(raw.get('schema') == 1, 'schema must be 1')
   history = raw.get('history_paths')
-  need(isinstance(history, dict) and set(history) == {'decision', 'dead_end', 'milestone'}, 'history_paths 不完整')
+  need(isinstance(history, dict) and set(history) == {'decision', 'dead_end', 'milestone'}, 'history_paths invalid')
   for kind, pattern in history.items():
-    need(isinstance(pattern, str) and '{YYYY-MM}' in pattern, f'history_paths.{kind} 缺 {{YYYY-MM}}')
+    need(isinstance(pattern, str) and '{YYYY-MM}' in pattern, f'history_paths.{kind} needs {{YYYY-MM}}')
     validate_relpath(pattern.replace('{YYYY-MM}', '2000-01'), f'history_paths.{kind}')
-  need(isinstance(raw.get('classes'), list), 'classes 必須是 list')
+  need(isinstance(raw.get('classes'), list), 'classes must be list')
   classes = []
   names = set()
   for index, item in enumerate(raw['classes']):
-    need(isinstance(item, dict), f'classes[{index}] 必須是 object')
+    need(isinstance(item, dict), f'classes[{index}] must be object')
     name, mode, paths = (item.get('name'), item.get('mode'), item.get('paths'))
-    need(isinstance(name, str) and bool(name) and name not in names, f'classes[{index}] name 無效')
-    need(mode in MODES, f'class {name} mode 無效: {mode}')
-    need(mode != 'derived' or isinstance(item.get('rebuild'), str) and item['rebuild'].strip(), f'class {name} 缺 rebuild command')
-    need(isinstance(paths, list) and bool(paths) and all((isinstance(p, str) for p in paths)), f'class {name} paths 無效')
+    need(isinstance(name, str) and name and name not in names, f'classes[{index}] name invalid')
+    need(mode in MODES, f'class {name} mode invalid: {mode}')
+    need(mode != 'derived' or isinstance(item.get('rebuild'), str) and item['rebuild'].strip(), f'class {name} needs rebuild')
+    need(isinstance(paths, list) and paths and all(isinstance(p, str) for p in paths), f'class {name} paths invalid')
     for pattern in paths:
       validate_relpath(pattern, f'class {name} path')
     unit = item.get('unit', 'h2')
-    need(unit in {'h2', 'top_level_bullet'}, f'class {name} unit 無效: {unit}')
+    need(unit in {'h2', 'top_level_bullet'}, f'class {name} unit invalid: {unit}')
     names.add(name)
     classes.append(DocClass(name=name, mode=mode, paths=paths, unit=unit, requires_inbound=bool(item.get('requires_inbound', False))))
-  need(isinstance(raw.get('legacy_plan_blobs', {}), dict), 'legacy_plan_blobs 必須是 object')
+  legacy = raw.get('legacy_plan_blobs', {})
+  need(isinstance(legacy, dict), 'legacy_plan_blobs must be object')
   searchable = raw.get('searchable_legacy_plans', [])
-  need(isinstance(searchable, list) and set(searchable) <= set(raw.get('legacy_plan_blobs', {})), 'searchable_legacy_plans 無效')
-  need(isinstance(raw.get('loaded_budgets', {}), dict), 'loaded_budgets 必須是 object')
-  need(isinstance(raw.get('governance_surface', []), list), 'governance_surface 必須是 list')
+  need(isinstance(searchable, list) and set(searchable) <= set(legacy), 'searchable_legacy_plans invalid')
+  plan_dir = raw.get('plan_dir', 'docs/plans')
+  need(isinstance(plan_dir, str) and plan_dir, 'plan_dir invalid')
+  validate_relpath(plan_dir, 'plan_dir')
+  budgets = raw.get('loaded_budgets', {})
+  need(isinstance(budgets, dict), 'loaded_budgets must be object')
+  for pattern, rule in budgets.items():
+    need(isinstance(rule, dict) and all(type(value) is int and value > 0 for value in rule.values()), f'loaded_budgets.{pattern} invalid')
+  status = raw.get('status_schema')
+  if status is not None:
+    need(isinstance(status, dict), 'status_schema must be object')
+  need(isinstance(raw.get('governance_surface', []), list), 'governance_surface must be list')
   return Config(root=root, raw=raw, classes=classes)
 
-def tracked_markdown(root):
-  output = run_git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.md'])
+def tracked_markdown(root, *, xref=False):
+  patterns = ['*.md', '*.sh'] if xref else ['*.md']
+  output = run_git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', *patterns])
   return sorted(item for item in output.split('\x00') if item)
 
 def matching_classes(rel, config):
@@ -401,6 +413,8 @@ def entry_score(entry, query, query_tokens):
   score += title_hits * 200 + body_hits * 20
   if query_tokens and query_tokens <= title_tokens:
     score += 1000
+  if query_tokens and query_tokens <= body_tokens:
+    score += 500
   aliases = entry.metadata.get('別名', '') + ' ' + entry.metadata.get('標籤', '')
   score += len(query_tokens & search_tokens(aliases)) * 80
   asks_for_reason = any(marker in query_norm for marker in ('為什麼', '原因', '理由', 'why'))
@@ -542,7 +556,7 @@ def plan_findings(config, markdown):
     try:
       text = (config.root / rel).read_text(encoding='utf-8')
     except (OSError, UnicodeDecodeError) as exc:
-      raise ScannerError(f'讀取失敗 {rel}: {exc}') from exc
+      raise ScannerError(f'read {rel}: {exc}') from exc
     meta = plan_metadata(text)
     required = {'日期', '狀態', '工作項', '種類', '需求來源'}
     missing = sorted(required - set(meta))
@@ -553,14 +567,14 @@ def plan_findings(config, markdown):
     if state not in PLAN_STATES:
       findings.append(f'{rel}: invalid plan status {state}')
       continue
+    before = head_text(config.root, rel)
+    before_meta = plan_metadata(before) if before is not None else {}
+    if before_meta.get('狀態') in FINAL_PLAN_STATES and file_blob(config.root, rel) != head_blob(config.root, rel):
+      findings.append(f'closed plan mutation: {rel}')
     if state in ACTIVE_PLAN_STATES:
       active.setdefault(meta['工作項'], []).append(rel)
     if state == 'superseded' and '取代計畫' not in meta:
       findings.append(f'{rel}: superseded plan missing replacement')
-    if state in FINAL_PLAN_STATES:
-      before = head_blob(config.root, rel)
-      if before and file_blob(config.root, rel) != before:
-        findings.append(f'closed plan mutation: {rel}')
   for work_item, paths in active.items():
     if len(paths) > 1:
       findings.append(f"duplicate active plan: {work_item} -> {','.join(sorted(paths))}")
@@ -577,13 +591,11 @@ def budget_findings(config, documents):
       findings.append(f'loaded file missing budget: {doc.rel}')
       continue
     pattern, rule = max(matches, key=lambda item: len(item[0]))
-    if not isinstance(rule, dict):
-      raise ScannerError(f'config loaded_budgets.{pattern} 必須是 object')
     size = len(doc.text.encode('utf-8'))
     lines = len(doc.lines)
-    if 'bytes' in rule and size > int(rule['bytes']):
+    if 'bytes' in rule and size > rule['bytes']:
       findings.append(f"loaded budget bytes: {doc.rel} {size}>{rule['bytes']}")
-    if 'lines' in rule and lines > int(rule['lines']):
+    if 'lines' in rule and lines > rule['lines']:
       findings.append(f"loaded budget lines: {doc.rel} {lines}>{rule['lines']}")
   return findings
 
@@ -629,8 +641,10 @@ def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, sec
     source = Document.read(root, rel)
     aliases = (section_aliases or []) if rel in (alias_sources or ()) else ()
     for lineno, line in source.source_lines():
+      if rel.endswith('.sh') and not line.lstrip().startswith('#'):
+        continue
       for match in REF_RE.finditer(line):
-        target, section = (match.group(1), match.group(2))
+        target, section, local = (match.group('quoted') or match.group('bare') or rel, match.group('section'), bool(match.group('local')))
         here = f'{rel}:{lineno}: `{target}`「{section}」'
         if len(xref_norm(section)) < SECTION_MIN:
           findings.append(f'{here} — 節名 normalize 後不足 {SECTION_MIN} 字，無法比對')
@@ -646,7 +660,7 @@ def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, sec
         target_doc = cache[path]
         if target_doc.has_section(section):
           inbound.setdefault(path, set()).add(xref_norm(section))
-        elif not target_doc.has_body(section):
+        elif local or not target_doc.has_body(section):
           alias_matched = False
           target_rel = str(path.relative_to(root))
           for alias in aliases:
@@ -656,12 +670,12 @@ def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, sec
               continue
             alias_path = (root / alias['to_path']).resolve()
             if not alias_path.is_file():
-              raise ScannerError(f"xref alias 目標不存在: {alias['to_path']}")
+              raise ScannerError(f"xref alias missing: {alias['to_path']}")
             if alias_path not in cache:
               cache[alias_path] = Document.read(root, alias['to_path'])
             alias_doc = cache[alias_path]
             if not alias_doc.has_section(alias['to_section']):
-              raise ScannerError(f"xref alias 目標章節不存在: {alias['to_path']}「{alias['to_section']}」")
+              raise ScannerError(f"xref alias section missing: {alias['to_path']}「{alias['to_section']}」")
             inbound.setdefault(alias_path, set()).add(xref_norm(alias['to_section']))
             alias_matched = True
             break
@@ -699,12 +713,8 @@ def unchanged_legacy_plans(config):
   if config is None:
     return set()
   legacy = config.raw.get('legacy_plan_blobs', {})
-  if not isinstance(legacy, dict):
-    raise ScannerError('config legacy_plan_blobs 必須是 object')
   unchanged = set()
   for rel, expected in legacy.items():
-    if not isinstance(rel, str) or not isinstance(expected, str):
-      raise ScannerError('config legacy_plan_blobs 必須是 path -> blob OID')
     path = config.root / rel
     if path.is_file() and file_blob(config.root, rel) == expected:
       unchanged.add(rel)
@@ -718,12 +728,12 @@ def xref_section_aliases(config):
     return []
   raw = config.raw.get('xref_section_aliases', [])
   if not isinstance(raw, list):
-    raise ScannerError('config xref_section_aliases 必須是 list')
+    raise ScannerError('config xref_section_aliases must be list')
   aliases = []
   required = {'from_path', 'from_section', 'to_path', 'to_section'}
   for item in raw:
     if not isinstance(item, dict) or set(item) != required or (not all((isinstance(item[key], str) and item[key] for key in required))):
-      raise ScannerError('config xref_section_aliases item 欄位無效')
+      raise ScannerError('config xref_section_aliases item invalid')
     validate_relpath(item['from_path'], 'xref alias from_path')
     validate_relpath(item['to_path'], 'xref alias to_path')
     aliases.append(item)
@@ -765,8 +775,6 @@ def status_findings(config, documents):
       block.append(line)
   days = spec.get('stale_days')
   if days is not None:
-    if not isinstance(days, int) or days < 1:
-      raise ScannerError('config status_schema.stale_days 必須是正整數')
     before = run_git(config.root, ['log', '-1', '--format=%ct', '--', path], allow_failure=True).strip()
     now = run_git(config.root, ['log', '-1', '--format=%ct'], allow_failure=True).strip()
     if before and now and (lag := (int(now) - int(before)) // 86400) > days:
@@ -802,7 +810,8 @@ def backlog_findings(config, documents, entries):
         findings.append(f'duplicate backlog ID: {stable_id} at {first_path}:{first_line} and {doc.rel}:{index + 1}')
       else:
         seen[stable_id] = (doc.rel, index + 1)
-      without_id = re.sub('^\\*\\*B-\\d{8}-[a-z0-9-]+ · \\*\\*\\s*', '', title)
+      without_id = re.sub('^.*?\\bB-\\d{8}-[a-z0-9-]+\\b', '', title, count=1)
+      without_id = re.sub('^[\\s*~_·:：.\\-]+', '', without_id)
       if re.match('^\\[[xX]\\]\\s*', without_id) or re.match('^\\[[ ]\\]\\s*~~', without_id):
         findings.append(f'closed backlog item remains: {stable_id} at {doc.rel}:{index + 1}')
     before = head_text(config.root, doc.rel)
@@ -817,6 +826,7 @@ def audit_findings(config):
   documents, classification = build_documents(config)
   entries, _ = build_entries(documents)
   markdown = tracked_markdown(config.root)
+  xref_sources = tracked_markdown(config.root, xref=True)
   findings = []
   findings.extend(class_findings(config, classification))
   findings.extend(budget_findings(config, documents))
@@ -827,7 +837,7 @@ def audit_findings(config):
   findings.extend(backlog_findings(config, documents, entries))
   findings.extend(self_governance_findings(config))
   alias_sources = {rel for rel, matches in classification.items() if len(matches) == 1 and matches[0].mode == 'history'}
-  findings.extend(xref_scan(config.root, markdown, full_scan=True, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources))
+  findings.extend(xref_scan(config.root, xref_sources, full_scan=True, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources))
   return sorted(set(findings))
 
 def cmd_audit(config, *, shadow, ship):
@@ -849,22 +859,22 @@ def surface_bytes(config):
     elif isinstance(item, dict):
       rel, start, end = (item.get('path'), item.get('start'), item.get('end'))
     else:
-      raise ScannerError('config governance_surface item 必須是 path 或 object')
+      raise ScannerError('config governance_surface item invalid')
     if not isinstance(rel, str):
-      raise ScannerError('config governance_surface path 缺失')
+      raise ScannerError('config governance_surface path missing')
     validate_relpath(rel, 'governance_surface')
     path = config.root / rel
     try:
       data = path.read_bytes()
     except OSError as exc:
-      raise ScannerError(f'governance surface 讀取失敗 {rel}: {exc}') from exc
+      raise ScannerError(f'governance surface read {rel}: {exc}') from exc
     if start is not None or end is not None:
       text = data.decode('utf-8')
       if not isinstance(start, str) or not isinstance(end, str):
-        raise ScannerError(f'governance surface markers 不完整: {rel}')
+        raise ScannerError(f'governance markers incomplete: {rel}')
       begin, finish = (text.find(start), text.find(end))
       if begin < 0 or finish < begin:
-        raise ScannerError(f'governance surface markers 找不到: {rel}')
+        raise ScannerError(f'governance markers missing: {rel}')
       data = text[begin:finish + len(end)].encode('utf-8')
     rows.append((rel, len(data)))
     total += len(data)
@@ -875,13 +885,13 @@ def self_governance_findings(config):
   maximum = config.raw.get('governance_max_bytes')
   if maximum is not None:
     if not isinstance(maximum, int) or maximum < 1:
-      raise ScannerError('config governance_max_bytes 必須是正整數')
+      raise ScannerError('config governance_max_bytes invalid')
     total, _ = surface_bytes(config)
     if total > maximum:
       findings.append(f'governance surface bytes: {total}>{maximum}')
   parsers = config.raw.get('markdown_parser_implementations', [])
   if not isinstance(parsers, list) or not all((isinstance(item, str) for item in parsers)):
-    raise ScannerError('config markdown_parser_implementations 必須是 path list')
+    raise ScannerError('config markdown_parser_implementations invalid')
   if parsers and len(parsers) != 1:
     findings.append(f'markdown parser count: {len(parsers)}!=1')
   for rel in parsers:
@@ -928,7 +938,7 @@ def cmd_record_path(config, kind, date, slug):
   try:
     parsed = dt.date.fromisoformat(date)
   except ValueError as exc:
-    raise ScannerError(f'date 必須是 YYYY-MM-DD: {date}') from exc
+    raise ScannerError(f'date must be YYYY-MM-DD: {date}') from exc
   prefix = {'decision': 'D', 'dead_end': 'X', 'milestone': 'M'}[kind]
   identifier = f'{prefix}-{parsed:%Y%m%d}-{slugify(slug)}'
   path = config.history_paths[kind].replace('{YYYY-MM}', f'{parsed:%Y-%m}')
@@ -970,15 +980,16 @@ def main(argv):
         for value in args.files:
           path = Path(value)
           if not path.is_absolute():
-            path = (Path.cwd() / path).resolve()
+            path = Path.cwd() / path
+          path = path.resolve()
           if not path.is_file():
-            raise ScannerError(f'輸入檔不存在: {path}')
+            raise ScannerError(f'input missing: {path}')
           try:
             files.append(str(path.relative_to(root)))
           except ValueError as exc:
-            raise ScannerError(f'輸入檔逃出 --root: {path}') from exc
+            raise ScannerError(f'input escapes --root: {path}') from exc
       else:
-        files = tracked_markdown(root) if config else sorted(str(path.relative_to(root)) for path in root.rglob('*.md') if '.git' not in path.parts)
+        files = tracked_markdown(root, xref=True) if config else sorted(str(path.relative_to(root)) for pattern in ('*.md', '*.sh') for path in root.rglob(pattern) if '.git' not in path.parts)
       alias_sources = {rel for rel in files if config and any(cls.mode == 'history' for cls in matching_classes(rel, config))}
       findings = xref_scan(root, files, full_scan=not args.files, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources)
       for finding in findings:
@@ -987,7 +998,7 @@ def main(argv):
     config = load_config(root)
     if args.command == 'find':
       if args.limit < 1:
-        raise ScannerError('--limit 必須大於 0')
+        raise ScannerError('--limit must exceed 0')
       return cmd_find(config, args.query, args.limit)
     if args.command == 'audit':
       return cmd_audit(config, shadow=args.shadow, ship=args.ship)
@@ -995,8 +1006,8 @@ def main(argv):
       return cmd_report(config)
     if args.command == 'record-path':
       return cmd_record_path(config, args.type, args.date, args.slug)
-    raise ScannerError(f'未知指令: {args.command}')
-  except ScannerError as exc:
+    raise ScannerError(f'unknown command: {args.command}')
+  except Exception as exc:
     print(f'doc-governance error: {exc}', file=sys.stderr)
     if 'args' in locals() and getattr(args, 'command', None) == 'audit' and getattr(args, 'ship', False):
       print('doc-governance: BROKEN')

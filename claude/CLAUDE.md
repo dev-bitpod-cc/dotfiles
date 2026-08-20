@@ -28,9 +28,9 @@ fallback conventions 則由該 repo 自己的規定勝出。Repo 沒有契約檔
 
 ## Think Before Implementing
 
-- Ambiguous task: NEVER silently pick one reading. List the plausible interpretations and let the user choose before writing anything.（自主執行時的 fallback 見下方「Uncertain?」條）
+- Ambiguous task: NEVER silently pick one reading. List the plausible interpretations and let the user choose before writing anything.（自主執行時的 fallback 見本節下方 `Uncertain?` 條目）
 - Non-trivial task: state the success criteria before starting; if the repo has `STATUS.md`, record Context／Goal／AC／Constraints in its active section（儀式面用 `/project spec`）.
-- 工作過程中做出**關鍵取捨／放棄一條路（死路）／完成里程碑**時，若 repo 已採用 `.doc-governance.json`，當下用 repo-local `record-path` 決定 event-time history shard 並追加 record；legacy repo 才沿用自己的既有落點。Do NOT defer these notes to ship time — context may be compacted before then.
+- 工作過程中做出**關鍵取捨／放棄一條路（死路）／完成里程碑**時，先判 adoption：`.doc-governance.json` 與 `scripts/doc-governance.py` 兩者皆有才是 adopted，當下用 repo-local `record-path` 決定 event-time history shard 並追加 record；兩者皆無才走 legacy；只存在一個＝BROKEN，停止且不回退 legacy。Do NOT defer these notes to ship time — context may be compacted before then.
 - Uncertain?（含上條的 ambiguity）互動 session：stop and ask — do NOT assume just to keep momentum。自主執行（背景 turn、使用者無法即時回覆）：取最合理解讀繼續，but the assumption MUST land somewhere — 就地寫入 STATUS.md「進行中」（無 dossier 則在最終回報明列「本次假設」）並標示待使用者確認。**Irreversible or outward-facing actions still require asking — the autonomous fallback NEVER extends to them.**
 - Bug fix: ALWAYS write a reproducing test FIRST, then fix. 無法可行地自動重現者（環境相依、一次性腳本、外部服務行為）→ 改記手動重現步驟與修後驗證方式（有 STATUS.md 寫進去、無則寫在回報裡）；「先重現、再修」的順序不變。
 

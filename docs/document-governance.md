@@ -1,24 +1,30 @@
-# 文檔治理契約
+# Governance: `.doc-governance.json`
 
-Adapter：`.doc-governance.json`。
+## Model
 
-## 資料模型
+Each non-ignored Markdown, including untracked, is `loaded`, `active`, `routed`, `history`, `derived`, or
+`governance`. Only loaded is size-limited; others need location/retrieval/lifecycle. History is append-only;
+derived has rebuild; `requires_inbound` is evidence-only.
 
-Repo 內未 ignore 的 Markdown（含未 staging）必須恰好分類一次：`loaded` 守 context 預算；`active` 未結案；`routed` 按需；`history` 只增；`derived` 須有 rebuild command；`governance` 計量機制本身。非 loaded 類守定位、檢索與生命週期，不守總量；`requires_inbound` 只給 evidence layer。
+## CLI
 
-## CLI 契約
+- `find <query>`: H1 preamble/H2 (history: top bullet), five 240-byte hits max, `file-preamble` without H2,
+  stdout ≤8 KiB, hit/miss/error 0/1/2.
+- `audit [--shadow|--ship]`: clean/findings/error 0/1/2; shadow findings 0; ship starts
+  `doc-governance: OK|FINDINGS|BROKEN`; xref findings/error 0/2.
+- `report`: measure; `record-path`: path/ID/heading.
 
-- `find <query>`：H1 preamble／H2；history 用頂層 bullet。最多五筆，含定位欄位與 240-byte 摘錄；無 H2 回 `file-preamble`。stdout ≤8 KiB；命中／miss／錯誤回 0／1／2。
-- `audit [--shadow|--ship]`：一般模式 clean／finding／error 回 0／1／2；shadow finding 回 0；ship 印 `OK|FINDINGS|BROKEN`。
-- `audit --check xref [files...]`：舊 gate 相容；finding 回 0，error 回 2。
-- `report` 計量但不因體積失敗；`record-path` 只算 path／ID／heading。
+`--root`: Git toplevel default. No network/index; find is pointer-free; xrefs checked.
 
-`--root` 省略時取 git toplevel；不依賴網路或本機索引。history 不以人工 pointer 代理；所有引用仍做 forward xref。
+## Lifecycle
 
-## 生命週期
+New history: `docs/archive/{decisions,dead-ends,milestones}-YYYY-MM.md` / `## 事件記錄（event-time）`;
+`D/X/M-YYYYMMDD-slug`; title/ID/shard dates match; metadata `日期來源`/`放棄`/`重議`/`關聯`.
+Committed records are immutable; reversal adds `supersedes:<ID>`.
 
-新歷史只寫 `docs/archive/{decisions,dead-ends,milestones}-YYYY-MM.md` 的 `## 事件記錄（event-time）`，ID 為 `D/X/M-YYYYMMDD-slug`。title／ID／shard 日期須一致；metadata 含 `日期來源`、`放棄`、`重議`、`關聯`。已 commit 內容不改不刪；翻案另寫 `supersedes:<ID>` record。
+`STATUS.md`: active, restartable paused, history/backlog routes, transfer readiness. Backlog: open `B-*` only;
+removal needs a citing D/X/M record.
 
-`STATUS.md` 只留進行中、帶恢復條件的暫停項、history／backlog 入口與移交準備度。`docs/backlog.md` 只留未結案 `B-YYYYMMDD-slug`；移除時須有引用該 ID 的 D/X/M record。
-
-plan 同 work item 唯一：`draft/approved/in-progress` 原檔修訂；`implemented/superseded` 凍結，後者指向 replacement；禁 `-v2/-final/-revised`。Legacy blobs 凍結且不進 `find`，config 明列需求來源才例外。
+One plan/work item: edit `draft/approved/in-progress`; freeze `implemented/superseded`. Superseded needs
+`取代計畫: <path>`. No `-v2/-final/-revised`. Legacy blobs are frozen and excluded from `find`, except
+config-listed requirement sources

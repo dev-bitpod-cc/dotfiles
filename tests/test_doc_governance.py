@@ -46,6 +46,9 @@ class RepoCase(unittest.TestCase):
         subprocess.run(
             ["git", "init", "-q", "-b", "main", str(self.repo)], check=True
         )
+        self.gh_stub = self.home / "gh-stub"
+        self.gh_stub.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        self.gh_stub.chmod(0o755)
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -116,7 +119,11 @@ class RepoCase(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
-            env={**os.environ, "DOTFILES_PRECOMMIT_OFF": "1"},
+            env={
+                **os.environ,
+                "DOTFILES_PRECOMMIT_OFF": "1",
+                "SHIP_STATE_GH": str(self.gh_stub),
+            },
         )
 
 
@@ -364,6 +371,25 @@ class DocGovernanceTests(RepoCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertIn(message, result.stderr)
 
+    def test_invalid_config_value_types_are_broken_not_tracebacks(self) -> None:
+        self.write("README.md", "# Fixture\n")
+        cases = {
+            "loaded budget bytes": base_config(
+                [{"name": "loaded", "mode": "loaded", "paths": ["README.md"]}],
+                loaded_budgets={"README.md": {"bytes": "five"}},
+            ),
+            "plan_dir": base_config([], plan_dir=7),
+            "status_schema": base_config([], status_schema="STATUS.md"),
+        }
+        for label, config in cases.items():
+            with self.subTest(label=label):
+                self.configure(config)
+                self.track()
+                result = self.run_tool("audit", "--ship")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(result.stdout.splitlines()[0], "doc-governance: BROKEN")
+                self.assertNotIn("Traceback", result.stderr)
+
     def test_plan_duplicate_active_and_legacy_blob_exemption(self) -> None:
         self.write("docs/plans/2026-07-01-old-v2.md", "# 古代失敗架構xyz\n")
         self.commit()
@@ -419,6 +445,56 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(visible.returncode, 0, visible.stderr)
         self.assertIn("2026-07-01-old-v2.md", visible.stdout)
 
+    def test_plan_may_transition_from_active_to_final_before_commit(self) -> None:
+        active = """# Plan
+
+- 日期：2026-08-20
+- 狀態：in-progress
+- 工作項：W-1
+- 種類：implementation
+- 需求來源：request.md
+"""
+        self.write("docs/plans/2026-08-20-work.md", active)
+        self.configure(
+            base_config(
+                [{"name": "plans", "mode": "routed", "paths": ["docs/plans/*.md"]}]
+            )
+        )
+        self.commit()
+        self.write(
+            "docs/plans/2026-08-20-work.md",
+            active.replace("狀態：in-progress", "狀態：implemented"),
+        )
+        result = self.run_tool("audit", "--ship")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("closed plan mutation", result.stdout)
+
+    def test_superseded_plan_requires_and_accepts_replacement_metadata(self) -> None:
+        plan = """# Plan
+
+- 日期：2026-08-20
+- 狀態：superseded
+- 工作項：W-1
+- 種類：implementation
+- 需求來源：request.md
+"""
+        self.write("docs/plans/2026-08-20-work.md", plan)
+        self.configure(
+            base_config(
+                [{"name": "plans", "mode": "routed", "paths": ["docs/plans/*.md"]}]
+            )
+        )
+        self.track()
+        missing = self.run_tool("audit")
+        self.assertEqual(missing.returncode, 1, missing.stdout + missing.stderr)
+        self.assertIn("superseded plan missing replacement", missing.stdout)
+        self.write(
+            "docs/plans/2026-08-20-work.md",
+            plan + "- 取代計畫：docs/plans/2026-08-21-work.md\n",
+        )
+        accepted = self.run_tool("audit")
+        self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+
     def test_xref_compatibility_contract(self) -> None:
         self.write("target.md", "# Target\n\n## 真實章節（補充）\n\n本文規則。\n")
         self.write("source.md", "見 `target.md`「真實章節」。\n")
@@ -453,6 +529,55 @@ class DocGovernanceTests(RepoCase):
         outside = self.run_tool("audit", "--check", "xref")
         self.assertEqual(outside.returncode, 0, outside.stderr)
         self.assertIn("逃出 --root", outside.stdout)
+
+        self.write("source.md", "target.md「不存在章節」。\n")
+        bare_path = self.run_tool("audit", "--check", "xref")
+        self.assertIn("source.md", bare_path.stdout)
+        self.assertIn("不存在章節", bare_path.stdout)
+
+        self.write("source.md", "# Source\n\n見「不存在的本檔章節」。\n")
+        local_section = self.run_tool("audit", "--check", "xref")
+        self.assertIn("source.md", local_section.stdout)
+        self.assertIn("不存在的本檔章節", local_section.stdout)
+
+        self.write("check.sh", "# 維護規則見 `target.md`「不存在的 shell 指標」。\n")
+        self.track()
+        shell_comment = self.run_tool("audit", "--check", "xref")
+        self.assertIn("check.sh", shell_comment.stdout)
+        self.assertIn("不存在的 shell 指標", shell_comment.stdout)
+
+    def test_xref_accepts_absolute_file_under_symlinked_root(self) -> None:
+        self.write("target.md", "# Target\n\n## 現行章節\n")
+        self.write("source.md", "見 `target.md`「現行章節」。\n")
+        self.configure(
+            base_config(
+                [{"name": "docs", "mode": "routed", "paths": ["target.md", "source.md"]}]
+            )
+        )
+        self.track()
+        alias = self.repo.parent / (self.repo.name + "-alias")
+        alias.symlink_to(self.repo, target_is_directory=True)
+        self.addCleanup(alias.unlink)
+        result = subprocess.run(
+            [
+                "python3",
+                str(TOOL),
+                "--root",
+                str(alias),
+                "audit",
+                "--check",
+                "xref",
+                str(alias / "source.md"),
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            cwd=self.repo.parent,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, "")
 
     def test_unchanged_legacy_plan_is_not_an_xref_source(self) -> None:
         self.write(
@@ -609,6 +734,8 @@ class DocGovernanceTests(RepoCase):
 - **B-20260820-same · ** [ ] 第二項
 - [ ] 沒有 stable ID
 - **B-20260820-done · ** [x] 已完成但仍殘留
+- **B-20260820-done-valid** · [x] 修正 Markdown 後仍殘留
+- **B-20260820-done-alt** · [ ] ~~另一種關閉形狀~~
 
 ## 已知缺口
 
@@ -632,6 +759,8 @@ class DocGovernanceTests(RepoCase):
         self.assertIn("duplicate backlog ID: B-20260820-same", result.stdout)
         self.assertIn("backlog ID missing", result.stdout)
         self.assertIn("closed backlog item remains: B-20260820-done", result.stdout)
+        self.assertIn("closed backlog item remains: B-20260820-done-valid", result.stdout)
+        self.assertIn("closed backlog item remains: B-20260820-done-alt", result.stdout)
 
     def test_removed_backlog_id_requires_history_relation(self) -> None:
         self.write("docs/backlog.md", "# Backlog\n\n## 技術債\n\n- **B-20260820-finished · ** [ ] 工作\n")
@@ -794,11 +923,13 @@ class DocGovernanceTests(RepoCase):
             self.assertIn("verdict: STOP（doc-governance", mismatch.stdout)
             self.assertFalse(marker.exists())
 
+            shutil.copy2(TOOL, target)
             self.write(".doc-governance.json", "{broken\n")
             scanner_error = self.run_ship_state()
             self.assertEqual(scanner_error.returncode, 0, scanner_error.stderr)
             self.assertIn("doc-governance: BROKEN", scanner_error.stdout)
             self.assertIn("verdict: STOP（doc-governance", scanner_error.stdout)
+            self.assertNotIn("trusted core mismatch", scanner_error.stdout)
 
     def test_doc_findings_block_empty_remote_bootstrap(self) -> None:
         self.write("README.md", "# Fixture\n")
@@ -860,6 +991,33 @@ class RealRetrievalCorpusTests(unittest.TestCase):
                     any(f"section={expected_section}" in line for line in matching),
                     f"{query!r} did not return section {expected_section!r}\n{cache[query]}",
                 )
+
+    def test_backlog_stable_id_returns_its_own_bullet(self) -> None:
+        stable_id = "B-20260819-debt-02"
+        expected_line = next(
+            index
+            for index, line in enumerate(
+                (ROOT / "docs" / "backlog.md").read_text(encoding="utf-8").splitlines(),
+                start=1,
+            )
+            if stable_id in line
+        )
+        result = subprocess.run(
+            ["python3", str(TOOL), "--root", str(ROOT), "find", stable_id],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        header = next(
+            line for line in result.stdout.splitlines() if line.startswith("docs/backlog.md:")
+        )
+        self.assertTrue(
+            header.startswith(f"docs/backlog.md:{expected_line} "),
+            result.stdout,
+        )
+        self.assertIn(stable_id, header)
 
     def test_unique_canonical_titles_rank_top_one(self) -> None:
         spec = importlib.util.spec_from_file_location("doc_governance", TOOL)

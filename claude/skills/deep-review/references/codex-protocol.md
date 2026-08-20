@@ -1,6 +1,6 @@
 # Codex 呼叫協議 — 機制詳解（autocodex）
 
-> 本檔是 SKILL.md「Codex 呼叫協議」節的機制層：低自由度、照表操作，勿憑記憶重組。
+> 本檔是 `../SKILL.md`「6. Codex 第三方審查循環（autocodex 模式）」的機制層：低自由度、照表操作，勿憑記憶重組。
 > 硬約束（NEVER 類）同時列於 SKILL.md body 該節——兩處衝突時以 body 為準。
 
 ## 目錄
