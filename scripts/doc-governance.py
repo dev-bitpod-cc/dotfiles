@@ -23,6 +23,7 @@ TOP_BULLET_RE = re.compile('^([-+*])\\s+(.*)$')
 COMMENT_RE = re.compile('<!--.*?-->', re.S)
 DATE_RE = re.compile('(?<!\\d)(\\d{4}-\\d{2}-\\d{2})(?!\\d)')
 STABLE_ID_RE = re.compile('\\b([DXM])-(\\d{8})-([a-z0-9][a-z0-9-]*)\\b')
+DECLARED_ID_RE = re.compile('^\\s*(?:\\*\\*)?(?P<id>[DXMB]-\\d{8}-[a-z0-9][a-z0-9-]*)\\b')
 REF_RE = re.compile('(?:(?:`(?P<quoted>[^`\\n]+?\\.(?:md|sh))`|(?P<bare>[A-Za-z0-9_./~-]+?\\.(?:md|sh)))|(?P<local>(?<![A-Za-z0-9_\\u4e00-\\u9fff])見(?:上方|下方|本檔|本節)?))[「『](?P<section>[^」』\\n]{1,80})[」』]')
 SECTION_MIN = 2
 EVENT_SECTION = '事件記錄（event-time）'
@@ -224,7 +225,7 @@ def fence_mask(lines):
   return mask
 
 def visible_lines(text):
-  clean = COMMENT_RE.sub(lambda match: re.sub('[^\n]', ' ', match.group()), text)
+  clean = COMMENT_RE.sub(lambda match: re.sub('[^\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029]', ' ', match.group()), text)
   lines = clean.splitlines()
   masked = fence_mask(lines)
   return ['' if masked[index] else line for index, line in enumerate(lines)]
@@ -238,6 +239,23 @@ def strip_markdown(value):
 def first_date(value):
   match = DATE_RE.search(value)
   return match.group(1) if match else 'unknown'
+
+def declared_id(value, prefixes):
+  match = DECLARED_ID_RE.match(value)
+  if not match or match.group('id')[0] not in prefixes:
+    return (None, None)
+  return (match.group('id'), match)
+
+def declared_ids(text, prefixes):
+  found = set()
+  for line in text.splitlines():
+    bullet = TOP_BULLET_RE.match(line)
+    if not bullet:
+      continue
+    identifier, _ = declared_id(bullet.group(2), prefixes)
+    if identifier:
+      found.add(identifier)
+  return found
 
 def parse_metadata(lines):
   metadata = {}
@@ -311,12 +329,11 @@ def parse_top_level_entries(doc):
     metrics[f'{shape}_records'] += 1
     if section == 'file-preamble':
       metrics['file_preamble_entries'] += 1
-    stable = STABLE_ID_RE.search(raw_title)
+    stable_id, _ = declared_id(raw_title, 'DXM')
     event_date = first_date(title)
     metadata = parse_metadata(block[1:])
-    if stable:
-      prefix = stable.group(1)
-      stable_id = stable.group(0)
+    if stable_id:
+      prefix = stable_id[0]
       entry_type = {'D': 'decision', 'X': 'dead_end', 'M': 'milestone'}[prefix]
     else:
       stable_id = None
@@ -481,7 +498,11 @@ def history_findings(config, entries):
   ids = {}
   supersedes = []
   for entry in entries:
+    if not entry.doc_class or entry.doc_class.mode != 'history':
+      continue
     if not entry.stable_id:
+      if entry.section == EVENT_SECTION:
+        findings.append(f'history ID missing: {entry.path}:{entry.line}')
       continue
     if entry.stable_id in ids:
       findings.append(f'duplicate history ID: {entry.stable_id} at {ids[entry.stable_id].path}:{ids[entry.stable_id].line} and {entry.path}:{entry.line}')
@@ -513,22 +534,55 @@ def history_findings(config, entries):
 def file_blob(root, rel):
   return run_git(root, ['hash-object', '--', rel]).strip()
 
-def head_blob(root, rel):
-  output = run_git(root, ['ls-tree', 'HEAD', '--', rel], allow_failure=True).strip()
+def ref_blob(root, ref, rel):
+  output = run_git(root, ['ls-tree', ref, '--', rel], allow_failure=True).strip()
   match = re.match(r'^\d+\s+blob\s+([0-9a-f]+)\t', output)
   return match.group(1) if match else None
 
-def head_text(root, rel):
-  if not head_blob(root, rel):
+def ref_text(root, ref, rel):
+  if not ref_blob(root, ref, rel):
     return None
-  return run_git(root, ['show', f'HEAD:{rel}'])
+  return run_git(root, ['show', f'{ref}:{rel}'])
 
-def history_append_findings(config, documents):
+def immutability_base(root):
+  head = run_git(root, ['rev-parse', '--verify', 'HEAD^{commit}'], allow_failure=True).strip()
+  if not head:
+    return (None, 'immutability baseline unavailable: repository has no committed HEAD')
+  branch = run_git(root, ['symbolic-ref', '--short', '-q', 'HEAD'], allow_failure=True).strip()
+  remotes = run_git(root, ['remote'], allow_failure=True).splitlines()
+  candidates = []
+  for remote in remotes:
+    remote_head = run_git(root, ['symbolic-ref', '--short', '-q', f'refs/remotes/{remote}/HEAD'], allow_failure=True).strip()
+    candidates.extend([remote_head, f'{remote}/main', f'{remote}/master'])
+  candidates.extend(['main', 'master'])
+  for candidate in dict.fromkeys(item for item in candidates if item):
+    target = run_git(root, ['rev-parse', '--verify', f'{candidate}^{{commit}}'], allow_failure=True).strip()
+    if not target or target == head and branch in {'main', 'master'}:
+      continue
+    base = run_git(root, ['merge-base', head, target], allow_failure=True).strip()
+    if base:
+      return (base, None)
+  return (None, 'immutability baseline degraded to committed HEAD history: no default branch base')
+
+def committed_texts(root, rel, base):
+  refs = []
+  if base and ref_blob(root, base, rel):
+    refs.append(base)
+  revision = f'{base}..HEAD' if base else 'HEAD'
+  refs.extend(run_git(root, ['rev-list', '--reverse', revision, '--', rel], allow_failure=True).splitlines())
+  texts = []
+  for ref in dict.fromkeys(refs):
+    text = ref_text(root, ref, rel)
+    if text is not None and text not in texts:
+      texts.append(text)
+  return texts
+
+def history_append_findings(config, documents, baseline):
   findings = []
   for doc in documents:
     if doc.doc_class and doc.doc_class.mode == 'history':
-      before = head_text(config.root, doc.rel)
-      if before is not None and not doc.text.startswith(before):
+      before = committed_texts(config.root, doc.rel, baseline)
+      if any(doc.text != text and not doc.text.startswith(text) for text in before):
         findings.append(f'history not append-only: {doc.rel}')
   return findings
 
@@ -540,7 +594,7 @@ def plan_metadata(text):
       metadata[match.group(1).strip()] = match.group(2).strip()
   return metadata
 
-def plan_findings(config, markdown):
+def plan_findings(config, markdown, baseline):
   findings = []
   plan_dir = config.raw.get('plan_dir', 'docs/plans').rstrip('/') + '/'
   legacy = config.raw.get('legacy_plan_blobs', {})
@@ -567,9 +621,8 @@ def plan_findings(config, markdown):
     if state not in PLAN_STATES:
       findings.append(f'{rel}: invalid plan status {state}')
       continue
-    before = head_text(config.root, rel)
-    before_meta = plan_metadata(before) if before is not None else {}
-    if before_meta.get('狀態') in FINAL_PLAN_STATES and file_blob(config.root, rel) != head_blob(config.root, rel):
+    before = committed_texts(config.root, rel, baseline)
+    if any(plan_metadata(text).get('狀態') in FINAL_PLAN_STATES and text != (config.root / rel).read_text(encoding='utf-8') for text in before):
       findings.append(f'closed plan mutation: {rel}')
     if state in ACTIVE_PLAN_STATES:
       active.setdefault(meta['工作項'], []).append(rel)
@@ -781,7 +834,7 @@ def status_findings(config, documents):
       findings.append(f'STATUS stale: {lag} days>{days} at {path}')
   return findings
 
-def backlog_findings(config, documents, entries):
+def backlog_findings(config, documents, entries, baseline):
   findings = []
   seen = {}
   for doc in documents:
@@ -800,29 +853,34 @@ def backlog_findings(config, documents, entries):
       if not bullet:
         continue
       title = bullet.group(2).strip()
-      match = re.search('B-\\d{8}-[a-z0-9-]+', title)
-      if not match:
+      stable_id, match = declared_id(title, 'B')
+      if not stable_id:
         findings.append(f'backlog ID missing: {doc.rel}:{index + 1}')
         continue
-      stable_id = match.group(0)
       if stable_id in seen:
         first_path, first_line = seen[stable_id]
         findings.append(f'duplicate backlog ID: {stable_id} at {first_path}:{first_line} and {doc.rel}:{index + 1}')
       else:
         seen[stable_id] = (doc.rel, index + 1)
-      without_id = re.sub('^.*?\\bB-\\d{8}-[a-z0-9-]+\\b', '', title, count=1)
+      without_id = title[match.end():]
       without_id = re.sub('^[\\s*~_·:：.\\-]+', '', without_id)
       if re.match('^\\[[xX]\\]\\s*', without_id) or re.match('^\\[[ ]\\]\\s*~~', without_id):
         findings.append(f'closed backlog item remains: {stable_id} at {doc.rel}:{index + 1}')
-    before = head_text(config.root, doc.rel)
-    if before is not None:
-      removed = set(re.findall('B-\\d{8}-[a-z0-9-]+', before)) - set(seen)
-      linked = {stable_id for entry in entries if entry.stable_id for stable_id in re.findall('B-\\d{8}-[a-z0-9-]+', entry.body)}
+    before = committed_texts(config.root, doc.rel, baseline)
+    if before:
+      removed = set().union(*(declared_ids(text, 'B') for text in before)) - set(seen)
+      linked = {
+        stable_id
+        for entry in entries
+        if entry.doc_class and entry.doc_class.mode == 'history'
+        for stable_id in re.findall('B-\\d{8}-[a-z0-9-]+', entry.metadata.get('關聯', ''))
+      }
       for stable_id in sorted(removed - linked):
         findings.append(f'backlog removal missing history relation: {stable_id}')
   return findings
 
 def audit_findings(config):
+  baseline, baseline_note = immutability_base(config.root)
   documents, classification = build_documents(config)
   entries, _ = build_entries(documents)
   markdown = tracked_markdown(config.root)
@@ -831,19 +889,21 @@ def audit_findings(config):
   findings.extend(class_findings(config, classification))
   findings.extend(budget_findings(config, documents))
   findings.extend(history_findings(config, entries))
-  findings.extend(history_append_findings(config, documents))
-  findings.extend(plan_findings(config, markdown))
+  findings.extend(history_append_findings(config, documents, baseline))
+  findings.extend(plan_findings(config, markdown, baseline))
   findings.extend(status_findings(config, documents))
-  findings.extend(backlog_findings(config, documents, entries))
+  findings.extend(backlog_findings(config, documents, entries, baseline))
   findings.extend(self_governance_findings(config))
   alias_sources = {rel for rel, matches in classification.items() if len(matches) == 1 and matches[0].mode == 'history'}
   findings.extend(xref_scan(config.root, xref_sources, full_scan=True, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources))
-  return sorted(set(findings))
+  return (sorted(set(findings)), [baseline_note] if baseline_note else [])
 
 def cmd_audit(config, *, shadow, ship):
-  findings = audit_findings(config)
+  findings, notes = audit_findings(config)
   if ship:
     print(f"doc-governance: {('FINDINGS' if findings else 'OK')}")
+    for note in notes:
+      print(f'doc-note: {note}')
   for finding in findings:
     print(f'doc-flag: {finding}')
   if findings and (not shadow):
