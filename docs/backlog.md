@@ -5,7 +5,7 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
 
 # Backlog
 
-待辦清單:技術債與已知缺口(更新日期:2026-08-20)
+待辦清單:技術債與已知缺口(更新日期:2026-08-21)
 
 > **為什麼與 `STATUS.md`／history 分家**：三者生命週期不同。STATUS 只留 active／paused；history
 > event 發生後 append-only；backlog 只留未結案狀態，直到做掉或明確放棄才會消失。
@@ -21,6 +21,10 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
 
 ## 技術債
 
+- **B-20260821-debt-26** · [ ] **文檔治理 Round 3 非阻斷後續**。本批不順手擴張核心：xref 待處理
+  ignored dirs、alias stale 的 finding/error 語意、正反向 section 比對、shell heredoc fence 與兩份
+  `alias_sources` 推導；CLI 待決定 positional files、ship 輸出順序與 adoption 診斷；測試待解除固定
+  backlog ID、補 repo-wide audit 與 route portability；另須讓 Codex always-on 接上 event-time 記錄規則。
 - **B-20260820-debt-25** · [ ] **文檔治理 Round 2 非阻斷後續**（2026-08-20 加）。本批只修會讓
   gate、檢索、ship 或 agent 行為失真的 blocking findings；其餘待獨立處理：補 `supersedes` 反向邊的
   搜尋呈現、定義 glob class 的 `requires_inbound` 語意、決定 `mode: governance` 是否保留、提供

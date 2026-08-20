@@ -166,7 +166,7 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 2. 工作完成時寫 `M-*` milestone、從 `STATUS.md` 移除 completed active item；暫停項必須有恢復條件。
    Backlog 新項給 `B-*`；解決／放棄／變成決策時寫對應 history record、保留 `B-*` 關聯後移除原 item。
 3. 同一 work item 的 plan 只修原檔；本次實作真正完成才把狀態改 `implemented`，不得另建 `-v2`／`-final`。
-4. 文檔更新後執行 `python3 "$repo/scripts/doc-governance.py" --root "$repo" audit --ship`。exit 0 才通過；exit 1 的 findings 必須處置；
+4. 文檔更新後執行 `python3 ~/.dotfiles/scripts/doc-governance.py --root "$repo" audit --ship`。exit 0 才通過；exit 1 的 findings 必須處置；
    exit 2 是 BROKEN。兩種非零都設定 doc STOP，但繼續收集其餘摘要。**這是 adopted repo 唯一 doc verdict；
    NEVER 再跑 legacy dossier/backlog detector 來覆蓋它。**
 

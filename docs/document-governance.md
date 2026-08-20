@@ -27,4 +27,11 @@ removal needs a citing D/X/M record.
 
 One plan/work item: edit `draft/approved/in-progress`; freeze `implemented/superseded`. Superseded needs
 `取代計畫: <path>`. No `-v2/-final/-revised`. Legacy blobs are frozen and excluded from `find`, except
-config-listed requirement sources
+config-listed requirement sources.
+
+## Surface budget
+
+`governance_max_bytes` is a maintenance ceiling, not a correctness ratchet. Correctness and safety fixes may
+move it to the next round binary tier; new capabilities must justify their surface cost. Never add only the
+bytes needed by the current patch. `governance-ratio` stays informational because growing the Markdown
+denominator would otherwise loosen the gate without simplifying governance.

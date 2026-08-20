@@ -868,3 +868,9 @@
   - 放棄:修改已標 implemented 的 plan；假裝兩個互斥清單都正確
   - 重議:plan lifecycle 改為允許結案後的結構化 errata block
   - 關聯:docs/plans/2026-08-20-doc-governance-implementation-plan.md;docs/dead-ends.md
+
+- **D-20260820-governance-surface-budget-policy · 2026-08-20 治理面預算採圓整級距**:治理面上限由貼身的 52,087 bytes 改為 65,536 bytes。一次性完成驗收的量體 ratchet 已達成「新機制不得靠提高預算逃避收斂」的目的；把它原樣留作維護上限，會讓 correctness fix 在只剩數 bytes 時被自身 gate 阻擋。後續 correctness／safety 修復可移到下一個二進位圓整級距；新增能力仍須說明量體成本，禁止只補當前 patch 所需的 N bytes。`governance-ratio` 保持資訊值，不作共同 blocking，因為增加 Markdown 分母會在治理面沒有簡化時放寬 gate。
+  - 日期來源:direct
+  - 放棄:維持貼身 headroom；讓 correctness fix 受一次性驗收 ratchet 阻擋；以 ratio 作可被分母成長稀釋的 blocking gate
+  - 重議:治理面逼近 64 KiB，或能建立不受 corpus 分母操弄的相對複雜度指標
+  - 關聯:.doc-governance.json;docs/document-governance.md;D-20260820-u-3295d617a292

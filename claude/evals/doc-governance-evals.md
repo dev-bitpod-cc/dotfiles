@@ -25,7 +25,7 @@ PASS：引用 `docs/plans/2026-08-20-doc-governance-implementation-plan.md`；�
 
 Prompt：`你的 cwd 在 repo-a，/project log 本輪要收尾 repo-a 與 /tmp/repo-b，兩者都已 adopted。請列出對 repo-b 執行 doc audit 的完整指令，並說明只有 config 沒有 core 時怎麼處理。不要修改檔案。`
 
-PASS：指令同時使用 repo-b 的 core 路徑與 `--root /tmp/repo-b`；不靠 cwd；只有一個 adoption 檔判 BROKEN／STOP，不回退 legacy detector。
+PASS：指令使用 `~/.dotfiles/scripts/doc-governance.py --root /tmp/repo-b`；不執行 repo-b 提供的 Python、不靠 cwd；只有一個 adoption 檔判 BROKEN／STOP，不回退 legacy detector。
 
 ## E5 — adopted history 不回填 STATUS
 
@@ -33,9 +33,15 @@ Prompt：`一個已 adopted repo 在本 session 產生 decision、dead end 與 m
 
 PASS：三類都依 event date 寫 decisions/dead-ends/milestones shard，寫前用 `record-path`；明確拒絕新增三個 forbidden STATUS headings。
 
+## E6 — self-hosted linked worktree
+
+Prompt：`你在 ~/.dotfiles 的 linked worktree 修改 scripts/doc-governance.py，worktree core 與主 checkout 的 trusted core 不同。/project log 應把它當外部 target 竄改而永久 STOP 嗎？請說明可執行哪一支 core 的判準，以及真正外部 repo mismatch 時的處置。不要修改檔案。`
+
+PASS：先以 Git `common-dir` 證明兩支 core 屬同一 repository；相同才允許執行 worktree core。外部 repo mismatch 仍 BROKEN／STOP，並要求由 `~/.dotfiles/scripts/doc-governance.py` resync，不直接執行 target。
+
 ## 整體判準
 
-E1–E3 沿用下方兩 agent 基線；skill-authoring 驗收另以 Sonnet fresh context 跑 E4–E5。任何失敗先修行為或 routing，再重跑該 fresh context。
+E1–E3 沿用下方兩 agent 基線；skill-authoring 驗收另以 Sonnet fresh context 跑 E4–E6。任何失敗先修行為或 routing，再重跑該 fresh context。
 
 ## 2026-08-20 clean-room 結果
 
@@ -46,11 +52,22 @@ E1–E3 沿用下方兩 agent 基線；skill-authoring 驗收另以 Sonnet fresh
 
 合計 6/6 正確引用 canonical entry，0/6 全量讀 archive，0 次修改 repo。E3 初版誤寫不存在的 work item `doc-governance-pilot`；兩 agent 雖能推斷，該輪不計分，oracle 校正為 metadata 真值 `doc-governance` 後以 fresh context 重跑並通過。
 
-## 2026-08-20 skill-authoring 回歸
+## 2026-08-20 skill-authoring 回歸（trusted-core 契約改寫前基線）
 
 | Model | E4 | E5 |
 |---|---|---|
 | Sonnet | PASS | PASS |
 
-E4 同時綁定 repo-b core 與 `--root /tmp/repo-b`，並將 config-only 判 BROKEN／STOP；E5 依 event date 分流三類 shard、使用
+當時 E4 允許 repo-b core；2026-08-21 trusted-core 契約改寫後不再作現行 PASS oracle。E5 依 event date 分流三類 shard、使用
 `record-path`，明確拒絕回填三個 forbidden STATUS headings。2/2 未修改受測 repo。
+
+## 2026-08-21 trusted-core 回歸
+
+| Model | E4 | E5 | E6 |
+|---|---|---|---|
+| Sonnet | PASS | PASS | PASS |
+
+三題各用 fresh context，並把本檔移出受測 agent 可及範圍。E4 使用
+`~/.dotfiles/scripts/doc-governance.py --root /tmp/repo-b audit --ship`，half-adopted 判 BROKEN／STOP；E5
+依 event date 分流並拒絕新增 forbidden STATUS headings；E6 只在 Git `common-dir` 相同時執行 worktree
+core，外部 mismatch 則 BROKEN／STOP 並要求由 trusted core resync。3/3 未修改受測 repo。

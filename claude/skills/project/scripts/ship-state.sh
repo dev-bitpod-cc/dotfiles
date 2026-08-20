@@ -278,7 +278,7 @@ detect_dossier() {
     local unfenced
     unfenced="$(strip_fences "$f")"
     # dossier 簽章（回流自 clean-room 盲寫版）：雙訊號——「進行中」章節 + 任一 dossier
-    # 專屬章節（legacy schema 見 claude/templates/STATUS-legacy-template.md）。flag 缺席即被當
+    # 專屬章節（legacy schema 見 ~/.dotfiles/claude/templates/STATUS-legacy-template.md）。flag 缺席即被當
     # dossier 編輯，誤放行比誤攔截危險（攔截只是停下告知），故：
     # - 章節名須為**標題結尾**（允許裝飾前綴「## ⏳ 進行中」與括號後綴「已完成(里程碑)」），
     #   子字串比對會把「## 進行中的部署」＋「## 已完成的部署」這類領域看板誤認成 dossier
@@ -300,7 +300,7 @@ detect_dossier() {
             grep -qE "^##[[:space:]].*${sec}" <<< "$unfenced" || missing="${missing}${sec} "
         done
         if [ -n "$missing" ]; then
-            echo "dossier-flag: 缺少規範章節：${missing}（legacy 七節模板見 claude/templates/STATUS-legacy-template.md）——**先確認是不是被誤刪**（尺寸 flag 只管上限、抓不到整節消失），確認是刻意留空則在該節寫一行說明"
+            echo "dossier-flag: 缺少規範章節：${missing}（legacy 七節模板見 ~/.dotfiles/claude/templates/STATUS-legacy-template.md）——**先確認是不是被誤刪**（尺寸 flag 只管上限、抓不到整節消失），確認是刻意留空則在該節寫一行說明"
         fi
     fi
     # 收斂建議目標：不是「壓到剛好低於門檻」（見 DOSSIER_TARGET_PCT 註解）
@@ -569,7 +569,7 @@ detect_always_on() {
 
 # doc-governance:integration:start
 detect_doc_governance() {
-    local repo="$1" config="$1/.doc-governance.json" core="$1/scripts/doc-governance.py"
+    local repo="$1" config="$1/.doc-governance.json" core="$1/scripts/doc-governance.py" runner=""
     if [ ! -e "$config" ] && [ ! -e "$core" ]; then
         return 3
     fi
@@ -578,12 +578,27 @@ detect_doc_governance() {
         echo "doc-flag: adoption incomplete"
         return 2
     fi
-    if [ ! -f "$TRUSTED_DOC_CORE" ] || ! cmp -s "$core" "$TRUSTED_DOC_CORE"; then
+    if [ ! -f "$TRUSTED_DOC_CORE" ]; then
         echo "doc-governance: BROKEN"
-        echo "doc-flag: trusted core mismatch（拒絕執行 target）"
+        echo "doc-flag: trusted core unavailable: ${TRUSTED_DOC_CORE}（修復 ~/.dotfiles checkout 後重跑）"
         return 2
     fi
-    python3 "$TRUSTED_DOC_CORE" --root "$repo" audit --ship
+    if cmp -s "$core" "$TRUSTED_DOC_CORE"; then
+        runner="$TRUSTED_DOC_CORE"
+    else
+        local target_common trusted_common
+        target_common="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || target_common=""
+        trusted_common="$(git -C "$(dirname "$TRUSTED_DOC_CORE")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || trusted_common=""
+        if [ -n "$target_common" ] && [ "$target_common" = "$trusted_common" ]; then
+            echo "doc-note: self-hosted worktree core（與 trusted core 共用 git common-dir）"
+            runner="$core"
+        else
+            echo "doc-governance: BROKEN"
+            echo "doc-flag: trusted core mismatch（拒絕執行 target；以 ~/.dotfiles/scripts/doc-governance.py 重新同步 target）"
+            return 2
+        fi
+    fi
+    python3 "$runner" --root "$repo" audit --ship
 }
 # doc-governance:integration:end
 
@@ -1024,7 +1039,7 @@ check_repo() {
 
     # doc-governance:check-init:start
     local doc_rc=0 doc_stop=0 doc_adopted=0
-    detect_doc_governance "$repo" || doc_rc=$?
+    detect_doc_governance "$toplevel" || doc_rc=$?
     if [ "$doc_rc" -ne 3 ]; then
         doc_adopted=1
         [ "$doc_rc" -eq 0 ] || doc_stop=1
@@ -1105,8 +1120,8 @@ check_repo() {
     # doc-governance:legacy-skip:start
     if [ "$doc_adopted" -eq 0 ]; then
         # legacy repo 才走舊 detector；adopted repo 的唯一文檔 verdict 是上面的 audit --ship。
-        detect_dossier "$repo"
-        detect_backlog "$repo"
+        detect_dossier "$toplevel"
+        detect_backlog "$toplevel"
     fi
     # doc-governance:legacy-skip:end
 
