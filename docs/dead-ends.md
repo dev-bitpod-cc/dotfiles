@@ -1,23 +1,18 @@
 # 死路 — 完整推導與證據
 
-`STATUS.md`「死路(試過但放棄——防重工)」各條的**推導過程、實測數字、eval 編號與事故細節**。
-結論本體在 STATUS.md，本檔是**想重走那條路時**才需要讀的那一半。
-⚠️ **本行原寫「STATUS.md（always-on）」，那是錯的**（2026-08-19 由第三方審查抓出）——`STATUS.md` **不自動載入**（`claude/skills/project/SKILL.md`「不自動載入的 STATUS.md 反而有五層」明載）。結論留在該檔買到的是「**ship 時必然被讀**」（`/project log` Step 2 會讀），不是 always-on。
+`docs/archive/dead-ends-2026-08.md` 保存 dead-end 結論；本檔保存 legacy records 的**推導過程、
+實測數字、eval 編號與事故細節**。新條目在 event-time record 直接寫必要理由，只有證據量大到妨礙
+定位時才另建 evidence section 並由 record 指入。
 
 ## 分工
 
 | 問題 | 權威 |
 |---|---|
-| 這條路能不能走、為什麼不能 | `STATUS.md`「死路(試過但放棄——防重工)」 |
+| 這條路能不能走、為什麼不能 | `docs/archive/dead-ends-2026-08.md`「事件記錄（event-time）」 |
 | 當初怎麼判的、跑了什麼、數字是多少、什麼條件下結論會翻 | **本檔** |
 
-**本檔是延遲載入的。** 凡是「動手之前就必須知道」的判準留在 STATUS.md ——
-本檔存在的目的是**省下重新評估與重跑實驗的時間**，不是承接判準。
-
-⚠️ **本段原本的理由是「規則不在 always-on context 就不生效」，那是錯的**（2026-08-19 第三方
-第二輪抓出，第一輪只修了檔頭、這裡漏了）——**`STATUS.md` 不自動載入**，見上方檔頭。結論留在
-STATUS.md 買到的是「**ship 時必然被讀**」，不是 always-on。⇒ **「你沒想到要查的時候擋住你」
-這個目標，現行機制其實從未達成**；要達成需要機械觸發（候選見 `docs/backlog.md`「決策/死路的機械召回」）。
+**本檔是延遲載入的。** 不知道路徑時先用 `scripts/doc-governance.py find <自然語言或 stable ID>`；
+history 與 evidence 都以 logical entry 納入同一個檢索面，不要求人工 pointer 才算可找回。
 
 > 切分模式與先例見 `claude/known-hazards.md`「分工」——該檔對 `claude/CLAUDE.md`
 > 的「已知地雷」做的是同一件事（always-on 留規則、按需留案例），比例約 1:1。
@@ -155,7 +150,8 @@ plan review 只能跑一次診斷」。deep-review 的「skill-authoring batch �
 **結論會翻的條件**：某次 plan review 的 findings 大量落在「計畫措辭不夠完整」而非「陳述與 repo
 不符」——那才是無界完整度的形狀。
 
-⚠️ 迭代最終仍被否決，但**理由完全不同**（累積正當化，見 `STATUS.md`「關鍵決策(附理由)」）。
+⚠️ 迭代最終仍被否決，但**理由完全不同**（累積正當化，見
+`docs/archive/decisions-2026-08.md`「事件記錄（event-time）」）。
 不要把兩件事記成同一條。
 
 ## handoff archive 排序改用 mtime

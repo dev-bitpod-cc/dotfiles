@@ -29,8 +29,8 @@ fallback conventions 則由該 repo 自己的規定勝出。Repo 沒有契約檔
 ## Think Before Implementing
 
 - Ambiguous task: NEVER silently pick one reading. List the plausible interpretations and let the user choose before writing anything.（自主執行時的 fallback 見下方「Uncertain?」條）
-- Non-trivial task: state the success criteria (how "done" is verified) before starting; if the repo has a STATUS.md (dossier), record the spec (Context/Goal/AC/Constraints) into its「進行中」section（儀式面用 `/project spec`）.
-- 工作過程中做出**關鍵取捨／放棄一條路（死路）／踩到非顯而易見的坑**時，若 repo 有 STATUS.md → **當下**就地寫入對應章節（working tree 即可、不 commit，收尾由 `/project log` 一起送出）。Do NOT defer dossier notes to ship time — context may be compacted before then.
+- Non-trivial task: state the success criteria before starting; if the repo has `STATUS.md`, record Context／Goal／AC／Constraints in its active section（儀式面用 `/project spec`）.
+- 工作過程中做出**關鍵取捨／放棄一條路（死路）／完成里程碑**時，若 repo 已採用 `.doc-governance.json`，當下用 repo-local `record-path` 決定 event-time history shard 並追加 record；legacy repo 才沿用自己的既有落點。Do NOT defer these notes to ship time — context may be compacted before then.
 - Uncertain?（含上條的 ambiguity）互動 session：stop and ask — do NOT assume just to keep momentum。自主執行（背景 turn、使用者無法即時回覆）：取最合理解讀繼續，but the assumption MUST land somewhere — 就地寫入 STATUS.md「進行中」（無 dossier 則在最終回報明列「本次假設」）並標示待使用者確認。**Irreversible or outward-facing actions still require asking — the autonomous fallback NEVER extends to them.**
 - Bug fix: ALWAYS write a reproducing test FIRST, then fix. 無法可行地自動重現者（環境相依、一次性腳本、外部服務行為）→ 改記手動重現步驟與修後驗證方式（有 STATUS.md 寫進去、無則寫在回報裡）；「先重現、再修」的順序不變。
 
@@ -49,12 +49,9 @@ When the user pastes third-party review findings, read the source code and verif
 
 ### 觸發詞「由 codex 進行第三方審查」（變體：「交給 codex 審查」「codex 第三方」）
 
-載入 `deep-review` skill，執行方式一律依其「**Codex 呼叫協議**」節（唯一權威——呼叫指令、prompt 限制、exit 契約失敗處理都以該節為準，勿憑記憶重組、本檔不重述）；**不要**呼叫 `codex:rescue`（plugin broker 路徑會靜默卡死，理由見該節）。本觸發的專屬規則：
-
-- repo 路徑 + commit range 取最近一次 `/deep-review` 輸出的「第三方審查資訊」區塊，range 直接沿用其 `base..head`（base 已錨定）；即使變更已 push（`origin/main..HEAD` 為空）也**不要**退化成 `HEAD~1..HEAD`——那會漏審變更集前段。報告未記錄 base（如新 session）→ 先跑 `~/.claude/skills/deep-review/scripts/review-anchor.sh show --repo <repo>`（anchor 檔在即得錨定 base，跨 session 有效）；anchor 也無 → **先 `git -C <repo> fetch origin`**（下面兩個分支都讀本地 remote-tracking ref，過期會讓 base 偏舊、審查範圍虛胖），再依 HEAD 是否仍領先 default 分流：
-  - **仍領先**（`origin/<default>..HEAD` 非空）→ 取 `git -C <repo> merge-base origin/<default> HEAD` 當下界審整條 branch（squash 只壓 review 產生的 commit、**語意 commit 會留在 branch 上**，故 branch 全長才等於審查範圍）。
-  - **已併入 default**（該 range 為空）→ **merge-base 會退化成 HEAD、range 為空**，此時沒有可自動推導的下界：**停下問使用者要審哪個範圍**（列出近期 merge commit／PR 供選）。**NEVER 退回 `HEAD~1..HEAD`** —— 那正是本條開頭要防的漏審；`HEAD~1..HEAD` 只在確認整批就只有一顆 commit 時才成立。
-- 收到 findings 後的處理判準：**最近一次 `/deep-review` 帶 `autofix`** → 驗證後自動修復並 commit；否則、或無法確定當時是否帶 autofix（如新 session）→ 列出 findings 等使用者決定。
+載入 `deep-review` skill，完整依其 Codex protocol 與 anchor 腳本決定 range；**NEVER 猜 `HEAD~1`、
+NEVER 呼叫 `codex:rescue`**。收到 findings 後先逐條驗證；最近一次流程帶 `autofix` 才自動修復，
+否則列出判定等使用者決定。完整 range 恢復與已 merge 分流在該 skill，勿在 always-on 複製。
 
 ---
 
@@ -62,22 +59,21 @@ When the user pastes third-party review findings, read the source code and verif
 
 ## 已知地雷
 
-> 每條都是實地踩過的。**共同形狀是「靜默」**——測試照樣全綠、終端看不出異狀，所以規則本身要在你動手的當下就在腦裡。
-> 實地事故、負面結果、鑑別法與修復序列見 `~/.dotfiles/claude/known-hazards.md`（**遇到才讀，別重查**）。
+> 只留動手當下需要的「觸發形狀 → 正解」；事故、反例與鑑別序列見
+> `~/.dotfiles/claude/known-hazards.md`，命中時再讀。
 
-- **shell 訊息裡 `$var` 緊接全形標點** → bash 會把全形字元併入變數名（`"（exit=$rc）"` → `set -u` 下噴 `rc）: unbound variable`）。繁中訊息幾乎必踩，且**只在錯誤路徑觸發**、正常測試照樣全綠。一律寫 `${var}`。（dotfiles 有 `tests/run.sh` 第 1b 節 gate 擋，其他 repo 沒有）
-- **不帶引號的 heredoc（`<<EOF`）內含反引號 → bash 做命令替換，指令真的被執行**（實地：說明文字裡的 `` `git push` `` 真的推了一條 branch 上 GitHub）。**寫 Markdown/prose 進檔案時幾乎必踩**——反引號是行內 code 的標準寫法。一律用 `<<'EOF'`（quoted delimiter，全文字面），需要帶入變數就走 `os.environ` / `sys.argv`，不要靠 shell 內插。⚠️ **範圍僅限「反引號寫在 body 字面」**：`$(cat 某檔)` 注入進來的內容**不會**被執行（命令替換的結果不重新掃描）。**看到 heredoc 就警覺是對的，但要分清楚反引號是在源碼裡還是在被注入的資料裡**——曾為此誤改三處程式碼並把錯誤結論寫進四個地方。（dotfiles 有 `tests/run.sh` 第 1c 節 gate 擋，掃描器 `tests/heredoc-gate.awk`；其他 repo 沒有）
-- **同根因的第二個觸發點：`gh pr create --body "…"` 的內文含反引號**。根因同上——**shell 雙引號語境內的反引號一律是命令替換**，heredoc 只是其中一種語境。而 PR 內文幾乎必然寫到 `` `檔名` ``／`` `指令` ``，`--body` 的值又正好在雙引號裡，等於**每次 ship 都會走一次的路徑**。後果比 heredoc 版更難察覺：指令照樣執行（可能又是一個 `git push`），替換後的空白直接**送上 GitHub 成為 PR 內文**，本地終端看不出異狀，要點開 PR 才發現內文缺字。同型的還有 `gh issue create --body`、`gh release create --notes`、`git commit -m "…"`。一律改用 **`--body-file <檔>`**（檔案內容原樣送出，完全不經 shell；`--body-file -` 讀 stdin），commit 訊息則用 `-F <檔>`。無自動 gate 可擋。
-- **同一個形狀的第三種語境：`printf "$data"` 把資料當格式字串**。資料裡的 `%` 被當成格式指令，遇到無效的（如 `%)`）**printf 當場中止**——後面的內容連同 trailer 整段消失，而**呼叫端照樣 exit 0**。2026-08-11 實地：`git commit -m "$(printf '…(32%)…')"` 的訊息在 `(32` 處截斷、`Co-Authored-By` trailer 全沒，git 照樣 commit 成功、零錯誤訊息。格式字串**必須是字面常數**：`printf '%s\n' "$data"`；多行內容根本別經 printf，直接 `-F <檔>` / `--body-file`。⚠️ **shellcheck 有 SC2059、`tests/run.sh` 第 1 節會擋，但那只保護 repo 內的 `.sh` 檔**——這坑發生在**互動式打的指令**上，而 commit / PR 訊息正好都是那樣打的。前三條的正解是同一個：**要送出的文字走檔案，不要經過 shell 的解讀層**。
-- **`sd` 的替換字串含 shell 變數** → `$job` 會被當成 capture group 展開為空，靜默毀損程式碼且過得了 `bash -n` 與 shellcheck。含 `$` 的替換改用 Edit 或 python 字面替換
-- **macOS 內建 CLI 是凍結的舊版**（Apple 因 GPLv3 停更：bash 3.2、rsync 已換自寫 openrsync、BSD awk 的 `length` 不分 locale 一律數 **bytes**）→ 分兩層應對：互動/運維工具用 brew 新版（rsync 已入 setup-mac-env.sh）；**腳本/tests 只用 POSIX 確定性子集**（量 bytes 明寫 `LC_ALL=C`，讓 BSD/GNU 結果一致），需要 GNU 行為就顯式呼叫 `gawk` 並 `command -v` 檢查——**勿靠 gnubin PATH shadowing**（隱形環境依賴，shellcheck 抓不到、換一台機器就變行為）。**另一類是「根本不存在」而非「版本舊」**：`timeout` / `gtimeout` 在 macOS 皆無。危險不在缺工具本身，而在 **`command not found` 是 exit 127**——測試裡包一層 `timeout` 就變成整段沒跑卻只回一個 127，被 grep 過濾後**看起來像通過**。要限時就自己封頂（讓受測對象自然收斂），不要引入 `timeout`
-- **`set -o pipefail` 下的 `printf "$big" | grep -q`** → `grep -q` 命中即退出，上游 printf 在**大輸入**下寫不完就吃 `SIGPIPE(141)`，pipefail 讓整條判偽 → 條件式（尤其前面有 `!`）結論反轉。**小輸入不發作**（printf 一次寫得完），故潛伏很久才在某個大檔上突然爆。存在性比對一律改 **herestring**：`grep -q PATTERN <<< "$big"`。**寫守門測試時命中點必須放輸入前段**——放檔尾則 printf 早已寫完、SIGPIPE 不觸發，斷言形同虛設。無自動 gate 可擋，靠這條記憶。
-- **背景平行任務用裸 `wait` 收尾 → 任一子程序失敗被完全吞掉**。`wait` 不帶引數時**恆回 0**，`set -e` 也救不了。凡是「平行跑 N 份、之後拿它們的產出做比較或彙總」的腳本都會踩：**你會拿一份殘缺的結果繼續往下算，而且沒有任何訊號**。正確寫法是逐個收：`f a & p1=$!; f b & p2=$!; wait $p1 || ...; wait $p2 || ...`。**不要用 `declare -A` 存 pid**——macOS 系統 bash 是 3.2、沒有 associative array，改法會在最可能被貼進去的那個 shell 上當場壞掉。⚠️ **退出碼正常不等於產出完整**：子程序被截斷時 rc 仍是 0，故產出型的平行任務要再補一道**完整性檢查**（例：headless Claude 的 transcript 驗 `"subtype":"success"`）。無自動 gate 可擋。
-- **`n=$(grep -c PAT f || echo 0)` 在找不到時產生雙行 `0\n0`**——`grep -c` 找不到時**本來就會印 `0`**、同時 exit 1，於是 `|| echo 0` 再補一個，command substitution 收到兩行。變數帶了換行後，**後續 `printf` 的參數會整批推移位**：格式字串被重複套用、欄位錯格、輸出看起來像被截斷，而**全程沒有任何錯誤訊息**（實地：同一支腳本只有部分主機的輸出壞掉，第一眼會誤判成「遠端環境差異」）。正確寫法是讓 substitution 失敗才賦值：`n=$(grep -c PAT f) || n=0`。同型陷阱：任何「失敗時仍會輸出有效值」的指令都不該用 `|| echo <fallback>` 兜底。無自動 gate 可擋。
-  - **同族的第二種形狀：substitution 失敗回「空字串」，而 `$(( ))` 把空變數當 0**。`bytes=$(wc -c < 讀不到的檔)` → `bytes=""` → `$((hdr + bytes))` **不是語法錯誤、直接算成 `hdr`**，於是「產出完整性」這類自我檢查會自己通過（實地：因此放行了一個只有標頭的殘缺 ssh config 並覆蓋原檔）。**判準：凡把 command substitution 的結果餵進 `$(( ))` 或數值比較，都要先讓失敗變成可辨識的值**（`x=$(...) || x=-1` 再加 `[ "$x" -lt 0 ]` 守門），不能倚賴「失敗會是 0」。
-- **cask 升版卡在 `Linking Binary` → 該路徑之後永久 hang**（`codex --version` 無限 hang、CPU 0%、無任何輸出）。**觸發者是 brew 自己，不是你也不是 shell**——它在你之前就 exec 過那個仍帶 quarantine 的 binary。**不是每次發作**，只在該 cask 實際有新版時走這條。**復發時直接 `brewfix`（`brewfix --fix` 才動手），別再重查一遍**——病灶、鑑別法與三條已排除的路都記在 `~/.dotfiles/claude/known-hazards.md`，**復原是實證有效的、預防手段目前都不是**。
-- **腳本在自己內部 `git pull` → 這一輪跑的仍是舊版**。`git checkout` 是 **unlink + 新建**，正在執行的 bash 握著舊 inode，檔案被換掉也讀不到新內容 → **pull 進新版、卻用舊版跑完這一輪**。凡是「本次更新才加進 pull 後段」的動作全部延後一個週期才生效，**而且無聲**。**修法：pull 後比對自身 checksum，變了就 `exec` 新版重跑，並用環境變數做迴圈防護**（`brewup.sh` 的 `BREWUP_REEXEC`）。**呼叫端的等價解法是把 pull 拆成獨立前置指令**（`git -C <repo> pull && bash <repo>/script.sh`）——那樣被呼叫的已經是新版；這個順序是**功能性的、不是排版**。⚠️ **分辨另一種失效**：若換檔方式是 `>` **原地截斷**（同 inode，如 `curl -o` 或 `cat >`），正在跑的 bash 會從舊 offset 讀到 EOF、**整支腳本靜默中止在中途**——症狀完全不同（不是跑到舊邏輯，是跑一半就沒了）。
-- **在 worktree 改自家 skill 時，`~/.claude/skills` 仍指向主 checkout**（`ls -la ~/.claude/skills` → `~/.dotfiles/claude/skills`；`~/.codex/skills` 同一形狀）→ 任何走 `~/.claude/skills/...` 的路徑（skill body 自己寫的腳本路徑、eval、實際觸發）跑的都是**主 checkout 的舊版**，你在 worktree 改的新版根本沒被執行到。**失敗是靜默的**：測試照樣全綠，因為它測的是舊檔——與「只有乾淨 clone 看得見」的誤收同一類，人工看 diff 抓不到。**凡在 worktree 內驗證自家 skill，路徑一律用 worktree 絕對路徑，不要用 `~/.claude/skills/...`**（`tests/run.sh` 以 `$ROOT` 解析故不受影響，坑只在 skill body／eval／手動呼叫這三處）。
+- Shell 變數緊接全形標點時一律寫 `${var}`；否則全形字元可能被吞進變數名。
+- 寫 Markdown／prose 的 heredoc 一律用 quoted delimiter（`<<'EOF'`）；變數改走 argv／environment。
+- `gh * --body`／release notes／commit message 不把 prose 放進 shell 雙引號；用 `--body-file`／`-F`。
+- `printf` 的 format 必須是字面常數：`printf '%s\n' "$data"`，NEVER `printf "$data"`。
+- `sd` replacement 含 `$` 會被當 capture group；改用可保證字面的編輯方式。
+- macOS 腳本只用 POSIX 確定子集；量 bytes 明寫 `LC_ALL=C`，需要 GNU 行為就顯式檢查工具。不要假設有 `timeout`／`gtimeout`。
+- `pipefail` 下不要 `printf "$big" | grep -q`；存在性檢查用 herestring，測試命中點放輸入前段。
+- 平行任務逐 PID `wait` 並驗產出完整性；裸 `wait` 會吞失敗，bash 3.2 也沒有 associative array。
+- `grep -c ... || echo 0` 會得到雙 `0`；用 `n=$(grep -c ...) || n=0`。數值 command substitution 失敗先轉成可辨識 sentinel，再做算術。
+- cask 卡在 `Linking Binary` 時直接跑 `brewfix` 診斷；只有 `brewfix --fix` 會修改。
+- 腳本內 `git pull` 後若自身 checksum 改變，必須 `exec` 新版並設迴圈防護；呼叫端可把 pull 拆成前置指令。
+- 在 worktree 驗自家 skill 時一律用該 worktree 絕對路徑；`~/.claude/skills`／`~/.codex/skills` 仍可能指向主 checkout。
 
 ## 測試
 

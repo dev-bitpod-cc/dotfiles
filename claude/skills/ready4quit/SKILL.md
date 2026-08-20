@@ -37,7 +37,7 @@ disable-model-invocation: true
 
 - **NEVER — 無論是否同意都不在這裡做**：`commit`、`push`、開 PR、merge；**rewriting, deleting, moving, or compacting an existing dossier entry**。Git 殘留永遠只有一個建議：跑 `/project log`。**使用者說「你直接 commit 吧」也不做**——那是 `/project log` 的權責，不是一句同意就能移轉過來的；dossier 的改寫與整理同理，權責在 `/project log` Step 2，**consent does NOT move it here**。
 - **需明確同意才做**：kill 背景任務、刪 ScheduleWakeup/cron、**刪除既有 memory 檔，或以會抹掉既有內容的方式改寫它**。一律先列出、等點頭。
-- **Additive 且可逆 → 可直接做**：新增 memory 檔、**對既有 memory 檔同主題純附加**（既有內容一字不動，新條目追加在後；`MEMORY.md` 索引行就地補述同屬此類）、補 STATUS.md 漏記的決策／死路條目。但**必須在報告中逐筆列出做了什麼、跳過什麼**。
+- **Additive 且可逆 → 可直接做**：新增 memory 檔、對既有 memory 同主題純附加，以及補寫 repo 漏記的 decision／dead-end record 或新 backlog item（adopted repo 寫 event-time shard，legacy repo 依既有落點）。但**必須在報告中逐筆列出做了什麼、跳過什麼**。
 
 判準是**既有內容有沒有被抹掉**，不是「檔案存不存在」——對既有檔純附加沒有損失任何東西，逼一輪往返只是把 additive 出口切成兩半（新增免問、更新要問），而兩者的可逆性相同。
 
@@ -64,7 +64,7 @@ Ready4Quit 進度：
 - **NEVER push / open PR here.** Git 殘留只**建議** `/project log`，本 skill 不 commit、不 push、不開 PR、不 merge。Ship 是 `/project log` 的事。
 - **Outward / destructive flush needs explicit confirmation.** Kill 背景任務、刪 ScheduleWakeup/cron、刪除既有 memory 檔或抹掉其既有內容——一律先列出、等明確同意，沒同意 → 不做。
 - **Memory writes are additive but still surface them.** 新增 memory 檔、或對既有檔同主題純附加，都是可逆的附加動作，可直接寫，但**必須在報告中列出寫了什麼、跳過什麼**，不靜默塞。
-- **Dossier writes are additive and stop at the working tree.** 補寫 STATUS.md 漏記的決策/死路同屬可逆附加動作，可直接寫；但 **writing the working tree is NOT shipping** —— 本 skill 仍不 commit、不 push，且不改寫既有條目、不整理 dossier。
+- **Project-document writes are additive and stop at the working tree.** 補寫 history／backlog 同屬可逆附加動作；但 **writing the working tree is NOT shipping** —— 本 skill 仍不 commit、不 push，且不改寫既有 record、不整理 active state。
 - **Don't rubber-stamp.** 每個面向都要**實際跑指令/掃描**才能標 GREEN。沒查就說「應該沒問題」= 違規。
 
 ### Red Flags — STOP and re-read Critical
@@ -78,8 +78,8 @@ Ready4Quit 進度：
 - Reading `TaskList` as the background-task check. It lists `TaskCreate` to-dos, not background shells or subagents — an empty result proves nothing about what is still running.
 - About to `git push` / `gh pr` / kill a task / delete a wakeup/cron/memory file from inside this skill without listing it and getting an explicit yes.
 - Offering to `git commit` for the user — even "just say yes and I'll commit". Git residue has exactly ONE recommendation: run `/project log`. "The user would approve it anyway" does not move commit/ship into this skill.
-- Routing a decision or dead-end into machine-local memory **when that repo has a STATUS.md**. That is exactly how it gets lost — memory does not travel between hosts. Route it to the dossier. (No dossier at all? Then memory is the stated fallback — but say so in the report and point at `/project spec`; see the routing table.)
-- Tidying the dossier during a pre-quit flush — moving 進行中 items into 里程碑, rewriting entries, compacting sections. Additive only; distillation belongs to `/project log`.
+- Routing a decision or dead-end into machine-local memory when that repo has a canonical project-document system. Memory does not cross hosts; adopted repo writes history, legacy repo uses its existing dossier. No canonical files at all才走 memory fallback。
+- Tidying project docs during pre-quit flush — removing active/backlog items, rewriting history records, compacting sections. Additive only; lifecycle transitions belong to `/project log`.
 
 > 此 skill 的核心不是「對抗合理化」（baseline 顯示 agent 天生會查 git、不擅自動手），而是**覆蓋度**——提醒別只顧 git，還要 flush memory、盤點 async 狀態、掃 loose ends，這些是 fresh agent 想不到要查的。
 
@@ -118,11 +118,12 @@ Do not re-run the underlying git commands one by one — the script IS the check
 | 事實 | 出口 |
 |------|------|
 | **user** / **feedback** 型 | memory —— machine-local 正是對的層 |
-| **project** 型：本 session 的關鍵決策 / 死路 / 新增技術債，且屬某個**有 STATUS.md 的 repo** | 該 repo 的 **STATUS.md** 對應章節，不進 memory（該 repo 有 `docs/backlog.md` 時，技術債／缺口寫那裡）|
-| **project** 型：該 repo **無** STATUS.md | 暫存 memory，**且報告必須明說「此 repo 無 dossier，這筆跨不了主機」**並建議跑 `/project spec` 建檔後搬過去。**不在這裡建 STATUS.md** |
-| **reference** 型 | 綁專案 → STATUS.md；綁使用者工作流 → memory |
+| **project** 型：repo 有 config + core（adopted） | decision／dead end 先用 `record-path` 寫 event-time `D/X-*`；技術債／缺口以 `B-*` 追加 `docs/backlog.md` |
+| **project** 型：legacy repo 有自己的 STATUS／決策落點 | 依該 repo 既有 schema 寫入，不進 memory |
+| **project** 型：repo 無任何 canonical project state/history | 暫存 memory，且報告明說「此 repo 無可跨主機的專案落點」並建議 `/project spec`；本 skill 不代建 |
+| **reference** 型 | 綁專案 → repo 既有 reference/active 落點；綁使用者工作流 → memory |
 
-檢查對象＝Step 1 已列出的那組 repo 中有 `STATUS.md` 者（**不掃 `~/Projects/`**）。
+檢查對象＝Step 1 已列出的 repo（**不掃 `~/Projects/`**）；逐 repo 判 adopted／legacy／無落點。
 
 ### memory 出口
 
@@ -136,15 +137,16 @@ Do not re-run the underlying git commands one by one — the script IS the check
 
 新增 memory 檔是可逆附加動作，可直接寫（依記憶系統 frontmatter 格式 + 在 `MEMORY.md` 補一行索引）。**同主題更新既有檔時只附加、不動既有內容**（`MEMORY.md` 已有的索引行就地補述，不新增重複列）——同屬 additive，可直接寫。**刪除既有 memory 檔，或改寫／移除其既有內容，屬破壞性** → 先確認。
 
-### dossier 出口
+### project-document 出口
 
-寫入該 repo `STATUS.md` 的對應章節（章節語意與條目格式的單一來源：`~/.claude/skills/project/references/dossier.md`），**寫 working tree、不 commit**——全域規則本就要求決策當下就地寫入，這裡是補做遲到的動作。
+先讀 `~/.claude/skills/project/references/dossier.md`。Adopted repo 用 repo-local `record-path` 決定 history
+落點與 stable ID；legacy repo 寫其既有落點。**只寫 working tree、不 commit**——這裡是補做遲到的 additive 記錄。
 
-- **Additive only. NEVER rewrite or delete an existing entry, NEVER move 進行中 items into 里程碑, NEVER compact or distill the dossier here** —— 那是 `/project log` Step 2 的職責，pre-quit 不做整理；dossier 尺寸治理同樣不在本 skill 範圍。
-- **NEVER create a STATUS.md that does not exist** —— 建 dossier 是 `/project spec` 的事；該 repo 的 project 型事實依路由表走 memory 回落並在報告標示，不是在這裡開檔。
+- **Additive only. NEVER rewrite/delete history, remove active/backlog items, or mark plans implemented here.** 那是 `/project log` Step 2 的職責。
+- **NEVER partially adopt governance or create missing canonical families here.** 兩個 adoption 檔只缺一個＝BROKEN；兩個都無則走 legacy／memory fallback。
 - 寫入會**新增 git 殘留**：Step 5 的 Git 衛生行須反映，並提示需 `/project log` 送出。
 
-兩個出口都要在報告列出**寫了哪些、跳過哪些**；候選為空 → **明說「本 session 無新增 memory／dossier」**，不要靜默跳過。
+兩個出口都要在報告列出**寫了哪些、跳過哪些**；候選為空 → **明說「本 session 無新增 memory／project record」**，不要靜默跳過。
 
 ## Step 3：背景 / 排程任務盤點
 

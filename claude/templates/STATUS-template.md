@@ -1,17 +1,14 @@
 <!--
-STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、隨專案移交)
-角色分工:README(對外說明)/ CLAUDE.md(慣例與指令)/ STATUS.md(本檔:狀態+決策+死路+債)
-        / docs/plans/(帶日期的設計文件)/ docs/transfer.md(移交指南,移交時才產生)
-維護時機:開工寫 spec;ship 時同步;移交前補齊完整度。維護者可能另有工具輔助,
-        但**規範本身在此、不在工具**——沒有那些工具也照樣維護得下去。
-注意:本檔名專屬 dossier——領域產物(如爬蟲配置 checklist)請改用其他檔名(如 CRAWL-CONFIG.md)。
-禁止:不要在本檔加「Session Log」「變更紀錄」這類**逐次追加的流水帳章節**——那是 git history
-     的工作。它只增不減,實測會長到吃掉整份檔案,而真正該讀的決策與死路被稀釋到看不見。
+STATUS.md — 專案 active state（repo 內、隨 git 跨主機、隨專案移交）。
+本檔只回答「現在正在做什麼／暫停什麼」；decision、dead end、milestone 在發生當下寫入
+`docs/archive/{decisions,dead-ends,milestones}-YYYY-MM.md` 的 event-time section。
+維護時機：開工寫 spec；狀態改變時就地更新；完成時寫 milestone record 並移除 active item。
+禁止新增 Session Log、變更紀錄、決策、死路、技術債、已完成等只增不減的歷史章節。
 -->
 
 # STATUS.md
 
-<專案一句話定位>(更新日期:YYYY-MM-DD)
+<專案一句話定位>（更新日期：YYYY-MM-DD）
 
 ---
 
@@ -19,56 +16,35 @@ STATUS.md — 專案 dossier(單一事實來源:repo 內、隨 git 跨主機、�
 
 ### 1. <工作項標題> <⏳/🆕>
 
-<!-- spec 區:開工時填,是給 AI 的工作合約,也是未來 owner 的背景 -->
-- **Context**:為什麼要做這件事
-- **Goal**:做到什麼程度算完成
-- **Acceptance Criteria**:怎麼驗證它真的好了
-- **Constraints**:哪些東西不能碰、必須維持的邊界
-- **進度**:目前做到哪(condensed;細節看 commit,附 branch 名或 sha 範圍讓人找得到)
-- **下一步**:<具體到能直接動手;跨主機接續時這裡就是交接點>
+- **Context**：為什麼要做這件事
+- **Goal**：做到什麼程度算完成
+- **Acceptance Criteria**：怎麼驗證它真的好了
+- **Constraints**：哪些東西不能碰、必須維持的邊界
+- **進度**：目前做到哪；附 branch、SHA、plan 或 record ID
+- **下一步**：具體到能直接動手的交接點
+- **關聯**：相關 `D-*`／`X-*`／`B-*` stable IDs；無則寫 none
 
----
+## 暫停中
 
-## 關鍵決策(附理由)
+<!-- 每項必須寫「恢復條件」，不能只寫 paused。真的沒有就寫「目前無暫停項目」。 -->
+- **<工作項>**：<為何暫停>；**恢復條件**：<可觀察條件>
 
-<!-- 沒有理由的決策會被未來的 session(或新 owner)翻案;一行一決策,新的在上 -->
-- **YYYY-MM-DD <決策>**:<選了什麼、為什麼、放棄了什麼替代方案>
+## 歷史入口
 
-<!-- 被推翻時:保留原文 + 標記失效,不刪、不就地改寫(否則「曾經怎麼想、為什麼改」會消失,
-     而那正是防止第三次翻案的東西)。刪除線劃在原決策上,不是劃在失效通知上。 -->
-- ~~**YYYY-MM-DD <已被推翻的決策>**:<原決策原文>~~
-  **已失效(YYYY-MM-DD)**:<推翻理由>;現行決策見 `<path>`「<section>」。
+- 決策：`docs/archive/decisions-YYYY-MM.md` 的 event-time section。
+- 死路：`docs/archive/dead-ends-YYYY-MM.md` 的 event-time section。
+- 里程碑：`docs/archive/milestones-YYYY-MM.md` 的 event-time section。
+- 無路徑線索時執行 `scripts/doc-governance.py find <自然語言或 stable ID>`。
 
-## 死路(試過但放棄——防重工)
+## 待辦入口
 
-<!-- dossier 最值錢的一節:未來最容易在這裡重蹈覆轍;真的沒有才寫「無」。
-     **條目不刪**——它防的就是重工,刪掉等於把防護拆了;只有確認該路已不再適用時才移除。 -->
-- **<嘗試>**:<為何放棄;若有實驗數據附上>
-
-## 技術債
-
-<!-- 本節與「已知缺口」是**待辦**(未結案、做掉才會消失),與其他節的生命週期不同:別的節壓得動,
-     這兩節只壓得短、條目不會少。**訊號是它們長期佔住預算、而全檔反覆貼著門檻** —— 出現時
-     把兩節整批移到 `docs/backlog.md`(本檔各留標題與一行指標,章節檢查因此零改動),
-     判準與慣例見 dossier 規範「1. 檔案角色分工」。小型 repo 留在這裡完全合理,不必先拆。 -->
-- [ ] <債項>:<影響範圍與償還時機建議>
-
-## 已完成(里程碑)
-
-<!-- 工作項一完成就搬到這裡、收斂成下面那樣的一行,spec 內容不搬過來(Context/AC 的推導史留在
-     commit/PR)。**「進行中」不留已完成項**——那一節的用途就是「現在還在動的是什麼」,
-     混進做完的東西,讀的人就無法只靠它判斷現況,整份 dossier 的可信度跟著掉。 -->
-- ✅ **YYYY-MM-DD <里程碑>**:<一句話成果;能對應 commit/PR 的附連結或 sha>
-
-## 已知缺口
-
-- <功能面或資料面的已知限制,尚無解決計畫者>
+- 未結案項目以 `docs/backlog.md` 為 canonical state；用 `B-*` stable ID 定位。
 
 ## 移交準備度
 
-<!-- 平時可空;顯露「要上 production / 要移交」訊號時開始維護 -->
-- [ ] 關鍵決策與死路已補齊理由
-- [ ] 環境建置步驟可由第三者重現(README 或 docs/)
-- [ ] Credentials 與設定分離:有一份可重現的設定範本(dotenv 專案即 `.env.example`,
-      其他機制用其對應形式)、程式碼內無硬編碼
-- [ ] 移交指南(docs/transfer.md)已建立
+<!-- 平時可空；顯露「要上 production／要移交」訊號時開始維護。 -->
+- [ ] active／paused 狀態與下一步已更新
+- [ ] 關鍵 decision／dead end 已寫入 history shard
+- [ ] 環境建置步驟可由第三者重現（README 或 docs/）
+- [ ] Credentials 與設定分離，程式碼內無硬編碼
+- [ ] 移交指南（docs/transfer.md）已建立

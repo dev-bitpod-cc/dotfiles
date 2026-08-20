@@ -75,7 +75,10 @@ Deep Plan 進度：
   ⚠️ **這條的適用範圍僅限「經過 shell 的落檔路徑」。** Agent 工具的 prompt 是 **JSON 參數、全程不經 shell**，那裡沒有命令替換、沒有這個風險——**NEVER 把這條外推過去**（同一個外推曾讓人誤改三處程式碼並把錯誤結論寫進四個地方，見同一份 hazards）。
 - **NEVER pass the plan's text as a prompt string.** 理由**不是**執行風險，是這兩個：①主 context 成本——同 `/deep-review` 的「Hand the subagent the *range*, not the diff text」，reviewer 自己 Read 檔案，內容不必經過你；②跨輪要有一份可指向、可修訂的單一來源，Step 4 的處置就是對著這份檔案改的。
 
-計畫已經是檔案 → 直接用，不要複製一份（複本會漂）。
+計畫已經是檔案 → 直接用，不要複製一份（複本會漂）。若目標 repo 已採用 `.doc-governance.json`，
+新 plan 建檔時一併寫 `日期`／`狀態:draft`／`工作項`／`種類`／`需求來源`；同 work item 只准這一檔。
+使用者核准後原檔改 `approved`，開工改 `in-progress`。Review revision 一律修原檔，**NEVER 新建
+`-v2`／`-final`／`-revised`**；實作完成後由 `/project log` 改 `implemented` 並凍結。
 
 ### 1. 確定範圍
 
@@ -179,9 +182,9 @@ SessionStart hook 會在 inbox 非空時提醒。
 
 | 處置 | 意思 | 要求 |
 |---|---|---|
-| **修** | 改計畫 | 改的是 Step 0 那份檔案 |
+| **修** | 改計畫 | 只改 Step 0 那份檔案；不得另建 revision 檔 |
 | **駁** | 判為 false positive | **必須附理由**，且理由要指向 repo 事實 |
-| **接受** | 確認是真的，但選擇當 trade-off 帶著走 | 寫進該 repo **既有的**決策存放處（STATUS.md 決策節、`docs/decisions.md`……依該 repo 慣例；repo 沒有這種存放處時**不要開一個**，落點改成報告中獨立的一節——這是全域 kernel 的既有規定，本檔不重述）；**沒有落點的「接受」不算處置** |
+| **接受** | 確認是真的，但選擇當 trade-off 帶著走 | 寫進該 repo **既有的**決策存放處；adopted repo 用 `record-path` 寫 `D-*` event-time record，legacy repo 依其慣例。repo 沒有落點時不要代建，改放報告獨立一節；**沒有落點的「接受」不算處置** |
 
 **"Noted" / "看過了" / silence is NOT a disposition.** 一條 blocking finding 沒有上述三種處置之一 → 這批不通過，不進 Step 5。
 

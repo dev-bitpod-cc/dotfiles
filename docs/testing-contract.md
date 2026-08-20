@@ -112,6 +112,21 @@ red flag。**這支 gate 就是把那個代價換成機檢**：漂移即紅。�
 
 涵蓋範圍同第 1 節。
 
+## 2b. doc-governance deterministic suite
+
+掃描器：`scripts/doc-governance.py`；oracle：`tests/test_doc_governance.py` 與
+`tests/fixtures/doc-governance/retrieval.tsv`。
+
+synthetic repos 固定 config 錯誤、零／多重分類、H2 前頂層 bullet、mixed legacy entry shapes、空 H2、
+archive-month／event-month 日期語意、新 record type/month mismatch、plan lifecycle、xref compatibility、
+deterministic tie 與 8 KiB 輸出上限。真實 corpus 固定五條 archive 問題；每題必須在 top 5 命中預期
+path＋entry，無 H2 與檔名誤導兩題另驗 section。
+
+ranking 只能由 observed RED 驅動。2026-08-20 baseline：Codex 以 10 次 shell command、698,307 input
+tokens 才全中；Claude 以 24 次 tool call、1,753,598 cached/created input tokens 找到理由，但 5/5 都沒有
+回到 canonical archive entry。新核心第一輪唯一 RED 是 remote branch 題被一般 push 文件壓過；故 config
+只對同時含 remote＋branch＋delete/清理語意的 query 補 expected-SHA／TOCTOU aliases，不加全域語意猜測。
+
 ---
 
 # 純邏輯與 render

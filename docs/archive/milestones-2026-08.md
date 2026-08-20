@@ -86,3 +86,66 @@
   級檢查確認(103/103)。**規範**:兩組成對實驗**都判零差異而不採用**——Scenario 17(缺口 vs 決策
   判準)與 G9(內容路由決策樹);後者副產物測出「已知缺口」節名歧義。外部 findings 七條落地兩條,
   其餘五條的判定見決策節同日三條。996 PASS。
+
+## 事件記錄（event-time）
+
+- **M-20260819-deep-plan-real-run · ** ✅ 2026-08-19 `deep-plan` 首次真實執行完成(handoff mtime 那批):9→2 blocking 兩輪、3/9 會 ship,
+  並建立 `field-log.md` 累積真實使用結果(與 evals 的受控紀錄分家)。
+  - 日期來源:migration-entry
+  - 放棄:none
+  - 重議:none
+  - 關聯:STATUS.md cutover
+
+- **M-20260819-p4-instantiated · 2026-08-19** **B-20260818-debt-03 · ** [x] **P4 待實例化**(2026-08-18 加)——**2026-08-19 已實例化,本條關閉**。落點與 ground truth 見
+  `claude/skills/deep-plan/evals.md`「✅ 2026-08-19 已實例化：krepo-mops-announcement 公告查詢 API」。
+  ⚠️ 尚未決定是否改用 dotfiles 內的 `c567204`(在本 repo、不可變、可消除跨 repo 私有依賴);
+  切換前須以**樓層模型**跑一次確認仍抓得到並判阻斷,不通過就維持現狀。原文如下:
+  - 日期來源:migration-entry
+  - 放棄:none
+  - 重議:見原文
+  - 關聯:B-20260818-debt-03
+
+- **M-20260818-deep-plan-structural-fixes · ** ✅ 2026-08-18 `deep-plan` 五條結構性 blocking 處置完畢:新增情境 **P8–P12** 與沙盒
+  **dp2／dp3／dp4／dp5**(dp5 為補上的判定臂)。body 改動:brief §3 加 Blocking 欄、輸出契約加必填
+  「層別」、Step 3 加 `NEVER re-classify a finding yourself`、落點改跟目標 repo、修正 scratchpad
+  落點的錯誤外推、揭露 dossier 這條已知殘留管道。八次 Sonnet 實跑(含回歸 P1/P3/P7),1046 PASS。
+  - 日期來源:migration-entry
+  - 放棄:none
+  - 重議:none
+  - 關聯:STATUS.md cutover
+
+- **M-20260815-dossier-backlog-split · ** ✅ 2026-08-15 dossier／backlog 分家落地:新增 `docs/backlog.md`(待辦兩節＋關閉歸檔慣例)、
+  `ship-state.sh` 的 `detect_backlog`(**只驗章節完整性、刻意無量體門檻**)與抽出共用的
+  `strip_fences`,規範同步 `references/dossier.md`／SKILL Step 2／`STATUS-template.md`＋
+  新增 `BACKLOG-template.md`。STATUS.md 23564 → 13272 bytes、251 → 153 行、零 flag;
+  未分家的 repo 零輸出零回填(有守門測試)。新增 5 條斷言並以 mutation 驗過會紅,1039 PASS。
+  - 日期來源:migration-entry
+  - 放棄:none
+  - 重議:none
+  - 關聯:STATUS.md cutover
+
+- **M-20260815-project-blocked-routing · ** ✅ 2026-08-15 `/project` 分流表把 `BLOCKED` 拆成三格(CI 還在跑／check 失敗／protection 真的擋)
+  ＋補 `DRAFT` 一列,判準改吃 `gh pr checks --required` 的 exit code。同批補上會紅的 eval:
+  Scenario 18 ＋ `gh-stub-blocked-pending`,並修好 `gh-stub` 缺 `pr checks`／default 分支的洞
+  (舊 stub 會讓 Scenario 15 **為錯的理由通過**)。三臂 Sonnet 全 PASS,兩臂對同一個 `BLOCKED`
+  給出相反處置,證明判準真被讀到。1034 PASS。
+  - 日期來源:migration-entry
+  - 放棄:none
+  - 重議:none
+  - 關聯:STATUS.md cutover
+
+- **M-20260815-linux-stat-fix · ** ✅ 2026-08-15 修 `tests/run.sh:4199` 的 stat 跨平台順序(GNU `-c` 先於 BSD `-f`)。
+  Linux 上該條恆紅:GNU 的 `stat -f` 遇無效格式雖回 rc=1、卻已把 filesystem 統計吐進 stdout,
+  與 fallback 的輸出相連。**與 `:3758` 註解描述的「假成功」機制不同**,已在註解分清。
+  同批完成 hook 的全機隊散佈(14 台)＋跨平台實測(Linux／Darwin 皆正確擋下)。
+
+  - 日期來源:migration-entry
+  - 放棄:none
+  - 重議:none
+  - 關聯:STATUS.md cutover
+
+- **M-20260820-doc-governance-pilot · 2026-08-20 文件治理 dotfiles pilot 完成**:repo-local scanner、logical-entry find、event-time history、active/backlog/plan lifecycle、xref compatibility 與 shipping fail-closed 已落地。deterministic suite 22 tests、全 repo 1064 assertions、Claude Code／Codex clean-room eval 6/6 通過；governance surface 49,644 bytes，未提高 49,675-byte 上限。舊版 plans 僅保留為凍結紀錄，不進搜尋或 xref source。
+  - 日期來源:direct
+  - 放棄:沿用失敗舊 plan 架構，或以提高 self-budget 掩蓋治理面膨脹
+  - 重議:deterministic corpus、雙 agent eval 或連續 ship pilot 出現實際 RED
+  - 關聯:D-20260820-legacy-plans-record-only;docs/plans/2026-08-20-doc-governance-implementation-plan.md

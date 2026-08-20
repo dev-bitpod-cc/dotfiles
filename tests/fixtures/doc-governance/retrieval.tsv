@@ -1,0 +1,7 @@
+# query<TAB>expected_path<TAB>expected_entry<TAB>expected_section
+為什麼 remote branch 清理不能直接用 push --delete？	docs/archive/decisions-2026-08.md	expected SHA	*
+dossier 的量體訊號為什麼從 STATUS 總量擴到 always-on？	docs/archive/decisions-2026-07.md	量測下沉	*
+dossier 的量體訊號為什麼從 STATUS 總量擴到 always-on？	docs/archive/decisions-2026-08.md	always-on	*
+大型輸入做存在性檢查為什麼不能使用 printf grep -q？	docs/archive/decisions-2026-07.md	herestring	*
+為什麼 git add -A 的唯一例外是 deep-review WIP snapshot？	docs/archive/decisions-2026-08.md	deep-review WIP snapshot	file-preamble
+為什麼「進行中含 ✅」只檢查 list item、不檢查表格或續行？	docs/archive/decisions-2026-08.md	進行中含 ✅	已結案技術債（2026-08-10 歸檔）

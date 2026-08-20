@@ -564,6 +564,22 @@ detect_always_on() {
     fi
 }
 
+# doc-governance:integration:start
+# 0/1/2=adopted clean/findings/broken；3=兩檔都沒有的 legacy。
+detect_doc_governance() {
+    local repo="$1" config="$1/.doc-governance.json" core="$1/scripts/doc-governance.py"
+    if [ ! -e "$config" ] && [ ! -e "$core" ]; then
+        return 3
+    fi
+    if [ ! -f "$config" ] || [ ! -f "$core" ]; then
+        echo "doc-governance: BROKEN"
+        echo "doc-flag: adoption incomplete"
+        return 2
+    fi
+    python3 "$core" --root "$repo" audit --ship
+}
+# doc-governance:integration:end
+
 # review 痕跡的權威 subject 清單在 deep-review——那些 commit 是它產生的，清單跟著產生者走。
 # 跨 skill source；缺席時降級印 UNKNOWN 而**不猜**：讓 model 憑印象比對 subject，漂一個字
 # 就會把使用者自己的 `fix: 修正某某` 當成迭代痕跡建議壓掉，而使用者一句「好」就 force-push 了。
@@ -985,13 +1001,19 @@ check_repo() {
     fi
 
     # -- branch / remotes --
-    local branch remote remotes_n
+    local branch remote remotes_n doc_rc=0 doc_stop=0 doc_adopted=0
     branch="$(git -C "$repo" symbolic-ref --short -q HEAD)" || branch="DETACHED"
     echo "branch: $branch"
 
     # 落點在此、**不得往下移**：下面 remote／default 兩處都會 early return，
     # 移到那之後會讓「任何 repo 都量」與 `always-on: NONE` 兩條都不成立（tests 第 9 節有守門）。
     detect_always_on "$repo" "$toplevel"
+
+    detect_doc_governance "$repo" || doc_rc=$?
+    if [ "$doc_rc" -ne 3 ]; then
+        doc_adopted=1
+        [ "$doc_rc" -eq 0 ] || doc_stop=1
+    fi
 
     remote="$(detect_remote "$repo")"
     if [ -z "$remote" ]; then
@@ -1055,11 +1077,11 @@ check_repo() {
         echo "branch-first-cmd: ~/.claude/skills/project/scripts/branch-first.sh $(shq "$toplevel") <type>/<slug>"
     fi
 
-    # -- dossier 偵測（Step 2 衛生檢查；門檻見檔頭常數，單一來源）--
-    detect_dossier "$repo"
-
-    # -- backlog 偵測（分家後的待辦落點；只驗章節完整性、無量體門檻，無該檔則靜默）--
-    detect_backlog "$repo"
+    if [ "$doc_adopted" -eq 0 ]; then
+        # legacy repo 才走舊 detector；adopted repo 的唯一文檔 verdict 是上面的 audit --ship。
+        detect_dossier "$repo"
+        detect_backlog "$repo"
+    fi
 
     # -- 殘留 branch 衛生（已併入 default 的 local/remote branch；無殘留則靜默）--
     detect_stale_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
@@ -1095,6 +1117,9 @@ check_repo() {
         echo "branch-first: REQUIRED（HEAD 在 $branch —— commit 之前先開 feature branch，無條件）"
     else
         echo "branch-first: 已在 feature branch（${branch}）"
+    fi
+    if [ "$doc_stop" -eq 1 ]; then
+        echo "verdict: STOP（doc-governance findings/broken；修復後再送，其餘偵測輸出保留）"
     fi
 }
 

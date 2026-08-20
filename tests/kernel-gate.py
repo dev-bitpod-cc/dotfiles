@@ -39,6 +39,7 @@ KERNEL_FILES = ("AGENTS.md", "CLAUDE.md", "claude/CLAUDE.md", "codex/AGENTS.md")
 # 只有契約檔帶 portable block（權威矩陣 + working discipline）——那層不進全域檔，
 # 因為全域檔服務所有 repo、不該替別的 repo 宣告它的文件權威。
 PORTABLE_FILE = "AGENTS.md"
+ROUTE_FILES = ("AGENTS.md", "CLAUDE.md")
 
 MIN_RULE_LINES = 8   # safety floor 6 + fallback conventions 2
 
@@ -107,6 +108,22 @@ def scan(root):
             if bodies[rel] != ref:
                 findings.append("%s 的 kernel block 與 %s 不是逐字相同——複本已漂移"
                                 % (rel, KERNEL_FILES[0]))
+
+    route_bodies = {}
+    for rel in ROUTE_FILES:
+        try:
+            route_text = read(root, rel)
+        except FileNotFoundError:
+            continue
+        route_body, errs = extract(route_text, "route")
+        findings.extend("%s: %s" % (rel, e) for e in errs)
+        if route_body is not None:
+            if not route_body.strip():
+                findings.append("%s: route block 是空的" % rel)
+            route_bodies[rel] = route_body
+    if len(route_bodies) == len(ROUTE_FILES) and route_bodies[ROUTE_FILES[0]] != route_bodies[ROUTE_FILES[1]]:
+        findings.append("%s 的 doc-governance route block 與 %s 不是逐字相同——複本已漂移"
+                        % (ROUTE_FILES[1], ROUTE_FILES[0]))
 
     # 契約檔的 portable block：存在、非空、且不與 kernel 巢狀
     try:

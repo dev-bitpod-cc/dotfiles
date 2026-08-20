@@ -26,6 +26,14 @@
 - Record non-obvious trade-offs, rejected alternatives, and dead ends **where this repo already keeps them**. Skip whenever the diff alone recovers the rationale — a rejected path leaves no trace in the diff, an added gate does. **If the repo has no such store, do NOT create one; list them in your report instead.**
 <!-- agent-contract:kernel:end -->
 
+<!-- agent-contract:route:start v1 -->
+## 文檔檢索路由
+
+查 repo 的決策、死路、里程碑、規範、plan、skill reference 或 eval 時，先執行
+`scripts/doc-governance.py find '<自然語言問題或 stable ID>'`；不要先整批讀 archive，也不要把人工 pointer
+當成可檢索性的代理。寫入與生命週期規則見 `docs/document-governance.md`。
+<!-- agent-contract:route:end -->
+
 <!-- agent-contract:portable:start v1 -->
 ## Documentation authority
 
@@ -35,10 +43,11 @@
 |---|---|---|
 | Agent behaviour, git discipline | this file's **Kernel** | Nothing may relax the safety floor. A repo may only be **stricter** |
 | Repo conventions, architecture, commands | `CLAUDE.md` / `AGENTS.md`（root，其次最接近改動位置的那份） | 最近者勝 |
-| Project state, decisions, dead ends（**歷史**） | `STATUS.md`（若有） | |
-| Debt & known gaps（**未結案待辦**） | `docs/backlog.md`（若有；未分家的 repo 在 `STATUS.md` 對應節） | 生命週期不同故分家，判準見 dossier 規範 |
+| Active / paused project state | `STATUS.md`（若有） | 只留仍有效狀態與 history/backlog 入口 |
+| Decisions, dead ends, milestones（**歷史**） | `docs/archive/{decisions,dead-ends,milestones}-YYYY-MM.md`（若 repo 已採用） | 以 event-time record 追加；legacy repo 依其既有權威 |
+| Debt & known gaps（**未結案待辦**） | `docs/backlog.md`（若有） | 解決或放棄時移除並寫 history record |
 | Install & usage for humans | `README.md` | |
-| Dated design docs / discussion snapshots | `docs/plans/*.md`（若有） | **Write-once**：frozen at publication，被更新的權威取代，但不就地改寫 |
+| Dated plans | `docs/plans/*.md`（若有） | 每個 work item 一檔：draft／approved／in-progress 可原檔修訂，implemented／superseded 後凍結 |
 | Handover | `docs/transfer.md`（若有） | 移交期間才存在 |
 | **Generated / derived docs**（codegen、API dump、LLM 產的 repo map／wiki） | **none — descriptive only** | 見下 |
 
