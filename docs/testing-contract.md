@@ -66,9 +66,14 @@ evals 於 2026-08-08 補入四個 gate——**納入時它零 findings**。便�
 
 ## 1d. 交叉引用完整性 gate
 
-掃描器：`tests/xref-gate.py`。抽出「見〈路徑〉〈節名〉」句型逐條驗證，**把「唯一權威」這個
+掃描器：`scripts/doc-governance.py audit --check xref`；`tests/xref-gate.py` 只是 compatibility wrapper。
+抽出「見〈路徑〉〈節名〉」句型逐條驗證，**把「唯一權威」這個
 原本純靠散文的不變式換成機檢**——指標一斷，「勿憑記憶重組」就只剩重組一途。首次掃描即抓出
 1 條真死指標與 2 條指向 repo 內雙份同名檔的基名引用。
+
+- **source 句型**：掃「backtick path + 節名」、「裸 path + 節名」，以及「見 + 本檔節名」（含上／下方別名）。
+  `.sh` 只掃註解行，避免把 heredoc fixture 當現行指標。本檔指標只認 heading，不用 body
+  fallback 自我滿足。
 
 - **source 與 target 的非正文排除刻意不對稱**：source 排 fenced、**掃** HTML comment
   （圍欄內是示範怎麼寫，註解裡卻是真的要你去看——krepo 的量體豁免指標就寫在檔首 comment）；

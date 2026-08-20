@@ -28,7 +28,7 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, AskUserQuestion
 
 1. 判斷 adoption：`.doc-governance.json` 與 `scripts/doc-governance.py` 兩者皆有＝adopted；兩者皆無＝legacy；
    只存在一個＝BROKEN，停止且不要回退 legacy。
-2. Adopted repo 先執行 `scripts/doc-governance.py find '<工作問題>'` 查相關 decision／dead end；命中的
+2. Adopted repo 先執行 `python3 "$repo/scripts/doc-governance.py" --root "$repo" find '<工作問題>'` 查相關 decision／dead end；命中的
    stable IDs 稍後寫入 active item 的 `關聯`。不得先整批讀 archive。
 3. 無 `STATUS.md` 時，adopted repo 從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立；legacy repo
    從 `~/.dotfiles/claude/templates/STATUS-legacy-template.md` 建立。建立後確認專案定位；撞名的領域產物不得覆寫。
@@ -42,7 +42,7 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, AskUserQuestion
 Step 0–5、授權表路由與所有 STOP 條件；它是 Log 程序本體，不可只靠本節摘要或記憶重建。
 
 Adopted repo 的文檔差異只有一個入口：Step 2 依 `references/dossier.md` 寫 event-time records、移除完成的
-active/backlog item，然後以 `scripts/doc-governance.py audit --ship` 的 exit code作唯一 doc verdict。
+active/backlog item，然後以 `python3 "$repo/scripts/doc-governance.py" --root "$repo" audit --ship` 的 exit code 作唯一 doc verdict。
 Legacy repo 才沿用 workflow 內既有 detector。Push／merge authority 仍只由 kernel 與
 `references/ship-paths.md` 說法表決定；doc adoption 不改寫任何授權規則。
 

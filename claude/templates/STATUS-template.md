@@ -34,7 +34,7 @@ STATUS.md — 專案 active state（repo 內、隨 git 跨主機、隨專案移�
 - 決策：`docs/archive/decisions-YYYY-MM.md` 的 event-time section。
 - 死路：`docs/archive/dead-ends-YYYY-MM.md` 的 event-time section。
 - 里程碑：`docs/archive/milestones-YYYY-MM.md` 的 event-time section。
-- 無路徑線索時執行 `scripts/doc-governance.py find <自然語言或 stable ID>`。
+- 無路徑線索時執行 `scripts/doc-governance.py find '自然語言問題或 stable ID'`。
 
 ## 待辦入口
 

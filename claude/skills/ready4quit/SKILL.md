@@ -113,7 +113,7 @@ Do not re-run the underlying git commands one by one — the script IS the check
 
 ## Step 2：持久化 flush（memory / dossier 路由）
 
-掃過本 session，盤點「對未來有價值、但還沒落到持久層」的事實。**先判去哪，再判存不存**——兩個出口的存活範圍不同（memory 不跨主機、repo 跟著 git 走；判準與理由的單一來源是全域 CLAUDE.md「跨主機工作流」節）：
+掃過本 session，盤點「對未來有價值、但還沒落到持久層」的事實。**先判去哪，再判存不存**——兩個出口的存活範圍不同（memory 不跨主機、repo 跟著 git 走；判準與理由的單一來源是 `~/.claude/CLAUDE.md`「跨主機工作流」）：
 
 | 事實 | 出口 |
 |------|------|
@@ -200,9 +200,9 @@ deferred tool，先一輪 `ToolSearch`（`select:CronList`）載入 schema 再�
 Ready4Quit 收尾報告：
   Git 衛生      [VERIFIED] ⚠ repo-a 3 檔未 commit、repo-b 1 未 push → 建議先 /project log
   持久化 flush  [VERIFIED] ✓ memory 寫 2 筆（feedback: …／user: …）
-                           ✓ dossier 寫 1 筆（repo-a 死路節：試過 X 因 Y 放棄）
-                             ↳ STATUS.md 未 commit，需 /project log 送出
-                           ✓ 跳過 1 筆（STATUS.md 決策節已記）
+                           ✓ history 寫 1 筆（repo-a `X-*`：試過 X 因 Y 放棄）
+                             ↳ event-time shard 未 commit，需 /project log 送出
+                           ✓ 跳過 1 筆（既有 `D-*` 決策 record 已記）
   背景/排程     [PARTIAL]  ⚠ tasks/ 列到 1 個（b1ada7mt7）；TaskOutput 與 CronList 皆不可用
                              ↳ 該任務死活確認不了、cron 完全沒查到
   Loose ends    [RECALLED] ⚠ 待你決定：API schema 用 v2 還是 v3（Step 4 問過未回）

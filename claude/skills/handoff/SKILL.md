@@ -115,7 +115,7 @@ slug: <slug>
 
 整檔覆寫意味著**前一份的內容不會自動留下**——resume 端沒有任何機制會去讀 archive。跨輪仍有效的死路與決策必須主動處理，否則多輪之後「防重工」就空了：
 
-- **主路徑（repo 有 STATUS.md）**：跨輪仍有效的死路/決策沉澱進 dossier 對應章節，交接檔只留本輪增量 + 一句指標（如「既有死路見 STATUS.md 死路節，勿重開」）。這是全域 CLAUDE.md「死路當下寫入 STATUS.md」的自然延伸——dossier 隨 git 走且跨主機，交接檔消費即死。
+- **主路徑（repo 有 canonical project docs）**：adopted repo（config + core）用 repo-local `record-path` 把跨輪仍有效的決策／死路追加到 event-time shard；legacy repo 才寫自己的既有 dossier 落點。交接檔只留本輪增量與 stable ID／路徑指標。canonical docs 隨 git 走且跨主機，交接檔消費即死。
 - **Fallback（repo 無 dossier，或前一份不在本 session context——如未經 resume 直接 `/handoff <slug>`）**：Read W1 掃到的那一份（active 或 archive 皆可能），取其「死路」「關鍵決策」兩節，仍有效者逐條帶進新檔。不要憑本輪記憶重寫。
 
 ### W4：收尾報告

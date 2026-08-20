@@ -43,11 +43,12 @@ set -uo pipefail
 
 MAX_LIST=20  # 每類清單最多列出的行數；只影響顯示，計數仍為完整值
 GH_BIN="${SHIP_STATE_GH:-gh}"
+# doc-governance:trusted-core:start
 SHIP_STATE_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 TRUSTED_DOC_CORE="$SHIP_STATE_DIR/../../../../scripts/doc-governance.py"
+# doc-governance:trusted-core:end
 
-# dossier 衛生門檻（單一來源——SKILL.md Step 2 與 references/dossier.md 引用本處，
-# 不另寫數字，改門檻只改這裡）
+# legacy dossier detector 的衛生門檻（單一數值來源；改門檻只改這裡）。
 DOSSIER_MAX_LINES=300  # 全檔超過即「當次收斂」硬訊號（krepo 599 行先例：訊號密度崩壞）
 DOSSIER_STALE_DAYS=30  # STATUS.md 最後 commit 落後 repo 活動超過即過期（假狀態比沒有更糟）
 DOSSIER_MAX_BYTES=24576      # 行數代理會被巨型單行架空（evint 117 行/38KB 實證）；24KB ≈ 300 行 × krepo 收斂後密度（~85B/行）
@@ -251,7 +252,7 @@ strip_fences() {
 }
 
 # dossier（STATUS.md）唯讀偵測：存在性、尺寸訊號、進行中 ✅、規範外章節、過期。
-# **量測與逐 flag 處置皆在此**（單一來源；SKILL.md Step 2 只說「照 flag 訊息做」、不複述——
+# **量測與逐 flag 處置皆在此**（單一來源；legacy 流程只照 flag 訊息做、不複述——
 # 兩邊各寫一份必然漂移，實證：SKILL 曾把「改正常換行段落」列為處置，腳本卻明說換行不夠）。
 # 留給 model 的判斷層：蒸餾什麼內容、傘狀雙重記載比對、使用者說「別動它」時怎麼處置。
 detect_dossier() {
@@ -277,7 +278,7 @@ detect_dossier() {
     local unfenced
     unfenced="$(strip_fences "$f")"
     # dossier 簽章（回流自 clean-room 盲寫版）：雙訊號——「進行中」章節 + 任一 dossier
-    # 專屬章節（STATUS.md 命名互斥規則見 references/dossier.md）。flag 缺席即被當
+    # 專屬章節（legacy schema 見 claude/templates/STATUS-legacy-template.md）。flag 缺席即被當
     # dossier 編輯，誤放行比誤攔截危險（攔截只是停下告知），故：
     # - 章節名須為**標題結尾**（允許裝飾前綴「## ⏳ 進行中」與括號後綴「已完成(里程碑)」），
     #   子字串比對會把「## 進行中的部署」＋「## 已完成的部署」這類領域看板誤認成 dossier
@@ -299,7 +300,7 @@ detect_dossier() {
             grep -qE "^##[[:space:]].*${sec}" <<< "$unfenced" || missing="${missing}${sec} "
         done
         if [ -n "$missing" ]; then
-            echo "dossier-flag: 缺少規範章節：${missing}（模板七節見 references/dossier.md）——**先確認是不是被誤刪**（尺寸 flag 只管上限、抓不到整節消失），確認是刻意留空則在該節寫一行說明"
+            echo "dossier-flag: 缺少規範章節：${missing}（legacy 七節模板見 claude/templates/STATUS-legacy-template.md）——**先確認是不是被誤刪**（尺寸 flag 只管上限、抓不到整節消失），確認是刻意留空則在該節寫一行說明"
         fi
     fi
     # 收斂建議目標：不是「壓到剛好低於門檻」（見 DOSSIER_TARGET_PCT 註解）
@@ -473,7 +474,7 @@ detect_dossier() {
 # 直到真的把它做掉。量體門檻對它無效，而每次 ship 又都得走一遍那個檢查——2026-08-15 實測
 # 本 repo 的 STATUS.md 有 11018 bytes（47%）是技術債＋已知缺口、26 條無一已解決，
 # dossier 因此長期貼著門檻飛（8 次 commit 落在門檻的 98–99.8%）。分家正是為了消掉那個
-# 結構下限（見 `references/dossier.md`「1. 檔案角色分工」），**在新檔重設一套門檻等於把
+# 結構下限（見 `../references/dossier.md`「角色分工」），**在新檔重設一套門檻等於把
 # 問題原樣搬過來**。治理靠關閉與歸檔慣例，那是 model 的判斷層、不是腳本的。
 # 保留的唯一機械保障是章節完整性：2026-08-06 實地「一次 lines 操作吃掉兩整節、尺寸 flag
 # 抓不到（那些只管上限）、一路 merge 進 main」的失效面對新檔同樣成立，而它完全靜默——
@@ -586,9 +587,11 @@ detect_doc_governance() {
 }
 # doc-governance:integration:end
 
+# doc-governance:stop-output:start
 print_doc_stop() {
     echo "verdict: STOP（doc-governance findings/broken；修復後再送，其餘偵測輸出保留）"
 }
+# doc-governance:stop-output:end
 
 # review 痕跡的權威 subject 清單在 deep-review——那些 commit 是它產生的，清單跟著產生者走。
 # 跨 skill source；缺席時降級印 UNKNOWN 而**不猜**：讓 model 憑印象比對 subject，漂一個字
@@ -1011,7 +1014,7 @@ check_repo() {
     fi
 
     # -- branch / remotes --
-    local branch remote remotes_n doc_rc=0 doc_stop=0 doc_adopted=0
+    local branch remote remotes_n
     branch="$(git -C "$repo" symbolic-ref --short -q HEAD)" || branch="DETACHED"
     echo "branch: $branch"
 
@@ -1019,17 +1022,22 @@ check_repo() {
     # 移到那之後會讓「任何 repo 都量」與 `always-on: NONE` 兩條都不成立（tests 第 9 節有守門）。
     detect_always_on "$repo" "$toplevel"
 
+    # doc-governance:check-init:start
+    local doc_rc=0 doc_stop=0 doc_adopted=0
     detect_doc_governance "$repo" || doc_rc=$?
     if [ "$doc_rc" -ne 3 ]; then
         doc_adopted=1
         [ "$doc_rc" -eq 0 ] || doc_stop=1
     fi
+    # doc-governance:check-init:end
 
     remote="$(detect_remote "$repo")"
     if [ -z "$remote" ]; then
         echo "remotes: NONE（local-only repo，無從 ship）"
         echo "verdict: STOP（無 remote，停下告知使用者）"
+        # doc-governance:no-remote-stop:start
         [ "$doc_stop" -eq 0 ] || print_doc_stop
+        # doc-governance:no-remote-stop:end
         return 0
     fi
     remotes_n="$(git -C "$repo" remote | wc -l | tr -d ' ')"
@@ -1045,10 +1053,12 @@ check_repo() {
     default="$(detect_default_branch "$repo" "$remote")"
     if [ -z "$default" ]; then
         echo "default: NONE（找不到 $remote/HEAD、$remote/main、$remote/master）"
+        # doc-governance:no-default-stop:start
         if [ "$doc_stop" -eq 1 ]; then
             print_doc_stop
             return 0
         fi
+        # doc-governance:no-default-stop:end
         # 全新空 repo？兩種 default: NONE 的處置相反，交由 detect_bootstrap 實測遠端分辨
         detect_bootstrap "$repo" "$remote" "$branch" "$toplevel"
         return 0
@@ -1092,11 +1102,13 @@ check_repo() {
         echo "branch-first-cmd: ~/.claude/skills/project/scripts/branch-first.sh $(shq "$toplevel") <type>/<slug>"
     fi
 
+    # doc-governance:legacy-skip:start
     if [ "$doc_adopted" -eq 0 ]; then
         # legacy repo 才走舊 detector；adopted repo 的唯一文檔 verdict 是上面的 audit --ship。
         detect_dossier "$repo"
         detect_backlog "$repo"
     fi
+    # doc-governance:legacy-skip:end
 
     # -- 殘留 branch 衛生（已併入 default 的 local/remote branch；無殘留則靜默）--
     detect_stale_branches "$repo" "$remote" "$default" "$branch" "$toplevel"
@@ -1133,9 +1145,11 @@ check_repo() {
     else
         echo "branch-first: 已在 feature branch（${branch}）"
     fi
+    # doc-governance:final-stop:start
     if [ "$doc_stop" -eq 1 ]; then
         print_doc_stop
     fi
+    # doc-governance:final-stop:end
 }
 
 for repo in "$@"; do

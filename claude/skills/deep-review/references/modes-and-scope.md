@@ -4,16 +4,14 @@
 
 ## 目錄
 
-- 核心原則
-- Autofix 模式與錨點
-- Autocodex 模式與 protocol
+- 審查者與作者分離
+- Autofix 模式
+- Autocodex 模式
 - 手動 Codex 第三方觸發的 range 恢復
 - 迭代與 commit 紀律
-- 審查範圍選擇
+- 1. 確定審查範圍
 
-## 核心原則
-
-### 審查者與作者分離
+## 審查者與作者分離
 
 **Code-quality 審查優先由 subagent（Agent 工具）執行。** 主 agent 負責 orchestration-level judgment（範圍確定、repo 選擇、context 收集、round 偵測），但不做 code-quality judgment（程式碼好壞、是否有 bug、是否符合慣例）。Subagent 擁有乾淨的 context window，不帶寫 code 時的推理脈絡，避免 confirmation bias。
 
@@ -25,7 +23,7 @@
 
 **這條分離的邊界**：分離的是**判斷**，不是**提問**。主 agent 仍然構造 subagent 的 prompt——`Separating the judge does nothing if the same party writes the question.` 故 Step 4 對提問端設了硬約束（判準交路徑、bar 與 task 恆定、上限不外洩）；那不是形式要求，是這條原則能否成立的前提。
 
-### Autofix 模式
+## Autofix 模式
 
 引數包含 `autofix` 時，主 agent 自動執行 review → fix → commit 循環，直到通過或達到上限。
 
@@ -85,7 +83,7 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 
 **審查者與作者分離在 autofix 中同樣適用**——主 agent 負責修復（作者角色），subagent 負責審查（reviewer 角色），兩者不混合。
 
-### Autocodex 模式
+## Autocodex 模式
 
 此模式涉及兩個審查者，全文一律以此命名：**主 agent**（Claude Code 本體，負責主 agent 審查階段與所有修復）、**Codex**（獨立第三方 reviewer）。
 
@@ -94,7 +92,7 @@ R5 review → 通過 → 結束（squash 成乾淨 commit）
 - `/deep-review autofix autocodex`：主 agent 自動審查修復 → 通過 → Codex 自動審查修復循環
 - `/deep-review autocodex`：主 agent 手動審查 → 通過 → Codex 自動審查修復循環
 
-#### Codex 審查循環流程
+### Codex 審查循環流程
 
 ```
 主 agent 審查通過 → 取第三方審查資訊（repo path + commit range）
@@ -138,7 +136,7 @@ Hard constraints — violating any of these invalidates the codex round:
 
 **Squash**：codex 階段的 `fix: address external review findings` commit 與先前的 `fix: address review findings` commit 一起納入最終 squash。
 
-### 手動 Codex 第三方觸發的 range 恢復
+## 手動 Codex 第三方觸發的 range 恢復
 
 使用者說「由 codex 進行第三方審查」但不在 autocodex loop 時，優先取最近一次通過報告的
 `base..head`；已 push 不改變範圍。報告不可用時跑 `review-anchor.sh show --repo <repo>`。兩者都無時先
@@ -146,7 +144,7 @@ fetch canonical remote：HEAD 仍領先 default 才以 merge-base 作下界審�
 可自動推導的下界，列近期 PR／merge commit 請使用者選。**NEVER 退化成 `HEAD~1..HEAD`**，除非使用者
 確認整批只有那一顆 commit。最近一次流程明確帶 autofix 才在驗證 findings 後自動修復；否則只回報判定。
 
-### 迭代紀律：每輪修復後 commit
+## 迭代紀律：每輪修復後 commit
 
 多輪 review 時，每輪修復後**必須先 commit 再進入下一輪**，最終通過後 squash 成乾淨 commit。
 
@@ -166,14 +164,14 @@ Round N review — 通過
 
 **Commit message 不編輪號**（一律 `fix: address review findings`，codex 階段 `fix: address external review findings`）。`fix: R4 review fixes` 這種寫法會讓 reviewer 跑一次 `git log` 就反推出**剩餘輪數**——那是 Step 4 花力氣關掉的洩漏管道，不該從 commit history 漏回去。**但擋不掉「已改過幾次」**（commit 數量本身即訊號），該殘留見 Step 4 的說明。Round 偵測不受影響：`review-state.sh` 數的是**這組固定 subject 的完整比對**（`lib/review-subjects.sh` 單一來源），不解析輪號——也因此**偏離這組字面就數不到**，中性化 message 一律照抄、勿自行改寫。
 
-### 1. 確定審查範圍
+## 1. 確定審查範圍
 
 **引數前處理**：若引數包含 `autofix` 和/或 `autocodex`，先提取出來設為對應模式，剩餘引數才用於判斷審查範圍。例如 `/deep-review autofix autocodex src/` → autofix 模式 + autocodex 模式 + 審查 `src/`。
 
 對每個 repo 獨立判斷，依優先順序：
 
 1. **有引數**（扣除 autofix 後）→ 依引數類型決定模式（見下方）
-2. **有 working tree 變更**（腳本 `scope-priority: 2`）→ 審查目標 = `git diff HEAD` + 腳本 `untracked` 清單逐檔（**review 須唯讀，勿用會寫 index 的 `git add -N`**：untracked 新檔全文即 diff，由 subagent 直接 `Read` 該檔，或 `git diff --no-index /dev/null <檔>`（唯讀）取得 added 視圖）。此唯讀處理適用**非 autofix** 路徑；autofix 於前置以 WIP snapshot 收妥未提交變更後，審查範圍改用 record 印出的 `diff-cmd:` 行（見「測試 baseline / WIP snapshot」段）
+2. **有 working tree 變更**（腳本 `scope-priority: 2`）→ 審查目標 = `git diff HEAD` + 腳本 `untracked` 清單逐檔（**review 須唯讀，勿用會寫 index 的 `git add -N`**：untracked 新檔全文即 diff，由 subagent 直接 `Read` 該檔，或 `git diff --no-index /dev/null <檔>`（唯讀）取得 added 視圖）。此唯讀處理適用**非 autofix** 路徑；autofix 於前置以 WIP snapshot 收妥未提交變更後，審查範圍改用 record 印出的 `diff-cmd:` 行（見本檔「Autofix 模式」）
 3. **HEAD 偏離 base branch 且 working tree clean**（腳本 `scope-priority: 3`）→ 審查目標 = `git diff <base>...HEAD`（review 整個 branch）
    - base 取腳本 `base:` 輸出（偵測順序 remote HEAD → main → master、無 remote 退本地 branch 已封裝；目標是 repo 的預設主分支，不是當前 branch 的 upstream）。腳本印 `remotes: N 個` 且非 autofix 模式 → 提示使用者指定基準 remote（autofix 需零互動，用腳本預設並在報告註明）；`base: NONE` → **priority 3 不適用，落入 priority 4**（不在此提示指定 base，改問審查範圍）
 4. **working tree clean，且 HEAD 未領先 base branch（`<base>..HEAD` 為空）或無可用 base branch**（腳本 `scope-priority: 4 — MUST ASK USER`；剛初始化、無 remote、或已與主分支同步，無近期有意義 diff）→ **不要**逕自 `git diff HEAD~1`（只會審到最後一個小 commit）。先問使用者要審什麼：最後一個 commit、整條 branch、或**整個 repo / 全庫**。若選全庫 → base 設為 git empty-tree（腳本 priority 4 已印 `empty-tree:` 行，照抄）。（與 priority 3 互斥：3 = HEAD **領先** base；4 = HEAD **未領先** base 或無 base）
@@ -185,7 +183,7 @@ Round N review — 通過
 
 **引數判斷**：符合 `HEAD~N`、`X..Y`、或 7+ 字元 hex → commit 範圍模式；其餘視為檔案/目錄路徑。
 
-#### skill-authoring batch：一次診斷，不進修復循環
+### skill-authoring batch：一次診斷，不進修復循環
 
 變更集**觸及以下任一** → 判為 **skill-authoring batch**（按工作類型，不按副檔名）：
 
@@ -215,7 +213,7 @@ Round N review — 通過
 
 **Escape hatch 只有一個字面 token**：`/deep-review autofix force-skill-loop`。`autofix` 本身**不構成**推翻（那是它預設就會帶的字），**NEVER infer an equivalent from natural language**——使用者說「就是要跑」「照跑」都不算。帶了 `force-skill-loop` 才進 loop，且報告開頭必須標明「已知此 loop 結構上不收斂」。
 
-#### Codex 範圍模式判定（僅 autocodex 需要）
+### Codex 範圍模式判定（僅 autocodex 需要）
 
 base 與 range 確定後，**逐 repo** 判一次 `codex_base_mode`，決定 autocodex 階段每輪的 commit range 行為（判定樹，命中即停）。**判 base 的語意，不判 diff 大小**——大型 feature branch 仍是 diff 模式，不因大而切增量。
 

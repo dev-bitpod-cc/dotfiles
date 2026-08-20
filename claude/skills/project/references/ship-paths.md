@@ -1,6 +1,6 @@
 # Ship Paths — git/gh 指令細節
 
-SKILL.md Step 1/5 的展開。涵蓋 repo 解析、protection 偵測、branch-first 搬移、PR 路徑、直接 push 路徑、PR body 模板、失敗處理。
+`../SKILL.md`「Log 模式」的 git/gh 實作參考：repo 解析、protection、branch-first、PR／push、PR body 與失敗處理。
 
 > **Solo repo is not a lighter process.** One-person projects run the SAME shape as a protected-main team repo: branch → commits → review → PR → explicit merge. Never relax branch-first, the PR default, or the explicit-merge rule because "it's just me", "no one else will read this history", or "there's no protection to enforce it". 理由：repo 會移交、會加入新成員，使用者本人也會成為他人 repo 的成員——流程形狀一旦按「一人份」放寬，這些時刻就沒有秩序可交接，也養不出正式流程的手感。**這條只是防守既有規則被合理化侵蝕，不新增任何步驟。**
 

@@ -41,7 +41,7 @@ Project Log 進度：
 
 **詢問收斂（零到一題）**：使用者給了送出說法 → **一題都不問**，印完摘要做到底。沒給說法 → Step 4 問**一題**。其餘待決事項一律有預設處置或降為摘要「附註」，不另外出題、不逐項中斷（規則以 Step 4 為準，此處不重列）。例外只有兩類：`ship-state.sh` 的 `verdict: STOP`，以及 agent 無法自行安全決定的情境（身分分離、fork、push 失敗、spec 撞名）。
 
-### Critical — Guardrails
+## Critical — Guardrails
 
 These are hard constraints. Read them before touching git.
 
@@ -52,7 +52,7 @@ These are hard constraints. Read them before touching git.
 - **Unknown protection = protected.** If `gh` is missing or the protection query fails, treat the default branch as protected (PR path). Do not assume it is open.
 - **A ship keyword authorizes HOW to ship, NEVER whether a batch may ship.** Any `verdict: STOP` from `ship-state.sh` — including `review-terminal:` — outranks every keyword. Stop and follow the message.
 
-#### Rationalization table — STOP if you hear yourself say these
+### Rationalization table — STOP if you hear yourself say these
 
 | Excuse | Reality |
 |--------|---------|
@@ -67,7 +67,7 @@ These are hard constraints. Read them before touching git.
 | "It's just a docs commit, the protection won't mind." | Protection does not care what the commit is. Same rules. |
 | "Working tree is clean — nothing to ship, exit." | Docs may still lag behind already-shipped code. Check session memory for shipped work (docs-only mode, Step 1 item 2) before exiting. |
 
-#### Red Flags — STOP and re-read Critical
+### Red Flags — STOP and re-read Critical
 
 - About to run `git push origin <default-branch>` or `git push` while on the default branch.
 - About to run `gh pr merge` / any merge **without an explicit user merge instruction** (with one, follow `ship-paths.md`「Merge 最後一哩」).
@@ -75,9 +75,9 @@ These are hard constraints. Read them before touching git.
 - About to push without having printed the Step 4 summary, or with neither a ship keyword nor a Step 4 answer in hand.
 - About to ask which merge flag to use, or whether to squash. Both已有預設——see Step 4.
 
-### Step 0：範圍鎖定
+## Step 0：範圍鎖定
 
-#### 引數前處理（依**形狀**分類，不靠優先序記憶）
+### 引數前處理（依**形狀**分類，不靠優先序記憶）
 
 引數逐 token 依形狀歸類 —— **形狀規則的好處是不需要記「誰先誰後」**，同一個字不會因為位置不同而有兩種讀法：
 
@@ -105,7 +105,7 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 
 鎖定單一 repo 後 → 直接進 Step 1（不問多 repo 清單）。
 
-#### 多 Repo 偵測（無 repo 引數時）
+### 多 Repo 偵測（無 repo 引數時）
 
 依本 session 記憶列出所有涉及變更的 repo（**不掃 `~/Projects/`**）：
 
@@ -122,7 +122,7 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 5. 全部 repo 既無領先 default 的 commit 又無 working tree 變更 → **勿直接結束**：先逐 repo 依 Step 1 第 2 項的 **docs-only mode** 判定（session 有已 ship 變更的 repo 仍納入，跑文檔同步）。git 無變更**且** session 記憶亦無已 ship 工作 → 才告知並結束。
 6. **單一 repo → 跳過此步，直接 Step 1。**
 
-### Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）
+## Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）
 
 > **remote 假設**：下文一律以 `origin` 書寫，代表「canonical remote」的 stand-in。**非 origin repo**：把下文所有 `origin` 讀作你解析出的 remote（`git -C <repo> remote`；有 `origin` 用之、否則取第一個）；無任何 remote → 停下告知使用者。**fork 工作流**（push 目標 = writable fork、PR/protection 查詢目標 = upstream，兩者為不同 remote）**本 skill 不自動分辨**——遇 fork 場景在 Step 4 摘要明列兩個 remote、由使用者確認，**不擅自對 fork 開 PR、不對唯讀 upstream push**。**host 假設**：本 skill 假設 GitHub.com（`gh` 走 authenticated default host、compare URL 用 `github.com`）；GitHub Enterprise / 自架站台需設 `GH_HOST` 並以 `host/owner/repo` 形式綁 `-R`，**不在本 skill 自動處理範圍**（SSH alias 如 `git@github-work:` 仍指向 github.com，照常適用）。
 
@@ -156,7 +156,7 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 
    **不在此單獨停下**；執行序見 `ship-paths.md`「送出前的 branch 內 squash」（已 push 過的 branch，force-push 屬 Step 5）。
 
-### Step 2：同步 active/history/backlog 與受影響文檔
+## Step 2：同步 active/history/backlog 與受影響文檔
 
 先讀 `dossier.md`，再由完整變更集識別模組。防禦原則：先讀、只改相關段落、無需更新就跳過。
 
@@ -166,7 +166,7 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 2. 工作完成時寫 `M-*` milestone、從 `STATUS.md` 移除 completed active item；暫停項必須有恢復條件。
    Backlog 新項給 `B-*`；解決／放棄／變成決策時寫對應 history record、保留 `B-*` 關聯後移除原 item。
 3. 同一 work item 的 plan 只修原檔；本次實作真正完成才把狀態改 `implemented`，不得另建 `-v2`／`-final`。
-4. 文檔更新後執行 `scripts/doc-governance.py audit --ship`。exit 0 才通過；exit 1 的 findings 必須處置；
+4. 文檔更新後執行 `python3 "$repo/scripts/doc-governance.py" --root "$repo" audit --ship`。exit 0 才通過；exit 1 的 findings 必須處置；
    exit 2 是 BROKEN。兩種非零都設定 doc STOP，但繼續收集其餘摘要。**這是 adopted repo 唯一 doc verdict；
    NEVER 再跑 legacy dossier/backlog detector 來覆蓋它。**
 
@@ -186,7 +186,7 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 - 所有更動文檔頂部的 `updated` 日期改為今天（YYYY-MM-DD；STATUS.md 的對應欄位名為「更新日期」）。
 - `$ARGUMENTS` 中（mode 與 repo token 之後的）module 名 → 限縮文檔掃描範圍。
 
-### Step 3：Adaptive 提交
+## Step 3：Adaptive 提交
 
 依 reviewed code 的狀態決定文檔如何「一起提交」。**前提：送出前所有 reviewed code 都必須已 commit**——working tree 不留未 commit 的 code，否則 Step 5 會送出不完整變更集。
 
@@ -199,7 +199,7 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 
 commit message 用 Conventional Commits，附環境指定的 `Co-Authored-By` trailer（以 runtime system prompt 的 Git 區塊為權威，**勿在 skill 寫死 model 名稱/版本**——它每次升 model 就漂移）。
 
-### Step 4：Ship 摘要 → 確認（critical-op gate）
+## Step 4：Ship 摘要 → 確認（critical-op gate）
 
 push **之前**，逐 repo 印摘要等使用者確認（plan → validate → execute）：
 
@@ -240,7 +240,7 @@ Ship 摘要：
 
 `AskUserQuestion` 不可用（背景 turn／工具被停用）且落在路徑 B → 退回文字編號選項並 **STOP**。
 
-#### 說法覆蓋不了的事實前提（一律停）
+### 說法覆蓋不了的事實前提（一律停）
 
 `ship-state.sh` 印 `verdict: STOP` → **停下照訊息處理，即使使用者已給說法**。**A ship keyword authorizes HOW to ship, NEVER whether a batch may ship at all.** doc-governance findings／BROKEN 必須產生 `verdict: STOP`；其他來源包含無 remote、非 bootstrap 的 default 解析失敗、以及——
 
@@ -249,7 +249,7 @@ Ship 摘要：
 
 > 為什麼這條存在：Step 4 從「每批停下確認」改成「說法即授權」之後，原本那道 gate 順帶接住的「這批還沒審完」就沒有別人接了。**拆掉守衛就得補上它接住的東西。**
 
-### Step 5：依路徑送出
+## Step 5：依路徑送出
 
 確認後逐 repo 執行（完整指令序列見 `ship-paths.md`）：
 

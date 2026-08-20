@@ -131,7 +131,8 @@
 另：clean-room 版在「squash 錨點語意」上做出與現有實作不同的合法設計
 （scope_base 與 squash_anchor 分離、只收攏審查產生的 commits），暴露本規格 H2
 「本次審查的起點」一詞的歧義——2026-07-21 已拍板維持現狀（anchor = 審查範圍起點，
-squash 範圍恆等審查範圍）並在 squash-cmd 加壓掉前警告，理由見 STATUS.md 關鍵決策。
+squash 範圍恆等審查範圍）並在 squash-cmd 加壓掉前警告。
 **2026-08-06 該拍板已被推翻**：改採與此處 clean-room 版相近的設計（squash base 由 subject
 掃描求得、只收攏 review 產生的 commits，語意 commit 保留），故本段記錄的是**當時**的結論，
-勿據此判斷現行實作；現況見 STATUS.md 關鍵決策與 `claude/skills/deep-review/`。
+勿據此判斷現行實作；現況讀 `claude/skills/deep-review/`，理由以
+`scripts/doc-governance.py find '2026-08-06 squash 範圍與審查範圍解耦'` 定位 canonical record。
