@@ -187,4 +187,19 @@ if [ -f "$repo_root/STATUS.md" ]; then
     fi
 fi
 
+# --- deep-plan inbox 未排空偵測 -------------------------------------------------
+# /deep-plan 的 P4 核對與 field-log 紀錄不再直寫 dotfiles 的 checkout(理由見
+# claude/skills/deep-plan/SKILL.md 的 Step 3b):執行當下落在機器本地的 inbox,
+# 由「在 dotfiles 工作的」session 開 branch 排空。這裡是唯一會提醒的地方——
+# 只在 dotfiles 提醒,因為排空只能在這裡做,在別的 repo 提醒等於純噪音。
+# ⚠️ 代價:長期不在 dotfiles 開 session 就不會被提醒,inbox 會靜靜堆著。
+#    這是刻意取捨——換掉的是「任意 session 寫同一棵 tree」那個更貴的失效面。
+if [ "$repo_root" = "$HOME/.dotfiles" ] && [ -d "$HOME/.claude/deep-plan-inbox" ]; then
+    inbox_n=$(find "$HOME/.claude/deep-plan-inbox" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+    [ -n "$inbox_n" ] || inbox_n=0
+    if [ "$inbox_n" -gt 0 ]; then
+        echo "ℹ ~/.claude/deep-plan-inbox/ 有 ${inbox_n} 筆未排空的 deep-plan 紀錄——開 branch 併進 claude/skills/deep-plan/ 的 evals.md／field-log.md,併完刪掉來源檔再送 PR。"
+    fi
+fi
+
 exit 0
