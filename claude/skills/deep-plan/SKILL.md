@@ -148,9 +148,24 @@ standing recipe 實例。兩個條件**都**成立才登記：
 2. 該條是**判準類**——存在「本來會攔、改完不攔」那一格（放行/攔下的成員集合、豁免範圍、
    閘門條件）。純事實錯誤、措辭、遺漏不算
 
-達標 → **當場**把三項寫進 `evals.md`：計畫檔在該 repo 的路徑、**第一輪當下的 commit hash**、
-ground truth 的證據位置（哪幾個檔的哪一段構成那條 finding，逐條記）。
-未達標 → 記進該節「已核對過、未達標的執行」一列，附不成立的是哪個條件。
+記什麼：達標 → 計畫檔在該 repo 的路徑、**第一輪當下的 commit hash**、ground truth 的證據位置
+（哪幾個檔的哪一段構成那條 finding，逐條記）。未達標 → 附不成立的是哪個條件。
+
+**寫到哪裡——`~/.claude/deep-plan-inbox/<日期>-<repo>-<第幾次>.md`，一次執行一個檔。**
+
+⚠️ **NEVER write this record into the dotfiles checkout.** 不論 `evals.md`、`field-log.md`、
+或任何 `~/.dotfiles/` 底下的檔，**執行當下一律不碰**——`/deep-plan` 是從別的 repo 呼叫的，
+直寫等於讓任意 session 在任意時刻無協調地寫同一棵 working tree。**這條沒有例外，目標 repo
+就是 dotfiles 時也一樣**（有例外就得在執行當下判斷「我是不是唯一寫入者」，而那正是判錯的地方）。
+
+實地事故（2026-08-20）：三個 session 同時要寫 `~/.dotfiles`——一個跑 judicial 的 P4 核對、
+一個在實作、一個在送 PR。實作那個依 kernel 的「working tree 有不是我做的變更 → 停下報告」
+**卡死三小時**；核對那筆紀錄被還原以解結，之後重寫又落在別處，兩次都沒真正入庫。
+**紀錄本身沒有錯，錯的是落點。**
+
+排空（由**在 dotfiles 工作的**那個 session 做，不是你）：開 branch → 把 inbox 各檔併進
+`evals.md`／`field-log.md` → 刪掉來源檔 → 走正常 PR。那時是單一寫入者，衝突不可能發生。
+SessionStart hook 會在 inbox 非空時提醒。
 
 ⚠️ **hash 取第一輪當下那顆，不是 ship 完的那顆。** P4 測的是 reviewer 在**未修**的 repo 狀態下
 能不能自己拼出證據；處置後的狀態裡，答案已經寫進修復的 commit message 與註解。
@@ -197,7 +212,7 @@ ground truth 的證據位置（哪幾個檔的哪一段構成那條 finding，�
 
 ```markdown
 ---
-> **本計畫走過 `/deep-plan`** → ship 時補一段進 `claude/skills/deep-plan/field-log.md`。
+> **本計畫走過 `/deep-plan`** → ship 時把該段寫進 `~/.claude/deep-plan-inbox/`（一次一檔，**不要直接寫 dotfiles**）。
 > 關鍵欄位是「會 ship 的 ?/?」——**只有實作完的當下答得出來**，事後補是猜的。
 ```
 
