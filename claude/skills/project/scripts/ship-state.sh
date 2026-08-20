@@ -43,6 +43,8 @@ set -uo pipefail
 
 MAX_LIST=20  # 每類清單最多列出的行數；只影響顯示，計數仍為完整值
 GH_BIN="${SHIP_STATE_GH:-gh}"
+SHIP_STATE_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+TRUSTED_DOC_CORE="$SHIP_STATE_DIR/../../../../scripts/doc-governance.py"
 
 # dossier 衛生門檻（單一來源——SKILL.md Step 2 與 references/dossier.md 引用本處，
 # 不另寫數字，改門檻只改這裡）
@@ -565,7 +567,6 @@ detect_always_on() {
 }
 
 # doc-governance:integration:start
-# 0/1/2=adopted clean/findings/broken；3=兩檔都沒有的 legacy。
 detect_doc_governance() {
     local repo="$1" config="$1/.doc-governance.json" core="$1/scripts/doc-governance.py"
     if [ ! -e "$config" ] && [ ! -e "$core" ]; then
@@ -576,9 +577,18 @@ detect_doc_governance() {
         echo "doc-flag: adoption incomplete"
         return 2
     fi
-    python3 "$core" --root "$repo" audit --ship
+    if [ ! -f "$TRUSTED_DOC_CORE" ] || ! cmp -s "$core" "$TRUSTED_DOC_CORE"; then
+        echo "doc-governance: BROKEN"
+        echo "doc-flag: trusted core mismatch（拒絕執行 target）"
+        return 2
+    fi
+    python3 "$TRUSTED_DOC_CORE" --root "$repo" audit --ship
 }
 # doc-governance:integration:end
+
+print_doc_stop() {
+    echo "verdict: STOP（doc-governance findings/broken；修復後再送，其餘偵測輸出保留）"
+}
 
 # review 痕跡的權威 subject 清單在 deep-review——那些 commit 是它產生的，清單跟著產生者走。
 # 跨 skill source；缺席時降級印 UNKNOWN 而**不猜**：讓 model 憑印象比對 subject，漂一個字
@@ -1019,6 +1029,7 @@ check_repo() {
     if [ -z "$remote" ]; then
         echo "remotes: NONE（local-only repo，無從 ship）"
         echo "verdict: STOP（無 remote，停下告知使用者）"
+        [ "$doc_stop" -eq 0 ] || print_doc_stop
         return 0
     fi
     remotes_n="$(git -C "$repo" remote | wc -l | tr -d ' ')"
@@ -1034,6 +1045,10 @@ check_repo() {
     default="$(detect_default_branch "$repo" "$remote")"
     if [ -z "$default" ]; then
         echo "default: NONE（找不到 $remote/HEAD、$remote/main、$remote/master）"
+        if [ "$doc_stop" -eq 1 ]; then
+            print_doc_stop
+            return 0
+        fi
         # 全新空 repo？兩種 default: NONE 的處置相反，交由 detect_bootstrap 實測遠端分辨
         detect_bootstrap "$repo" "$remote" "$branch" "$toplevel"
         return 0
@@ -1119,7 +1134,7 @@ check_repo() {
         echo "branch-first: 已在 feature branch（${branch}）"
     fi
     if [ "$doc_stop" -eq 1 ]; then
-        echo "verdict: STOP（doc-governance findings/broken；修復後再送，其餘偵測輸出保留）"
+        print_doc_stop
     fi
 }
 

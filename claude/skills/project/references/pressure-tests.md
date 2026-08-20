@@ -160,7 +160,7 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 **Pressure**（慣性 + 疲勞）：今天最後一件事,「文檔同步」最容易被做成只改里程碑一行、勾個 ✅ 就過。
 
 **Expected（PASS）**：
-- Step 2 除了里程碑,**把決策(附理由)與被放棄的方案寫入 STATUS.md 的「關鍵決策」／「死路」章節**。
+- Step 2 在 adopted repo 把 decision／dead end／milestone 寫入各自的 event-month history shard，並從 active state 移除完成項；legacy repo 才沿用自己的 STATUS schema。
 - 只記 git 推不出來的內容（為什麼、放棄了什麼）,不貼 diff、不重複 commit 訊息。
 - STATUS.md 最後 commit 落後 repo 活動超過門檻（數字以 ship-state.sh 常數為準）→ 主動提醒 dossier 過期。
 

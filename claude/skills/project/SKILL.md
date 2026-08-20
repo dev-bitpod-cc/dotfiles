@@ -30,8 +30,8 @@ allowed-tools: Bash, Read, Glob, Grep, Edit, Write, AskUserQuestion
    只存在一個＝BROKEN，停止且不要回退 legacy。
 2. Adopted repo 先執行 `scripts/doc-governance.py find '<工作問題>'` 查相關 decision／dead end；命中的
    stable IDs 稍後寫入 active item 的 `關聯`。不得先整批讀 archive。
-3. 無 `STATUS.md` 時從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立並確認專案定位。撞名的領域
-   產物不得覆寫；legacy 判定沿用 `references/dossier.md`。
+3. 無 `STATUS.md` 時，adopted repo 從 `~/.dotfiles/claude/templates/STATUS-template.md` 建立；legacy repo
+   從 `~/.dotfiles/claude/templates/STATUS-legacy-template.md` 建立。建立後確認專案定位；撞名的領域產物不得覆寫。
 4. 在 `進行中` 寫 Context／Goal／Acceptance Criteria／Constraints／進度／下一步／關聯 IDs。
    模糊處直接問，不猜。暫停則移到 `暫停中` 並寫可觀察的恢復條件。
 5. Legacy repo 依自己的 STATUS schema 寫 spec，不強迫建立 history/backlog family。

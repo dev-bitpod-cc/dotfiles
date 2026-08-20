@@ -189,7 +189,7 @@ Round N review — 通過
 
 變更集**觸及以下任一** → 判為 **skill-authoring batch**（按工作類型，不按副檔名）：
 
-- `claude/skills/**`、`codex/skills/**`（含其 `scripts/` `` `evals.md`）
+- `claude/skills/**`、`codex/skills/**`（含其 `scripts/`、`references/`、`evals.md`）
 - `claude/CLAUDE.md`、`codex/AGENTS.md`、repo 根的 `CLAUDE.md`（agent／test 行為契約層）
 - `claude/skill-building-guide.md`、`claude/evals/**`
 

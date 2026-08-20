@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 import datetime as dt
 import fnmatch
 from functools import cache
+import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -90,11 +90,11 @@ class Document:
 
   def has_section(self, section):
     wanted = xref_norm(section)
-    return any(((match := HEADING_RE.match(line)) and wanted in xref_norm(match.group(2)) for line in self.target_lines()))
+    return any((match := HEADING_RE.match(line)) and xref_norm(match.group(2)).startswith(wanted) for line in self.target_lines())
 
   def has_body(self, section):
     wanted = xref_norm(section)
-    return any((wanted in xref_norm(line) for line in self.target_lines()))
+    return any(not HEADING_RE.match(line) and wanted in xref_norm(line) for line in self.target_lines())
 
   def h2_sections(self):
     for index in range(len(self.lines)):
@@ -183,11 +183,11 @@ def load_config(root, *, optional=False):
   return Config(root=root, raw=raw, classes=classes)
 
 def tracked_markdown(root):
-  output = run_git(root, ['ls-files', '-z', '--', '*.md'])
-  return sorted((item for item in output.split('\x00') if item))
+  output = run_git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.md'])
+  return sorted(item for item in output.split('\x00') if item)
 
 def matching_classes(rel, config):
-  return [cls for cls in config.classes if any((fnmatch.fnmatchcase(rel, pattern) for pattern in cls.paths))]
+  return [cls for cls in config.classes if any(fnmatch.fnmatchcase(rel, pattern) for pattern in cls.paths)]
 
 def fence_mask(lines):
   mask = [False] * len(lines)
@@ -249,7 +249,7 @@ def zero_metrics():
   return dict.fromkeys(METRICS, 0)
 
 def parse_top_level_entries(doc):
-  entries: list[Entry] = []
+  entries = []
   metrics = zero_metrics()
   section = 'file-preamble'
   section_has_entry = False
@@ -381,24 +381,6 @@ def search_tokens(value):
     tokens.add('✅')
   return tokens
 
-def expanded_query_tokens(config, query):
-  tokens = search_tokens(query)
-  normalized = search_norm(query)
-  aliases = config.raw.get('query_aliases', [])
-  if not isinstance(aliases, list):
-    raise ScannerError('config query_aliases 必須是 list')
-  for rule in aliases:
-    if not isinstance(rule, dict):
-      raise ScannerError('config query_aliases item 必須是 object')
-    required = rule.get('all', [])
-    alternatives = rule.get('any', [])
-    additions = rule.get('add', [])
-    if not all((isinstance(items, list) and all((isinstance(item, str) for item in items)) for items in (required, alternatives, additions))):
-      raise ScannerError('config query_aliases all/any/add 必須是字串 list')
-    if all((search_norm(item) in normalized for item in required)) and (not alternatives or any((search_norm(item) in normalized for item in alternatives))):
-      tokens.update(search_tokens(' '.join(additions)))
-  return tokens
-
 def entry_score(entry, query, query_tokens):
   query_norm = search_norm(query)
   title_norm = search_norm(entry.title)
@@ -421,7 +403,7 @@ def entry_score(entry, query, query_tokens):
     score += 1000
   aliases = entry.metadata.get('別名', '') + ' ' + entry.metadata.get('標籤', '')
   score += len(query_tokens & search_tokens(aliases)) * 80
-  asks_for_reason = any((marker in query_norm for marker in ('為什麼', '原因', '理由', 'why')))
+  asks_for_reason = any(marker in query_norm for marker in ('為什麼', '原因', '理由', 'why'))
   if score and asks_for_reason and entry.doc_class and (entry.doc_class.mode == 'history'):
     score += 800
   return score
@@ -444,7 +426,7 @@ def cmd_find(config, query, limit):
   excluded = hidden_legacy_plans(config)
   documents = [doc for doc in documents if doc.rel not in excluded]
   entries, _ = build_entries(documents)
-  query_tokens = expanded_query_tokens(config, query)
+  query_tokens = search_tokens(query)
   ranked = [(entry_score(entry, query, query_tokens), entry.path, entry.line, entry) for entry in entries]
   ranked = [item for item in ranked if item[0] > 0]
   ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
@@ -471,7 +453,7 @@ def class_findings(config, classification):
   tracked = set(classification)
   for cls in config.classes:
     for pattern in cls.paths:
-      if not any((fnmatch.fnmatchcase(rel, pattern) for rel in tracked)):
+      if not any(fnmatch.fnmatchcase(rel, pattern) for rel in tracked):
         findings.append(f'class glob 無匹配: {cls.name}:{pattern}')
   return findings
 
@@ -482,8 +464,8 @@ def expected_history_path(config, entry_type, event_date):
 
 def history_findings(config, entries):
   findings = []
-  ids: dict[str, Entry] = {}
-  supersedes: list[tuple[Entry, str]] = []
+  ids = {}
+  supersedes = []
   for entry in entries:
     if not entry.stable_id:
       continue
@@ -548,7 +530,7 @@ def plan_findings(config, markdown):
   findings = []
   plan_dir = config.raw.get('plan_dir', 'docs/plans').rstrip('/') + '/'
   legacy = config.raw.get('legacy_plan_blobs', {})
-  active: dict[str, list[str]] = {}
+  active = {}
   for rel in markdown:
     if not rel.startswith(plan_dir):
       continue
@@ -626,24 +608,26 @@ def resolve_reference(target, source, root):
     for candidate in (source.parent / target, root / target):
       if candidate not in candidates:
         candidates.append(candidate)
-  for candidate in candidates:
-    if candidate.is_file():
-      resolved = candidate.resolve()
-      if os.path.commonpath([resolved, root]) != str(root):
-        return (None, f'解析後逃出 --root（{resolved}）')
-      return (resolved, None)
-  tried = '、'.join((str(candidate.relative_to(root)) for candidate in candidates))
+  resolved = [candidate.resolve() for candidate in candidates]
+  inside = [candidate for candidate in resolved if candidate.is_relative_to(root)]
+  found = next((candidate for candidate in inside if candidate.is_file()), None)
+  if found:
+    return (found, None)
+  if not inside:
+    return (None, f'解析後逃出 --root（{resolved[0]}）')
+  tried = '、'.join((str(candidate.relative_to(root)) for candidate in inside))
   return (None, f'檔案不存在（試過：{tried}）')
 
-def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, section_aliases=None):
+def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, section_aliases=None, alias_sources=None):
   findings = []
-  cache: dict[Path, Document] = {}
-  inbound: dict[Path, set[str]] = {}
+  cache = {}
+  inbound = {}
   skipped = skip_sources or set()
   for rel in sorted(files):
     if rel in skipped:
       continue
     source = Document.read(root, rel)
+    aliases = (section_aliases or []) if rel in (alias_sources or ()) else ()
     for lineno, line in source.source_lines():
       for match in REF_RE.finditer(line):
         target, section = (match.group(1), match.group(2))
@@ -665,7 +649,7 @@ def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, sec
         elif not target_doc.has_body(section):
           alias_matched = False
           target_rel = str(path.relative_to(root))
-          for alias in section_aliases or []:
+          for alias in aliases:
             if alias['from_path'] != target_rel:
               continue
             if xref_norm(alias['from_section']) not in xref_norm(section):
@@ -694,7 +678,7 @@ def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, sec
     wanted = inbound.get(path, set())
     for lineno, heading in cache[path].h2_sections():
       normalized = xref_norm(heading)
-      if any((item in normalized for item in wanted)):
+      if any(item in normalized for item in wanted):
         continue
       findings.append(f'{rel}:{lineno}: ## {heading} — 節級孤兒：無任何 md 以 `{rel}`「節名」指到它')
   return findings
@@ -707,7 +691,7 @@ def evidence_layers(config):
     if not cls.requires_inbound:
       continue
     for pattern in cls.paths:
-      if not any((char in pattern for char in '*?[')):
+      if not any(char in pattern for char in '*?['):
         layers.append(pattern)
   return layers
 
@@ -753,34 +737,45 @@ def status_findings(config, documents):
   doc = next((item for item in documents if item.rel == path), None)
   if not doc:
     return [f'STATUS missing: {path}']
-  headings = {heading for _, heading in doc.h2_sections()}
+  headings = {xref_norm(heading) for _, heading in doc.h2_sections()}
   findings = []
   for required in spec.get('required_headings', []):
-    if not any((xref_norm(required) in xref_norm(item) for item in headings)):
+    if not any(item.find(xref_norm(required)) == 0 for item in headings):
       findings.append(f'STATUS required heading missing: {required}')
   for forbidden in spec.get('forbidden_headings', []):
-    if any((xref_norm(forbidden) in xref_norm(item) for item in headings)):
+    if any(item.find(xref_norm(forbidden)) == 0 for item in headings):
       findings.append(f'STATUS historical heading remains: {forbidden}')
-  paused = False
+  active = paused = False
   block = []
   for line in doc.visible + ['## end']:
     heading = HEADING_RE.match(line)
     if heading and heading.group(1) == '##':
       if paused and block and '恢復條件' not in '\n'.join(block):
         findings.append(f'paused item missing restart condition: {path}')
-      paused = '暫停中' in xref_norm(heading.group(2))
+      name = xref_norm(heading.group(2))
+      active, paused = (name.startswith('進行中'), '暫停中' in name)
       block = []
+    elif active and re.match(r'^\s*[-+*]\s+.*✅', line):
+      findings.append(f'STATUS active item marked complete: {path}')
     elif paused and TOP_BULLET_RE.match(line):
       if block and '恢復條件' not in '\n'.join(block):
         findings.append(f'paused item missing restart condition: {path}')
       block = [line]
     elif block:
       block.append(line)
+  days = spec.get('stale_days')
+  if days is not None:
+    if not isinstance(days, int) or days < 1:
+      raise ScannerError('config status_schema.stale_days 必須是正整數')
+    before = run_git(config.root, ['log', '-1', '--format=%ct', '--', path], allow_failure=True).strip()
+    now = run_git(config.root, ['log', '-1', '--format=%ct'], allow_failure=True).strip()
+    if before and now and (lag := (int(now) - int(before)) // 86400) > days:
+      findings.append(f'STATUS stale: {lag} days>{days} at {path}')
   return findings
 
 def backlog_findings(config, documents, entries):
   findings = []
-  seen: dict[str, tuple[str, int]] = {}
+  seen = {}
   for doc in documents:
     if not doc.doc_class or doc.doc_class.name != 'backlog':
       continue
@@ -831,7 +826,8 @@ def audit_findings(config):
   findings.extend(status_findings(config, documents))
   findings.extend(backlog_findings(config, documents, entries))
   findings.extend(self_governance_findings(config))
-  findings.extend(xref_scan(config.root, markdown, full_scan=True, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config)))
+  alias_sources = {rel for rel, matches in classification.items() if len(matches) == 1 and matches[0].mode == 'history'}
+  findings.extend(xref_scan(config.root, markdown, full_scan=True, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources))
   return sorted(set(findings))
 
 def cmd_audit(config, *, shadow, ship):
@@ -897,7 +893,7 @@ def self_governance_findings(config):
 def cmd_report(config):
   documents, classification = build_documents(config)
   _, metrics = build_entries(documents)
-  by_class: dict[str, tuple[int, int]] = {}
+  by_class = {}
   for doc in documents:
     name = doc.doc_class.name if doc.doc_class else 'unclassified'
     count, size = by_class.get(name, (0, 0))
@@ -906,27 +902,27 @@ def cmd_report(config):
   for name, (count, size) in sorted(by_class.items()):
     print(f'  {name}: files={count} bytes={size}')
   print('logical-entry-shapes:')
-  for key in ('dated_records', 'struck_records', 'checkbox_records', 'undated_records', 'h2_sections', 'empty_h2_sections', 'file_preamble_entries', 'legacy_type_file_mismatches'):
+  for key in METRICS:
     print(f'  {key}={metrics[key]}')
   surface, rows = surface_bytes(config)
   print(f'governance-surface: bytes={surface}')
   for rel, size in rows:
     print(f'  {rel}: bytes={size}')
-  canonical = sum((len(doc.text.encode('utf-8')) for doc in documents))
+  canonical = sum(len(doc.text.encode('utf-8')) for doc in documents)
   ratio = surface * 100 / canonical if canonical else 0
   print(f'canonical-markdown: bytes={canonical} governance-ratio={ratio:.2f}%')
   print('loaded-context:')
   loaded = [(len(doc.text.encode('utf-8')), len(doc.lines), doc.rel) for doc in documents if doc.doc_class and doc.doc_class.mode == 'loaded']
   for size, lines, rel in sorted(loaded, reverse=True):
     print(f'  {rel}: bytes={size} lines={lines}')
-  classified = sum((1 for matches in classification.values() if len(matches) == 1))
+  classified = sum(1 for matches in classification.values() if len(matches) == 1)
   print(f'classification: exact={classified} total={len(classification)}')
   return 0
 
 def slugify(value):
   normalized = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
   words = re.findall('[a-z0-9]+', normalized.casefold())
-  return '-'.join(words) or 'record'
+  return '-'.join(words) or 'u-' + hashlib.sha256(unicodedata.normalize('NFKC', value).encode()).hexdigest()[:12]
 
 def cmd_record_path(config, kind, date, slug):
   try:
@@ -982,8 +978,9 @@ def main(argv):
           except ValueError as exc:
             raise ScannerError(f'輸入檔逃出 --root: {path}') from exc
       else:
-        files = tracked_markdown(root) if config else sorted((str(path.relative_to(root)) for path in root.rglob('*.md') if '.git' not in path.parts))
-      findings = xref_scan(root, files, full_scan=not args.files, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config))
+        files = tracked_markdown(root) if config else sorted(str(path.relative_to(root)) for path in root.rglob('*.md') if '.git' not in path.parts)
+      alias_sources = {rel for rel in files if config and any(cls.mode == 'history' for cls in matching_classes(rel, config))}
+      findings = xref_scan(root, files, full_scan=not args.files, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources)
       for finding in findings:
         print(finding)
       return 0

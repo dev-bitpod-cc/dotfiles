@@ -206,13 +206,13 @@ Subagent 收齊多個 repo 的 diff 後，如同 reviewer 同時被 assign 多�
 #### 流程
 
 1. 從 Step 5 通過報告的「第三方審查資訊」取出每個 repo 的路徑
-2. 對每個 repo 跑 `review-anchor.sh codex-next --repo <repo>` 取 `codex-cmd:` 行，以背景 Bash 整行照抄執行（見上方「Codex 呼叫協議」節；exit 契約與救援階梯照其 protocol 檔）
+2. 對每個 repo 跑 `review-anchor.sh codex-next --repo <repo>` 取 `codex-cmd:` 行，以背景 Bash 整行照抄執行（見 `references/modes-and-scope.md`「Codex 呼叫協議」；exit 契約與救援階梯照其 protocol 檔）
 3. 收到 codex findings 後，主 agent 逐條讀原始碼獨立驗證：
    - **true positive**：確實有問題，需修復
    - **false positive**：codex 誤判，不處理
    - **context-dependent**：需更多 context 才能判定——**可能是真 bug** → 當 true positive 修；**屬 completeness / prose 深井**（見 `references/reviewer-brief.md`）→ non-blocking，不修、不觸發再一輪
 4. 若無 true positive blocking findings（深井不算）→ 輸出 codex 通過報告，執行最終 squash，結束
-5. 有 true positive（非深井）→ 主 agent 修復 → commit `fix: address external review findings` → 回到步驟 2（下一輪 range 由 `codex-next` 給出，兩模式 C2+ 皆只審增量，見上方「Commit range 更新」）
+5. 有 true positive（非深井）→ 主 agent 修復 → commit `fix: address external review findings` → 回到步驟 2（下一輪 range 由 `codex-next` 給出，兩模式 C2+ 皆只審增量，見 `references/modes-and-scope.md`「Commit range 更新」）
 6. 達到上限（3 輪審查、2 輪修復）仍有 true positive（指向修復本身、非 Completeness 深井）→ 輸出 codex 終止報告，停止
 
 > 步驟 3 驗證時，屬 Completeness 深井的 finding（baseline backlog 或 prose artifact，見 `references/reviewer-brief.md`，**不分模式**）→ non-blocking，不觸發步驟 5 的再一輪修復；只有指向本輪修復 commit 的真 bug / 安全 / 契約斷裂才算 blocking。達上限時若只剩深井（無真 bug）→ 判通過走通過報告，非終止報告。

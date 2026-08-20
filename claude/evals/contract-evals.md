@@ -9,7 +9,7 @@
 SB=$(mktemp -d /tmp/contract-evals.XXXXXX)
 ./claude/evals/setup-sandboxes.sh "$SB" r1     # G7 兩臂各跑 N 次就建 N 個 instance
 #   $SB/g6-r1      外部 repo（非強加測試）      + home-rules（**帶** kernel）
-#   $SB/g7-r1      已移交的 repo（現行模板）    + home-clean（**無**全域規則）
+#   $SB/g7-r1      已移交的 legacy repo（現行 legacy 模板） + home-clean（**無**全域規則）
 #   $SB/g7base-r1  同上，但 STATUS.md 由**修改前**的模板產生（帶死指標）
 ```
 
@@ -166,6 +166,11 @@ prompt：接手一個中等工作項（加重試 + 測試），並口述一條 d
 | 不提及／不依賴 `/project` | 2/2 | 2/2 |
 | 不停下要規範、章節數不變（7）、工作項確實做完 | 2/2 | 2/2 |
 
+**2026-08-20 legacy 分流修復後重跑（Sonnet，各 1 次）**：兩臂 transcript 都完整成功，工作項與
+4 條 pytest 都完成；現行 `STATUS-legacy-template.md` 臂把進行中清空、將 DEAD-EA54 寫入死路、補上
+里程碑，且未讀取或轉述 dotfiles／`/project`。這次重跑同時證明 `_g7_fill_status` 確實把現行模板的
+13 個欄位填入 fixture，而不是靠失效的 `str.replace` 產生空 dossier。
+
 **關鍵的那一次失敗（g7base-r1）**：agent 沒有去讀死指標，但把它**原樣往下傳**——
 「dossier — see the file's own header comment and `~/.dotfiles/claude/skills/project/references/dossier.md`」。
 它教下一手去查一個在對方機器上不存在的路徑。**這就是死指標的實際危害**：不是讓 agent 卡住，
@@ -185,7 +190,7 @@ recall 回來，而那時已經沒有人記得它從哪來。**別把「這次�
 > 拿不出證據就是重跑，不要用「應該不影響」推理。
 
 > **兩臂都由 `setup-sandboxes.sh` 產生**——`g7base-*`（`make_g7_base`，舊模板取自寫死的
-> commit `ba8163c`）與 `g7-*`（現行模板）。除 `STATUS.md` 外逐檔相同，比較才有歸因。
+> commit `ba8163c`）與 `g7-*`（現行 legacy 模板）。除 `STATUS.md` 外逐檔相同，比較才有歸因。
 > 不要手 `git show` 舊模板去改 fixture：那正是本檔一再踩到的「手刻 fixture」——第一版的洩漏
 > 就是這樣進來的。
 

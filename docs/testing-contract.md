@@ -73,7 +73,7 @@ evals 於 2026-08-08 補入四個 gate——**納入時它零 findings**。便�
 - **source 與 target 的非正文排除刻意不對稱**：source 排 fenced、**掃** HTML comment
   （圍欄內是示範怎麼寫，註解裡卻是真的要你去看——krepo 的量體豁免指標就寫在檔首 comment）；
   target 的 heading 與 body **兩者皆排除**（註解掉的模板與圍欄裡的範例標題都不構成「該節存在」的證據）。
-- **節名比對**用 normalize 後子字串（heading 常帶括號補充），不中則退一步比對**逐行**內文
+- **節名比對**用 normalize 後前綴（heading 可帶括號補充），不中則退一步比對**逐行非 heading**內文
   （引用一條規則而非節名是合法寫法）——整檔併成一串會讓兩行的尾首拼接成假命中。
   normalize 須剝 inline 修飾，否則原文帶 `**` 的規則引用被判紅。
 - **normalize 後 < 2 字即 blocking**：空字串是任何字串的子字串，恆假綠。
@@ -108,6 +108,11 @@ red flag。**這支 gate 就是把那個代價換成機檢**：漂移即紅。�
 
 五個終態模板都要接上共用定義。
 
+## 1g. doc-governance 跨檔契約
+
+守搬遷後的 skill 指標、xref wrapper exit contract、adopted／legacy template 分流、doc STOP 與 G7 fixture
+fail-closed。這些依賴端用字與核心實作不同，不能靠一般 xref pattern 完整覆蓋。
+
 ## 2. bash -n 語法 gate
 
 涵蓋範圍同第 1 節。
@@ -117,15 +122,13 @@ red flag。**這支 gate 就是把那個代價換成機檢**：漂移即紅。�
 掃描器：`scripts/doc-governance.py`；oracle：`tests/test_doc_governance.py` 與
 `tests/fixtures/doc-governance/retrieval.tsv`。
 
-synthetic repos 固定 config 錯誤、零／多重分類、H2 前頂層 bullet、mixed legacy entry shapes、空 H2、
+synthetic repos 固定 config 錯誤、tracked／untracked 分類、零／多重分類、H2 前頂層 bullet、mixed legacy entry shapes、空 H2、
 archive-month／event-month 日期語意、新 record type/month mismatch、plan lifecycle、xref compatibility、
-deterministic tie 與 8 KiB 輸出上限。真實 corpus 固定五條 archive 問題；每題必須在 top 5 命中預期
+Unicode slug、STATUS staleness、trusted scanner、ship fail-closed、deterministic tie 與 8 KiB 輸出上限。真實 corpus 固定五條 archive 問題；每題必須在 top 5 命中預期
 path＋entry，無 H2 與檔名誤導兩題另驗 section。
 
-ranking 只能由 observed RED 驅動。2026-08-20 baseline：Codex 以 10 次 shell command、698,307 input
-tokens 才全中；Claude 以 24 次 tool call、1,753,598 cached/created input tokens 找到理由，但 5/5 都沒有
-回到 canonical archive entry。新核心第一輪唯一 RED 是 remote branch 題被一般 push 文件壓過；故 config
-只對同時含 remote＋branch＋delete/清理語意的 query 補 expected-SHA／TOCTOU aliases，不加全域語意猜測。
+ranking 只能由 observed RED 驅動。Oracle 的 query／expected answer 只存在 TSV，不得從 config 注入答案詞；
+remote branch 題改用使用者可合理提供的機制詞，並驗證未出現在 query 的 canonical title 片段。
 
 ---
 

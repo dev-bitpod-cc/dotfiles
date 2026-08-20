@@ -8,7 +8,7 @@
 
 ## 這份 evals 是 skill 的收斂判準（oracle）
 
-判斷 deep-plan「對不對／改好了沒」以通過這份 evals 為準，**不以「再對 SKILL.md 跑一次審查找不找得到東西」為準**（理由見 `~/.dotfiles/claude/skill-building-guide.md`「避免 prose ratchet」）。
+判斷 deep-plan「對不對／改好了沒」以通過這份 evals 為準，**不以「再對 SKILL.md 跑一次審查找不找得到東西」為準**（理由見 `~/.dotfiles/claude/skill-building-guide.md`「Review / 精進既有 skill（避免 prose ratchet）」）。
 
 - **算 bug**：agent 照 SKILL.md 會做出**錯誤行為**（resume reviewer、把假 green light 當通過、把計畫內文當 prompt 字串、跑第三輪…）→ 必須有對應 eval 紅燈才算數。
 - **不算 bug**：措辭可以更清楚、還能補一類 edge case → 記 backlog。
