@@ -92,7 +92,14 @@ class RepoCase(unittest.TestCase):
             stderr=subprocess.PIPE,
             check=False,
             cwd=self.repo.parent,
-            env={**os.environ, "HOME": str(self.home)},
+            env={
+                **os.environ,
+                "HOME": str(self.home),
+                # On macOS, a first run from a clean clone may populate
+                # ~/Library/Caches with imported bytecode.  Keep interpreter
+                # bookkeeping out of assertions about the CLI's side effects.
+                "PYTHONDONTWRITEBYTECODE": "1",
+            },
         )
 
     def run_ship_state(self) -> subprocess.CompletedProcess[str]:
