@@ -1,5 +1,5 @@
 # query<TAB>expected_path<TAB>expected_entry<TAB>expected_section
-為什麼 remote branch 清理不能直接用 push --delete？	docs/archive/decisions-2026-08.md	expected SHA	*
+為什麼刪除 remote branch 需要 expected SHA、ls-remote 與 lease 雙重比對？	docs/archive/decisions-2026-08.md	破壞性刪除	*
 dossier 的量體訊號為什麼從 STATUS 總量擴到 always-on？	docs/archive/decisions-2026-07.md	量測下沉	*
 dossier 的量體訊號為什麼從 STATUS 總量擴到 always-on？	docs/archive/decisions-2026-08.md	always-on	*
 大型輸入做存在性檢查為什麼不能使用 printf grep -q？	docs/archive/decisions-2026-07.md	herestring	*

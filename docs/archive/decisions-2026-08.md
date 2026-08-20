@@ -850,3 +850,9 @@
   - 放棄:把 frozen legacy plans 當作 routed canonical reference
   - 重議:只有使用者明確重新指定某一份舊計畫為需求來源
   - 關聯:docs/plans/2026-08-20-doc-governance-goals.md;docs/plans/2026-08-20-doc-governance-implementation-plan.md
+
+- **D-20260820-trusted-doc-scanner · 2026-08-20 shipping 只執行受信任的文件治理 scanner**:全機隊的 `ship-state.sh` 不執行受檢 repo 自帶的 Python；先以 byte-for-byte 比對確認 target core 與 dotfiles 受信任版本一致，再由受信任版本讀 target config 並掃描 target root。缺檔或 mismatch 一律 BROKEN／STOP。
+  - 日期來源:direct
+  - 放棄:直接執行 target repo 的 `scripts/doc-governance.py`；只靠 target 自己宣告 checksum
+  - 重議:scanner 需要支援多個並存 schema version，且能建立由受信任端維護的版本 allowlist
+  - 關聯:claude/skills/project/scripts/ship-state.sh;tests/test_doc_governance.py

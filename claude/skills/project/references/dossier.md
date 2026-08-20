@@ -64,6 +64,9 @@ backlog 是否只剩未結案項。之後執行 `scripts/doc-governance.py audit
 Shipping 只讀 exit code，不 grep 顯示文案。`audit --ship` 是 adopted repo 唯一文檔 verdict；其他摘要訊號
 仍可繼續收集，但最終 verdict 必須由 doc finding 優先變成 STOP。
 
+全機隊的 `ship-state.sh` 不直接執行 target repo 的 Python：target core 必須與 dotfiles 受信任 scanner
+byte-for-byte 相同，再由受信任 scanner 讀 target config；mismatch 直接 BROKEN／STOP。
+
 ## Legacy fallback
 
 兩個 adoption 檔都不存在的 repo 維持既有 dossier 慣例：依該 repo 的 `STATUS.md`／`docs/backlog.md` schema

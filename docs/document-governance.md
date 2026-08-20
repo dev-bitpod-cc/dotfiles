@@ -4,7 +4,7 @@ Adapter：`.doc-governance.json`。
 
 ## 資料模型
 
-tracked Markdown 必須恰好分類一次：`loaded` 守 context 預算；`active` 未結案；`routed` 按需；`history` 只增；`derived` 須有 rebuild command；`governance` 計量機制本身。非 loaded 類守定位、檢索與生命週期，不守總量；`requires_inbound` 只給 evidence layer。
+Repo 內未 ignore 的 Markdown（含未 staging）必須恰好分類一次：`loaded` 守 context 預算；`active` 未結案；`routed` 按需；`history` 只增；`derived` 須有 rebuild command；`governance` 計量機制本身。非 loaded 類守定位、檢索與生命週期，不守總量；`requires_inbound` 只給 evidence layer。
 
 ## CLI 契約
 
@@ -13,7 +13,7 @@ tracked Markdown 必須恰好分類一次：`loaded` 守 context 預算；`activ
 - `audit --check xref [files...]`：舊 gate 相容；finding 回 0，error 回 2。
 - `report` 計量但不因體積失敗；`record-path` 只算 path／ID／heading。
 
-`--root` 省略時取 git toplevel；只讀 tracked files，不依賴網路或本機索引。history 不以人工 pointer 代理；所有引用仍做 forward xref。
+`--root` 省略時取 git toplevel；不依賴網路或本機索引。history 不以人工 pointer 代理；所有引用仍做 forward xref。
 
 ## 生命週期
 

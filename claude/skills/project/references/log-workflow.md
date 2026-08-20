@@ -232,7 +232,7 @@ Ship 摘要：
 | `review-residue:` 有 `top-contiguous:` | **一律壓掉再送**，reset 目標照抄 Step 1 記下的 `squash-cmd:`（NEVER recompute——理由見 Step 1 第 6 項） |
 | `review-residue:` 只有 `buried:` | 照常送出，摘要標明「N 顆夾在語意 commit 中間，非互動式壓不掉」 |
 | `review-residue: UNKNOWN` | 照常送出，摘要標明無法判定、未處理 |
-| `stale-branches:` / `squash-merged-branches:` / legacy `dossier: NONE` / doc finding | **不出題也不自動做**，寫進摘要「附註」一行提示（`scan: partial` 要照實標明「未列出不代表沒有」）。刪東西永遠不會自動發生 |
+| `stale-branches:` / `squash-merged-branches:` / legacy `dossier: NONE` | **不出題也不自動做**，寫進摘要「附註」一行提示（`scan: partial` 要照實標明「未列出不代表沒有」）。刪東西永遠不會自動發生 |
 
 「附註」列兩類：**純告知**（已依 flag 處置完的結果）、以及**未處理的待決項**（一律標明「未處理」，不得因為不出題就靜默丟掉）。無則省略。輕量路徑摘要縮為 3 行（路徑＋branch＋變更檔）。
 
@@ -242,7 +242,7 @@ Ship 摘要：
 
 #### 說法覆蓋不了的事實前提（一律停）
 
-`ship-state.sh` 印 `verdict: STOP` → **停下照訊息處理，即使使用者已給說法**。**A ship keyword authorizes HOW to ship, NEVER whether a batch may ship at all.** 目前會走到這裡的：無 remote、非 bootstrap 的 default 解析失敗、以及——
+`ship-state.sh` 印 `verdict: STOP` → **停下照訊息處理，即使使用者已給說法**。**A ship keyword authorizes HOW to ship, NEVER whether a batch may ship at all.** doc-governance findings／BROKEN 必須產生 `verdict: STOP`；其他來源包含無 remote、非 bootstrap 的 default 解析失敗、以及——
 
 - **`review-terminal:`**：上一場 deep-review 在仍有未修 blocking findings 時終止，且那場涵蓋當前 HEAD（腳本已驗過 ancestry，不必自行判斷）。停下用 `AskUserQuestion` 給兩個選項：`重跑審查`（通過並 squash 後 anchor 自動清除）／`知道了，照送`（PR body 記一筆「未完整審查」）。**anchor 的欄位與指令不要攤給使用者看**——那是實作細節，使用者只需回答這一題。
   - 例外：使用者說的是**「merge 照送」／「merge 未審完」**（見說法表）→ 已預先放行，不停、照送，PR 仍記一筆。

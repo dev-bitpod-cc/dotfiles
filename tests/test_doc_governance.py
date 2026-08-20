@@ -63,10 +63,13 @@ class RepoCase(unittest.TestCase):
         env["DOTFILES_PRECOMMIT_OFF"] = "1"
         subprocess.run(["git", "-C", str(self.repo), "add", "--all"], check=True, env=env)
 
-    def commit(self) -> None:
+    def commit(self, date: str | None = None) -> None:
         self.track()
         env = os.environ.copy()
         env["DOTFILES_PRECOMMIT_OFF"] = "1"
+        if date:
+            env["GIT_AUTHOR_DATE"] = date
+            env["GIT_COMMITTER_DATE"] = date
         subprocess.run(
             [
                 "git",
@@ -316,6 +319,19 @@ class DocGovernanceTests(RepoCase):
         self.assertIn("multi-class", result.stdout)
         self.assertIn("unclassified", result.stdout)
 
+    def test_audit_includes_untracked_markdown_before_staging(self) -> None:
+        self.write("README.md", "# Read me\n")
+        self.configure(
+            base_config(
+                [{"name": "docs", "mode": "routed", "paths": ["README.md"]}]
+            )
+        )
+        self.track()
+        self.write("new plan.md", "# Must not be invisible before git add\n")
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("unclassified: new plan.md", result.stdout)
+
     def test_invalid_config_is_scanner_error(self) -> None:
         self.write(".doc-governance.json", "{not json\n")
         self.track()
@@ -427,6 +443,17 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(red.returncode, 0, red.stderr)
         self.assertIn("heading 與內文皆無", red.stdout)
 
+        self.write("target.md", "# Target\n\n## 進行中（已完成 M1）\n")
+        self.write("source.md", "見 `target.md`「已完成」。\n")
+        false_substring = self.run_tool("audit", "--check", "xref")
+        self.assertEqual(false_substring.returncode, 0, false_substring.stderr)
+        self.assertIn("heading 與內文皆無", false_substring.stdout)
+
+        self.write("source.md", "見 `/definitely-outside-root/missing.md`「某節」。\n")
+        outside = self.run_tool("audit", "--check", "xref")
+        self.assertEqual(outside.returncode, 0, outside.stderr)
+        self.assertIn("逃出 --root", outside.stdout)
+
     def test_unchanged_legacy_plan_is_not_an_xref_source(self) -> None:
         self.write(
             "docs/plans/2026-07-01-frozen.md",
@@ -491,6 +518,10 @@ class DocGovernanceTests(RepoCase):
             "docs/archive/decisions-2026-08.md",
             "# Decisions\n\n## 事件記錄（event-time）\n",
         )
+        self.write(
+            "docs/archive/legacy.md",
+            "# Legacy\n\n見 `../../STATUS.md`「關鍵決策(附理由)」。\n",
+        )
         self.write("source.md", "見 `STATUS.md`「關鍵決策(附理由)」。\n")
         self.configure(
             base_config(
@@ -520,7 +551,8 @@ class DocGovernanceTests(RepoCase):
         self.track()
         result = self.run_tool("audit", "--check", "xref")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "")
+        self.assertIn("source.md", result.stdout)
+        self.assertNotIn("docs/archive/legacy.md", result.stdout)
 
     def test_record_path_is_pure_and_deterministic(self) -> None:
         self.configure(base_config([]))
@@ -540,6 +572,31 @@ class DocGovernanceTests(RepoCase):
         self.assertIn("D-20260820-expected-sha", result.stdout)
         self.assertIn("事件記錄（event-time）", result.stdout)
         self.assertEqual(before, after)
+
+        first = self.run_tool(
+            "record-path",
+            "--type",
+            "decision",
+            "--date",
+            "2026-08-20",
+            "--slug",
+            "文檔治理落地",
+        )
+        second = self.run_tool(
+            "record-path",
+            "--type",
+            "decision",
+            "--date",
+            "2026-08-20",
+            "--slug",
+            "另一條中文決策",
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        first_id = next(line for line in first.stdout.splitlines() if line.startswith("id="))
+        second_id = next(line for line in second.stdout.splitlines() if line.startswith("id="))
+        self.assertNotIn("-record", first_id)
+        self.assertNotEqual(first_id, second_id)
 
     def test_backlog_ids_duplicates_and_closed_residuals(self) -> None:
         self.write(
@@ -618,6 +675,55 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("paused item missing restart condition", result.stdout)
 
+    def test_status_rejects_completed_active_items_and_staleness(self) -> None:
+        self.write(
+            "STATUS.md",
+            "# Status（更新日期：2026-01-01）\n\n## 進行中（已完成 M1）\n\n- ✅ 已完成卻仍留在 active\n",
+        )
+        self.configure(
+            base_config(
+                [{"name": "status", "mode": "active", "paths": ["STATUS.md"]}],
+                status_schema={
+                    "path": "STATUS.md",
+                    "required_headings": ["進行中"],
+                    "forbidden_headings": ["已完成"],
+                    "stale_days": 30,
+                },
+            )
+        )
+        self.commit("2026-01-01T00:00:00+00:00")
+        self.write("README.md", "# Later activity\n")
+        subprocess.run(
+            ["git", "-C", str(self.repo), "add", "README.md"], check=True
+        )
+        env = {
+            **os.environ,
+            "DOTFILES_PRECOMMIT_OFF": "1",
+            "GIT_AUTHOR_DATE": "2026-03-15T00:00:00+00:00",
+            "GIT_COMMITTER_DATE": "2026-03-15T00:00:00+00:00",
+        }
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self.repo),
+                "-c",
+                "user.name=fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "later",
+            ],
+            check=True,
+            env=env,
+        )
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("STATUS active item marked complete", result.stdout)
+        self.assertIn("STATUS stale: 73 days>30", result.stdout)
+        self.assertNotIn("STATUS historical heading remains", result.stdout)
+
     def test_governance_surface_limit_and_single_parser(self) -> None:
         self.write("README.md", "12345")
         self.write("one.py", "# parser one\n")
@@ -644,41 +750,89 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(legacy.returncode, 0, legacy.stderr)
         self.assertNotIn("doc-governance:", legacy.stdout)
 
+        self.commit()
+        with tempfile.TemporaryDirectory(prefix="doc governance remote-") as remote_tmp:
+            remote = Path(remote_tmp) / "origin.git"
+            subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+            subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", str(remote)], check=True)
+            subprocess.run(["git", "-C", str(self.repo), "push", "-qu", "origin", "main"], check=True)
+            subprocess.run(["git", "-C", str(self.repo), "remote", "set-head", "origin", "main"], check=True)
+
+            config = base_config(
+                [{"name": "docs", "mode": "routed", "paths": ["README.md"]}]
+            )
+            self.configure(config)
+            broken = self.run_ship_state()
+            self.assertEqual(broken.returncode, 0, broken.stderr)
+            self.assertIn("doc-governance: BROKEN", broken.stdout)
+            self.assertIn("verdict: STOP（doc-governance", broken.stdout)
+
+            target = self.repo / "scripts" / "doc-governance.py"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(TOOL, target)
+            adopted = self.run_ship_state()
+            self.assertEqual(adopted.returncode, 0, adopted.stderr)
+            self.assertIn("doc-governance: OK", adopted.stdout)
+            self.assertNotIn("dossier:", adopted.stdout)
+
+            config["classes"].append(
+                {"name": "duplicate", "mode": "routed", "paths": ["README.md"]}
+            )
+            self.configure(config)
+            finding = self.run_ship_state()
+            self.assertEqual(finding.returncode, 0, finding.stderr)
+            self.assertIn("doc-governance: FINDINGS", finding.stdout)
+            self.assertIn("verdict: STOP（doc-governance", finding.stdout)
+
+            marker = self.repo / "executed-untrusted-core"
+            self.write(
+                "scripts/doc-governance.py",
+                f"#!/usr/bin/env python3\nfrom pathlib import Path\nPath({str(marker)!r}).write_text('bad')\n",
+            )
+            mismatch = self.run_ship_state()
+            self.assertIn("trusted core mismatch", mismatch.stdout)
+            self.assertIn("verdict: STOP（doc-governance", mismatch.stdout)
+            self.assertFalse(marker.exists())
+
+            self.write(".doc-governance.json", "{broken\n")
+            scanner_error = self.run_ship_state()
+            self.assertEqual(scanner_error.returncode, 0, scanner_error.stderr)
+            self.assertIn("doc-governance: BROKEN", scanner_error.stdout)
+            self.assertIn("verdict: STOP（doc-governance", scanner_error.stdout)
+
+    def test_doc_findings_block_empty_remote_bootstrap(self) -> None:
+        self.write("README.md", "# Fixture\n")
         config = base_config(
-            [{"name": "docs", "mode": "routed", "paths": ["README.md"]}]
+            [
+                {"name": "one", "mode": "routed", "paths": ["README.md"]},
+                {"name": "two", "mode": "routed", "paths": ["README.md"]},
+            ]
         )
         self.configure(config)
-        broken = self.run_ship_state()
-        self.assertEqual(broken.returncode, 0, broken.stderr)
-        self.assertIn("doc-governance: BROKEN", broken.stdout)
-        self.assertIn("verdict: STOP", broken.stdout)
-
         target = self.repo / "scripts" / "doc-governance.py"
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(TOOL, target)
-        adopted = self.run_ship_state()
-        self.assertEqual(adopted.returncode, 0, adopted.stderr)
-        self.assertIn("doc-governance: OK", adopted.stdout)
-        self.assertIn("remotes: NONE", adopted.stdout)
-        self.assertNotIn("dossier:", adopted.stdout)
-
-        config["classes"].append(
-            {"name": "duplicate", "mode": "routed", "paths": ["README.md"]}
-        )
-        self.configure(config)
-        finding = self.run_ship_state()
-        self.assertEqual(finding.returncode, 0, finding.stderr)
-        self.assertIn("doc-governance: FINDINGS", finding.stdout)
-        self.assertIn("verdict: STOP", finding.stdout)
-
-        self.write(".doc-governance.json", "{broken\n")
-        scanner_error = self.run_ship_state()
-        self.assertEqual(scanner_error.returncode, 0, scanner_error.stderr)
-        self.assertIn("doc-governance: BROKEN", scanner_error.stdout)
-        self.assertIn("verdict: STOP", scanner_error.stdout)
+        self.commit()
+        with tempfile.TemporaryDirectory(prefix="doc governance empty remote-") as remote_tmp:
+            remote = Path(remote_tmp) / "origin.git"
+            subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+            subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", str(remote)], check=True)
+            result = self.run_ship_state()
+        self.assertIn("doc-governance: FINDINGS", result.stdout)
+        self.assertIn("verdict: STOP（doc-governance", result.stdout)
+        self.assertNotIn("bootstrap-cmd:", result.stdout)
 
 
 class RealRetrievalCorpusTests(unittest.TestCase):
+    def test_retrieval_oracle_does_not_embed_answer_aliases(self) -> None:
+        spec = importlib.util.spec_from_file_location("doc_governance_no_alias", TOOL)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        config = module.load_config(ROOT)
+        self.assertNotIn("query_aliases", config.raw)
+
     def test_current_repo_retrieval_corpus_hits_top_five(self) -> None:
         fixture = ROOT / "tests" / "fixtures" / "doc-governance" / "retrieval.tsv"
         with fixture.open(encoding="utf-8", newline="") as handle:
@@ -724,7 +878,7 @@ class RealRetrievalCorpusTests(unittest.TestCase):
             if len(candidates) != 1:
                 continue
             expected = candidates[0]
-            tokens = module.expanded_query_tokens(config, expected.title)
+            tokens = module.search_tokens(expected.title)
             ranked = sorted(entries, key=lambda entry: (-module.entry_score(entry, expected.title, tokens), entry.path, entry.line))
             self.assertIs(ranked[0], expected, f"title did not rank top-1: {expected.path}:{expected.line} {expected.title}")
 

@@ -216,7 +216,7 @@ cat > "$XR/sub/dup.md" <<'XREFFIX'
 # 同名檔（放在 root 底下的別處，不在引用檔目錄，也不在 root 直下）
 ## 某節
 XREFFIX
-xref_run() { python3 "$XREF_GATE" --root "$XR" "$@" 2>/dev/null; }
+xref_run() { python3 "$XREF_GATE" --root "$XR" "$@" 2>&1; }
 # 掃描器自檢在前：少了 RED，掃描器被改壞而恆不匹配時，對真實檔案的空輸出一樣是「通過」。
 cat > "$XR/r1.md" <<'XREFFIX'
 見 `target.md`「這個節名根本不存在於任何地方」。
@@ -558,6 +558,47 @@ else
     else
         bad "終止報告缺根因重複分流——「根因重複 → 架構有問題」只對『變更上』成立，對『方法上』會給出錯建議"
     fi
+fi
+
+echo "▶ 1g. doc-governance 跨檔契約"
+if grep -q 'references/modes-and-scope.md.*Codex 呼叫協議' "$ROOT/claude/skills/deep-review/SKILL.md" \
+    && ! grep -q '見上方「Codex 呼叫協議」' "$ROOT/claude/skills/deep-review/SKILL.md"; then
+    ok "deep-review 的 Codex protocol 指向現行 reference"
+else
+    bad "deep-review 仍指向搬走後不存在的『上方 Codex 呼叫協議』"
+fi
+if sed -n '1,24p' "$ROOT/tests/xref-gate.py" | grep -q 'finding.*0.*error.*2'; then
+    ok "xref compatibility wrapper 檔頭保留 exit contract"
+else
+    bad "xref compatibility wrapper 檔頭缺判準／exit contract，既有指標已指空"
+fi
+if grep -q 'scripts/.*references/.*evals.md' "$ROOT/claude/skills/deep-review/references/modes-and-scope.md"; then
+    ok "skill-authoring scope 完整列出 scripts/references/evals"
+else
+    bad "skill-authoring scope 搬遷時漏掉 references/"
+fi
+# shellcheck disable=SC2016 # 比對 Markdown backtick 字面，不做 command substitution
+if grep -q 'doc-governance.*verdict: STOP' "$ROOT/claude/skills/project/references/log-workflow.md" \
+    && ! grep -q 'legacy `dossier: NONE` / doc finding' "$ROOT/claude/skills/project/references/log-workflow.md"; then
+    ok "log workflow 把 doc finding 當 STOP，不當未處理附註"
+else
+    bad "log workflow 對 doc finding 的摘要表與 STOP 清單互相矛盾"
+fi
+if ! sed -n '150,175p' "$ROOT/claude/skills/project/references/pressure-tests.md" | grep -q 'STATUS.md.*關鍵決策.*死路'; then
+    ok "pressure Scenario 7 不再要求寫入 adopted STATUS 歷史節"
+else
+    bad "pressure Scenario 7 仍要求新 schema 禁止的 STATUS 歷史節"
+fi
+if grep -q 'STATUS-legacy-template.md' "$ROOT/claude/skills/project/SKILL.md" \
+    && [ -f "$ROOT/claude/templates/STATUS-legacy-template.md" ]; then
+    ok "project spec 對 legacy repo 使用 legacy template"
+else
+    bad "project spec 把 adopted-only STATUS template 無條件發給 legacy repo"
+fi
+if grep -q 'G7 template placeholder missing' "$ROOT/claude/evals/setup-sandboxes.sh"; then
+    ok "G7 fixture builder 對模板替換 no-op fail closed"
+else
+    bad "G7 fixture builder 的 str.replace miss 仍會靜默產生空 oracle"
 fi
 
 echo "▶ 2. bash -n 語法 gate"

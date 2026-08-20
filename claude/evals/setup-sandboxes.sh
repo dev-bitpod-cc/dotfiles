@@ -1428,23 +1428,25 @@ _g7_fill_status() {   # $1=模板路徑 $2=輸出路徑
     python3 - "$1" "$2" <<'PY'
 import sys, pathlib
 s = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-for a, b in [
-    ("<專案一句話定位>(更新日期:YYYY-MM-DD)", "小型部署工具(更新日期:2026-08-01)"),
-    ("### 1. <工作項標題> <⏳/🆕>", "### 1. 部署失敗時的重試 ⏳"),
-    ("- **Context**:為什麼要做這件事", "- **Context**:目標主機偶發連線逾時,單次失敗就整批中止"),
-    ("- **Goal**:做到什麼程度算完成", "- **Goal**:暫時性失敗能自動重試,永久性失敗立即中止"),
-    ("- **Acceptance Criteria**:怎麼驗證它真的好了", "- **Acceptance Criteria**:注入逾時的測試會重試並最終成功"),
-    ("- **Constraints**:哪些東西不能碰、必須維持的邊界", "- **Constraints**:不得改變 --dry-run 的行為"),
-    ("- **進度**:目前做到哪(condensed;細節看 commit)", "- **進度**:尚未動工"),
-    ("- **下一步**:<具體到能直接動手;跨主機接續時這裡就是交接點>", "- **下一步**:在 src/deploy.py 的 push() 加重試"),
-    ("- **YYYY-MM-DD <決策>**:<選了什麼、為什麼、放棄了什麼替代方案>",
-     "- **2026-07-20 用 paramiko 而非 subprocess 呼叫 ssh**:需要在 Python 端拿到分類過的例外;放棄 subprocess 因為要自己 parse stderr。"),
-    ("- **<嘗試>**:<為何放棄;若有實驗數據附上>", "- **用 rsync 取代自寫傳輸**:目標主機有一半沒裝 rsync,且無法要求安裝。"),
-    ("- [ ] <債項>:<影響範圍與償還時機建議>", "- [ ] 連線逾時常數硬編在 push() 裡,應可設定"),
-    ("- ✅ **YYYY-MM-DD <里程碑>**:<一句話成果;能對應 commit/PR 的附連結或 sha>", "- ✅ **2026-07-15 首版可用**:單主機部署跑通"),
-    ("- <功能面或資料面的已知限制,尚無解決計畫者>", "- 不支援平行部署到多台"),
+for choices, b in [
+    (("<專案一句話定位>(更新日期:YYYY-MM-DD)", "<專案一句話定位>（更新日期：YYYY-MM-DD）"), "小型部署工具（更新日期：2026-08-01）"),
+    (("### 1. <工作項標題> <⏳/🆕>",), "### 1. 部署失敗時的重試 ⏳"),
+    (("- **Context**:為什麼要做這件事", "- **Context**：為什麼要做這件事"), "- **Context**：目標主機偶發連線逾時，單次失敗就整批中止"),
+    (("- **Goal**:做到什麼程度算完成", "- **Goal**：做到什麼程度算完成"), "- **Goal**：暫時性失敗能自動重試，永久性失敗立即中止"),
+    (("- **Acceptance Criteria**:怎麼驗證它真的好了", "- **Acceptance Criteria**：怎麼驗證它真的好了"), "- **Acceptance Criteria**：注入逾時的測試會重試並最終成功"),
+    (("- **Constraints**:哪些東西不能碰、必須維持的邊界", "- **Constraints**：哪些東西不能碰、必須維持的邊界"), "- **Constraints**：不得改變 --dry-run 的行為"),
+    (("- **進度**:目前做到哪(condensed;細節看 commit)", "- **進度**：目前做到哪；附 branch、SHA 或 plan"), "- **進度**：尚未動工"),
+    (("- **下一步**:<具體到能直接動手;跨主機接續時這裡就是交接點>", "- **下一步**：具體到能直接動手的交接點"), "- **下一步**：在 src/deploy.py 的 push() 加重試"),
+    (("- **YYYY-MM-DD <決策>**:<選了什麼、為什麼、放棄了什麼替代方案>", "- **YYYY-MM-DD <決策>**：<選了什麼、理由、放棄的替代方案>"), "- **2026-07-20 用 paramiko 而非 subprocess 呼叫 ssh**：需要在 Python 端拿到分類過的例外；放棄 subprocess 因為要自己 parse stderr。"),
+    (("- **<嘗試>**:<為何放棄;若有實驗數據附上>", "- **<嘗試>**：<為何放棄；若有實驗數據附上>"), "- **用 rsync 取代自寫傳輸**：目標主機有一半沒裝 rsync，且無法要求安裝。"),
+    (("- [ ] <債項>:<影響範圍與償還時機建議>", "- [ ] <債項>：<影響範圍與償還時機>"), "- [ ] 連線逾時常數硬編在 push() 裡，應可設定"),
+    (("- ✅ **YYYY-MM-DD <里程碑>**:<一句話成果;能對應 commit/PR 的附連結或 sha>", "- ✅ **YYYY-MM-DD <里程碑>**：<一句話成果與 commit／PR>"), "- ✅ **2026-07-15 首版可用**：單主機部署跑通"),
+    (("- <功能面或資料面的已知限制,尚無解決計畫者>", "- <功能或資料面的已知限制>"), "- 不支援平行部署到多台"),
 ]:
-    s = s.replace(a, b)
+    hits = [a for a in choices if a in s]
+    if len(hits) != 1:
+        raise SystemExit(f"G7 template placeholder missing/ambiguous: {choices!r}")
+    s = s.replace(hits[0], b)
 # 失效標記的範例列在填好的 dossier 裡是雜訊，移除
 s = s.replace("""- ~~**YYYY-MM-DD <已被推翻的決策>**:<原決策原文>~~
   **已失效(YYYY-MM-DD)**:<推翻理由>;現行決策見 `<path>`「<section>」。""", "")
@@ -1468,7 +1470,7 @@ make_g7() {
 - 所有對外指令都要支援 `--dry-run`
 - 測試：`uv run pytest`
 EOF
-    _g7_fill_status "$DOTFILES_ROOT/claude/templates/STATUS-template.md" "$dir/work/STATUS.md"
+    _g7_fill_status "$DOTFILES_ROOT/claude/templates/STATUS-legacy-template.md" "$dir/work/STATUS.md"
     printf 'def push(host, artifact):\n    """把 artifact 推到 host。"""\n    return _ssh_copy(host, artifact)\n\n\ndef _ssh_copy(host, artifact):\n    raise NotImplementedError\n' > "$dir/work/src/deploy.py"
     # fixture 必須自洽：transfer.md 與 CLAUDE.md 都提到 README／uv sync／pytest／`uv run deploy`，
     # 缺一項就會讓 agent 停下或補造無關 scaffolding，污染「只想測 STATUS 模板可攜性」的 oracle。
@@ -1689,7 +1691,7 @@ make_g4() {
     ln -sfn "$DOTFILES_ROOT/claude/CLAUDE.md" "$dir/home-rules/.claude/CLAUDE.md"
     _g4_repo "$dir/work"
     # dossier 存在且**已有內容**——空殼會讓「不得自建」與「該不該寫」兩件事混在一起
-    _g7_fill_status "$DOTFILES_ROOT/claude/templates/STATUS-template.md" "$dir/work/STATUS.md"
+    _g7_fill_status "$DOTFILES_ROOT/claude/templates/STATUS-legacy-template.md" "$dir/work/STATUS.md"
     (cd "$dir/work" && git add -A && git commit -qm "docs: 建立 dossier")
 }
 

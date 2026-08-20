@@ -149,3 +149,9 @@
   - 放棄:沿用失敗舊 plan 架構，或以提高 self-budget 掩蓋治理面膨脹
   - 重議:deterministic corpus、雙 agent eval 或連續 ship pilot 出現實際 RED
   - 關聯:D-20260820-legacy-plans-record-only;docs/plans/2026-08-20-doc-governance-implementation-plan.md
+
+- **M-20260820-doc-governance-review-fixes · 2026-08-20 文件治理首輪審查修復完成**:第三方實測提出的 17 條 blocking 全部先以 fixture 重現再修復，涵蓋未追蹤 Markdown、xref crash／節名邊界、bootstrap fail-closed、檢索 oracle 洩漏、legacy/adopted 分流、Unicode slug、可信 scanner 邊界與搬移後程序指標。deterministic suite 26 tests、全 repo 1071 assertions、G7 Sonnet 成對 eval 皆完整成功；governance surface 49,649 bytes，仍未提高 49,675-byte 上限。
+  - 日期來源:direct
+  - 放棄:執行受檢 repo 提供的 scanner，或以 target-side checksum／allowlist 擴大信任面
+  - 重議:可信 core 需要支援獨立版本協商，或跨 repo schema 出現無法由版本庫端 fail-closed 表達的相容需求
+  - 關聯:D-20260820-trusted-doc-scanner;docs/testing-contract.md
