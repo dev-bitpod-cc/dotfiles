@@ -12,7 +12,7 @@
 #   git switch -c <feature>                    （情況 A）
 #   git branch <feature> + git switch <feature> + git branch -f <default> <remote>/<default>（情況 B）
 # NEVER reset --hard. NEVER touch the working tree. NEVER push.
-# 何時呼叫仍由 model 依 SKILL.md Critical gate 決定，本腳本只負責「決定後安全執行」。
+# 何時呼叫仍由 model 依 `../references/log-workflow.md`「Critical — Guardrails」決定，本腳本只負責「決定後安全執行」。
 #
 # 情況判定（前置檢查全過才動手；any ambiguity → verdict: STOP with zero mutation）：
 #   A：HEAD 在 default（無誤 commit）或 detached HEAD → git switch -c。working tree

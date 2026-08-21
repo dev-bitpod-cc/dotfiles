@@ -18,7 +18,7 @@
 #   resolve: REPO <toplevel>   token 解析為 repo 根（兩端 realpath 正規化後相等；'.' 恆為
 #                              pwd 所屬 repo 根）
 #   resolve: MODULE（...）      解析到 repo 但非根（子路徑 scope）→ 當 module 過濾
-#                              （module 過濾**只能**由路徑形式產生，見 SKILL Step 0 形狀規則）
+#                              （module 過濾**只能**由路徑形式產生，見 `../references/log-workflow.md`「引數前處理（依形狀分類，不靠優先序記憶）」）
 #   resolve: UNKNOWN（...）     非 git repo 路徑 → 交回 session 記憶 basename 比對；
 #                              不命中即**停下問**，NEVER 當成 module 過濾（靜默縮小掃描範圍）
 # 注意：第一引數 `resolve` 為子指令保留字——repo 目錄字面名為 resolve 時以路徑形式
@@ -751,7 +751,7 @@ detect_branch_diverged() {
 # 殘留 branch 衛生：已**完全併入** default 的 local / remote branch。
 # 動機：merge 最後一哩只清它自己 merge 的那支——規則生效前的老 branch、或走別條路
 # 合併的 branch 會無聲累積（實證：dotfiles 累到 2 支，是偶然跑 branch --list 才發現，
-# 流程從未告知）。與 dossier 衛生同性質：只印訊號，處置留給 SKILL Step 4 由使用者定奪。
+# 流程從未告知）。與 dossier 衛生同性質：只印訊號，處置見 `../references/log-workflow.md`「Step 4：Ship 摘要 → 確認（critical-op gate）」。
 #
 # 判定用本地 ref、不碰網路——代價是 remote-tracking 可能含**已在遠端刪除但本地未
 # prune 的殘影**，故 cleanup-cmd 前置 `fetch --prune`（先對齊再刪，殘影會自己消失）。
@@ -1147,7 +1147,7 @@ check_repo() {
     prot="$(detect_protection "$repo" "$remote" "$default")"
     echo "$prot"
     case "$prot" in
-        # 無保護**仍預設 PR**（SKILL Step 1 第 4 項：跨 repo 單一形狀＋審查紀錄）。
+        # 無保護**仍預設 PR**（見 `../references/log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」）。
         # 直推 feature branch 是 escape hatch，需使用者明說不用 PR——故此處印 PR，
         # 不印 DIRECT-PUSH：verdict 是 model 照抄的東西，兩邊不一致等於留一個誘導錯誤的破口
         *OPEN*) echo "ship-path: PR（${default} 無保護，但預設仍開 PR；使用者明說「不用 PR」才退為直推 feature branch，絕不直推 ${default}）" ;;

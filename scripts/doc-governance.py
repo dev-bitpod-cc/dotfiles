@@ -178,26 +178,45 @@ def load_config(root, *, optional=False):
     names.add(name)
     classes.append(DocClass(name=name, mode=mode, paths=paths, unit=unit, requires_inbound=bool(item.get('requires_inbound', False))))
   legacy = raw.get('legacy_plan_blobs', {})
-  need(isinstance(legacy, dict), 'legacy_plan_blobs must be object')
+  need(isinstance(legacy, dict) and all(isinstance(rel, str) and isinstance(blob, str) for rel, blob in legacy.items()), 'legacy_plan_blobs must be string map')
+  for rel in legacy:
+    validate_relpath(rel, 'legacy_plan_blobs path')
   searchable = raw.get('searchable_legacy_plans', [])
-  need(isinstance(searchable, list) and set(searchable) <= set(legacy), 'searchable_legacy_plans invalid')
+  need(isinstance(searchable, list) and all(isinstance(rel, str) for rel in searchable) and set(searchable) <= set(legacy), 'searchable_legacy_plans invalid')
+  for rel in searchable:
+    validate_relpath(rel, 'searchable_legacy_plans path')
   plan_dir = raw.get('plan_dir', 'docs/plans')
   need(isinstance(plan_dir, str) and plan_dir, 'plan_dir invalid')
   validate_relpath(plan_dir, 'plan_dir')
   budgets = raw.get('loaded_budgets', {})
   need(isinstance(budgets, dict), 'loaded_budgets must be object')
   for pattern, rule in budgets.items():
-    need(isinstance(rule, dict) and all(type(value) is int and value > 0 for value in rule.values()), f'loaded_budgets.{pattern} invalid')
+    need(isinstance(pattern, str) and pattern, 'loaded_budgets pattern invalid')
+    validate_relpath(pattern, 'loaded_budgets pattern')
+    need(isinstance(rule, dict) and bool(rule) and set(rule) <= {'bytes', 'lines'} and all(type(value) is int and value > 0 for value in rule.values()), f'loaded_budgets.{pattern} invalid')
   status = raw.get('status_schema')
   if status is not None:
-    need(isinstance(status, dict), 'status_schema must be object')
+    allowed = {'path', 'required_headings', 'forbidden_headings', 'stale_days'}
+    need(isinstance(status, dict) and bool(status) and set(status) <= allowed, 'status_schema invalid')
+    if 'path' in status:
+      need(isinstance(status['path'], str) and status['path'], 'status_schema.path invalid')
+      validate_relpath(status['path'], 'status_schema.path')
+    for key in ('required_headings', 'forbidden_headings'):
+      if key in status:
+        need(isinstance(status[key], list) and all(isinstance(item, str) and item for item in status[key]), f'status_schema.{key} invalid')
+    if 'stale_days' in status:
+      need(type(status['stale_days']) is int and status['stale_days'] > 0, 'status_schema.stale_days invalid')
   need(isinstance(raw.get('governance_surface', []), list), 'governance_surface must be list')
   return Config(root=root, raw=raw, classes=classes)
 
 def tracked_markdown(root, *, xref=False):
   patterns = ['*.md', '*.sh'] if xref else ['*.md']
   output = run_git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', *patterns])
-  return sorted(item for item in output.split('\x00') if item)
+  return sorted(item for item in output.split('\x00') if item and (root / item).is_file())
+
+def missing_tracked_markdown(root):
+  output = run_git(root, ['ls-files', '-z', '--cached', '--', '*.md'])
+  return sorted(item for item in output.split('\x00') if item and not (root / item).is_file())
 
 def matching_classes(rel, config):
   return [cls for cls in config.classes if any(fnmatch.fnmatchcase(rel, pattern) for pattern in cls.paths)]
@@ -557,7 +576,7 @@ def immutability_base(root):
   candidates.extend(['main', 'master'])
   for candidate in dict.fromkeys(item for item in candidates if item):
     target = run_git(root, ['rev-parse', '--verify', f'{candidate}^{{commit}}'], allow_failure=True).strip()
-    if not target or target == head and branch in {'main', 'master'}:
+    if not target or target == head or candidate == branch or candidate.endswith('/' + branch):
       continue
     base = run_git(root, ['merge-base', head, target], allow_failure=True).strip()
     if base:
@@ -886,6 +905,7 @@ def audit_findings(config):
   markdown = tracked_markdown(config.root)
   xref_sources = tracked_markdown(config.root, xref=True)
   findings = []
+  findings.extend(f'tracked markdown missing on disk: {rel}' for rel in missing_tracked_markdown(config.root))
   findings.extend(class_findings(config, classification))
   findings.extend(budget_findings(config, documents))
   findings.extend(history_findings(config, entries))

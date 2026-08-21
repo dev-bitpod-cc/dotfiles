@@ -44,7 +44,7 @@ CODEX_REVIEW_PERMISSION_ARGS=(
     -c 'permissions.repo_review_temp.filesystem={":tmpdir"="write"}'
 )
 
-# 救援 prompt：與 `../references/codex-protocol.md`「exit 4 救援階梯」逐字一致，改此處須同步該節。
+# resume 專用 prompt 的唯一文字來源；救援流程語意見 `../references/codex-protocol.md`「exit 4 救援階梯」。
 RESUME_PROMPT_DEFAULT='你先前的審查已完成偵查與驗證，請直接輸出最終審查報告（findings：嚴重度、檔案:行號、問題、建議；繁體中文）。不要再執行任何指令。'
 
 # run 與 resume 共用同一則訊息——兩條路徑都會撞到，指引不該只有一邊有

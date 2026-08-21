@@ -263,6 +263,39 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(committed.returncode, 1, committed.stderr)
         self.assertIn("history not append-only", committed.stdout)
 
+    def test_remote_head_on_feature_never_becomes_immutability_baseline(self) -> None:
+        original = """# Decisions
+
+## 事件記錄（event-time）
+
+- **D-20260820-original · 2026-08-20 原始決策**:不可改寫的理由。
+  - 日期來源:direct
+  - 放棄:none
+  - 重議:none
+  - 關聯:none
+"""
+        self.write("docs/archive/decisions-2026-08.md", original)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        self.write("docs/archive/decisions-2026-08.md", original.replace("不可改寫", "已被改寫"))
+        self.commit()
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", str(self.repo / "unused.git")], check=True)
+        subprocess.run(
+            ["git", "-C", str(self.repo), "update-ref", "refs/remotes/origin/feat/test", "HEAD"], check=True
+        )
+        subprocess.run(
+            ["git", "-C", str(self.repo), "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/feat/test"],
+            check=True,
+        )
+        result = self.run_tool("audit", "--ship")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("history not append-only", result.stdout)
+
     def test_committed_final_plan_remains_frozen_after_later_commit(self) -> None:
         active = """# Plan
 
@@ -425,7 +458,7 @@ class DocGovernanceTests(RepoCase):
 
     def test_find_is_deterministic_bounded_and_reports_miss(self) -> None:
         body = "\n".join(
-            f"## 相同標題 {i}\n\n共同查詢詞 {'x' * 600}" for i in range(20)
+            f"## 共同查詢詞 {'長' * 800} {i}\n\n內容。" for i in range(20)
         )
         self.write("README.md", "# Root\n\n" + body + "\n")
         self.configure(
@@ -439,7 +472,28 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(first.returncode, 0, first.stderr)
         self.assertEqual(first.stdout, second.stdout)
         self.assertLessEqual(len(first.stdout.encode("utf-8")), 8192)
-        self.assertLessEqual(first.stdout.count("README.md:"), 5)
+        self.assertLess(first.stdout.count("README.md:"), 5)
+
+        mutant = self.repo / "doc-governance-no-stdout-cap.py"
+        mutant.write_text(
+            TOOL.read_text(encoding="utf-8").replace(
+                "if len(output) + len(candidate) > MAX_STDOUT_BYTES:",
+                "if False:",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        mutated = subprocess.run(
+            ["python3", str(mutant), "--root", str(self.repo), "find", "共同查詢詞"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            env={**os.environ, "HOME": str(self.home), "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        self.assertEqual(mutated.returncode, 0, mutated.stderr)
+        self.assertGreater(len(mutated.stdout.encode("utf-8")), 8192)
+        self.assertEqual(mutated.stdout.count("README.md:"), 5)
         miss = self.run_tool("find", "絕對不存在的字串")
         self.assertEqual(miss.returncode, 1, miss.stderr)
         self.assertEqual(miss.stdout, "")
@@ -542,6 +596,50 @@ class DocGovernanceTests(RepoCase):
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                 self.assertEqual(result.stdout.splitlines()[0], "doc-governance: BROKEN")
                 self.assertNotIn("Traceback", result.stderr)
+
+    def test_config_rejects_empty_unknown_and_escaping_nested_rules(self) -> None:
+        self.write("README.md", "# Fixture\n")
+        loaded = [{"name": "loaded", "mode": "loaded", "paths": ["README.md"]}]
+        cases = {
+            "empty loaded budget": base_config(loaded, loaded_budgets={"README.md": {}}),
+            "unknown loaded budget key": base_config(loaded, loaded_budgets={"README.md": {"byte": 5}}),
+            "empty status schema": base_config([], status_schema={}),
+            "unknown status schema key": base_config([], status_schema={"required_heading": ["進行中"]}),
+            "escaping legacy plan": base_config([], legacy_plan_blobs={"../../outside.md": "deadbeef"}),
+            "absolute legacy plan": base_config([], legacy_plan_blobs={"/etc/hosts": "deadbeef"}),
+            "escaping searchable plan": base_config(
+                [],
+                legacy_plan_blobs={"../../outside.md": "deadbeef"},
+                searchable_legacy_plans=["../../outside.md"],
+            ),
+            "escaping status path": base_config([], status_schema={"path": "../STATUS.md"}),
+        }
+        for label, config in cases.items():
+            with self.subTest(label=label):
+                self.configure(config)
+                self.track()
+                result = self.run_tool("audit", "--ship")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(result.stdout.splitlines()[0], "doc-governance: BROKEN")
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_worktree_deleted_markdown_is_a_finding_not_scanner_breakage(self) -> None:
+        self.write("docs/a.md", "# A\n\n## Keep\n\nsearchable content\n")
+        self.configure(base_config([{"name": "docs", "mode": "routed", "paths": ["docs/*.md"]}]))
+        self.commit()
+        (self.repo / "docs/a.md").unlink()
+
+        audit = self.run_tool("audit", "--ship")
+        self.assertEqual(audit.returncode, 1, audit.stdout + audit.stderr)
+        self.assertIn("tracked markdown missing on disk: docs/a.md", audit.stdout)
+        self.assertNotIn("doc-governance: BROKEN", audit.stdout)
+
+        found = self.run_tool("find", "searchable content")
+        self.assertEqual(found.returncode, 1, found.stdout + found.stderr)
+        report = self.run_tool("report")
+        self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
+        xref = self.run_tool("audit", "--check", "xref")
+        self.assertEqual(xref.returncode, 0, xref.stdout + xref.stderr)
 
     def test_plan_duplicate_active_and_legacy_blob_exemption(self) -> None:
         self.write("docs/plans/2026-07-01-old-v2.md", "# 古代失敗架構xyz\n")

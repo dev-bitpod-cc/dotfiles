@@ -390,11 +390,12 @@ echo "▶ 1e. agent contract kernel block 完整性 gate"
 KERNEL_GATE="$ROOT/tests/kernel-gate.py"
 KG="$TMP/kernel"
 
-kg_make() {   # $1=fixture 根；$2=kernel body（四份共用）；$3=覆寫給 codex 的 body（可省）
+kg_make() {   # $1=fixture 根；$2=kernel body（四份共用）；$3=覆寫給 codex；$4=route body（後兩者可省）
     local d="$1" body="$2" codex_body="${3:-$2}"
     local route_body='## 文檔檢索路由
 
 先執行 doc-find。'
+    [ "$#" -lt 4 ] || route_body="$4"
     mkdir -p "$d/claude" "$d/codex"
     {
         echo "# Agent Contract"
@@ -457,13 +458,8 @@ sed -i.bak 's/先執行 doc-find。/改走人工 archive。/' "$KG/route-drift/C
 kg_red "$KG/route-drift" 'route block.*漂移' "gate 自檢：doc-find route 漂移 → 命中" "gate 自檢：doc-find route 漂移未命中"
 
 # 兩份 route block 同時被掏空時仍會逐字相同；內容下限必須獨立擋住這種假綠。
-kg_make "$KG/route-hollow" "$kg_body"
-for f in "$KG/route-hollow/AGENTS.md" "$KG/route-hollow/CLAUDE.md"; do
-    sed -i.bak '/agent-contract:route:start/,/agent-contract:route:end/{/agent-contract:route:/!c\
-x
-}' "$f" && rm -f "$f.bak"
-done
-kg_red "$KG/route-hollow" 'route block.*規則行' "gate 自檢：route 複本同時掏空 → 命中" "gate 自檢：route 複本同時掏空仍假綠"
+kg_make "$KG/route-hollow" "$kg_body" "$kg_body" 'doc-find'
+kg_red "$KG/route-hollow" 'route block 只有 1 條規則行' "gate 自檢：route 複本同時掏空 → 命中" "gate 自檢：route 複本同時掏空仍假綠"
 
 # 四份都被掏空 → 「空 == 空」會相等，靠條目數下限擋
 kg_make "$KG/hollow" "- rule 1"
@@ -1054,7 +1050,7 @@ if [ "$fast_elapsed" -lt 4 ]; then
     ok "本地 remote fetch 成功 → 立刻返回（實測 ${fast_elapsed}s，上限 6s）"
 else bad "fetch 成功仍等滿 watchdog timeout（${fast_elapsed}s）"; fi
 
-# (i) 多 repo 單次呼叫：SKILL.md Step 1 要求一次帶完所有 session repo。彙總有兩個失效
+# (i) 多 repo 單次呼叫：`claude/skills/project/references/log-workflow.md`「Step 0：範圍鎖定」要求一次帶完所有 session repo。彙總有兩個失效
 #     方向——漏印某個 repo 的區段，或讓某個 repo 的 RESIDUE/UNKNOWN 被另一個的 CLEAN
 #     蓋掉（exit 0 = 全 CLEAN，是使用者唯一會看的那個數字）。此前所有呼叫都是單 repo，
 #     聚合迴圈與 overall exit code 完全沒有覆蓋。
@@ -1145,7 +1141,7 @@ if echo "$out" | grep -q "files-vs-default: 1 檔"; then ok "三點 diff 列出 
 if echo "$out" | grep -q "branch-first: 已在 feature branch"; then ok "feature branch → 免 branch-first"; else bad "feature branch 誤判 branch-first"; fi
 
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/ss-work")"
-# 無保護仍預設 PR（SKILL Step 1 第 4 項）——腳本 verdict 是 model 照抄的東西，
+# 無保護仍預設 PR（`claude/skills/project/references/log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」）——腳本 verdict 是 model 照抄的東西，
 # 印 DIRECT-PUSH 會與規則牴觸，等於誘導 agent 略過 PR（u3 eval 的 RED 即此形狀）
 if echo "$out" | grep -q "protection: OPEN" && echo "$out" | grep -q "ship-path: PR" \
     && ! echo "$out" | grep -q "ship-path: DIRECT-PUSH"; then
