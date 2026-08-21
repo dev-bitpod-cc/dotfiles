@@ -389,6 +389,7 @@ echo "▶ 1e. agent contract kernel block 完整性 gate"
 # 這支 gate 就是把那個代價換成機檢。判準與輸出契約見 tests/kernel-gate.py 檔頭。
 KERNEL_GATE="$ROOT/tests/kernel-gate.py"
 KG="$TMP/kernel"
+KG_CODES=""
 
 kg_make() {   # $1=fixture 根；$2=kernel body（四份共用）；$3=覆寫給 codex；$4=route body（後兩者可省）
     local d="$1" body="$2" codex_body="${3:-$2}"
@@ -437,7 +438,16 @@ kg_capture() {
 kg_red() {
     local root="$1" pattern="$2" pass="$3" fail="$4"
     kg_capture "$root"
+    KG_CODES="${KG_CODES} $(sed -n 's/.*\[\([^]]*\)\].*/\1/p' <<< "$kg_out" | tr '\n' ' ')"
     if [ "$kg_rc" -eq 0 ] && grep -q "$pattern" <<< "$kg_out"; then ok "$pass"; else bad "${fail}（exit ${kg_rc}）"; fi
+}
+kg_reverse_markers() {  # $1=檔案；$2=block 名。保留各一個 marker，只反轉順序。
+    local file="$1" name="$2"
+    sed -i.bak \
+        -e "s|<!-- agent-contract:${name}:start v1 -->|<!-- agent-contract:${name}:swap -->|" \
+        -e "s|<!-- agent-contract:${name}:end -->|<!-- agent-contract:${name}:start v1 -->|" \
+        -e "s|<!-- agent-contract:${name}:swap -->|<!-- agent-contract:${name}:end -->|" \
+        "$file" && rm -f "$file.bak"
 }
 
 # 八條規則的合法 body（GREEN 基準）
@@ -461,6 +471,41 @@ kg_red "$KG/route-drift" 'route block.*漂移' "gate 自檢：doc-find route 漂
 kg_make "$KG/route-hollow" "$kg_body" "$kg_body" 'doc-find'
 kg_red "$KG/route-hollow" 'route block 只有 1 條規則行' "gate 自檢：route 複本同時掏空 → 命中" "gate 自檢：route 複本同時掏空仍假綠"
 
+# 兩份 route 保持逐字相同但拿掉 executable token，漂移與行數檢查都不會代打。
+kg_make "$KG/route-no-exec" "$kg_body" "$kg_body" '## 文檔檢索路由
+
+只看人工 pointer。'
+kg_red "$KG/route-no-exec" 'route block 缺 executable route 規則行' "gate 自檢：route 缺 executable token → 命中" "gate 自檢：route executable token 分支未被 RED fixture 命中"
+
+# route 與 kernel／portable 一樣會被複製到其他 repo，私人路徑與跨檔指標都必須受 portability 管理。
+kg_make "$KG/route-private" "$kg_body" "$kg_body" '## 文檔檢索路由
+
+先執行 doc-find，詳見 ~/.dotfiles 的 ship-state.sh。'
+kg_red "$KG/route-private" 'route block 含私人路徑' "gate 自檢：route 私人路徑 → 命中" "gate 自檢：route 私人路徑逃過 portability"
+
+# shellcheck disable=SC2016  # backtick 是要餵給 gate 的 Markdown 指標字面。
+kg_make "$KG/route-xref" "$kg_body" "$kg_body" '## 文檔檢索路由
+
+先執行 doc-find，規則見 `other.md`「寫入」。'
+kg_red "$KG/route-xref" 'route block 含跨檔指標' "gate 自檢：route 跨檔指標 → 命中" "gate 自檢：route 跨檔指標逃過 portability"
+
+# route block 只屬 repo-resident 契約；放進全域部署來源即使內容合法也要紅。
+kg_make "$KG/route-misplaced" "$kg_body"
+sed -n '/agent-contract:route:start/,/agent-contract:route:end/p' "$KG/route-misplaced/AGENTS.md" >> "$KG/route-misplaced/claude/CLAUDE.md"
+kg_red "$KG/route-misplaced" '\[ROUTE_MISPLACED\]' "gate 自檢：route 出現在全域來源 → 命中" "gate 自檢：misplaced route block 未命中"
+
+# route 自己的 marker 與空 block 分支也要各有 executable RED fixture。
+kg_make "$KG/route-unpaired" "$kg_body"
+sed -i.bak 's|<!-- agent-contract:route:end -->||' "$KG/route-unpaired/CLAUDE.md" && rm -f "$KG/route-unpaired/CLAUDE.md.bak"
+kg_red "$KG/route-unpaired" '\[ROUTE_MARKER_COUNT\]' "gate 自檢：route marker 不成對 → 命中" "gate 自檢：route marker count 分支未命中"
+
+kg_make "$KG/route-order" "$kg_body"
+kg_reverse_markers "$KG/route-order/CLAUDE.md" route
+kg_red "$KG/route-order" '\[ROUTE_MARKER_ORDER\]' "gate 自檢：route marker 反序 → 命中" "gate 自檢：route marker order 分支未命中"
+
+kg_make "$KG/route-empty" "$kg_body" "$kg_body" '   '
+kg_red "$KG/route-empty" '\[ROUTE_EMPTY\]' "gate 自檢：route 空 block → 命中" "gate 自檢：route empty 分支未命中"
+
 # 四份都被掏空 → 「空 == 空」會相等，靠條目數下限擋
 kg_make "$KG/hollow" "- rule 1"
 kg_red "$KG/hollow" '規則行' "gate 自檢：四份同時掏空 → 命中（空==空 的假綠）" "gate 自檢：掏空未命中——這是最關鍵的假綠"
@@ -473,6 +518,10 @@ kg_red "$KG/missing" '檔案不存在' "gate 自檢：缺一份 → 命中" "gat
 kg_make "$KG/unpaired" "$kg_body"
 sed -i.bak 's|<!-- agent-contract:kernel:end -->||' "$KG/unpaired/claude/CLAUDE.md" && rm -f "$KG/unpaired/claude/CLAUDE.md.bak"
 kg_red "$KG/unpaired" 'marker' "gate 自檢：marker 不成對 → 命中" "gate 自檢：marker 不成對未命中"
+
+kg_make "$KG/kernel-order" "$kg_body"
+kg_reverse_markers "$KG/kernel-order/claude/CLAUDE.md" kernel
+kg_red "$KG/kernel-order" '\[KERNEL_MARKER_ORDER\]' "gate 自檢：kernel marker 反序 → 命中" "gate 自檢：kernel marker order 分支未命中"
 
 # canary：規則本體在 block 之外又出現一份
 kg_make "$KG/canary" "$kg_body"
@@ -493,6 +542,41 @@ if [ "$kg_rc" -ne 0 ]; then bad "gate 自檢：合法 fixture scanner 失敗（e
 kg_make "$KG/xref" "$(printf '%s\n- 完整條文見 `ship-paths.md`「說法表」\n' "$kg_body")"
 kg_red "$KG/xref" '跨檔指標' "gate 自檢：block 內跨檔指標 → 命中" "gate 自檢：block 內跨檔指標未命中"
 
+# portable block 的檔案、marker、內容與巢狀分支逐一造 RED。
+kg_make "$KG/portable-missing" "$kg_body"; rm -f "$KG/portable-missing/AGENTS.md"
+kg_red "$KG/portable-missing" '\[PORTABLE_FILE_MISSING\]' "gate 自檢：portable 檔案缺失 → 命中" "gate 自檢：portable file missing 分支未命中"
+
+kg_make "$KG/portable-unpaired" "$kg_body"
+sed -i.bak 's|<!-- agent-contract:portable:end -->||' "$KG/portable-unpaired/AGENTS.md" && rm -f "$KG/portable-unpaired/AGENTS.md.bak"
+kg_red "$KG/portable-unpaired" '\[PORTABLE_MARKER_COUNT\]' "gate 自檢：portable marker 不成對 → 命中" "gate 自檢：portable marker count 分支未命中"
+
+kg_make "$KG/portable-order" "$kg_body"
+kg_reverse_markers "$KG/portable-order/AGENTS.md" portable
+kg_red "$KG/portable-order" '\[PORTABLE_MARKER_ORDER\]' "gate 自檢：portable marker 反序 → 命中" "gate 自檢：portable marker order 分支未命中"
+
+kg_make "$KG/portable-empty" "$kg_body"
+sed -i.bak -e '/## Documentation authority/d' -e '/Generated docs never win/d' "$KG/portable-empty/AGENTS.md" && rm -f "$KG/portable-empty/AGENTS.md.bak"
+kg_red "$KG/portable-empty" '\[PORTABLE_EMPTY\]' "gate 自檢：portable 空 block → 命中" "gate 自檢：portable empty 分支未命中"
+
+kg_make "$KG/portable-nested" "$kg_body"
+sed -i.bak 's/Generated docs never win/agent-contract:kernel/' "$KG/portable-nested/AGENTS.md" && rm -f "$KG/portable-nested/AGENTS.md.bak"
+kg_red "$KG/portable-nested" '\[PORTABLE_NESTED_KERNEL\]' "gate 自檢：portable 巢狀 kernel → 命中" "gate 自檢：portable nested 分支未命中"
+
+# portable block 只能在 AGENTS.md；全域來源出現第二份會替別的 repo 宣告本 repo 權威。
+kg_make "$KG/portable-misplaced" "$kg_body"
+sed -n '/agent-contract:portable:start/,/agent-contract:portable:end/p' "$KG/portable-misplaced/AGENTS.md" >> "$KG/portable-misplaced/claude/CLAUDE.md"
+kg_red "$KG/portable-misplaced" '\[PORTABLE_MISPLACED\]' "gate 自檢：portable 出現在全域來源 → 命中" "gate 自檢：misplaced portable block 未命中"
+
+# meta-test：掃描器宣告的每一種 blocking finding 都必須由上方某個 RED fixture 實際輸出。
+kg_expected_codes="$(python3 "$KERNEL_GATE" --list-finding-codes | LC_ALL=C sort)"
+kg_actual_codes="$(printf '%s\n' "$KG_CODES" | tr ' ' '\n' | sed '/^$/d' | LC_ALL=C sort -u)"
+if [ "$kg_actual_codes" = "$kg_expected_codes" ]; then
+    ok "gate 自檢：每個 kernel-gate finding 分支都有 RED fixture"
+else
+    bad "gate 自檢：finding 分支覆蓋不完整"
+    comm -23 <(printf '%s\n' "$kg_expected_codes") <(printf '%s\n' "$kg_actual_codes") | sed 's/^/     missing: /'
+fi
+
 # scanner 自身失敗必須 exit 2（不可與「內容乾淨」的 exit 0 混用）
 python3 "$KERNEL_GATE" --root "$KG/does-not-exist" >/dev/null 2>&1
 assert_rc "gate 自檢：--root 不存在 → exit 2（不與乾淨混用）" 2 $?
@@ -503,7 +587,7 @@ kernel_rc=$?
 if [ "$kernel_rc" -ne 0 ]; then
     bad "kernel-gate 掃描器執行失敗（exit ${kernel_rc}）——空輸出不可信"
 elif [ -z "$kernel_hits" ]; then
-    ok "kernel block 三份逐字一致、契約檔可攜"
+    ok "kernel／route managed blocks 逐字一致、契約檔可攜"
 else
     bad "kernel block 有問題（複本漂移／被掏空／混入私人路徑）"
     printf '%s\n' "$kernel_hits" | sed 's/^/     /'

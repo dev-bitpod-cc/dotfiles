@@ -874,3 +874,9 @@
   - 放棄:維持貼身 headroom；讓 correctness fix 受一次性驗收 ratchet 阻擋；以 ratio 作可被分母成長稀釋的 blocking gate
   - 重議:治理面逼近 64 KiB，或能建立不受 corpus 分母操弄的相對複雜度指標
   - 關聯:.doc-governance.json;docs/document-governance.md;D-20260820-u-3295d617a292
+
+- **D-20260821-removal-axis-incomplete-fix · 2026-08-21 刪除軸兩條繞道判為「上一次修復不完整」而非新一輪審查**:原 finding 的根因是「immutability 的判定主體＝目前還存在的檔案」,而 `git rm --cached`(取消追蹤、檔案留在 working tree)與「branch 內建立後才凍結」是同一根因的另外兩個入口,不是新缺陷。本批累積 diff 觸及 skill body／always-on 契約／eval,依 deep-review 的 skill-authoring batch 規定只跑一次診斷 review、不進修復循環,故不開第八輪;完成證據取 repo 自己的機制(deterministic suite 紅轉綠＋逐 call site 突變＋修前同情境靜默),不取「再審一輪零 finding」。修復仍交 codex、主 agent 只做機械復驗,維持作者／審查分離——本批動的是 gate 自身。
+  - 日期來源:direct
+  - 放棄:開第八輪 deep-review;主 agent 自行改 gate;把兩條繞道當新 finding 另起輪次
+  - 重議:同一根因出現第三個入口,或完成判定需要行為 eval 而非 red-to-green 支撐
+  - 關聯:M-20260821-immutability-removal-axis-closed;scripts/doc-governance.py;docs/testing-contract.md

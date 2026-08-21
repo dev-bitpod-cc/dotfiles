@@ -20,6 +20,17 @@ TOOL = ROOT / "scripts" / "doc-governance.py"
 
 
 def base_config(classes: list[dict], **overrides: object) -> dict:
+    classes = [
+        {
+            **item,
+            **(
+                {"governed_sections": ["技術債", "已知缺口"]}
+                if item.get("name") == "backlog" and "governed_sections" not in item
+                else {}
+            ),
+        }
+        for item in classes
+    ]
     config = {
         "schema": 1,
         "history_paths": {
@@ -235,6 +246,71 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(ship.returncode, 1, ship.stderr)
         self.assertTrue(ship.stdout.startswith("doc-governance: FINDINGS\n"))
 
+    def test_decorated_event_section_is_still_the_canonical_history_section(self) -> None:
+        self.write(
+            "docs/archive/decisions-2026-08.md",
+            """# 決策
+
+## 🗂 事件記錄（event-time）（本批）
+
+- **D-20260820-decorated · 2026-08-20 裝飾標題**:理由。
+  - 日期來源:direct
+  - 放棄:none
+  - 重議:none
+  - 關聯:none
+""",
+        )
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.track()
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("outside event-time section", result.stdout)
+
+    def test_new_legacy_history_entry_outside_event_section_requires_an_id(self) -> None:
+        path = "docs/archive/decisions-2026-07.md"
+        original = """# 決策歸檔
+
+- **2026-07-20 舊制既有條目**:既有理由。
+"""
+        self.write(path, original)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        self.write(path, original + "\n- **2026-07-21 新增但沒有 stable ID**:新理由。\n")
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("history ID missing", result.stdout)
+        self.assertNotIn("history ID missing: docs/archive/decisions-2026-07.md:3", result.stdout)
+
+    def test_decorated_event_section_idless_entry_present_at_baseline(self) -> None:
+        path = "docs/archive/decisions-2026-07.md"
+        original = """# 決策歸檔
+
+## 事件記錄（event-time）（依日期追加）
+
+- **2026-07-20 沒有 stable ID 的條目**:既有理由。
+"""
+        self.write(path, original)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        self.write(path, original + "\n<!-- touch -->\n")
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("history ID missing", result.stdout)
+
     def test_committed_history_is_append_only(self) -> None:
         original = """# 決策
 
@@ -295,6 +371,67 @@ class DocGovernanceTests(RepoCase):
         result = self.run_tool("audit", "--ship")
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("history not append-only", result.stdout)
+
+    def test_default_tip_equal_to_head_is_a_valid_immutability_baseline(self) -> None:
+        original = """# Decisions
+
+## 事件記錄（event-time）
+
+- **D-20260820-original · 2026-08-20 原始決策**:第一版理由。
+  - 日期來源:direct
+  - 放棄:none
+  - 重議:none
+  - 關聯:none
+"""
+        path = "docs/archive/decisions-2026-08.md"
+        self.write(path, original)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.commit()
+        self.write(path, original.replace("第一版理由", "歷史上已改成第二版"))
+        self.commit()
+
+        on_main = self.run_tool("audit", "--ship")
+        self.assertEqual(on_main.returncode, 0, on_main.stdout + on_main.stderr)
+        self.assertNotIn("history not append-only", on_main.stdout)
+
+        self.switch_feature()
+        on_fresh_feature = self.run_tool("audit", "--ship")
+        self.assertEqual(on_fresh_feature.returncode, 0, on_fresh_feature.stdout + on_fresh_feature.stderr)
+        self.assertNotIn("history not append-only", on_fresh_feature.stdout)
+
+    def test_missing_default_baseline_skips_immutability_and_explains_all_audit_modes(self) -> None:
+        original = """# Decisions
+
+## 事件記錄（event-time）
+
+- **D-20260820-original · 2026-08-20 原始決策**:第一版理由。
+  - 日期來源:direct
+  - 放棄:none
+  - 重議:none
+  - 關聯:none
+"""
+        path = "docs/archive/decisions-2026-08.md"
+        self.write(path, original)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.commit()
+        self.write(path, original.replace("第一版理由", "歷史上已改成第二版"))
+        self.commit()
+        subprocess.run(["git", "-C", str(self.repo), "branch", "-m", "topic"], check=True)
+
+        for args in (("audit",), ("audit", "--shadow"), ("audit", "--ship")):
+            with self.subTest(args=args):
+                result = self.run_tool(*args)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("doc-note: immutability baseline unavailable", result.stdout)
+                self.assertNotIn("history not append-only", result.stdout)
 
     def test_committed_final_plan_remains_frozen_after_later_commit(self) -> None:
         active = """# Plan
@@ -379,15 +516,40 @@ class DocGovernanceTests(RepoCase):
         self.assertIn("backlog ID missing: docs/backlog.md:5", result.stdout)
         self.assertNotIn("duplicate backlog ID", result.stdout)
 
+    def test_backlog_rules_apply_to_decorated_and_extended_sections(self) -> None:
+        self.write(
+            "docs/backlog.md",
+            """# Backlog
+
+## 🔧 技術債（本批）
+
+- **B-20260820-same** · [ ] 第一項
+- **B-20260820-same** · [ ] 第二項
+- [ ] 沒有 stable ID
+- **B-20260820-closed** · [x] 已關閉卻仍殘留
+
+## 🧩 已知缺口（外部）
+
+- [ ] 同樣需要 stable ID
+""",
+        )
+        self.configure(base_config([{"name": "backlog", "mode": "active", "paths": ["docs/backlog.md"]}]))
+        self.track()
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("duplicate backlog ID: B-20260820-same", result.stdout)
+        self.assertIn("backlog ID missing", result.stdout)
+        self.assertIn("closed backlog item remains: B-20260820-closed", result.stdout)
+
     def test_backlog_removal_uses_declared_ids_and_relation_metadata(self) -> None:
         backlog = """# Backlog
 
-## 技術債
+## 🔧 技術債（本批）
 
 - **B-20260820-active** · [ ] 待辦
   - 相關:B-20260701-already-closed
 
-## 已知缺口
+## 🧩 已知缺口（外部）
 """
         self.write("docs/backlog.md", backlog)
         self.write("docs/archive/milestones-2026-08.md", "# Milestones\n")
@@ -401,7 +563,7 @@ class DocGovernanceTests(RepoCase):
         unchanged = self.run_tool("audit")
         self.assertEqual(unchanged.returncode, 0, unchanged.stdout + unchanged.stderr)
 
-        self.write("docs/backlog.md", "# Backlog\n\n## 技術債\n\n## 已知缺口\n")
+        self.write("docs/backlog.md", "# Backlog\n\n## 🔧 技術債（本批）\n\n## 🧩 已知缺口（外部）\n")
         self.write(
             "docs/archive/milestones-2026-08.md",
             """# Milestones
@@ -427,6 +589,82 @@ class DocGovernanceTests(RepoCase):
         )
         linked = self.run_tool("audit")
         self.assertEqual(linked.returncode, 0, linked.stdout + linked.stderr)
+
+    def test_backlog_removal_ignores_non_governance_and_hidden_example_ids(self) -> None:
+        self.write(
+            "docs/backlog.md",
+            """# Backlog
+
+## 技術債
+
+- **B-20260820-active** · [ ] 真實待辦
+
+```md
+- **B-20260101-example** · [ ] fenced 範例
+```
+<!-- - **B-20260101-commented** · [ ] 註解範例 -->
+
+## 已完成
+
+- **B-20260101-done** · 說明用，不是治理單元
+
+## 已知缺口
+""",
+        )
+        self.configure(base_config([{"name": "backlog", "mode": "active", "paths": ["docs/backlog.md"]}]))
+        self.commit()
+        self.switch_feature()
+        result = self.run_tool("audit", "--ship")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("backlog removal missing history relation", result.stdout)
+
+    def test_history_metadata_and_supersedes_only_use_visible_entry_body(self) -> None:
+        self.write(
+            "docs/archive/decisions-2026-08.md",
+            """# Decisions
+
+## 事件記錄（event-time）
+
+- **D-20260820-hidden-metadata · 2026-08-20 隱藏 metadata 不算**:理由。
+  ```yaml
+  - 日期來源:direct
+  - supersedes:D-20260101-example
+  ```
+  - 放棄:none
+  - 重議:none
+  - 關聯:none
+""",
+        )
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.track()
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("history 日期來源 missing/invalid", result.stdout)
+        self.assertNotIn("supersedes target missing", result.stdout)
+
+    def test_plan_metadata_inside_fence_does_not_satisfy_schema(self) -> None:
+        self.write(
+            "docs/plans/2026-08-20-example.md",
+            """# Example
+
+```yaml
+- 日期：2026-08-20
+- 狀態：in-progress
+- 工作項：W-hidden
+- 種類：implementation
+- 需求來源：request.md
+```
+""",
+        )
+        self.configure(base_config([{"name": "plans", "mode": "routed", "paths": ["docs/plans/*.md"]}]))
+        self.track()
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("missing plan metadata", result.stdout)
 
     def test_h2_batch_date_never_becomes_legacy_event_date(self) -> None:
         self.write(
@@ -600,6 +838,10 @@ class DocGovernanceTests(RepoCase):
     def test_config_rejects_empty_unknown_and_escaping_nested_rules(self) -> None:
         self.write("README.md", "# Fixture\n")
         loaded = [{"name": "loaded", "mode": "loaded", "paths": ["README.md"]}]
+        backlog_without_sections = base_config(
+            [{"name": "backlog", "mode": "active", "paths": ["README.md"]}]
+        )
+        del backlog_without_sections["classes"][0]["governed_sections"]
         cases = {
             "empty loaded budget": base_config(loaded, loaded_budgets={"README.md": {}}),
             "unknown loaded budget key": base_config(loaded, loaded_budgets={"README.md": {"byte": 5}}),
@@ -613,6 +855,7 @@ class DocGovernanceTests(RepoCase):
                 searchable_legacy_plans=["../../outside.md"],
             ),
             "escaping status path": base_config([], status_schema={"path": "../STATUS.md"}),
+            "backlog missing governed sections": backlog_without_sections,
         }
         for label, config in cases.items():
             with self.subTest(label=label):
@@ -640,6 +883,171 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
         xref = self.run_tool("audit", "--check", "xref")
         self.assertEqual(xref.returncode, 0, xref.stdout + xref.stderr)
+
+    def test_committed_history_shard_removal_is_a_finding(self) -> None:
+        history = """# Decisions
+
+## 事件記錄（event-time）
+"""
+        removed = "docs/archive/decisions-2026-07.md"
+        self.write(removed, history)
+        self.write("docs/archive/decisions-2026-08.md", history)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        subprocess.run(["git", "-C", str(self.repo), "rm", "-q", removed], check=True)
+        self.commit()
+
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"history record file removed: {removed}", result.stdout)
+
+    def test_committed_untracked_history_shard_is_a_removal_finding(self) -> None:
+        history = """# Decisions
+
+## 事件記錄（event-time）
+"""
+        removed = "docs/archive/decisions-2026-07.md"
+        self.write(removed, history)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        subprocess.run(
+            ["git", "-C", str(self.repo), "rm", "--cached", "-q", removed],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self.repo),
+                "-c",
+                "user.name=fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+            check=True,
+            env={**os.environ, "DOTFILES_PRECOMMIT_OFF": "1"},
+        )
+
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"history record file removed: {removed}", result.stdout)
+
+    def test_committed_frozen_plan_removal_is_a_finding(self) -> None:
+        plan = """# Plan
+
+- 日期：2026-08-20
+- 狀態：{state}
+- 工作項：{work_item}
+- 種類：implementation
+- 需求來源：request.md
+"""
+        removed = "docs/plans/2026-08-20-frozen.md"
+        self.write(removed, plan.format(state="implemented", work_item="frozen"))
+        self.write(
+            "docs/plans/2026-08-21-active.md",
+            plan.format(state="draft", work_item="active"),
+        )
+        self.configure(
+            base_config(
+                [{"name": "plans", "mode": "routed", "paths": ["docs/plans/*.md"]}]
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        subprocess.run(["git", "-C", str(self.repo), "rm", "-q", removed], check=True)
+        self.commit()
+
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"frozen plan removed: {removed}", result.stdout)
+
+    def test_in_branch_frozen_plan_removal_is_a_finding(self) -> None:
+        removed = "docs/plans/2026-08-20-frozen.md"
+        self.write(
+            "docs/plans/2026-08-21-active.md",
+            """# Plan
+
+- 日期：2026-08-21
+- 狀態：draft
+- 工作項：active
+- 種類：implementation
+- 需求來源：request.md
+""",
+        )
+        self.configure(
+            base_config(
+                [{"name": "plans", "mode": "routed", "paths": ["docs/plans/*.md"]}]
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        self.write(
+            removed,
+            """# Plan
+
+- 日期：2026-08-20
+- 狀態：implemented
+- 工作項：frozen
+- 種類：implementation
+- 需求來源：request.md
+""",
+        )
+        self.commit()
+        subprocess.run(["git", "-C", str(self.repo), "rm", "-q", removed], check=True)
+        self.commit()
+
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"frozen plan removed: {removed}", result.stdout)
+
+    def test_committed_legacy_plan_removal_is_a_finding(self) -> None:
+        removed = "docs/plans/2026-07-01-old-v2.md"
+        self.write(removed, "# Frozen legacy plan\n")
+        self.write(
+            "docs/plans/2026-08-21-active.md",
+            """# Plan
+
+- 日期：2026-08-21
+- 狀態：draft
+- 工作項：active
+- 種類：implementation
+- 需求來源：request.md
+""",
+        )
+        self.commit()
+        oid = subprocess.run(
+            ["git", "-C", str(self.repo), "rev-parse", f"HEAD:{removed}"],
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+        self.configure(
+            base_config(
+                [{"name": "plans", "mode": "routed", "paths": ["docs/plans/*.md"]}],
+                legacy_plan_blobs={removed: oid},
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        subprocess.run(["git", "-C", str(self.repo), "rm", "-q", removed], check=True)
+        self.commit()
+
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"legacy plan removed: {removed}", result.stdout)
 
     def test_plan_duplicate_active_and_legacy_blob_exemption(self) -> None:
         self.write("docs/plans/2026-07-01-old-v2.md", "# 古代失敗架構xyz\n")
@@ -987,6 +1395,7 @@ class DocGovernanceTests(RepoCase):
 - **B-20260820-done · ** [x] 已完成但仍殘留
 - **B-20260820-done-valid** · [x] 修正 Markdown 後仍殘留
 - **B-20260820-done-alt** · [ ] ~~另一種關閉形狀~~
+- **B-20260820-done-bare** · ~~沒有 checkbox 的關閉形狀~~
 
 ## 已知缺口
 
@@ -1012,6 +1421,7 @@ class DocGovernanceTests(RepoCase):
         self.assertIn("closed backlog item remains: B-20260820-done", result.stdout)
         self.assertIn("closed backlog item remains: B-20260820-done-valid", result.stdout)
         self.assertIn("closed backlog item remains: B-20260820-done-alt", result.stdout)
+        self.assertIn("closed backlog item remains: B-20260820-done-bare", result.stdout)
 
     def test_removed_backlog_id_requires_history_relation(self) -> None:
         self.write("docs/backlog.md", "# Backlog\n\n## 技術債\n\n- **B-20260820-finished · ** [ ] 工作\n")
@@ -1059,6 +1469,37 @@ class DocGovernanceTests(RepoCase):
         result = self.run_tool("audit")
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("paused item missing restart condition", result.stdout)
+
+    def test_status_rules_share_decorated_and_extended_section_matching(self) -> None:
+        self.write(
+            "STATUS.md",
+            """# Status
+
+## ⏳ 進行中（本批）
+
+- ✅ 已完成卻仍留在 active
+
+## 近期關鍵決策
+
+- 舊歷史不應留在 STATUS。
+""",
+        )
+        self.configure(
+            base_config(
+                [{"name": "status", "mode": "active", "paths": ["STATUS.md"]}],
+                status_schema={
+                    "path": "STATUS.md",
+                    "required_headings": ["進行中"],
+                    "forbidden_headings": ["關鍵決策"],
+                },
+            )
+        )
+        self.track()
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("STATUS active item marked complete", result.stdout)
+        self.assertIn("STATUS historical heading remains: 關鍵決策", result.stdout)
+        self.assertNotIn("STATUS required heading missing", result.stdout)
 
     def test_status_rejects_completed_active_items_and_staleness(self) -> None:
         self.write(
@@ -1348,6 +1789,29 @@ class DocGovernanceTests(RepoCase):
 
 
 class RealRetrievalCorpusTests(unittest.TestCase):
+    @staticmethod
+    def retrieval_rows() -> list[list[str]]:
+        fixture = ROOT / "tests" / "fixtures" / "doc-governance" / "retrieval.tsv"
+        with fixture.open(encoding="utf-8", newline="") as handle:
+            return [row for row in csv.reader(handle, delimiter="\t") if row and not row[0].startswith("#")]
+
+    def test_retrieval_corpus_covers_required_families(self) -> None:
+        required = {
+            "decision",
+            "dead-end",
+            "milestone",
+            "backlog",
+            "plan",
+            "policy",
+            "skill",
+            "reference",
+            "eval",
+            "archive",
+        }
+        rows = self.retrieval_rows()
+        self.assertTrue(all(len(row) == 5 for row in rows), "every retrieval row must declare its family")
+        self.assertEqual({row[4] for row in rows}, required)
+
     def test_retrieval_oracle_does_not_embed_answer_aliases(self) -> None:
         spec = importlib.util.spec_from_file_location("doc_governance_no_alias", TOOL)
         assert spec and spec.loader
@@ -1357,13 +1821,15 @@ class RealRetrievalCorpusTests(unittest.TestCase):
         config = module.load_config(ROOT)
         self.assertNotIn("query_aliases", config.raw)
         entries, _ = module.build_entries(module.build_documents(config)[0])
-        fixture = ROOT / "tests" / "fixtures" / "doc-governance" / "retrieval.tsv"
-        with fixture.open(encoding="utf-8", newline="") as handle:
-            rows = [row for row in csv.reader(handle, delimiter="\t") if row and not row[0].startswith("#")]
+        rows = self.retrieval_rows()
+
+        for query, _, expected_entry, _, _ in rows:
+            with self.subTest(query=query):
+                self.assertNotIn(expected_entry.casefold(), query.casefold())
 
         def overlaps() -> list[tuple[str, str, str]]:
             collisions = []
-            for query, expected_path, expected_entry, _ in rows:
+            for query, expected_path, expected_entry, _, _ in rows:
                 query_tokens = set(module.search_tokens(query))
                 for entry in entries:
                     if entry.path != expected_path or expected_entry.casefold() not in entry.title.casefold():
@@ -1375,7 +1841,7 @@ class RealRetrievalCorpusTests(unittest.TestCase):
             return collisions
 
         self.assertEqual(overlaps(), [])
-        query, expected_path, expected_entry, _ = rows[0]
+        query, expected_path, expected_entry, _, _ = rows[0]
         injected = next(
             entry
             for entry in entries
@@ -1385,11 +1851,9 @@ class RealRetrievalCorpusTests(unittest.TestCase):
         self.assertTrue(overlaps(), "oracle guard failed to detect answer-token metadata injection")
 
     def test_current_repo_retrieval_corpus_hits_top_five(self) -> None:
-        fixture = ROOT / "tests" / "fixtures" / "doc-governance" / "retrieval.tsv"
-        with fixture.open(encoding="utf-8", newline="") as handle:
-            rows = [row for row in csv.reader(handle, delimiter="\t") if row and not row[0].startswith("#")]
+        rows = self.retrieval_rows()
         cache: dict[str, str] = {}
-        for query, expected_path, expected_entry, expected_section in rows:
+        for query, expected_path, expected_entry, expected_section, _ in rows:
             if query not in cache:
                 result = subprocess.run(
                     ["python3", str(TOOL), "--root", str(ROOT), "find", query],

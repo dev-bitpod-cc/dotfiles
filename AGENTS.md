@@ -75,7 +75,7 @@ drift is real; the kernel block is the managed instance of this pattern. Everyth
 
 ## Repo specifics
 
-<!-- 安裝到其他 repo 時，這一節整段重填；上面兩個 block 由工具維護，不要手改 -->
+<!-- 安裝到其他 repo 時，這一節整段重填；上面三個 managed block 由工具維護，不要手改 -->
 
 - **測試**：`./tests/run.sh`，**以 exit code 判綠紅**（接 pipeline 會吃掉失敗）。
   改動 `scripts/`、setup 腳本、skill 腳本後必跑；改動任何 `.md` 的節名或搬動權威內容後同樣要跑

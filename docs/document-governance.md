@@ -22,8 +22,8 @@ New history: `docs/archive/{decisions,dead-ends,milestones}-YYYY-MM.md` / `## �
 `D/X/M-YYYYMMDD-slug`; title/ID/shard dates match; metadata `日期來源`/`放棄`/`重議`/`關聯`.
 Committed records are immutable; reversal adds `supersedes:<ID>`.
 
-`STATUS.md`: active, restartable paused, history/backlog routes, transfer readiness. Backlog: open `B-*` only;
-removal needs a citing D/X/M record.
+`STATUS.md`: active, restartable paused, history/backlog routes, transfer readiness. Backlog: its class declares
+`governed_sections`; matching sections contain open `B-*` only, and removal needs a citing D/X/M record.
 
 One plan/work item: edit `draft/approved/in-progress`; freeze `implemented/superseded`. Superseded needs
 `取代計畫: <path>`. No `-v2/-final/-revised`. Legacy blobs are frozen and excluded from `find`, except

@@ -1,10 +1,17 @@
-# query<TAB>expected_path<TAB>expected_entry<TAB>expected_section
-為什麼刪除 remote branch 需要 expected SHA、ls-remote 與 lease 雙重比對？	docs/archive/decisions-2026-08.md	破壞性刪除	*
-dossier 的量體訊號為什麼從 STATUS 總量擴到 always-on？	docs/archive/decisions-2026-07.md	量測下沉	*
-dossier 的量體訊號為什麼從 STATUS 總量擴到 always-on？	docs/archive/decisions-2026-08.md	always-on	*
-大型輸入做存在性檢查為什麼不能使用 printf grep -q？	docs/archive/decisions-2026-07.md	herestring	*
-為什麼 git add -A 的唯一例外是 deep-review WIP snapshot？	docs/archive/decisions-2026-08.md	deep-review WIP snapshot	file-preamble
-為什麼「進行中含 ✅」只檢查 list item、不檢查表格或續行？	docs/archive/decisions-2026-08.md	進行中含 ✅	已結案技術債（2026-08-10 歸檔）
-審查範圍 priority MUST ASK USER	claude/skills/deep-review/references/modes-and-scope.md	1. 確定審查範圍	1. 確定審查範圍
-ship 摘要 授權 說法	claude/skills/project/references/log-workflow.md	Step 4：Ship 摘要	Step 4：Ship 摘要
-WIP snapshot 唯一例外	claude/skills/deep-review/references/modes-and-scope.md	Autofix 模式	Autofix 模式
+# query<TAB>expected_path<TAB>expected_entry<TAB>expected_section<TAB>family
+為什麼刪除 remote branch 需要 expected SHA、ls-remote 與 lease 雙重比對？	docs/archive/decisions-2026-08.md	破壞性刪除	*	decision
+dossier 的量體訊號為什麼從 STATUS 總量擴到 always-on？	docs/archive/decisions-2026-07.md	量測下沉	*	archive
+為什麼載入治理不能只量 STATUS，而要讓 ship-state 無條件輸出？	docs/archive/decisions-2026-08.md	治理的對象一直是錯的	*	decision
+大型輸入做存在性檢查為什麼不能使用 printf grep -q？	docs/archive/decisions-2026-07.md	herestring	*	archive
+全域禁止整批 stage，審查流程原本需要先存 WIP，這個衝突最後怎麼處理？	docs/archive/decisions-2026-08.md	deep-review WIP snapshot	file-preamble	decision
+狀態盤點表裡的完成符號為何不該阻擋 ship？這個誤報最後如何收窄？	docs/archive/decisions-2026-08.md	進行中含 ✅	已結案技術債（2026-08-10 歸檔）	archive
+scope-priority 2 git diff --no-index untracked	claude/skills/deep-review/references/modes-and-scope.md	1. 確定審查範圍	1. 確定審查範圍	reference
+review-terminal 說法覆蓋不了 STOP AskUserQuestion	claude/skills/project/references/log-workflow.md	Step 4：Ship 摘要	Step 4：Ship 摘要	reference
+WIP snapshot review-anchor squash-cmd tests-baseline	claude/skills/deep-review/references/modes-and-scope.md	Autofix 模式	Autofix 模式	reference
+為什麼不把已知缺口定義收窄成我方可解？	docs/archive/dead-ends-2026-08.md	X-20260820-narrow-known-gap	事件記錄（event-time）	dead-end
+文件治理 pilot 完成了哪些能力與驗收？	docs/archive/milestones-2026-08.md	M-20260820-doc-governance-pilot	事件記錄（event-time）	milestone
+ignored dirs alias stale positional files adoption 診斷	docs/backlog.md	B-20260821-debt-26	技術債	backlog
+計畫目標書定義要解什麼，不含解法提案，範圍含全部 dossier 類型	docs/plans/2026-08-20-doc-governance-goals.md	文檔治理 — 目標、現況、問題、困難	file-preamble	plan
+maintenance ceiling correctness ratchet round binary tier	docs/document-governance.md	Surface budget	Surface budget	policy
+執行前必須完整讀取 references/log-workflow.md 並逐步照做	claude/skills/project/SKILL.md	Log 模式	Log 模式	skill
+先對既有 STATUS.md 做 adopted status audit／schema 確認	claude/evals/doc-governance-evals.md	E7 — Spec 撞名 STATUS	E7 — Spec 撞名 STATUS	eval

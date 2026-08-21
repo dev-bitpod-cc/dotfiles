@@ -156,3 +156,15 @@
   - 放棄:原條目所述方案
   - 重議:見原文
   - 關聯:STATUS.md cutover
+
+- **X-20260821-clone-origin-head-baseline · 2026-08-21 在 clone 內驗刪除類檢查時沿用 clone 自己的 `origin/HEAD`**:`git clone` 會把 `origin/HEAD` 指向被 clone 的那條 branch,於是 `immutability_base` 取到的是 feature branch head 而不是 `merge-base(HEAD, origin/main)`。後果是**方向相反的假綠/假紅**:branch 內建立的檔案變成「baseline 就已存在」,連修復前的舊程式碼也會紅,量出假的「已經修好」;反之站在 feature branch 上跑又會取到真 merge-base。復驗前必須先 `git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main` 並把實際 baseline commit 印出來對照。
+  - 日期來源:direct
+  - 放棄:直接在 clone 的預設 branch 佈局上量刪除類檢查
+  - 重議:baseline 解析改為顯式參數而非從 remote HEAD 推導
+  - 關聯:scripts/doc-governance.py;M-20260821-immutability-removal-axis-closed
+
+- **X-20260821-inbound-shard-false-red · 2026-08-21 拿有 inbound reference 的 history shard 驗 immutability**:刪掉 `docs/archive/dead-ends-2026-08.md` 這種被 STATUS.md 與 `docs/dead-ends.md` 指到的 shard,audit 會噴十幾條 finding——但其中絕大多數是 xref 斷鏈,**immutability 那一條被淹沒**,「有紅」因此不構成「有守門」。要證明 immutability 真的在守,必須另造一個沒有任何 inbound reference 的 in-branch shard(合成 shard 需備齊 stable ID、事件記錄節與 `日期來源`,否則過不了前置的乾淨 audit),刪除後**恰好只剩那一條 finding**。
+  - 日期來源:direct
+  - 放棄:用既有的高引用 shard 當刪除類檢查的樣本
+  - 重議:audit 輸出改為可依 check 分類篩選,能直接斷言單一檢查是否命中
+  - 關聯:scripts/doc-governance.py;M-20260821-immutability-removal-axis-closed
