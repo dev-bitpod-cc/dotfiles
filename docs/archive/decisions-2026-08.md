@@ -880,3 +880,9 @@
   - 放棄:開第八輪 deep-review;主 agent 自行改 gate;把兩條繞道當新 finding 另起輪次
   - 重議:同一根因出現第三個入口,或完成判定需要行為 eval 而非 red-to-green 支撐
   - 關聯:M-20260821-immutability-removal-axis-closed;scripts/doc-governance.py;docs/testing-contract.md
+
+- **D-20260822-drop-superseded-dossier-plans · 2026-08-22 刪除八份已被否決的 dossier 治理計畫,並同步移出 `legacy_plan_blobs`**:`dossier-governance-problem` 五版與 `dossier-sharded-architecture` 三版是「在沒有量測的情況下反覆選架構」的產物(見 D-20260820-pilot-before-architecture),真正交付的是 `docs/plans/2026-08-20-doc-governance-goals.md` 與同日的 implementation plan。凍結紀錄的價值在於保存「當初為何這樣決定」,而這八份的推導已完整壓進上述決策 record;留在 working tree 只會讓 `docs/plans/` 的可讀性被八份同名不同版稀釋。**刪除是有意識的決定,不是繞過 immutability gate**:gate 的作用正是逼出這一步——要刪就得同時把條目移出 `legacy_plan_blobs`,而那是 governance surface 上看得見的變更。內容並未消失,git history 仍可取回。**`docs/plans/2026-08-14-dossier-governance.md` 刻意保留**:`docs/archive/decisions-2026-08.md` 有兩筆不可變 record 以 xref 指標指向它的「DROP」與「v2 追記」兩節,刪掉即 xref 斷鏈且無法修補指標端。
+  - 日期來源:direct
+  - 放棄:全部保留為凍結紀錄;或刪檔卻不動 `legacy_plan_blobs`(會讓每次 ship 都紅);或為了刪 08-14 而竄改 history record
+  - 重議:出現需要回溯這八份原文的具體問題,且 git history 取回不敷使用
+  - 關聯:D-20260820-pilot-before-architecture;.doc-governance.json;docs/plans/2026-08-20-doc-governance-goals.md
