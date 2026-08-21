@@ -28,8 +28,10 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
   top-5 被單檔洗版)。
   ⚠️ **順序理由**:27/28 打到的正是「不知道標題時找不找得到」,而那是第二個 repo 第一次用才會撞到的面;
   沒有真實 rollout 語料就調 ranking,等於對 dotfiles 自己的語料過擬合。
-  ⚠️ **plan §6 的「連續 10 次 ship 無人工 compaction 才 fleet rollout」既未達成也沒有人在數**——pilot 後 main
-  只有 7 個 commit、0 個 merge,全是審查修復輪。動 ② 之前先決定:補一個計數口徑,或明確放寬該門檻並寫 `D-*`。
+  ⚠️ **原 plan §6 的 steady-state rollout gate 已由 `D-20260822-rollout-gate-replacement` 取代**:batch 1 定位為
+  controlled canary,現在即可開始;qualifying ship 記入 `docs/rollout-ledger.md`,batch 2/3 才要求 steady-state
+  證據。月份 shard 正確性不受影響,維持 blocking。(舊敘述以 `git log --merges` 為證據,在 squash merge 下恆為 0,
+  已證偽:採用 commit 後實際有 2 次 ship。)
 
 - **B-20260821-debt-28** · [ ] **檢索 top-5 缺少來源多樣性，單一檔案可洗版全部結果**。Round 6
   以不含目標標題的 query 實測，部分問題的五個 slot 全被 `decisions-2026-08.md` 佔滿，另有三個 slot
