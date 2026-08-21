@@ -945,6 +945,58 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn(f"history record file removed: {removed}", result.stdout)
 
+    def test_staged_history_shard_removal_is_a_finding(self) -> None:
+        # The deletion never reaches a commit: HEAD's tree still carries the
+        # shard, so the finding can only come from the index.
+        history = """# Decisions
+
+## 事件記錄（event-time）
+"""
+        removed = "docs/archive/decisions-2026-07.md"
+        self.write(removed, history)
+        self.write("docs/archive/decisions-2026-08.md", history)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        clean = self.run_tool("audit")
+        self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+        subprocess.run(["git", "-C", str(self.repo), "rm", "-q", removed], check=True)
+
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"history record file removed: {removed}", result.stdout)
+
+    def test_in_branch_history_shard_removal_is_a_finding(self) -> None:
+        # The shard is born and dies inside the feature branch, so it is absent
+        # from the baseline tree: only walking baseline..HEAD sees it at all.
+        history = """# Decisions
+
+## 事件記錄（event-time）
+"""
+        removed = "docs/archive/decisions-2026-07.md"
+        self.write("docs/archive/decisions-2026-08.md", history)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.commit()
+        self.switch_feature()
+        self.write(removed, history)
+        self.commit()
+        clean = self.run_tool("audit")
+        self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+        subprocess.run(["git", "-C", str(self.repo), "rm", "-q", removed], check=True)
+        self.commit()
+
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(f"history record file removed: {removed}", result.stdout)
+
     def test_committed_frozen_plan_removal_is_a_finding(self) -> None:
         plan = """# Plan
 
