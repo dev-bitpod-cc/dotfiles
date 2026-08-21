@@ -886,3 +886,12 @@
   - 放棄:全部保留為凍結紀錄;或刪檔卻不動 `legacy_plan_blobs`(會讓每次 ship 都紅);或為了刪 08-14 而竄改 history record
   - 重議:出現需要回溯這八份原文的具體問題,且 git history 取回不敷使用
   - 關聯:D-20260820-pilot-before-architecture;.doc-governance.json;docs/plans/2026-08-20-doc-governance-goals.md
+- **D-20260822-rollout-checklist · 2026-08-22 rollout checklist 納入治理面預算**:`docs/doc-governance-rollout.md`
+  同時列入 `project-doc` class 與 `governance_surface`。規範性 prose（怎麼搬 record、怎麼改 STATUS、什麼不得做）
+  若放在預算外，治理面上限就量不到它，等於留下「把 prose 搬去別檔」的旁路——上限存在的目的正是量這一類量體。
+  代價是 headroom 由 4,782 降到 1,338 bytes；依 D-20260820-governance-surface-budget-policy，後續 correctness
+  fix 可移到下一個二進位級距，本次不提高上限。
+  - 日期來源:direct
+  - 放棄:只當 project-doc 不計 bytes（省 headroom 但讓上限失去意義）;或塞進 `docs/document-governance.md`（同樣計入，但把逐 repo 一次性程序與常駐規範混在一起）
+  - 重議:治理面因 correctness fix 撞上 65,536 時，先檢查本檔是否已被實際 rollout 用過、能否縮成程序骨架
+  - 關聯:D-20260820-governance-surface-budget-policy;docs/doc-governance-rollout.md;docs/plans/2026-08-20-doc-governance-implementation-plan.md
