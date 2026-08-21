@@ -155,3 +155,9 @@
   - 放棄:執行受檢 repo 提供的 scanner，或以 target-side checksum／allowlist 擴大信任面
   - 重議:可信 core 需要支援獨立版本協商，或跨 repo schema 出現無法由版本庫端 fail-closed 表達的相容需求
   - 關聯:D-20260820-trusted-doc-scanner;docs/testing-contract.md
+
+- **M-20260821-immutability-removal-axis-closed · 2026-08-21 文檔治理 immutability 的刪除軸完成**:三個命中點(history shard／frozen plan／legacy blob)× 三種刪除狀態(`git rm --cached` 後 commit、`git rm` 後 commit、`git rm` 僅 staged)九格全部紅,且 history／frozen／legacy 三格各只噴一條對應 finding;branch 內建立後凍結的 plan 刪除會紅、改一個 byte 也會紅(相鄰操作已對稱);自造無 inbound reference 的 in-branch shard 刪除,紅的是 immutability 而非 xref。修復前的 `e6f32c5` 在同兩情境 rc=0 靜默,確認是真 RED→GREEN。三個新守門逐 call site 中性化各恰紅一個測試(`indexed_markdown`→untracked shard 測試、`committed_markdown` 的 range 展開與 `committed_texts`→in-branch frozen plan 測試),前一顆的三項回歸(三命中點刪除、`section_matches` 前綴比對、retrieval oracle 三列)亦各自恰紅。全套:`tests/run.sh` PASS=1087 FAIL=0、pytest 61 passed、`audit --ship` OK、governance surface 61,554/65,536 bytes(未提高上限)。
+  - 日期來源:direct
+  - 放棄:再開一輪 deep-review 當完成證據;只突變共用 helper 本體就宣稱釘住
+  - 重議:同一根因出現第三個入口,或刪除軸的未釘住狀態(見 B-20260821-debt-29)實際回歸
+  - 關聯:D-20260821-removal-axis-incomplete-fix;X-20260821-clone-origin-head-baseline;X-20260821-inbound-shard-false-red

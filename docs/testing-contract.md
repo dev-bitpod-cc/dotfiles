@@ -108,6 +108,13 @@ red flag。**這支 gate 就是把那個代價換成機檢**：漂移即紅。�
   地方，漂移就回來了。
 - portable block 只准在 `AGENTS.md`，且不得巢狀於 kernel 之內（兩者必須並列）。
 - **可攜性**：契約檔不得含 `~/.dotfiles`、`~/.claude`、`/Users/` 等私人路徑——clone 下來就要生效。
+- route block 只放在 repo-resident 的 `AGENTS.md`／`CLAUDE.md`：全域規則服務未採用
+  doc-governance 的 repo，不能假設該執行檔存在。兩份必須逐字相同、至少保留 heading 與一條規則，
+  且規則必須含 `doc-find` 或 `doc-governance.py find` 可執行入口，不能退化成人工 pointer；全域部署來源
+  若出現 route block 也會判紅。portable block 同理只准存在於 repo-resident `AGENTS.md`。
+- kernel／route／portable 三個 managed block 都會被複製到其他 repo，因此共用私人路徑與跨檔指標的
+  可攜性檢查。掃描器以封閉的 finding code 集合列舉所有 blocking 分支；RED fixtures 的實際輸出
+  必須覆蓋每一碼，新增分支卻沒新增可證偽 fixture 時 meta-test 會紅。
 
 ## 1f. deep-review 同型處置紀錄
 
@@ -129,8 +136,14 @@ fail-closed。這些依賴端用字與核心實作不同，不能靠一般 xref 
 
 synthetic repos 固定 config 錯誤、tracked／untracked 分類、零／多重分類、H2 前頂層 bullet、mixed legacy entry shapes、空 H2、
 archive-month／event-month 日期語意、新 record type/month mismatch、plan lifecycle、xref compatibility、
-Unicode slug、STATUS staleness、trusted scanner、ship fail-closed、deterministic tie 與 8 KiB 輸出上限。真實 corpus 固定五條 archive 問題；每題必須在 top 5 命中預期
-path＋entry，無 H2 與檔名誤導兩題另驗 section。
+commit range 內 history／frozen plan／legacy plan removal（含取消追蹤但保留 working-tree 檔案，及 branch
+內建立、凍結後刪除）、Unicode slug、STATUS staleness、trusted scanner、ship fail-closed、deterministic tie
+與 8 KiB 輸出上限。
+真實 corpus 的 query 不得複製目標 entry／section 的標題核心詞，避免 oracle 把答案直接嵌進輸入；每列
+宣告 family，集合必須完整覆蓋 decision、dead end、milestone、backlog、plan、policy、skill body、
+skill reference、eval 與 archive。每題必須在 top 5 命中預期 path＋entry，需驗定位語意者另釘 expected
+section。query 逐字包含 expected entry 的可判定形狀由測試守門；其餘「標題核心詞」的模糊重疊邊界
+仍靠人工審 fixture，刻意不機檢：詞彙偶然重疊與標題複製沒有可靠的機械分界，近似 gate 會誤殺正常 query。
 
 ranking 只能由 observed RED 驅動。Oracle 的 query／expected answer 只存在 TSV，不得從 config 注入答案詞；
 remote branch 題改用使用者可合理提供的機制詞，並驗證未出現在 query 的 canonical title 片段。

@@ -21,6 +21,18 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
 
 ## 技術債
 
+- **B-20260821-debt-29** · [ ] **immutability 刪除軸有兩種狀態沒有測試釘住**。2026-08-21 在乾淨 clone 逐格實測
+  皆紅，但綠是靠實作、不是靠 oracle：(1) `git rm` 後**未 commit**（僅 staged）的刪除；(2) branch 內建立的
+  **history shard** 被刪（frozen plan 有 `test_in_branch_frozen_plan_removal_is_a_finding`，shard 沒有對應測試）。
+  後續重構 `removed_immutable_findings` 的檔案集合來源時，這兩格會無聲失守。
+- **B-20260821-debt-28** · [ ] **檢索 top-5 缺少來源多樣性，單一檔案可洗版全部結果**。Round 6
+  以不含目標標題的 query 實測，部分問題的五個 slot 全被 `decisions-2026-08.md` 佔滿，另有三個 slot
+  同屬 `pressure-tests.md`；相關目標即使有 body token 仍被擠出。後續應評估 per-file cap 或 diversity
+  rerank，本批只修 oracle，不改 ranking。
+- **B-20260821-debt-27** · [ ] **檢索對程序型文件的語意召回偏弱**。Round 6 以 20 條不複製標題的
+  query 探測 reference／policy／skill／eval／plan／backlog，僅 4/20 命中；本批八列 oracle 必須使用
+  高辨識度 body 詞才能穩定進 top 5。後續需另以行為需求設計 ranking 改進，禁止把目標標題塞回 query
+  製造假綠。
 - **B-20260821-debt-26** · [ ] **文檔治理 Round 3 非阻斷後續**。本批不順手擴張核心：xref 待處理
   ignored dirs、alias stale 的 finding/error 語意、正反向 section 比對、shell heredoc fence 與兩份
   `alias_sources` 推導；CLI 待決定 positional files、ship 輸出順序與 adoption 診斷；測試待解除固定

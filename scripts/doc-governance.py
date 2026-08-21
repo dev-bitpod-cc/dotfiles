@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 import argparse
+from collections import Counter
 from dataclasses import dataclass, field
 import datetime as dt
 import fnmatch
@@ -43,6 +44,7 @@ class DocClass:
   paths: list[str]
   unit: str = 'h2'
   requires_inbound: bool = False
+  governed_sections: tuple[str, ...] = ()
 
 @dataclass
 class Config:
@@ -65,14 +67,19 @@ class Document:
   doc_class: DocClass | None = None
 
   @classmethod
+  def from_text(cls, root, rel, text, doc_class=None):
+    path = root / rel
+    lines = text.splitlines()
+    return cls(root=root, rel=rel, path=path, text=text, lines=lines, visible=visible_lines(text), doc_class=doc_class)
+
+  @classmethod
   def read(cls, root, rel, doc_class=None):
     path = root / rel
     try:
       text = path.read_text(encoding='utf-8')
     except (OSError, UnicodeDecodeError) as exc:
       raise ScannerError(f'read {rel}: {exc}') from exc
-    lines = text.splitlines()
-    return cls(root=root, rel=rel, path=path, text=text, lines=lines, visible=visible_lines(text), doc_class=doc_class)
+    return cls.from_text(root, rel, text, doc_class)
 
   def visible_line(self, index):
     return self.visible[index]
@@ -110,6 +117,7 @@ class Entry:
   line: int
   title: str
   body: str
+  visible_body: str
   section: str
   entry_type: str
   event_date: str = 'unknown'
@@ -117,6 +125,7 @@ class Entry:
   stable_id: str | None = None
   doc_class: DocClass | None = None
   metadata: dict[str, str] = field(default_factory=dict)
+  closed: bool = False
 
 def run_git(root, args, *, allow_failure=False):
   proc = subprocess.run(['git', '-C', str(root), *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
@@ -175,8 +184,13 @@ def load_config(root, *, optional=False):
       validate_relpath(pattern, f'class {name} path')
     unit = item.get('unit', 'h2')
     need(unit in {'h2', 'top_level_bullet'}, f'class {name} unit invalid: {unit}')
+    governed_sections = item.get('governed_sections')
+    if governed_sections is not None:
+      need(isinstance(governed_sections, list) and bool(governed_sections) and all(isinstance(section, str) and section for section in governed_sections), f'class {name} governed_sections invalid')
+    if name == 'backlog':
+      need(governed_sections is not None, 'class backlog needs governed_sections')
     names.add(name)
-    classes.append(DocClass(name=name, mode=mode, paths=paths, unit=unit, requires_inbound=bool(item.get('requires_inbound', False))))
+    classes.append(DocClass(name=name, mode=mode, paths=paths, unit=unit, requires_inbound=bool(item.get('requires_inbound', False)), governed_sections=tuple(governed_sections or ())))
   legacy = raw.get('legacy_plan_blobs', {})
   need(isinstance(legacy, dict) and all(isinstance(rel, str) and isinstance(blob, str) for rel, blob in legacy.items()), 'legacy_plan_blobs must be string map')
   for rel in legacy:
@@ -217,6 +231,10 @@ def tracked_markdown(root, *, xref=False):
 def missing_tracked_markdown(root):
   output = run_git(root, ['ls-files', '-z', '--cached', '--', '*.md'])
   return sorted(item for item in output.split('\x00') if item and not (root / item).is_file())
+
+def indexed_markdown(root):
+  output = run_git(root, ['ls-files', '-z', '--cached', '--', '*.md'])
+  return sorted(item for item in output.split('\x00') if item)
 
 def matching_classes(rel, config):
   return [cls for cls in config.classes if any(fnmatch.fnmatchcase(rel, pattern) for pattern in cls.paths)]
@@ -265,16 +283,13 @@ def declared_id(value, prefixes):
     return (None, None)
   return (match.group('id'), match)
 
-def declared_ids(text, prefixes):
-  found = set()
-  for line in text.splitlines():
-    bullet = TOP_BULLET_RE.match(line)
-    if not bullet:
-      continue
-    identifier, _ = declared_id(bullet.group(2), prefixes)
-    if identifier:
-      found.add(identifier)
-  return found
+def declared_ids(doc, prefixes, sections=None):
+  entries, _ = parse_top_level_entries(doc)
+  return {
+    entry.stable_id
+    for entry in entries
+    if entry.stable_id and entry.stable_id[0] in prefixes and (sections is None or any(section_matches(entry.section, section) for section in sections))
+  }
 
 def parse_metadata(lines):
   metadata = {}
@@ -348,18 +363,24 @@ def parse_top_level_entries(doc):
     metrics[f'{shape}_records'] += 1
     if section == 'file-preamble':
       metrics['file_preamble_entries'] += 1
-    stable_id, _ = declared_id(raw_title, 'DXM')
+    stable_id, stable_match = declared_id(raw_title, 'DXMB')
     event_date = first_date(title)
-    metadata = parse_metadata(block[1:])
+    visible_block = doc.visible[start:index]
+    metadata = parse_metadata(visible_block[1:])
+    closure_tail = raw_title[stable_match.end():] if stable_match else raw_title
+    closure_tail = re.sub('^[\\s*_·:：.\\-]+', '', closure_tail)
+    checked_closed = bool(re.match('^\\[[xX]\\]\\s*', closure_tail))
+    closure_tail = re.sub('^\\[[ xX]\\]\\s*', '', closure_tail)
+    struck_closed = closure_tail.startswith('~~')
     if stable_id:
       prefix = stable_id[0]
-      entry_type = {'D': 'decision', 'X': 'dead_end', 'M': 'milestone'}[prefix]
+      entry_type = {'D': 'decision', 'X': 'dead_end', 'M': 'milestone', 'B': 'backlog'}[prefix]
     else:
       stable_id = None
       entry_type = infer_legacy_type(doc, section, shape)
       if entry_type not in {'legacy-decision', 'legacy-unknown'} and 'decisions-' in doc.rel:
         metrics['legacy_type_file_mismatches'] += 1
-    entries.append(Entry(path=doc.rel, line=start + 1, title=title, body='\n'.join(block), section=section, entry_type=entry_type, event_date=event_date, shape=shape, stable_id=stable_id, doc_class=doc.doc_class, metadata=metadata))
+    entries.append(Entry(path=doc.rel, line=start + 1, title=title, body='\n'.join(block), visible_body='\n'.join(visible_block), section=section, entry_type=entry_type, event_date=event_date, shape=shape, stable_id=stable_id, doc_class=doc.doc_class, metadata=metadata, closed=checked_closed or struck_closed))
     section_has_entry = True
   if seen_h2 and (not section_has_entry):
     metrics['empty_h2_sections'] += 1
@@ -377,13 +398,13 @@ def parse_h2_entries(doc):
   if h1:
     end = h2s[0][0] if h2s else len(doc.lines)
     body = '\n'.join(doc.lines[h1[0]:end])
-    entries.append(Entry(path=doc.rel, line=h1[0] + 1, title=strip_markdown(h1[2]), body=body, section='file-preamble', entry_type=doc.doc_class.name if doc.doc_class else 'document', doc_class=doc.doc_class))
+    entries.append(Entry(path=doc.rel, line=h1[0] + 1, title=strip_markdown(h1[2]), body=body, visible_body='\n'.join(doc.visible[h1[0]:end]), section='file-preamble', entry_type=doc.doc_class.name if doc.doc_class else 'document', doc_class=doc.doc_class))
   elif doc.lines:
     end = h2s[0][0] if h2s else len(doc.lines)
-    entries.append(Entry(path=doc.rel, line=1, title=Path(doc.rel).name, body='\n'.join(doc.lines[:end]), section='file-preamble', entry_type=doc.doc_class.name if doc.doc_class else 'document', doc_class=doc.doc_class))
+    entries.append(Entry(path=doc.rel, line=1, title=Path(doc.rel).name, body='\n'.join(doc.lines[:end]), visible_body='\n'.join(doc.visible[:end]), section='file-preamble', entry_type=doc.doc_class.name if doc.doc_class else 'document', doc_class=doc.doc_class))
   for position, (index, _, title) in enumerate(h2s):
     end = h2s[position + 1][0] if position + 1 < len(h2s) else len(doc.lines)
-    entries.append(Entry(path=doc.rel, line=index + 1, title=strip_markdown(title), body='\n'.join(doc.lines[index:end]), section=title, entry_type=doc.doc_class.name if doc.doc_class else 'document', doc_class=doc.doc_class))
+    entries.append(Entry(path=doc.rel, line=index + 1, title=strip_markdown(title), body='\n'.join(doc.lines[index:end]), visible_body='\n'.join(doc.visible[index:end]), section=title, entry_type=doc.doc_class.name if doc.doc_class else 'document', doc_class=doc.doc_class))
   metrics = zero_metrics()
   metrics.update(h2_sections=len(h2s), file_preamble_entries=1 if entries else 0)
   return (entries, metrics)
@@ -512,15 +533,37 @@ def expected_history_path(config, entry_type, event_date):
     return None
   return config.history_paths[entry_type].replace('{YYYY-MM}', event_date[:7])
 
-def history_findings(config, entries):
+def baseline_legacy_counts(config, entries, baseline):
+  counts = Counter()
+  if not baseline:
+    return counts
+  classes_by_path = {
+    entry.path: entry.doc_class
+    for entry in entries
+    if entry.doc_class and entry.doc_class.mode == 'history'
+  }
+  for rel, doc_class in classes_by_path.items():
+    text = ref_text(config.root, baseline, rel)
+    if text is None:
+      continue
+    prior, _ = parse_top_level_entries(Document.from_text(config.root, rel, text, doc_class))
+    counts.update((entry.path, entry.visible_body.rstrip()) for entry in prior if not entry.stable_id)
+  return counts
+
+def history_findings(config, entries, baseline):
   findings = []
   ids = {}
   supersedes = []
+  legacy_counts = baseline_legacy_counts(config, entries, baseline)
   for entry in entries:
     if not entry.doc_class or entry.doc_class.mode != 'history':
       continue
     if not entry.stable_id:
-      if entry.section == EVENT_SECTION:
+      key = (entry.path, entry.visible_body.rstrip())
+      existed_at_baseline = legacy_counts[key] > 0
+      if existed_at_baseline:
+        legacy_counts[key] -= 1
+      if section_matches(entry.section, EVENT_SECTION) or (baseline and not existed_at_baseline):
         findings.append(f'history ID missing: {entry.path}:{entry.line}')
       continue
     if entry.stable_id in ids:
@@ -538,12 +581,12 @@ def history_findings(config, entries):
       else:
         label = 'event-month/file mismatch'
       findings.append(f'{label}: {entry.path}:{entry.line} expected {expected}')
-    if entry.section != EVENT_SECTION:
+    if not section_matches(entry.section, EVENT_SECTION):
       findings.append(f'new history record outside event-time section: {entry.path}:{entry.line}')
     source = entry.metadata.get('日期來源')
     if source not in {'direct', 'migration-entry', 'migration-cutover'}:
       findings.append(f'history 日期來源 missing/invalid: {entry.path}:{entry.line}')
-    for target in re.findall('supersedes:([DXM]-\\d{8}-[a-z0-9-]+)', entry.body):
+    for target in re.findall('supersedes:([DXM]-\\d{8}-[a-z0-9-]+)', entry.visible_body):
       supersedes.append((entry, target))
   for entry, target in supersedes:
     if target not in ids:
@@ -576,18 +619,51 @@ def immutability_base(root):
   candidates.extend(['main', 'master'])
   for candidate in dict.fromkeys(item for item in candidates if item):
     target = run_git(root, ['rev-parse', '--verify', f'{candidate}^{{commit}}'], allow_failure=True).strip()
-    if not target or target == head or candidate == branch or candidate.endswith('/' + branch):
+    current_feature = branch not in {'main', 'master'} and (candidate == branch or candidate.endswith('/' + branch))
+    if not target or current_feature:
       continue
     base = run_git(root, ['merge-base', head, target], allow_failure=True).strip()
     if base:
       return (base, None)
-  return (None, 'immutability baseline degraded to committed HEAD history: no default branch base')
+  return (None, 'immutability baseline unavailable: no default branch base; immutability checks skipped')
+
+def committed_markdown(root, baseline):
+  refs = [baseline]
+  refs.extend(run_git(root, ['rev-list', '--reverse', f'{baseline}..HEAD'], allow_failure=True).splitlines())
+  markdown = set()
+  for ref in refs:
+    markdown.update(
+      rel
+      for rel in run_git(root, ['ls-tree', '-r', '--name-only', ref]).splitlines()
+      if rel.endswith('.md')
+    )
+  return sorted(markdown)
+
+def removed_immutable_findings(config, baseline):
+  if not baseline:
+    return []
+  removed = set(committed_markdown(config.root, baseline)) - set(indexed_markdown(config.root))
+  plan_dir = config.raw.get('plan_dir', 'docs/plans').rstrip('/') + '/'
+  legacy = config.raw.get('legacy_plan_blobs', {})
+  findings = []
+  for rel in sorted(removed):
+    if any(doc_class.mode == 'history' for doc_class in matching_classes(rel, config)):
+      findings.append(f'history record file removed: {rel}')
+    if rel.startswith(plan_dir):
+      texts = committed_texts(config.root, rel, baseline)
+      if any(plan_metadata(text).get('狀態') in FINAL_PLAN_STATES for text in texts):
+        findings.append(f'frozen plan removed: {rel}')
+    if rel in legacy:
+      findings.append(f'legacy plan removed: {rel}')
+  return findings
 
 def committed_texts(root, rel, base):
+  if not base:
+    return []
   refs = []
-  if base and ref_blob(root, base, rel):
+  if ref_blob(root, base, rel):
     refs.append(base)
-  revision = f'{base}..HEAD' if base else 'HEAD'
+  revision = f'{base}..HEAD'
   refs.extend(run_git(root, ['rev-list', '--reverse', revision, '--', rel], allow_failure=True).splitlines())
   texts = []
   for ref in dict.fromkeys(refs):
@@ -607,7 +683,7 @@ def history_append_findings(config, documents, baseline):
 
 def plan_metadata(text):
   metadata = {}
-  for line in text.splitlines()[:20]:
+  for line in visible_lines(text)[:20]:
     match = re.match('^-\\s*([^:：]+)[:：]\\s*(.+)$', line)
     if match:
       metadata[match.group(1).strip()] = match.group(2).strip()
@@ -676,6 +752,14 @@ def xref_norm(value):
   value = re.sub('[*_~]+', '', value)
   value = re.sub('^#+', '', value)
   return re.sub('[\\s（）()【】\\[\\]「」『』]', '', value)
+
+def section_matches(heading, name):
+  wanted = xref_norm(name)
+  candidate = xref_norm(heading)
+  if candidate.endswith(wanted):
+    return True
+  without_suffix = re.sub(r'\s*[（(【\[][^[\]（）()【】]*[）)】\]]\s*$', '', heading)
+  return xref_norm(without_suffix).endswith(wanted)
 
 def resolve_reference(target, source, root):
   if target.startswith('~/'):
@@ -819,13 +903,13 @@ def status_findings(config, documents):
   doc = next((item for item in documents if item.rel == path), None)
   if not doc:
     return [f'STATUS missing: {path}']
-  headings = {xref_norm(heading) for _, heading in doc.h2_sections()}
+  headings = [heading for _, heading in doc.h2_sections()]
   findings = []
   for required in spec.get('required_headings', []):
-    if not any(item.find(xref_norm(required)) == 0 for item in headings):
+    if not any(section_matches(item, required) for item in headings):
       findings.append(f'STATUS required heading missing: {required}')
   for forbidden in spec.get('forbidden_headings', []):
-    if any(item.find(xref_norm(forbidden)) == 0 for item in headings):
+    if any(section_matches(item, forbidden) for item in headings):
       findings.append(f'STATUS historical heading remains: {forbidden}')
   active = paused = False
   block = []
@@ -835,7 +919,7 @@ def status_findings(config, documents):
       if paused and block and '恢復條件' not in '\n'.join(block):
         findings.append(f'paused item missing restart condition: {path}')
       name = xref_norm(heading.group(2))
-      active, paused = (name.startswith('進行中'), '暫停中' in name)
+      active, paused = (section_matches(heading.group(2), '進行中'), '暫停中' in name)
       block = []
     elif active and re.match(r'^\s*[-+*]\s+.*✅', line):
       findings.append(f'STATUS active item marked complete: {path}')
@@ -859,35 +943,28 @@ def backlog_findings(config, documents, entries, baseline):
   for doc in documents:
     if not doc.doc_class or doc.doc_class.name != 'backlog':
       continue
-    section = ''
-    for index in range(len(doc.lines)):
-      visible = doc.visible_line(index)
-      heading = HEADING_RE.match(visible)
-      if heading and heading.group(1) == '##':
-        section = heading.group(2).strip()
+    governed_sections = doc.doc_class.governed_sections
+    backlog_entries, _ = parse_top_level_entries(doc)
+    for entry in backlog_entries:
+      if not any(section_matches(entry.section, section) for section in governed_sections):
         continue
-      if section not in {'技術債', '已知缺口'}:
-        continue
-      bullet = TOP_BULLET_RE.match(visible)
-      if not bullet:
-        continue
-      title = bullet.group(2).strip()
-      stable_id, match = declared_id(title, 'B')
+      stable_id = entry.stable_id if entry.stable_id and entry.stable_id.startswith('B-') else None
       if not stable_id:
-        findings.append(f'backlog ID missing: {doc.rel}:{index + 1}')
+        findings.append(f'backlog ID missing: {doc.rel}:{entry.line}')
         continue
       if stable_id in seen:
         first_path, first_line = seen[stable_id]
-        findings.append(f'duplicate backlog ID: {stable_id} at {first_path}:{first_line} and {doc.rel}:{index + 1}')
+        findings.append(f'duplicate backlog ID: {stable_id} at {first_path}:{first_line} and {doc.rel}:{entry.line}')
       else:
-        seen[stable_id] = (doc.rel, index + 1)
-      without_id = title[match.end():]
-      without_id = re.sub('^[\\s*~_·:：.\\-]+', '', without_id)
-      if re.match('^\\[[xX]\\]\\s*', without_id) or re.match('^\\[[ ]\\]\\s*~~', without_id):
-        findings.append(f'closed backlog item remains: {stable_id} at {doc.rel}:{index + 1}')
+        seen[stable_id] = (doc.rel, entry.line)
+      if entry.closed:
+        findings.append(f'closed backlog item remains: {stable_id} at {doc.rel}:{entry.line}')
     before = committed_texts(config.root, doc.rel, baseline)
     if before:
-      removed = set().union(*(declared_ids(text, 'B') for text in before)) - set(seen)
+      removed = set().union(*(
+        declared_ids(Document.from_text(config.root, doc.rel, text, doc.doc_class), 'B', governed_sections)
+        for text in before
+      )) - set(seen)
       linked = {
         stable_id
         for entry in entries
@@ -906,9 +983,10 @@ def audit_findings(config):
   xref_sources = tracked_markdown(config.root, xref=True)
   findings = []
   findings.extend(f'tracked markdown missing on disk: {rel}' for rel in missing_tracked_markdown(config.root))
+  findings.extend(removed_immutable_findings(config, baseline))
   findings.extend(class_findings(config, classification))
   findings.extend(budget_findings(config, documents))
-  findings.extend(history_findings(config, entries))
+  findings.extend(history_findings(config, entries, baseline))
   findings.extend(history_append_findings(config, documents, baseline))
   findings.extend(plan_findings(config, markdown, baseline))
   findings.extend(status_findings(config, documents))
@@ -922,8 +1000,8 @@ def cmd_audit(config, *, shadow, ship):
   findings, notes = audit_findings(config)
   if ship:
     print(f"doc-governance: {('FINDINGS' if findings else 'OK')}")
-    for note in notes:
-      print(f'doc-note: {note}')
+  for note in notes:
+    print(f'doc-note: {note}')
   for finding in findings:
     print(f'doc-flag: {finding}')
   if findings and (not shadow):
