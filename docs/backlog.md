@@ -5,7 +5,7 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
 
 # Backlog
 
-待辦清單:技術債與已知缺口(更新日期:2026-08-21)
+待辦清單:技術債與已知缺口(更新日期:2026-08-22)
 
 > **為什麼與 `STATUS.md`／history 分家**：三者生命週期不同。STATUS 只留 active／paused；history
 > event 發生後 append-only；backlog 只留未結案狀態，直到做掉或明確放棄才會消失。
@@ -20,6 +20,16 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
 - **不刪**未解決的條目；看不順眼、過長或暫時不做都不是關閉條件。
 
 ## 技術債
+
+- **B-20260822-debt-30** · [ ] **文檔治理收尾順序:先釘正確性、再用真 repo 逼出缺口、最後才調 ranking**(2026-08-22 加)。
+  依序:① `B-20260821-debt-29`(immutability 刪除軸兩格無 oracle,重構 `removed_immutable_findings` 的檔案集合
+  來源時會無聲失守)→ ② 挑一個最簡單的 repo 跑第一次 rollout,照 `docs/doc-governance-rollout.md`「2. history 遷移」
+  執行並把撞到的缺口回填該 checklist → ③ `B-20260821-debt-27`／`B-20260821-debt-28`(程序型文件召回 4/20、
+  top-5 被單檔洗版)。
+  ⚠️ **順序理由**:27/28 打到的正是「不知道標題時找不找得到」,而那是第二個 repo 第一次用才會撞到的面;
+  沒有真實 rollout 語料就調 ranking,等於對 dotfiles 自己的語料過擬合。
+  ⚠️ **plan §6 的「連續 10 次 ship 無人工 compaction 才 fleet rollout」既未達成也沒有人在數**——pilot 後 main
+  只有 7 個 commit、0 個 merge,全是審查修復輪。動 ② 之前先決定:補一個計數口徑,或明確放寬該門檻並寫 `D-*`。
 
 - **B-20260821-debt-29** · [ ] **immutability 刪除軸有兩種狀態沒有測試釘住**。2026-08-21 在乾淨 clone 逐格實測
   皆紅，但綠是靠實作、不是靠 oracle：(1) `git rm` 後**未 commit**（僅 staged）的刪除；(2) branch 內建立的
