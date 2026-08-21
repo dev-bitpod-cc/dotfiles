@@ -208,6 +208,10 @@ def load_config(root, *, optional=False):
     need(isinstance(pattern, str) and pattern, 'loaded_budgets pattern invalid')
     validate_relpath(pattern, 'loaded_budgets pattern')
     need(isinstance(rule, dict) and bool(rule) and set(rule) <= {'bytes', 'lines'} and all(type(value) is int and value > 0 for value in rule.values()), f'loaded_budgets.{pattern} invalid')
+  external = raw.get('external_reference_targets', [])
+  need(isinstance(external, list) and all((isinstance(item, str) and item for item in external)), 'external_reference_targets invalid')
+  for target in external:
+    validate_relpath(target, 'external_reference_targets entry')
   status = raw.get('status_schema')
   if status is not None:
     allowed = {'path', 'required_headings', 'forbidden_headings', 'stale_days'}
@@ -786,7 +790,19 @@ def resolve_reference(target, source, root):
   tried = '、'.join((str(candidate.relative_to(root)) for candidate in inside))
   return (None, f'檔案不存在（試過：{tried}）')
 
-def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, section_aliases=None, alias_sources=None):
+def external_reference_targets(config):
+  return set(config.raw.get('external_reference_targets', [])) if config else set()
+
+def external_reference_findings(config, seen):
+  findings = []
+  for target in sorted(external_reference_targets(config)):
+    if (config.root / target).is_file():
+      findings.append(f'external reference target exists in repo: {target}')
+    elif target not in seen:
+      findings.append(f'external reference declaration unused: {target}')
+  return findings
+
+def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, section_aliases=None, alias_sources=None, external_targets=(), external_seen=None):
   findings = []
   cache = {}
   inbound = {}
@@ -807,6 +823,12 @@ def xref_scan(root, files, *, full_scan, evidence_layers, skip_sources=None, sec
           continue
         path, reason = resolve_reference(target, source.path, root)
         if reason:
+          if target in external_targets:
+            # Declared as living in a sibling repo: unresolvable here by design,
+            # and the declaration itself is audited (exists-here / unused).
+            if external_seen is not None:
+              external_seen.add(target)
+            continue
           findings.append(f'{here} — {reason}')
           continue
         if path is None:
@@ -993,7 +1015,9 @@ def audit_findings(config):
   findings.extend(backlog_findings(config, documents, entries, baseline))
   findings.extend(self_governance_findings(config))
   alias_sources = {rel for rel, matches in classification.items() if len(matches) == 1 and matches[0].mode == 'history'}
-  findings.extend(xref_scan(config.root, xref_sources, full_scan=True, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources))
+  external_seen = set()
+  findings.extend(xref_scan(config.root, xref_sources, full_scan=True, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources, external_targets=external_reference_targets(config), external_seen=external_seen))
+  findings.extend(external_reference_findings(config, external_seen))
   return (sorted(set(findings)), [baseline_note] if baseline_note else [])
 
 def cmd_audit(config, *, shadow, ship):
@@ -1149,7 +1173,7 @@ def main(argv):
       else:
         files = tracked_markdown(root, xref=True) if config else sorted(str(path.relative_to(root)) for pattern in ('*.md', '*.sh') for path in root.rglob(pattern) if '.git' not in path.parts)
       alias_sources = {rel for rel in files if config and any(cls.mode == 'history' for cls in matching_classes(rel, config))}
-      findings = xref_scan(root, files, full_scan=not args.files, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources)
+      findings = xref_scan(root, files, full_scan=not args.files, evidence_layers=evidence_layers(config), skip_sources=hidden_legacy_plans(config), section_aliases=xref_section_aliases(config), alias_sources=alias_sources, external_targets=external_reference_targets(config))
       for finding in findings:
         print(finding)
       return 0
