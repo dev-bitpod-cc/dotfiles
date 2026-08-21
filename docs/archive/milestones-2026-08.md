@@ -161,3 +161,9 @@
   - 放棄:再開一輪 deep-review 當完成證據;只突變共用 helper 本體就宣稱釘住
   - 重議:同一根因出現第三個入口,或刪除軸的未釘住狀態(見 B-20260821-debt-29)實際回歸
   - 關聯:D-20260821-removal-axis-incomplete-fix;X-20260821-clone-origin-head-baseline;X-20260821-inbound-shard-false-red
+
+- **M-20260822-immutability-removal-oracles · 2026-08-22 immutability 刪除軸的兩格補上 oracle**:`B-20260821-debt-29` 記下的兩格(`git rm` 後僅 staged 未 commit 的刪除、branch 內建立的 history shard 被刪)從「實測皆紅、但綠是靠實作」變成有測試釘住。新增 `test_staged_history_shard_removal_is_a_finding` 與 `test_in_branch_history_shard_removal_is_a_finding`,兩者都先斷言刪除前 `audit` rc=0(乾淨前置,防止 fixture 因別的理由紅),再斷言刪除後噴出對應的 `history record file removed`。以 debt-29 指名的失效形狀(重構 `removed_immutable_findings` 的檔案集合來源)做突變驗證:把索引側換成 HEAD tree,全套只紅 staged 那條;在 history 命中點加上 baseline 存在性 gate,全套只紅 in-branch shard 那條,而 `test_in_branch_frozen_plan_removal_is_a_finding` 仍綠——後者證明新測試不與既有 plan 軸重複,兩顆突變在此變更前皆為靜默。
+  - 日期來源:direct
+  - 放棄:只補測試不跑突變(綠可能來自別處提前短路,無法分辨是否真的釘住);把 staged 那格複製到 frozen plan 與 legacy blob 三軸(三者共用同一個索引來源,一條即可釘住,複製只換來三倍執行成本)
+  - 重議:刪除軸出現第三種狀態,或 `removed_immutable_findings` 改成逐 class 各自取檔案集合——屆時 staged 那條不再一併涵蓋三個命中點
+  - 關聯:B-20260821-debt-29;M-20260821-immutability-removal-axis-closed;tests/test_doc_governance.py
