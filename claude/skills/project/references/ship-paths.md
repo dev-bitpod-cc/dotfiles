@@ -4,7 +4,7 @@
 
 > **Solo repo is not a lighter process.** One-person projects run the SAME shape as a protected-main team repo: branch → commits → review → PR → explicit merge. Never relax branch-first, the PR default, or the explicit-merge rule because "it's just me", "no one else will read this history", or "there's no protection to enforce it". 理由：repo 會移交、會加入新成員，使用者本人也會成為他人 repo 的成員——流程形狀一旦按「一人份」放寬，這些時刻就沒有秩序可交接，也養不出正式流程的手感。**這條只是防守既有規則被合理化侵蝕，不新增任何步驟。**
 
-> **本檔通則**：下文所有 `origin` 為 canonical remote 的 **stand-in**——非 `origin` repo（如 fork 工作流）一律把 `origin` 讀作解析出的 remote（`git -C <repo> remote`：有 `origin` 用之、否則取第一個；fork 場景 push 目標與 PR/protection 查詢目標可能不同 remote，見 SKILL Step 1 remote 假設）。gh 指令多 repo 時用 `-R <owner/repo>` 或子 shell `cd` 綁定，勿靠 cwd 隱式解析。**host 假設 GitHub.com**（`gh` 走 authenticated default host、compare URL 用 `github.com`）；GHE / 自架需 `GH_HOST` + `host/owner/repo`，不在本 skill 自動處理範圍。
+> **本檔通則**：下文所有 `origin` 為 canonical remote 的 **stand-in**——非 `origin` repo（如 fork 工作流）一律把 `origin` 讀作解析出的 remote（`git -C <repo> remote`：有 `origin` 用之、否則取第一個；fork 場景 push 目標與 PR/protection 查詢目標可能不同 remote，見 `log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」）。gh 指令多 repo 時用 `-R <owner/repo>` 或子 shell `cd` 綁定，勿靠 cwd 隱式解析。**host 假設 GitHub.com**（`gh` 走 authenticated default host、compare URL 用 `github.com`）；GHE / 自架需 `GH_HOST` + `host/owner/repo`，不在本 skill 自動處理範圍。
 
 ## 目錄
 - [Repo / default branch 解析](#repo--default-branch-解析)
@@ -62,7 +62,7 @@ GitHub 有兩套保護：**classic branch protection** 與**新式 rulesets**，
 # 先取實際值代入——gh api 只替換 {owner}/{repo}/{branch}，**不認 {default}**；
 # 且多 repo 時 {owner}/{repo} 依 cwd 解析會打到錯 repo，故顯式帶 owner/repo 與 default 名。
 default=$(git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
-[ -z "$default" ] && default=$(for b in main master; do git -C <repo> rev-parse --verify -q "origin/$b" >/dev/null && echo "$b" && break; done)   # symbolic-ref 失敗 → 實際試 origin/main、origin/master（不可留空，否則 endpoint 變 branches//protection；origin 為 canonical remote stand-in，見 SKILL Step 1 remote 假設）
+[ -z "$default" ] && default=$(for b in main master; do git -C <repo> rev-parse --verify -q "origin/$b" >/dev/null && echo "$b" && break; done)   # symbolic-ref 失敗 → 實際試 origin/main、origin/master（不可留空，否則 endpoint 變 branches//protection；origin 為 canonical remote stand-in，見 `log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」）
 default_enc=${default//\//%2F}   # default 名含 '/'（如 release/2026，少見）→ encode，否則 endpoint path 會被切錯段
 repo_slug=$( (cd <repo> && gh repo view --json nameWithOwner -q .nameWithOwner) )                        # owner/repo（gh 無 -C，用子 shell cd）
 # classic：未保護回 404 {"message":"Branch not protected"}；有保護回 200 JSON
@@ -101,7 +101,7 @@ protection classic 回 **`Not Found`**（非 `Branch not protected`）常代表 
 
 ## Branch-first 與誤 commit 搬移
 
-> 本節序列已封裝於 `scripts/branch-first.sh`（情況 A/B 自動判定、前置檢查全過才動、porcelain 前後快照驗證，以腳本為可執行權威——SKILL Step 1 第 5 項整行照抄呼叫）；以下逐條指令供除錯、或腳本 `verdict: STOP` 後人工處理時參照。
+> 本節序列已封裝於 `scripts/branch-first.sh`（情況 A/B 自動判定、前置檢查全過才動、porcelain 前後快照驗證，以腳本為可執行權威——`log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」要求整行照抄呼叫）；以下逐條指令供除錯、或腳本 `verdict: STOP` 後人工處理時參照。
 
 **情況 A：變更在 working tree（人在 default branch），或在 detached HEAD（含已在其上 commit）**
 ```bash
@@ -136,7 +136,7 @@ gh pr create -R "$repo_slug" --base <default> --head <feature-branch> \
 
 - **絕不** push default branch。`gh pr merge` 僅限使用者**明說 merge** 後執行（序列見下方「Merge 最後一哩」），開 PR 當下絕不順手 merge。
 - 多個 feature commit → title 取主要語意；body 列各 commit 與變更摘要。
-- **fork repo**（如 `origin` 是 fork、`upstream` 是 canonical）：`gh pr create` 的 `--head` 需 `<owner>:<branch>` 格式、base/head 為不同 repo——**本 skill 不自動處理**（見檔首通則與 SKILL Step 1 fork 邊界）。遇此**停下**由使用者指定 base/head，勿讓 `gh` 觸發互動式 fork/push 流程。
+- **fork repo**（如 `origin` 是 fork、`upstream` 是 canonical）：`gh pr create` 的 `--head` 需 `<owner>:<branch>` 格式、base/head 為不同 repo——**本 skill 不自動處理**（見檔首通則與 `log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」）。遇此**停下**由使用者指定 base/head，勿讓 `gh` 觸發互動式 fork/push 流程。
 - **`gh` 不可用 / 未登入時的 PR 路徑**：`git push -u origin <feature-branch>`（推 feature branch 安全、不碰 default）後，因無法 `gh pr create` → **停下**，輸出 branch 名與手動開 PR 的 compare URL。**此時 `repo_slug` 不能靠 `gh repo view`（gh 已不可用），改從 remote URL 解析**（同時吃 SSH 與 HTTPS）：
   ```bash
   repo_slug=$(git -C <repo> remote get-url origin | sed -E 's#^(git@[^:]+:|ssh://[^/]+/|https?://[^/]+/)##; s#\.git$##')   # owner/repo（吃 scp-SSH / ssh:// / HTTPS）
@@ -146,7 +146,7 @@ gh pr create -R "$repo_slug" --base <default> --head <feature-branch> \
 
 ## 直接 push 路徑
 
-> **這是 escape hatch，不是無保護 repo 的預設。** 確定無保護時預設仍走 PR 路徑（SKILL Step 1 第 4 項），只有使用者**明說**「不用 PR / 只推 branch」才落到本節。理由：跨 repo 單一形狀省掉每輪判斷、PR 留下審查紀錄與可回溯 diff，而多開一個 PR 的成本近零。**"No protection" is not a reason to skip the PR.**
+> **這是 escape hatch，不是無保護 repo 的預設。** 確定無保護時預設仍走 PR 路徑（見 `log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」），只有使用者**明說**「不用 PR / 只推 branch」才落到本節。理由：跨 repo 單一形狀省掉每輪判斷、PR 留下審查紀錄與可回溯 diff，而多開一個 PR 的成本近零。**"No protection" is not a reason to skip the PR.**
 
 僅在**明確確認無 protection、且使用者明說不用 PR** 時走，**顯式 remote + branch**（不用裸 `git push`——裸 push 受 `push.default` / `remote.pushDefault` / 非預期 upstream 影響，可能推到錯 remote 或多推 ref）：
 ```bash
@@ -158,7 +158,7 @@ git -C <repo> push -u origin <branch>   # 顯式 remote+branch+設 upstream（�
 
 **只壓 review 迭代痕跡，不動獨立語意的 commit**——與 deep-review 收尾同一條原則（語意 commit 在 PR 裡逐顆可讀，有參照價值）。
 
-**reset 目標一律照抄 Step 1 `ship-state.sh` 記下的那一行，NEVER recompute it, NEVER pick a hash by eyeballing `git log`**——它是**使用者語意 commit 的邊界**（Step 1 跑在 Step 3 之前，此刻 HEAD 之上還沒有本流程自己的 commit）。**Step 3 一旦產生 commit**，套用當下重跑就會讓 verdict 形狀翻轉（頂端連續段歸零），現場只剩會壓掉語意 commit 的全壓指令（實測見 SKILL Step 1 第 6 項）。判「哪顆是 review 迭代痕跡」需要 deep-review 的權威 subject 清單（理由見 SKILL Step 1 第 6 項），挑錯就是把使用者的語意 commit 一起壓掉。
+**reset 目標一律照抄 `log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」中 `ship-state.sh` 記下的那一行，NEVER recompute it, NEVER pick a hash by eyeballing `git log`**——它是**使用者語意 commit 的邊界**（Step 1 跑在 Step 3 之前，此刻 HEAD 之上還沒有本流程自己的 commit）。**Step 3 一旦產生 commit**，套用當下重跑就會讓 verdict 形狀翻轉（頂端連續段歸零），現場只剩會壓掉語意 commit 的全壓指令（實測見同節「Review 痕跡」）。判「哪顆是 review 迭代痕跡」需要 deep-review 的權威 subject 清單（理由同前），挑錯就是把使用者的語意 commit 一起壓掉。
 
 | 使用者在 Step 4 選的 | 照抄哪一行 | 結果 |
 |---|---|---|
@@ -224,7 +224,7 @@ git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash/re
                                         # 故先確認 PR 已 MERGED（gh pr view --json state）再 -D
 ```
 
-### 說法表（唯一權威；SKILL Step 4 照此分派）
+### 說法表（唯一權威；`log-workflow.md`「Step 4：Ship 摘要 → 確認（critical-op gate）」照此分派）
 
 | 使用者說 | 引數 flag（等價） | 送到哪 | `<merge-flag>` |
 |---|---|---|---|
@@ -246,11 +246,11 @@ git -C <repo> branch -D <feature>       # 本地 branch 若仍殘留。squash/re
 
 **Do NOT ask which flag to use.** 表上每一列都已經是答案，裸「merge」也是（＝保留）。以前要問是因為預設未定義；現在定義了，問就只是把已決之事再丟回去。
 
-**引數位的形狀規則**（單一來源在 SKILL Step 0）：`--` 開頭 = flag；裸字命中本表 = 說法；**module 過濾一律走路徑形式**（`./merge`、`docs/pr`）。裸字永遠不會被當成 module —— 打錯字時它會靜默縮小 Step 2 的掃描範圍，而掃不到的文檔不會報錯。
+**引數位的形狀規則**（單一來源在 `log-workflow.md`「引數前處理（依形狀分類，不靠優先序記憶）」）：`--` 開頭 = flag；裸字命中本表 = 說法；**module 過濾一律走路徑形式**（`./merge`、`docs/pr`）。裸字永遠不會被當成 module —— 打錯字時它會靜默縮小 Step 2 的掃描範圍，而掃不到的文檔不會報錯。
 
 > **review 迭代痕跡不走這張表**——那批由 branch 內 squash 在送出前處理掉（見上節），無條件執行、不出題。兩件事常被混為一談：這裡決定的是「你自己的語意 commit 進 default 時長什麼樣」，上節處理的是「review 過程的機械痕跡不該留下」。
 
-- PR 內仍殘留 review 樣式 commit → **先跑 `ship-state.sh <repo>` 取 `review-residue:` 判定，不自行看 `git log` 認**（同本檔上節與 SKILL Step 1 第 6 項的禁令；誤認就是壓掉使用者自己的歷史，且緊接 force-push 不可回復）：有 `top-contiguous:` → 照該行的 `squash-cmd:` 壓掉再送，不必詢問；只有 `buried:` → **照常送出**，在摘要標明「N 顆 review 痕跡夾在語意 commit 中間，非互動式壓不掉」；`UNKNOWN` → 如實說明現況、不猜。
+- PR 內仍殘留 review 樣式 commit → **先跑 `ship-state.sh <repo>` 取 `review-residue:` 判定，不自行看 `git log` 認**（同本檔上節與 `log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」的禁令；誤認就是壓掉使用者自己的歷史，且緊接 force-push 不可回復）：有 `top-contiguous:` → 照該行的 `squash-cmd:` 壓掉再送，不必詢問；只有 `buried:` → **照常送出**，在摘要標明「N 顆 review 痕跡夾在語意 commit 中間，非互動式壓不掉」；`UNKNOWN` → 如實說明現況、不猜。
 - **選定的 flag 不可用**（`Rebase merging is not allowed` / `Merge commits are not allowed`；或 branch 含 merge commit 而 GitHub 拒絕 rebase——拒絕原因不同、處置相同）→ 停下回報、以剩下可用的方式給選項。**NEVER silently fall back to another flag** — 尤其別退回 `--squash`：那會壓掉使用者要保留的 commit。這是少數仍需詢問的例外：使用者選的做法在該 repo 不存在，沒有預設可推。
 
 ### merge 受阻時的分流（先看狀態，不做「失敗就 retry」）
