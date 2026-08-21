@@ -17,6 +17,10 @@ dotfiles pilot 遷移相的可重複執行版；量測與設計理由見
 Markdown 恰好落在一個 class（`unclassified`、`multi-class`、class glob 無匹配都是 findings）。
 `loaded` budget 只給真的進 context 的檔。
 
+xref findings 先分三類：真的壞掉的指標（修）、遷移本身會清掉的（略過）、指向兄弟 repo 的（宣告進
+`external_reference_targets`）。**第三類必須在遷移前宣告完**——history 是 append-only，落在 archive 裡的
+跨 repo 指標事後改不動，只剩宣告一條路。
+
 ## 2. history 遷移
 
 沿用既有 archive shard，不建平行 history root。逐條：type 由來源 section 定，`event_date` 取 title 第一個

@@ -6,6 +6,11 @@ Each non-ignored Markdown, including untracked, is `loaded`, `active`, `routed`,
 `governance`. Only loaded is size-limited; others need location/retrieval/lifecycle. History is append-only;
 derived has rebuild; `requires_inbound` is evidence-only.
 
+Cross-repo pointers: `external_reference_targets` declares reference targets that live in sibling repos.
+An exact-target match that fails to resolve is skipped instead of flagged, and the declaration is itself
+audited — a target that exists here, or one no reference uses, is a finding — so a suppression cannot outlive
+its pointer. Prefixes and globs are deliberately absent: they would silence whole trees.
+
 ## CLI
 
 - `find <query>`: H1 preamble/H2 (history: top bullet), five 240-byte hits max, `file-preamble` without H2,

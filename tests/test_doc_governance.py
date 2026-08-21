@@ -1257,6 +1257,55 @@ class DocGovernanceTests(RepoCase):
         self.assertIn("check.sh", shell_comment.stdout)
         self.assertIn("不存在的 shell 指標", shell_comment.stdout)
 
+    def test_declared_external_reference_is_not_a_broken_xref(self) -> None:
+        # A sibling repo's doc is a legitimate target the scanner cannot resolve;
+        # without a declaration it is indistinguishable from a stale pointer.
+        self.write("source.md", "程序見 `sibling-repo/GUIDE.md`「別漏了設定」。\n")
+        classes = [{"name": "docs", "mode": "routed", "paths": ["source.md"]}]
+        self.configure(base_config(classes))
+        self.track()
+        undeclared = self.run_tool("audit", "--shadow")
+        self.assertIn("sibling-repo/GUIDE.md", undeclared.stdout)
+
+        self.configure(
+            base_config(classes, external_reference_targets=["sibling-repo/GUIDE.md"])
+        )
+        self.track()
+        declared = self.run_tool("audit")
+        self.assertEqual(declared.returncode, 0, declared.stdout + declared.stderr)
+        self.assertNotIn("sibling-repo/GUIDE.md", declared.stdout)
+
+    def test_external_declaration_shadowing_a_repo_file_is_a_finding(self) -> None:
+        # Declaring a path that does exist here would silence a real check.
+        self.write("target.md", "# Target\n\n## 真實章節\n")
+        self.write("source.md", "見 `target.md`「真實章節」。\n")
+        self.configure(
+            base_config(
+                [{"name": "docs", "mode": "routed", "paths": ["target.md", "source.md"]}],
+                external_reference_targets=["target.md"],
+            )
+        )
+        self.track()
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("external reference target exists in repo: target.md", result.stdout)
+
+    def test_unused_external_declaration_is_a_finding(self) -> None:
+        # Suppressions must not outlive the pointer they were added for.
+        self.write("source.md", "# Source\n\n沒有任何跨 repo 指標。\n")
+        self.configure(
+            base_config(
+                [{"name": "docs", "mode": "routed", "paths": ["source.md"]}],
+                external_reference_targets=["sibling-repo/GUIDE.md"],
+            )
+        )
+        self.track()
+        result = self.run_tool("audit")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn(
+            "external reference declaration unused: sibling-repo/GUIDE.md", result.stdout
+        )
+
     def test_xref_accepts_absolute_file_under_symlinked_root(self) -> None:
         self.write("target.md", "# Target\n\n## 現行章節\n")
         self.write("source.md", "見 `target.md`「現行章節」。\n")
