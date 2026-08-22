@@ -933,3 +933,9 @@
   - 放棄:讓 dotfiles 的 core 迎合每個採用者的 lint 設定(保證不了,且等於讓下游 linter 綁架核心的寫法);把 adoption gate 從 byte 比對放寬成 AST／normalized 比對(gate 的價值正在 byte 級——「有沒有人動過這份 core」必須是二元的);在 core 裡加 `noqa`(那也是改 byte,一樣 BROKEN)
   - 重議:出現無法對單檔關閉的 linter／formatter,或 core 真的需要 per-repo 變體
   - 關聯:D-20260822-external-reference-targets;docs/doc-governance-rollout.md;docs/rollout-ledger.md
+
+- **D-20260823-canary-role-not-batch-number · 2026-08-23 rollout gate 綁 canary 這個角色,不綁批次編號**:`D-20260822-rollout-gate-replacement` 用「batch 1」指稱 canary,而 `docs/doc-governance-rollout.md` 的批次序講的是**repo 形狀**(只有 STATUS.md → 有 archive 無 backlog → 其餘)。兩者是不同軸,混用會讓下一個人在判「batch 2/3 的門檻到了沒」時對不上——實際的 canary(`krepo-mops-major-news`)有 4 份 archive、plans 與 runbooks,是**第二批的形狀**。校正:**凡 `D-20260822-rollout-gate-replacement` 寫「batch 1」之處,一律讀作「canary repo」**;該記錄的其餘條文(ledger 欄位、月份 mismatch 永遠 blocking、預算分類、總數 10 且 canary 須自己貢獻數次 post-cutover ship、canary 期間收集不知道標題的 find query)原樣有效,本條只換掉那個詞,不取代它。同時把批次序降為**預設順序而非規定**:canary 應該挑**資訊量**最大的 repo,不是最簡單的。證據是這次實地——第二批形狀的 canary 逼出 6 個 checklist 缺口(immutable history 裡的跨 repo 指標、byte-pinned core 與 linter 衝突、無日期條目的日期要寫進標題、來源節裡的非 entry prose、前導 emoji 的 heading 比對、拆分殘留的指標),而只有 `STATUS.md` 的 repo 一個都碰不到。
+  - 日期來源:direct
+  - 放棄:以 `supersedes:` 取代整條 D-20260822(它其餘條文都還有效,整條取代等於要在新記錄裡逐條抄一遍,抄漏就靜默失效);就地改寫 D-20260822 的用詞(history 是 append-only,改它本身就是 finding);把批次序改成「照實際執行的順序」(那是把一次取捨追認成規則,而挑 canary 的判準本來就該是資訊量)
+  - 重議:第三個 repo 之後發現「先簡單後複雜」確實比較省,或 canary 的角色需要同時由兩個 repo 擔任
+  - 關聯:D-20260822-rollout-gate-replacement;M-20260822-doc-governance-adopted;docs/doc-governance-rollout.md;docs/rollout-ledger.md

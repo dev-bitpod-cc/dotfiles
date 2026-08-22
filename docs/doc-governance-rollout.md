@@ -3,7 +3,9 @@
 dotfiles pilot 遷移相的可重複執行版；量測與設計理由見
 `docs/plans/2026-08-20-doc-governance-implementation-plan.md`「Phase 3 — 沿用 archive shards 並一次遷移 STATUS」，
 機制本體見 `docs/document-governance.md`「Lifecycle」。一次一 repo、一條 feature branch。
-批次序：只有 `STATUS.md` 的 repo → 有 archive 無 backlog 的 repo → 其餘。
+**canary**（dotfiles 之後的第一個採用者）挑**資訊量**最大的 repo，不是最簡單的——第一次實地就是
+第二批形狀的 repo 逼出 6 個本檔缺口，只有 `STATUS.md` 的 repo 一個都碰不到（`D-20260823-canary-role-not-batch-number`）。
+canary 之後其餘 repo 的**預設**順序（不是規定）：只有 `STATUS.md` 的 → 有 archive 無 backlog 的 → 其餘。
 
 ## 0. 前置：trusted core
 
