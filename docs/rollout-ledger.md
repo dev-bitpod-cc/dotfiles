@@ -13,8 +13,9 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
 一次 qualifying ship 一條 top-level bullet，欄位固定：
 
 - **repo**：採用了治理核心的 repo。
-- **commit**：merge 進 default branch 的 commit（squash merge 下就是那顆單親 commit；**不要用
-  `git log --merges` 數 ship**，它在 squash 流程恆為 0）。
+- **branch**：送出這批的 feature branch。**刻意不記 merge 後的 sha** —— 條目必須寫在 commit 裡、而 commit
+  必須早於 merge，rebase／squash 後的 default sha 在寫的當下不可知（第一次使用就撞到）。要回溯那顆 sha
+  就去該 branch 的 PR；**不要用 `git log --merges` 數 ship**，它在 squash 流程恆為 0。
 - **lifecycle 操作**：這次 ship 動到的治理面向 — 新增 record／backlog 開關／plan 狀態轉換／STATUS 更新／
   純程式碼。十顆同型的 review-fix 不構成樣本覆蓋。
 - **first audit**：`audit --ship` 的**第一次**結果（rc 與 finding codes）。事後修完再跑的那次不是它。
@@ -26,8 +27,19 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
 ## 計數狀態
 
 - 目標：10 次 qualifying ship，且 canary repo 自己必須貢獻數次 post-cutover ship。
-- 已記錄：0 次。
+- 已記錄：1 次。
 - ⚠️ 採用 commit `9d3e891` 之後、本 ledger 建立之前，dotfiles 已有 2 次 ship（PR 124、125）。兩者的
   first-audit 結果與人工介入分類**無法事後重建**，因此不計入 — 計數從本檔建立後的下一次 ship 起算。
 
 ## 記錄
+
+- **dotfiles · `fix/external-reference-targets` · 2026-08-22**
+  - **lifecycle 操作**：核心 correctness fix（跨 repo 指標可宣告）＋ 新增 `D-20260822-external-reference-targets`
+    ＋ 治理面級距調整。非 review-fix。
+  - **first audit**：`governance surface bytes: 65564>65536` —— correctness fix 讓治理面超出上限 28 bytes。
+  - **人工介入**：`lifecycle`。依 `D-20260820-governance-surface-budget-policy` 升到下一個二進位級距
+    （65,536 → 131,072）；**未壓縮或重組任何既有內容**。
+    ⚠️ **這格是判斷邊界，第一次就出現**：若把「升級距」讀成 compaction，則本次應暫停擴張並記 root cause。
+    判為 lifecycle 的理由是它動的是既有政策的釋壓閥、不是既有內容；壓縮 prose 擠出那 28 bytes 才是 compaction。
+  - **final audit**：rc=0（`doc-governance: OK`）。
+  - **surface bytes**：64,223 → 66,301（上限 65,536 → 131,072）。
