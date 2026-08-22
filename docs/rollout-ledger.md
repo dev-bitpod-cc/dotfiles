@@ -27,7 +27,7 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
 ## 計數狀態
 
 - 目標：10 次 qualifying ship，且 canary repo 自己必須貢獻數次 post-cutover ship。
-- 已記錄：7 次。
+- 已記錄：8 次。
 - ⚠️ 採用 commit `9d3e891` 之後、本 ledger 建立之前，dotfiles 已有 2 次 ship（PR 124、125）。兩者的
   first-audit 結果與人工介入分類**無法事後重建**，因此不計入 — 計數從本檔建立後的下一次 ship 起算。
 
@@ -103,3 +103,12 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
   - **人工介入**：`none`。
   - **final audit**：rc=0。
   - **surface bytes**：見 commit（backlog 與 ledger 都不在治理面內，本次治理面不變）。
+
+- **dotfiles · `perf/retrieval-idf-weighting` · 2026-08-23**
+  - **lifecycle 操作**：寫 `X-*` record（三個 ranking 變體全數否決）＋ 改寫 `B-20260821-debt-27` 的診斷
+    ＋ 規範文字（`document-governance.md` 寫明檢索單位）＋ fixture 加註解行保存跨 repo query。
+    **分支名寫的是嘗試過的方向，最終沒有任何 ranking 程式碼進版本庫**——留著是因為它就是這批的來歷。
+  - **first audit**：rc=0。
+  - **人工介入**：`none`。
+  - **final audit**：rc=0，`tests/run.sh` PASS=1098 FAIL=0，title-free ratchet 6/10 未動。
+  - **surface bytes**：`document-governance.md` +2 行（治理面內），其餘變更不在治理面。
