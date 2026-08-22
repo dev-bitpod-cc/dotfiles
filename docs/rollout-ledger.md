@@ -27,7 +27,7 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
 ## 計數狀態
 
 - 目標：10 次 qualifying ship，且 canary repo 自己必須貢獻數次 post-cutover ship。
-- 已記錄：4 次。
+- 已記錄：6 次。
 - ⚠️ 採用 commit `9d3e891` 之後、本 ledger 建立之前，dotfiles 已有 2 次 ship（PR 124、125）。兩者的
   first-audit 結果與人工介入分類**無法事後重建**，因此不計入 — 計數從本檔建立後的下一次 ship 起算。
 
@@ -77,3 +77,20 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
   - **人工介入**：`lifecycle`（照 `ship-state.sh` 訊息重新同步，一個 byte 都沒有自行修改）。
   - **final audit**：rc=0（`doc-governance: OK`）。
   - **surface bytes**：53,515 → 54,306（上限 65,536，未動）。
+
+- **dotfiles · `docs/canary-vs-batch-order` · 2026-08-23**
+  - **lifecycle 操作**：純文檔——`D-20260823-canary-role-not-batch-number` ＋ 三處可變面的用語校正。
+    無程式碼變更。（樣本多樣性：這是第一筆「只動 record／規範文字」的 ship。）
+  - **first audit**：rc=0。
+  - **人工介入**：`none`。
+  - **final audit**：rc=0，`tests/run.sh` PASS=1098 FAIL=0。
+  - **surface bytes**：68,941 → 69,263（上限 131,072，未動）。
+
+- **krepo-mops-major-news · `refactor/trim-always-on-surface` · 2026-08-23**
+  - **lifecycle 操作**：關閉 backlog 項（`B-20260822-claude-md-size`）＋ 寫 `M-*` record ＋ 新增兩份
+    routed 文件 ＋ 收緊 `loaded_budgets`。✅ **canary 的第二筆 post-cutover ship**。
+  - **first audit**：`FINDINGS × 1`（拆檔後失效的本檔指標，指向已搬走的節）。
+  - **人工介入**：`lifecycle`（把該指標改指新落點）。**未壓縮或改寫任何既有內容**——搬移前後逐行
+    比對零差異，唯一的差異就是那條指標本身。
+  - **final audit**：rc=0，`uv run pytest` 677 passed 18 skipped。
+  - **surface bytes**：54,306 → 54,339（上限 65,536，未動；always-on 面另由 47,083 降到 26,523）。
