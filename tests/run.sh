@@ -2987,6 +2987,25 @@ if [ -f "$ROOT/codex/skills/repo-review/references/reviewer-brief.md" ] \
     ok "repo-review reviewer brief 已納入 runtime contract"
 else bad "repo-review reviewer brief 缺失或未連結"; fi
 
+echo "▶ 12b. deep-plan skill 跨 Claude Code／Codex 共用封裝"
+DPS_CLAUDE="$ROOT/claude/skills/deep-plan"
+DPS_CODEX="$ROOT/codex/skills/deep-plan"
+if [ -L "$DPS_CODEX" ] && [ "$DPS_CODEX" -ef "$DPS_CLAUDE" ]; then
+    ok "deep-plan 兩個 runtime 指向同一份 skill"
+else bad "deep-plan 未以單一 source of truth 部署"; fi
+if [ -f "$DPS_CODEX/SKILL.md" ] && [ -f "$DPS_CODEX/agents/openai.yaml" ]; then
+    ok "Codex 可從共用 target 讀到 SKILL.md 與 metadata"
+else bad "Codex deep-plan 共用封裝不完整"; fi
+dps_frontmatter="$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$DPS_CLAUDE/SKILL.md")"
+if ! grep -Eq '^(user-invocable|argument-hint|allowed-tools|context|agent):' <<< "$dps_frontmatter"; then
+    ok "deep-plan 共用 frontmatter 無 Claude Code 專屬欄位"
+else bad "deep-plan 共用 frontmatter 混入 runtime 專屬欄位"; fi
+if grep -q 'fork_turns: "none"' "$DPS_CLAUDE/SKILL.md" \
+    && grep -q 'Claude Code：每次建立新的' "$DPS_CLAUDE/SKILL.md" \
+    && grep -q 'spawn reviewer_a.*spawn reviewer_b.*wait_agent' "$DPS_CLAUDE/SKILL.md"; then
+    ok "deep-plan 明列兩個 runtime 的 fresh-context adapter"
+else bad "deep-plan 缺少雙 runtime fresh-context contract"; fi
+
 echo "▶ 13. handoff-anchor.sh 錨點驗證與生命週期判定"
 HA_SCRIPT="$ROOT/claude/skills/handoff/scripts/handoff-anchor.sh"
 # 錨點記的是 `rev-parse --show-toplevel`，會解析 symlink（macOS 的 $TMPDIR 走 /var → /private/var），

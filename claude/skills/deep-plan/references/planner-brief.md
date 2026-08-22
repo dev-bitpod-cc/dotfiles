@@ -1,7 +1,7 @@
 # Plan Reviewer Brief — 審查判準與已知失效模式
 
-> 本檔的讀者是**計畫 reviewer**（由 `/deep-plan` spawn 的獨立 subagent），orchestrator 共用同一份嚴重度分級。
-> **這不是 code review 的判準**——不要套用 `~/.claude/skills/deep-review/references/reviewer-brief.md`，兩者的 oracle 不同。
+> 本檔的讀者是**計畫 reviewer**（由 deep-plan orchestrator 建立的獨立 subagent），orchestrator 共用同一份嚴重度分級。
+> **這不是 code review 的判準**——兩者的 oracle 不同，不要套用任何 code-review brief。
 
 ## 目錄
 

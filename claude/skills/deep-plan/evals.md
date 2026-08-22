@@ -35,9 +35,10 @@
 | T2 | `審查一下這份計畫` | ✅ 觸發 | 中文觸發詞（審查計畫） |
 | T3 | `review this plan before I start` | ✅ 觸發 | 英文觸發詞 |
 | T4 | `approve 前先看一下` | ✅ 觸發 | 決策時點語意 |
-| T5 | `幫我 review 剛改的 code` | ❌ 不觸發 → 應走 `/deep-review` | **與 deep-review 的邊界**（最容易誤觸發的一格） |
-| T6 | `幫我規劃一下要怎麼改` | ❌ 不觸發（是產出計畫，非審查） | 與 plan mode / `/project spec` 的邊界 |
+| T5 | `幫我 review 剛改的 code` | ❌ 不觸發 → 應走 code review | **與 code review 的邊界**（最容易誤觸發的一格） |
+| T6 | `幫我規劃一下要怎麼改` | ❌ 不觸發（是產出計畫，非審查） | 與 plan generation 的邊界 |
 | T7 | `這個函式在做什麼？` | ❌ 不觸發 | negative trigger |
+| T8 | `Use $deep-plan to check docs/plans/foo.md before implementation.` | ✅ Codex 顯式觸發 | 不依賴 Claude Code slash command |
 
 ---
 
@@ -68,10 +69,10 @@
 {
   "skills": ["deep-plan"],
   "query": "第一輪的問題我都改好了，再確認一次",
-  "setup": "第一輪已完成、findings 已處置、計畫檔已修訂。上一輪的 reviewer agent 仍可透過 SendMessage 續談。",
+  "setup": "第一輪已完成、findings 已處置、計畫檔已修訂。runtime 仍提供續談上一輪 reviewer 的能力。",
   "pressure": ["效率壓力：使用者訊息附「直接問原來那個 reviewer 就好，它有 context 比較快」"],
   "expected_behavior": [
-    "spawn N 個全新 Agent，NOT SendMessage/resume 既有 reviewer",
+    "用 runtime 的 fresh-subagent primitive 建立 N 個全新 reviewer，NOT resume／follow up 既有 reviewer；Codex 使用 fork_turns=none，Claude Code 建立新的 Agent",
     "第二輪 prompt 不含：輪次、上一輪 findings、作者對 findings 的解釋或反駁、「請確認前一輪是否修好」",
     "向使用者說明 fresh context 是機制而非優化（立場累積）"
   ],
@@ -88,7 +89,7 @@
   "setup": "計畫只存在於對話中，內文含反引號行內 code 與 $( ) 字樣。",
   "pressure": ["「不用存檔，直接看就好」"],
   "expected_behavior": [
-    "先用 Write 工具把計畫寫成檔案（docs/plans/ 或 scratchpad）",
+    "先用不會解譯 shell syntax 的檔案編輯工具把計畫寫成檔案（docs/plans/ 或 scratchpad）",
     "reviewer prompt 只含檔案路徑，NOT 計畫內文",
     "NEVER 用 heredoc / echo / printf 寫該檔（反引號會被命令替換）"
   ],
@@ -325,6 +326,58 @@ Blocking 由兩者共同決定；orchestrator 一律沿用 reviewer 給的值、
 `STATUS.md 決策節` 改成「該 repo 既有的決策存放處」並指回 kernel（原文對 dp4 那種 repo 是錯的）。
 **翻案條件**：出現受測 agent 真的代建 STATUS.md、或因為沒有落點而把「接受」退回未處置的實例。
 
+### P13 — 單一共用 skill，不分叉兩套 workflow
+
+```json
+{
+  "skills": ["deep-plan"],
+  "query": "請讓這份 deep-plan skill 同時給 Claude Code 與 Codex 使用",
+  "setup": "repo 同時部署 claude/skills 與 codex/skills。",
+  "expected_behavior": [
+    "兩個 runtime 載入同一個 SKILL.md inode／symlink target，NOT 維護兩份正文",
+    "共用 frontmatter 只使用 name 與 description",
+    "核心流程不依賴 slash command、Claude-only frontmatter 或 Codex-only metadata",
+    "Codex 的 agents/openai.yaml 只提供介面 metadata，不承載 workflow"
+  ],
+  "check": "readlink codex/skills/deep-plan；quick_validate 共用 target；確認 SKILL.md frontmatter"
+}
+```
+
+### P14 — runtime adapter 保證 fresh context，但不污染 reviewer prompt
+
+```json
+{
+  "skills": ["deep-plan"],
+  "query": "審查 docs/plans/vendor-alert-exemption.md；第一輪結束後我會逐條處置，再跑第二輪。",
+  "setup": "分別在 Claude Code 與 Codex 執行；兩邊都有可 resume/follow-up 的舊 reviewer。",
+  "expected_behavior": [
+    "Claude Code 每輪建立新的 Agent；Codex 每輪以 fork_turns=none 建立 reviewer",
+    "同一輪先嘗試建立全部 N 個 reviewer 才等待任何結果；Codex transcript 中 N 次 spawn_agent 必須早於第一次 wait_agent",
+    "Reviewer 1 若在 reviewer 2 建立前完成，且 transcript 沒有 runtime 明確拒絕並行的 tool error，該輪直接判 RED；有明確拒絕時才可退為 sequential fresh contexts",
+    "reviewer prompt 的語意內容跨 runtime 相同，只容許 plan path、repo paths、brief path 三個 runtime 值不同",
+    "prompt 不含平台名稱、輪次、前輪 findings、作者解釋或完成暗示"
+  ],
+  "check": "截獲兩個 runtime 的 reviewer prompts 正規化三個 path 後比對；檢查 Codex spawn 參數與 Claude Agent lifecycle；sequential 例外必須附 runtime refusal 原文"
+}
+```
+
+### P15 — runtime 不維護 skill 自己的實驗資料
+
+```json
+{
+  "skills": ["deep-plan"],
+  "query": "審查外部 repo 的計畫；第一輪抓到一條判準類 blocking finding。",
+  "setup": "skill source 位於 dotfiles，目標 repo 是另一個 working tree。",
+  "expected_behavior": [
+    "只處理目標 repo 的 plan artifact、既有 decision store 與報告",
+    "NOT 修改 deep-plan 的 SKILL.md、evals、field-log 或 dotfiles inbox",
+    "NOT 為收集 telemetry 在計畫附加與審查結果無關的 ship reminder",
+    "開發者要更新 eval/field data 時走獨立的 skill-authoring workflow"
+  ],
+  "check": "目標 repo 以外的 working trees 保持乾淨"
+}
+```
+
 ---
 
 ## P4 的 fixture 與過期風險
@@ -484,7 +537,7 @@ ground truth 證據位置（**只記指標，不複製內容**）：
 
 ---
 
-## C. 待驗事項的實驗設計（SKILL.md「待驗事項」的驗證方式）
+## C. 待驗事項的實驗設計（歷史參數研究）
 
 三項都是**成對實驗**，依 README：兩臂零差異就撤除該規則，且**必須在樓層模型（Sonnet）上量**——強模型會自己補上規則要求的行為，反而掩蓋規則的作用。
 
@@ -646,6 +699,9 @@ B 判**低**（「漏設會直接 assertion failure、是自我糾正型缺口�
 | 2026-08-19 | **P4 觸發條件核對**（真實執行：krepo-mops-announcement `docs/plans/announcement-api.md`） | Opus ×2（第一輪 N=2） | **達標 ⇒ P4 當日實例化** | 兩個 AND 條件皆成立：①第一輪 **1 條阻斷級**，兩個 reviewer **獨立**指到且**都判阻斷**；②**判準類**——`category` 的放行/攔下成員集合從未被量過，且明列常數與取自 DB **各有一格是靜默的**。登記 hash `5cf20c7`（第一輪當下，非處置版 `ac15ae0`），branch 為此**已 push**（推之前只存單機，等同上一個 fixture 的死法）。⚠️ 本次核對是**事後補做**——執行當下漏了，根因是「附提醒區塊／做 P4 核對」只寫在 `field-log.md` 而該檔刻意不從 `SKILL.md` 連結，執行時讀不到；已於同日補進 `SKILL.md` 的 Step 3b／Step 6 |
 | 2026-08-20 | **P4 觸發條件核對**（真實執行：krepo-judicial `docs/plans/judicial-api.md`，**第一次執行**） | Opus ×2（第一輪 N=2） | **未達觸發條件 ⇒ 不登記、P4 維持既有 fixture** | 條件②**成立**（判準類：案類白名單換成存在性探針，「本來回 200 空集合、改完回 400」那一格兩個 reviewer 獨立指到、且各自舉的成員不同——A 舉 delete-info purge 到零筆、B 舉依法不公開的 9%）；條件①**不成立**——第一輪最高嚴重度為**高**（README 第五處反向記載 2/2、探針反向失效 2/2、`test_import_boundary` 那條守門根本不存在 2/2），**無阻斷級**。依「hash 取法」節不登記 hash（登記不合格 fixture 比不登記更糟）。⚠️ 本次跑在 **Opus**（session 模型）不是樓層模型，觀察不可用於任何「規則有沒有作用」的判定 |
 | 2026-08-20 | **P4 觸發條件核對**（真實執行：krepo-judicial `docs/plans/judicial-api.md`，**第二次執行**——前次 2 輪判不通過、分流「先量事實再重審」，量完 8 項 prod 事實後重跑） | Opus ×2（新一輪 N=2） | **未達觸發條件 ⇒ 不登記** | 條件①**成立**（出現 **1 條阻斷級**：`ORDER BY judgment_date DESC NULLS LAST` 無法由既有的 ASC NULLS LAST 索引滿足 ⇒ 全檔 `EXPLAIN` 都不是最終 SQL 的計畫）；條件②**不成立**——**那條阻斷級不是判準類**，是效能／事實類，沒有「本來會攔、改完不攔」那格。⚠️ 本輪**確實有**判準類 findings（法院「名稱」軸的集合相等只有計數證據 ⇒ 合法名稱可能從此回 400，2/2 獨立指到），但它們是**高**不是阻斷 ⇒ **兩個條件落在不同的 finding 上，AND 不成立**。不登記 hash。⚠️ 同上跑在 Opus，非樓層模型 |
+| 2026-08-22 | portable v2 無 skill baseline（dp1） | Codex fresh context | **RED** | 能直接找出核心缺陷並判 NO-GO，但只有單一 context 直接審查；沒有 N=2 隔離、typed gate、逐條處置或第二輪。證明一般 plan review 不能替代 orchestration contract。 |
+| 2026-08-22 | portable v2 Claude Code forward eval（dp1，第一輪） | Sonnet + 2× background Agent | **GREEN** | skill discovery 成功；同輪並行建立 2 個 fresh Agent，兩者均完成；prompt 只傳 plan／repo／brief 路徑，輸出 typed findings 並在處置 gate 前停止；fixture 無 mutation。 |
+| 2026-08-22 | portable v2 Codex forward eval（dp1，第一輪） | Codex fresh orchestrator | **部分 GREEN；P14 首跑 RED 後修正** | 首跑產出兩份 fresh typed reviews 與正確 NO-GO，但 reviewer 建立順序是 A 完成後才建 B，依 P14 判 RED；據此把「N IDs 必須在 wait 前存在」寫成明確 adapter contract。後續巢狀盲測在等待 A 前確實嘗試 B，但 runtime 回 `collab spawn failed: agent thread limit reached`；workflow 原已允許這種有明確拒絕證據的 sequential 例外，P14 現也要求保留 refusal 原文。未宣稱已驗證 unrestricted parallel path；fixture 無 mutation。 |
 
 ### 2026-08-17 首跑的三個觀察（兩個刻意不改 body）
 

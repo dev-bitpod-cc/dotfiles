@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deep Plan"
+  short_description: "Fresh-context plan verification before implementation."
+  default_prompt: "Use $deep-plan to verify an implementation plan against its target repository before coding starts."

@@ -907,3 +907,9 @@
   - 放棄:prefix／glob 形式的宣告(一條 `docs/` 就讓整棵樹靜音,與「宣告本身受審」互斥);改寫 repo 端指標(archive 那條在 append-only 檔裡,最多解 3/4);把無法解析的 target 一律降級成 note(會連真正壞掉的指標一起放掉——本次 canary 正好抓到 5 條真的壞的);壓縮既有 prose 以避開升級距(那是 compaction,且 D-20260820 已明文禁止只補當前 patch 所需的 N bytes)
   - 重議:出現第二種需要宣告的形狀(例如整個兄弟 repo 的目錄樹都要引用),或某個 repo 的宣告清單長到難以逐條維護
   - 關聯:D-20260820-governance-surface-budget-policy;D-20260822-rollout-gate-replacement;D-20260822-rollout-checklist;docs/document-governance.md;docs/doc-governance-rollout.md
+
+- **D-20260822-portable-deep-plan · 2026-08-22 deep-plan 採單一跨 runtime 核心，停止 runtime telemetry**:Claude Code 與 Codex 共用 `claude/skills/deep-plan/` 的同一份 `SKILL.md` 與 reviewer brief，`codex/skills/deep-plan` 只作 symlink；frontmatter 收斂為 Agent Skills 共同的 `name`／`description`，平台差異只留在 fresh-subagent adapter（Claude Code 建立新 Agent；Codex `spawn_agent` 明列 `fork_turns:none`）。理由是 deep-plan 的目標是隔離式查證與兩輪 gate，不是綁定某個 invocation/tool API；複製兩套正文會讓 epistemic contract 漂移。舊版在任意 target repo review 期間寫 field-log inbox、植入 ship reminder，屬 skill 自己的實驗資料而非使用者要求的 review artifact，且曾因反向寫入 dotfiles 卡住另一個 writer，故 portable runtime 不再自動蒐集；歷史 field log 保留，只允許另行授權的 skill-authoring 實驗更新。
+  - 日期來源:direct
+  - 放棄:維護 Claude/Codex 兩份 workflow；在共用 frontmatter 保留 Claude-only 欄位；讓一般 review session 繼續替 skill 蒐集 telemetry
+  - 重議:任一 runtime 無法透過 symlink discovery 或 relative reference 載入共用 skill；或出現需要 runtime 專屬 workflow、不能由薄 adapter 表達的 failing behavior eval
+  - 關聯:claude/skills/deep-plan/SKILL.md;claude/skills/deep-plan/evals.md;claude/skills/deep-plan/field-log.md;codex/skills/deep-plan
