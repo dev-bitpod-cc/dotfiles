@@ -1,0 +1,13 @@
+# 不複製標題的召回量測（ratchet，不是全綠 oracle）。query<TAB>expected_path_prefix
+# ⚠️ 要提高門檻只能用**新寫的** query 重新量；把既有 query 調到能過，量到的是調參不是召回。
+# ⚠️ query 一律不得包含目標檔的檔名、H1 或條目標題——那是把答案塞回問題。
+交叉引用的守門分不出「在用」和「在討論」時該怎麼辦	docs/testing-contract.md
+改動節名之後要跑哪一套才知道有沒有指標斷掉	docs/testing-contract.md
+治理面的位元組上限撞到了可以怎麼處置	docs/document-governance.md
+一個新的 repo 要開始採用，第一步該做什麼	docs/doc-governance-rollout.md
+沒有日期的舊條目搬過去時日期要怎麼定	docs/doc-governance-rollout.md
+送出前怎麼知道上一場審查還沒修完	claude/skills/project
+兩個 session 同時改同一個工作目錄會怎樣	claude/CLAUDE.md
+用弱模型測技能時沙盒要怎麼建	claude/evals
+判斷審查是否收斂該看什麼訊號	claude/skills
+開工前的計畫審查什麼時候值得跑	claude/skills/deep-plan

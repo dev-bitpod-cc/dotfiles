@@ -179,3 +179,9 @@
   - 放棄:複製 Codex shipping workflow；整包 symlink 混用兩端 metadata；寫死私人 runtime 路徑；直接執行 target repo scanner
   - 重議:任一 runtime 無法追蹤 nested symlink，或完整 GitHub PR／merge parity eval 出現跨 runtime 行為分歧
   - 關聯:D-20260822-portable-project-skill;claude/skills/project/references/pressure-tests.md;tests/run.sh
+
+- **M-20260822-retrieval-source-diversity · 2026-08-22 檢索加上 per-file cap,單一檔案不再洗版 top-5**:`find` 排序完直接切前 N,等於讓「一份檔案裡有幾條 entry」決定它拿幾個 slot——archive shard 動輒上百條,其他來源即使相關也擠不進去。改為先每檔取 2 條,額度用完再回填(**cap 只調來源分布,不減少結果數**,回填由 `test_find_still_fills_five_slots_when_only_one_file_matches` 釘住)。量測用 20 條**不複製標題**的 query 打兩個語料(dotfiles ＋ canary `krepo-mops-major-news`,後者是第二份真實語料,正是 `B-20260822-debt-30` ② 要換來的東西):hit@5 12→13、平均單檔佔位 2.60→1.90、**top-5 被單檔洗版的題數 2→0**。其中 dotfiles 那 10 條固化成 `tests/fixtures/doc-governance/title-free-recall.tsv` 與一條 ratchet 測試(洗版必須為 0、平均佔位 ≤2.0、hit@5 ≥6),並附「提高門檻只能用新寫的 query 重新量」的規定。兩顆守門逐一中性化:拿掉 cap 只紅洗版那條、拿掉回填紅三條。全套 `tests/run.sh` PASS=1098 FAIL=0,既有 16 列 top-5 oracle 與 canonical title self-query 全數不變。
+  - 日期來源:direct
+  - 放棄:cap 不回填(多樣性換成少給答案);把 cap 做成可調 config(現在只有一個語料形狀支持這個數字,先寫死 2、需要時再參數化)
+  - 重議:出現「同一份檔案裡就是有 3 條以上真正相關」的實際查詢,或 cap 讓某類問題的正確答案掉出 top-5
+  - 關聯:B-20260821-debt-28;X-20260822-doc-h1-token-signal;B-20260821-debt-27
