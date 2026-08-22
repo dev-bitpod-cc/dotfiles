@@ -1206,6 +1206,57 @@ class DocGovernanceTests(RepoCase):
         accepted = self.run_tool("audit")
         self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
 
+    def test_find_caps_slots_per_file_so_one_shard_cannot_sweep(self) -> None:
+        # 一份 archive shard 動輒上百條；沒有 per-file cap 時它的條目數就決定了
+        # 它拿幾個 slot，其他來源即使相關也擠不進 top 5。
+        history = "# Decisions\n\n## 事件記錄（event-time）\n\n" + "\n\n".join(
+            f"- **D-2026081{n}-sweep-{n} · 2026-08-1{n} 部署自驗與埠號設定第 {n} 條**:自驗埠號設定的理由。\n"
+            f"  - 日期來源:direct" for n in range(1, 8)
+        ) + "\n"
+        self.write("docs/archive/decisions-2026-08.md", history)
+        self.write(
+            "docs/guide.md",
+            "# 指南\n\n## 自驗埠號設定\n\n部署自驗與埠號設定的操作步驟。\n\n"
+            "## 埠號設定的檢查\n\n部署自驗與埠號設定的檢查清單。\n",
+        )
+        self.configure(
+            base_config(
+                [
+                    {"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"},
+                    {"name": "guide", "mode": "routed", "paths": ["docs/guide.md"]},
+                ]
+            )
+        )
+        self.track()
+        found = self.run_tool("find", "部署自驗與埠號設定")
+        self.assertEqual(found.returncode, 0, found.stdout + found.stderr)
+        heads = [line for line in found.stdout.splitlines() if line and not line.startswith("  ")]
+        self.assertEqual(len(heads), 5, found.stdout)
+        shard_slots = [h for h in heads if h.startswith("docs/archive/decisions-2026-08.md")]
+        guide_slots = [h for h in heads if h.startswith("docs/guide.md")]
+        # cap 給每檔 2 個 slot，剩下的才回填給候選最多的那份。
+        self.assertEqual(len(guide_slots), 2, found.stdout)
+        self.assertEqual(len(shard_slots), 3, found.stdout)
+
+    def test_find_still_fills_five_slots_when_only_one_file_matches(self) -> None:
+        # cap 不得減少結果數:只有一份檔命中時，回填要把 slot 補滿，
+        # 否則「提高多樣性」會變成「少給答案」。
+        history = "# Decisions\n\n## 事件記錄（event-time）\n\n" + "\n\n".join(
+            f"- **D-2026081{n}-only-{n} · 2026-08-1{n} 單一來源第 {n} 條**:埠號設定的理由。\n"
+            f"  - 日期來源:direct" for n in range(1, 8)
+        ) + "\n"
+        self.write("docs/archive/decisions-2026-08.md", history)
+        self.configure(
+            base_config(
+                [{"name": "history", "mode": "history", "paths": ["docs/archive/*.md"], "unit": "top_level_bullet"}]
+            )
+        )
+        self.track()
+        found = self.run_tool("find", "埠號設定的理由")
+        self.assertEqual(found.returncode, 0, found.stdout + found.stderr)
+        heads = [line for line in found.stdout.splitlines() if line and not line.startswith("  ")]
+        self.assertEqual(len(heads), 5, found.stdout)
+
     def test_xref_compatibility_contract(self) -> None:
         self.write("target.md", "# Target\n\n## 真實章節（補充）\n\n本文規則。\n")
         self.write("source.md", "見 `target.md`「真實章節」。\n")
@@ -1953,6 +2004,49 @@ class RealRetrievalCorpusTests(unittest.TestCase):
         )
         injected.metadata["別名"] = query
         self.assertTrue(overlaps(), "oracle guard failed to detect answer-token metadata injection")
+
+    @staticmethod
+    def title_free_rows() -> list[list[str]]:
+        fixture = ROOT / "tests" / "fixtures" / "doc-governance" / "title-free-recall.tsv"
+        with fixture.open(encoding="utf-8", newline="") as handle:
+            return [row for row in csv.reader(handle, delimiter="\t") if row and not row[0].startswith("#")]
+
+    def test_title_free_queries_do_not_leak_the_target(self) -> None:
+        # 這組 query 的價值就在「不知道標題也找得到」。一旦 query 抄了檔名或 H1，
+        # 量到的是字串比對，不是召回。
+        for query, expected in self.title_free_rows():
+            with self.subTest(query=query):
+                stem = Path(expected).stem.casefold()
+                self.assertNotIn(stem, query.casefold())
+                target = ROOT / expected
+                if target.is_file():
+                    heading = next(
+                        (line[2:].strip() for line in target.read_text(encoding="utf-8").splitlines()
+                         if line.startswith("# ")),
+                        "",
+                    )
+                    if heading:
+                        self.assertNotIn(heading.casefold(), query.casefold())
+
+    def test_title_free_recall_and_source_diversity_do_not_regress(self) -> None:
+        # Ratchet，不是全綠 oracle：召回還沒解決（見 B-20260821-debt-27），
+        # 但「單一檔案洗版 top-5」必須維持 0——那是 debt-28 修掉的東西。
+        rows = self.title_free_rows()
+        hits, sweeps, slots = 0, 0, []
+        for query, expected in rows:
+            found = subprocess.run(
+                ["python3", str(TOOL), "--root", str(ROOT), "find", query],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            heads = [line for line in found.stdout.splitlines() if line and not line.startswith("  ")]
+            paths = [head.split(":", 1)[0] for head in heads]
+            hits += any(path.startswith(expected) for path in paths)
+            top = max((paths.count(path) for path in set(paths)), default=0)
+            slots.append(top)
+            sweeps += top >= 5
+        self.assertEqual(sweeps, 0, "有 query 的 top-5 全被同一份檔案佔滿")
+        self.assertLessEqual(sum(slots) / len(rows), 2.0, "單檔平均佔位回升")
+        self.assertGreaterEqual(hits, 6, f"不複製標題的 hit@5 從 6/{len(rows)} 退步到 {hits}/{len(rows)}")
 
     def test_current_repo_retrieval_corpus_hits_top_five(self) -> None:
         rows = self.retrieval_rows()

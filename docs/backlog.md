@@ -23,9 +23,9 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
 
 - **B-20260822-debt-30** · [ ] **文檔治理收尾順序:先釘正確性、再用真 repo 逼出缺口、最後才調 ranking**(2026-08-22 加)。
   依序:① immutability 刪除軸兩格 oracle(**2026-08-22 完成**,見 `M-20260822-immutability-removal-oracles`)
-  → ② 挑一個最簡單的 repo 跑第一次 rollout,照 `docs/doc-governance-rollout.md`「2. history 遷移」
-  執行並把撞到的缺口回填該 checklist → ③ `B-20260821-debt-27`／`B-20260821-debt-28`(程序型文件召回 4/20、
-  top-5 被單檔洗版)。
+  → ② canary rollout(**2026-08-22 完成**,見 `M-20260822-doc-governance-adopted`,缺口已回填 checklist)
+  → ③ 檢索 ranking:`B-20260821-debt-28`(單檔洗版)**已於 2026-08-22 關閉**;`B-20260821-debt-27`(程序型
+  文件召回)仍開,但已分成「跨語言」與「權重形狀」兩個子問題,見該條。
   ⚠️ **順序理由**:27/28 打到的正是「不知道標題時找不找得到」,而那是第二個 repo 第一次用才會撞到的面;
   沒有真實 rollout 語料就調 ranking,等於對 dotfiles 自己的語料過擬合。
   ⚠️ **原 plan §6 的 steady-state rollout gate 已由 `D-20260822-rollout-gate-replacement` 取代**:batch 1 定位為
@@ -33,14 +33,20 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
   證據。月份 shard 正確性不受影響,維持 blocking。(舊敘述以 `git log --merges` 為證據,在 squash merge 下恆為 0,
   已證偽:採用 commit 後實際有 2 次 ship。)
 
-- **B-20260821-debt-28** · [ ] **檢索 top-5 缺少來源多樣性，單一檔案可洗版全部結果**。Round 6
-  以不含目標標題的 query 實測，部分問題的五個 slot 全被 `decisions-2026-08.md` 佔滿，另有三個 slot
-  同屬 `pressure-tests.md`；相關目標即使有 body token 仍被擠出。後續應評估 per-file cap 或 diversity
-  rerank，本批只修 oracle，不改 ranking。
 - **B-20260821-debt-27** · [ ] **檢索對程序型文件的語意召回偏弱**。Round 6 以 20 條不複製標題的
   query 探測 reference／policy／skill／eval／plan／backlog，僅 4/20 命中；本批八列 oracle 必須使用
   高辨識度 body 詞才能穩定進 top 5。後續需另以行為需求設計 ranking 改進，禁止把目標標題塞回 query
   製造假綠。
+  ⚠️ **2026-08-22 用兩個語料（dotfiles ＋ canary）重量：hit@5 12/20 → 13/20**（per-file cap 帶來的，
+  見 `M-20260822-retrieval-source-diversity`）。剩下的 miss **不是同一個問題，要分開處理**：
+  - **跨語言**：`docs/document-governance.md` 全篇英文（語言政策要求），中文問題與它 token 交集為零
+    ——**任何 ranking 改動都碰不到這一格**，要嘛加別名層、要嘛接受它只能用英文問。
+  - **權重形狀**：title 命中 ×200、body ×20，而程序型文件的 section 標題是結構性的
+    （「0. 前置」「2. history 遷移」），主題詞只在 body；history 條目的短標題塞滿領域詞，於是恆勝。
+  - 已試過並否決：文件 H1 當弱訊號（`X-20260822-doc-h1-token-signal`，淨零）、body 覆蓋率取代全含加分
+    （單獨無增益，疊在 cap 上反而 −1）。
+  - 現有 ratchet：`tests/fixtures/doc-governance/title-free-recall.tsv`（dotfiles 那 10 條，hit@5 ≥6）。
+    **提高門檻只能用新寫的 query 重新量。**
 - **B-20260821-debt-26** · [ ] **文檔治理 Round 3 非阻斷後續**。本批不順手擴張核心：xref 待處理
   ignored dirs、alias stale 的 finding/error 語意、正反向 section 比對、shell heredoc fence 與兩份
   `alias_sources` 推導；CLI 待決定 positional files、ship 輸出順序與 adoption 診斷；測試待解除固定

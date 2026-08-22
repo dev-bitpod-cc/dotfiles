@@ -496,6 +496,27 @@ def bounded_text(value, byte_limit):
       clipped = clipped[:-1]
   return '...'
 
+def diversified(ranked, limit, per_file=2):
+  # 一份檔案裡的條目數不該決定它拿幾個 slot：archive shard 動輒上百條，排序完直接
+  # 切前 N 會讓它把其他來源整批洗掉（實測 20 題有 2 題 top-5 全同一份 shard）。
+  # 先每檔取 per_file，額度用完再回填——cap 只調來源分布，NEVER 減少結果數。
+  chosen, counts = [], {}
+  for item in ranked:
+    if counts.get(item[1], 0) >= per_file:
+      continue
+    counts[item[1]] = counts.get(item[1], 0) + 1
+    chosen.append(item)
+    if len(chosen) == limit:
+      return chosen
+  taken = {id(item) for item in chosen}
+  for item in ranked:
+    if id(item) in taken:
+      continue
+    chosen.append(item)
+    if len(chosen) == limit:
+      break
+  return chosen
+
 def cmd_find(config, query, limit):
   documents, _ = build_documents(config)
   excluded = hidden_legacy_plans(config)
@@ -508,7 +529,7 @@ def cmd_find(config, query, limit):
   if not ranked:
     return 1
   output = bytearray()
-  for _, _, _, entry in ranked[:min(limit, MAX_RESULTS)]:
+  for _, _, _, entry in diversified(ranked, min(limit, MAX_RESULTS)):
     first = f'{entry.path}:{entry.line} type={entry.entry_type} event_date={entry.event_date} section={entry.section} — {entry.title}\n'
     excerpt = f'  {bounded_text(entry.body, MAX_EXCERPT_BYTES)}\n'
     candidate = (first + excerpt).encode('utf-8')

@@ -168,3 +168,9 @@
   - 放棄:用既有的高引用 shard 當刪除類檢查的樣本
   - 重議:audit 輸出改為可依 check 分類篩選,能直接斷言單一檢查是否命中
   - 關聯:scripts/doc-governance.py;M-20260821-immutability-removal-axis-closed
+
+- **X-20260822-doc-h1-token-signal · 2026-08-22 用文件 H1 當弱訊號提升程序型文件召回——量到淨零,不採用**:假設是程序型文件的 section 標題多半是結構性的(「0. 前置」「2. history 遷移」),主題詞只出現在 H1 與 body,所以把文件自己的 H1 token 以 60 分權重(介於 title 200 與 body 20 之間)加進每條 entry 的計分。**單獨量 hit@5 12→13,但疊在 per-file cap 上仍是 13/20**——逐題比對發現它修好一題(rollout checklist 那題)、同時弄丟一題(`claude/CLAUDE.md` 的並行寫入規則那題),淨零。理由是 H1 對「文件是什麼」有用,但對 always-on 這種 H1 泛泛的檔反而稀釋。依「成對實驗兩臂零差異就撤」不採用,程式碼未進版本庫。
+  - 日期來源:direct
+  - 放棄:先留著等更多語料再判(留著就是把未經證實的權重塞進計分,下次量測會分不出是誰的貢獻)
+  - 重議:第三份語料進來後重跑同一組 query,若 H1 訊號在多個語料上一致為正
+  - 關聯:M-20260822-retrieval-source-diversity;B-20260821-debt-27
