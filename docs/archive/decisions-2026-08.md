@@ -927,3 +927,9 @@
   - 放棄:複製一份 Codex shipping workflow（會讓 pressure-tested 授權表漂移）；整包 symlink（無法同時滿足兩端 explicit-only metadata）；在 Codex frontmatter 保留 Claude-only 欄位
   - 重議:任一 runtime 無法追蹤 nested references/scripts symlink；或 behavior eval 證明薄入口不足以正規化 invocation arguments
   - 關聯:D-20260813-no-codex-project-skill;D-20260822-portable-deep-plan;claude/skills/project/references/pressure-tests.md;codex/skills/project
+
+- **D-20260822-vendored-core-lint-exclusion** · 2026-08-22 採用時把 trusted core 排除在 target repo 的 lint 之外:adoption gate 以 byte-for-byte `cmp` 比對 `scripts/doc-governance.py`,但採用 repo 的 linter 會掃到它——**照 lint 建議改一個 byte,gate 就判 BROKEN**。兩個要求直接衝突,而衝突點在被採用的那一側。處置:複製 core 的同一步就把它加進該 repo 的 lint／format 排除,理由寫在排除條目旁。canary(`krepo-mops-major-news`)實測:PR 的 required check 擋下 9 條 ruff finding,**全部落在該檔**;該 repo 本來就有同型慣例(`scripts/proxypool_client.py` 是跨 repo drop-in、原樣複製、不得修改),沿用它即可,不必發明新形狀。排除後 `ruff check .` 全過、`cmp` 確認 core 仍逐位元組相同、CI 兩個 job 皆 pass。
+  - 日期來源:direct
+  - 放棄:讓 dotfiles 的 core 迎合每個採用者的 lint 設定(保證不了,且等於讓下游 linter 綁架核心的寫法);把 adoption gate 從 byte 比對放寬成 AST／normalized 比對(gate 的價值正在 byte 級——「有沒有人動過這份 core」必須是二元的);在 core 裡加 `noqa`(那也是改 byte,一樣 BROKEN)
+  - 重議:出現無法對單檔關閉的 linter／formatter,或 core 真的需要 per-repo 變體
+  - 關聯:D-20260822-external-reference-targets;docs/doc-governance-rollout.md;docs/rollout-ledger.md

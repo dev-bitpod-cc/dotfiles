@@ -54,3 +54,7 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
     **未壓縮或改寫任何既有內容**——46 條以 pre/post hash manifest 驗過各恰一個落點。
   - **final audit**：rc=0（`doc-governance: OK`），該 repo `uv run pytest` 677 passed 18 skipped。
   - **surface bytes**：n/a（新採用；該 repo 治理面 53,515／65,536）。
+  - **送出時另需一次介入**：PR 的 required check 擋下——ruff 掃到剛複製進來的 trusted core，9 條全在該檔。
+    處置是把它加進該 repo 的 `extend-exclude`（沿用其既有 vendored-file 慣例），**core 一個 byte 沒改**。
+    仍判 `lifecycle`：它是採用一個新 repo 的前置設定，不是為了讓 audit 過而動既有內容。
+    判準與 checklist 回填見 `D-20260822-vendored-core-lint-exclusion`。

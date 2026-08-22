@@ -11,6 +11,10 @@ dotfiles pilot 遷移相的可重複執行版；量測與設計理由見
 一起 commit 在 target repo——shipping 先比對 core 再執行，不一致或只有其一皆 BROKEN。symlink 與全域 skill
 不算採用：接手者 clone 該 repo 就要能跑。
 
+**同一步把 core 加進該 repo 的 lint／format 排除，理由寫在排除條目旁**：它是 byte-pinned 的 vendored
+檔，照 linter 建議改一個 byte 就判 BROKEN，所以 lint 它只會產生沒人能處理的噪音。漏了這步，CI 會在
+PR 階段才擋下來（canary 實測 9 條 finding 全落在該檔）。
+
 ## 1. shadow 掃描與分類
 
 先 `audit --shadow` 取分類現況與檢索基線。classes 對著該 repo 現有 canonical paths 寫；每個 tracked
