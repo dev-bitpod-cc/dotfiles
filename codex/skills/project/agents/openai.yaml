@@ -1,0 +1,6 @@
+interface:
+  display_name: "Project"
+  short_description: "Spec, ship, and transfer repository work safely."
+  default_prompt: "Use $project to run the repository lifecycle workflow with an explicit mode and endpoint."
+policy:
+  allow_implicit_invocation: false

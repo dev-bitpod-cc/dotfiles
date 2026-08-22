@@ -1,6 +1,6 @@
 # Project 文檔狀態與歷史契約
 
-本 reference 說明 `/project` 如何維護 active state、backlog 與 history。已採用 repo 的完整資料模型與
+本 reference 說明 project workflow 如何維護 active state、backlog 與 history。已採用 repo 的完整資料模型與
 CLI exit contract 以 repo-local `docs/document-governance.md` 為權威；本檔只規定 skill 的行為。
 
 ## 角色分工
@@ -21,7 +21,9 @@ CLI exit contract 以 repo-local `docs/document-governance.md` 為權威；本�
 
 同時存在 `.doc-governance.json` 與 `scripts/doc-governance.py` 即為 adopted repo：
 
-1. 開工先執行 `python3 ~/.dotfiles/scripts/doc-governance.py --root "$repo" find '<工作問題>'` 查相關 decision／dead end；命中的 stable IDs
+1. 開工先確認 target core 與 `<project-scripts>/doc-governance.py` byte-identical（self-hosted worktree 可用
+   git common-dir 證明同 repo），再執行 `python3 "<project-scripts>/doc-governance.py" --root "$repo" find '<工作問題>'`
+   查相關 decision／dead end；命中的 stable IDs
    寫入 active item 的 `關聯`。
 2. Spec 寫 Context／Goal／Acceptance Criteria／Constraints／進度／下一步，不把歷史理由複製進 active state。
 3. 無路徑線索也使用 `find`；history／archive 的人工 pointer 不作為可檢索性的代理。
@@ -31,7 +33,7 @@ CLI exit contract 以 repo-local `docs/document-governance.md` 為權威；本�
 Decision／dead end 在事件當下追加，milestone 在完成當下追加；不要等 ship 才靠記憶重建。先用：
 
 ```sh
-python3 ~/.dotfiles/scripts/doc-governance.py --root "$repo" record-path --type <decision|dead_end|milestone> --date YYYY-MM-DD --slug '<短名>'
+python3 "<project-scripts>/doc-governance.py" --root "$repo" record-path --type <decision|dead_end|milestone> --date YYYY-MM-DD --slug '<短名>'
 ```
 
 再把 record 寫入輸出的 shard 與固定 `## 事件記錄（event-time）`：
@@ -55,7 +57,7 @@ Backlog 新項建立時就給 `B-YYYYMMDD-slug`。解決時寫 `M-*`、明確放
 ## Log 與 audit
 
 Log Step 2 核對本 session 是否漏記 history，完成的 active item 是否已移除，paused 是否有恢復條件，
-backlog 是否只剩未結案項。之後執行 `python3 ~/.dotfiles/scripts/doc-governance.py --root "$repo" audit --ship`：
+backlog 是否只剩未結案項。之後執行 `python3 "<project-scripts>/doc-governance.py" --root "$repo" audit --ship`：
 
 - exit 0：文檔 verdict 通過。
 - exit 1：content findings；修正後重跑，送出前維持 STOP。

@@ -173,3 +173,9 @@
   - 放棄:維護兩份 runtime-specific workflow；把一般 plan review 當成 fresh-reviewer orchestration；把巢狀 agent 容量限制假報成 unrestricted parallel GREEN
   - 重議:任一 runtime 的 symlink discovery 或 relative reference 實際失效；或 unrestricted Codex parallel forward eval 出現 workflow RED
   - 關聯:D-20260822-portable-deep-plan;claude/skills/deep-plan/evals.md;tests/run.sh
+
+- **M-20260822-portable-project-skill · 2026-08-22 Claude Code／Codex 共用 project skill 完成**:`project` 已改為 shared workflow、references、scripts 與 templates，加上 Claude Code `/project`、Codex `$project` 兩個 explicit-only 薄入口；helper／template 從執行中的 skill path 解析，doc-governance 保留 trusted-core 驗證，commit／branch／PR title 以 target repo contract 優先。兩個真實 CLI 的 STOP 與 local bare-remote forward eval 都得到相同安全終態，Codex validator、Claude frontmatter、共享 symlink 與全 repo `tests/run.sh` 均通過，最終為 1098 PASS、0 FAIL。
+  - 日期來源:direct
+  - 放棄:複製 Codex shipping workflow；整包 symlink 混用兩端 metadata；寫死私人 runtime 路徑；直接執行 target repo scanner
+  - 重議:任一 runtime 無法追蹤 nested symlink，或完整 GitHub PR／merge parity eval 出現跨 runtime 行為分歧
+  - 關聯:D-20260822-portable-project-skill;claude/skills/project/references/pressure-tests.md;tests/run.sh

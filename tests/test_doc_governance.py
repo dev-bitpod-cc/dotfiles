@@ -1824,7 +1824,10 @@ class DocGovernanceTests(RepoCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("dossier: STATUS.md", result.stdout)
         self.assertIn("dossier-flag: 缺少規範章節", result.stdout)
-        self.assertIn("~/.dotfiles/claude/templates/STATUS-legacy-template.md", result.stdout)
+        expected_template = str(
+            (ROOT / "claude/skills/project/templates/STATUS-legacy-template.md").resolve()
+        )
+        self.assertIn(expected_template, result.stdout)
         self.assertIn("backlog-flag: docs/backlog.md 缺少章節", result.stdout)
 
     def test_self_hosted_worktree_core_is_allowed_by_common_git_dir(self) -> None:

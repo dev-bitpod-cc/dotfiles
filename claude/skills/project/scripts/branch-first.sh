@@ -3,7 +3,7 @@
 # branch-first.sh — /project log Step 1 第 5 項的 branch-first 執行（情況 A/B 自動判定）
 #
 # 用法：
-#   branch-first.sh <repo-path> <type>/<slug>
+#   branch-first.sh <repo-path> <feature-branch>
 #
 # ⚠ 顯性例外標注：本腳本是 project skill 腳本「git 唯讀慣例」的例外（先例：deep-review
 # 的 verify-tests.sh 例外標注模式）。理由：情況 B 救援序列步驟順序敏感，做錯方向會
@@ -39,7 +39,7 @@
 set -uo pipefail
 
 if [ $# -ne 2 ]; then
-    echo "用法：$0 <repo-path> <type>/<slug>" >&2
+    echo "用法：$0 <repo-path> <feature-branch>" >&2
     exit 2
 fi
 

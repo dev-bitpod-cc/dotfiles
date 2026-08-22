@@ -15,7 +15,7 @@
 
 ## Log 模式（/project log，= 舊 /uap 超集）
 
-把（通常已通過 review 的）變更收尾送出：偵測狀態 → 依 repo 流程定路徑（**branch 先決，先於 commit**）→ 同步 active/history/backlog 與必要文檔 → adaptive 提交 → 依 protection 走 PR 或直接 push。支援跨 repo。銜接 `/deep-review` 結尾（feature branch + 乾淨 commit + 未 push）。
+把（通常已通過 review 的）變更收尾送出：偵測狀態 → 依 repo 流程定路徑（**branch 先決，先於 commit**）→ 同步 active/history/backlog 與必要文檔 → adaptive 提交 → 依 protection 走 PR 或直接 push。支援跨 repo。可銜接任一 code-review workflow 的終態（feature branch + 乾淨 commit + 未 push）。
 
 **Violating the letter of the rules below is violating their spirit.** Do not rationalize around them.
 
@@ -94,7 +94,7 @@ These are hard constraints. Read them before touching git.
 repo / module 的判定交給腳本（**the script IS the path/realpath/toplevel logic — do not re-derive it**）：
 
 ```
-~/.claude/skills/project/scripts/ship-state.sh resolve <token>
+<project-scripts>/ship-state.sh resolve <token>
 ```
 
 - `resolve: REPO <root>` → 鎖定該 repo，**跳過多 repo 偵測互動**。
@@ -110,7 +110,9 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 依本 session 記憶列出所有涉及變更的 repo（**不掃 `~/Projects/`**）：
 
 1. 回憶 session 中改過檔案的所有 repo 根目錄 + pwd 所在 repo。
-2. **單一呼叫**確認全部 repo 狀態：`~/.claude/skills/project/scripts/ship-state.sh <repo1> <repo2> ...`（default branch 偵測、三點/兩點變更集、upstream 邊界、protection 判定全在腳本內）。Step 1 直接沿用同一份輸出，**不重跑**。
+2. **單一呼叫**確認全部 repo 狀態：`<project-scripts>/ship-state.sh <repo1> <repo2> ...`（先把
+   `<project-scripts>` 展開為 shared workflow 所解析的絕對路徑；default branch 偵測、三點/兩點變更集、
+   upstream 邊界、protection 判定全在腳本內）。Step 1 直接沿用同一份輸出，**不重跑**。
 3. 展示清單等使用者確認（ok / 只看 X / 還有 Y）：
    ```
    本次涉及 2 個 repo：
@@ -130,16 +132,17 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 
 1. **狀態偵測（單一來源）**：沿用 Step 0 的 `ship-state.sh` 輸出（單 repo 鎖定時在此直跑一次）——每 repo 印出 `branch` / `always-on`（此 repo 的 root `CLAUDE.md`／`AGENTS.md` bytes；擁有全域 `CLAUDE.md` 的 repo 另印一行。**純資訊，處置見 Step 2**）/ `remotes`（多 remote 附 fork 提示）/ `default` / `files-vs-default`（三點，branch 自身帶來的檔）/ `commits-ahead`（兩點，領先 default 的 commit）/ `working-tree`（porcelain 含 untracked）/ `misplaced`（誤 commit 在本地 default 的警示，附 `branch-first-cmd:` 供第 5 項照抄）/ `doc-governance`（adopted repo 的 audit verdict；legacy repo 才印 dossier/backlog 訊號）/ `stale-branches`（已完全併入 default 的 local/remote branch，附 `cleanup-cmd:`；無殘留則不印）/ `squash-merged-branches`（squash-merge 後祖先鏈斷掉、`branch --merged` 看不到的殘留，經 merged PR 的 headRefOid 比對確認）/ `foreign-remote-branches`（非 canonical remote 上的 branch，**只列出、不發刪除指令**；無則不印）/ `review-residue`（review 迭代痕跡與可照抄的 squash 指令，第 6 項用）/ `protection` / `ship-path` / `branch-first`。**Do not re-run the underlying git/gh commands one by one — the script IS the detection.**
 2. **變更集**（= 此 branch **相對 default 的變更**，即 PR 將含的內容；**不等於「未 push」**——已 push 到 feature branch upstream 的 commit 仍落在此範圍，push 狀態由 Step 5 處理且 push 為冪等）：取腳本的 `files-vs-default` + `working-tree` 合併為完整**檔案**清單（Step 2 判模組、Step 4 列變更檔都靠它；`commits-ahead` 只有主旨、無檔名，deep-review 交接的「clean tree + 只剩 branch commit」情境靠 `files-vs-default` 列檔）。無變更（腳本印 `changes: NONE`）→ 跳過此 repo，**除非符合下述 docs-only mode**。
-   **Docs-only mode**：repo git 無變更（tree clean、無領先 default 的 commit），但 session 記憶中有本 session **已 ship**（已 merge／已 push）的變更 → 不跳過。變更集改由那批 commit 重建檔案清單：逐 commit `git -C <repo> show --name-only <sha>`（已 merge 進 default 者用 default 上的對應 commit）。後續步驟照常：Step 2 據此同步文檔、Step 3 只會產生 `docs:` commit、branch-first／protection／Step 4 確認全部適用；Step 2 掃完確認文檔皆已同步 → 該 repo 無事可做，如實回報。**A clean tree does not mean "nothing to ship" — "code shipped, docs lagging" is the common case this mode exists for.**
+   **Docs-only mode**：repo git 無變更（tree clean、無領先 default 的 commit），但 session 記憶中有本 session **已 ship**（已 merge／已 push）的變更 → 不跳過。變更集改由那批 commit 重建檔案清單：逐 commit `git -C <repo> show --name-only <sha>`（已 merge 進 default 者用 default 上的對應 commit）。後續步驟照常：Step 2 據此同步文檔、Step 3 只會產生符合 target repo convention 的文檔 commit、branch-first／protection／Step 4 確認全部適用；Step 2 掃完確認文檔皆已同步 → 該 repo 無事可做，如實回報。**A clean tree does not mean "nothing to ship" — "code shipped, docs lagging" is the common case this mode exists for.**
 3. **branch protection**：取腳本的 `protection:` verdict（classic + ruleset 都查過）——`PROTECTED` / `OPEN` / `UNKNOWN → treat as PROTECTED`。**Never reinterpret the script's UNKNOWN as "probably open" — Unknown = protected, the script already says so.** verdict 附 `viewerPermission=READ`（classic `Not Found`）→ 身分分離情境，後續處置（`git push --dry-run` 探權限、Step 4 摘要點明、不自行硬推）見 `ship-paths.md`。
 4. **決定 ship 路徑**：腳本印 `verdict: BOOTSTRAP`（全新空 repo，遠端零 branch）→ 走 **bootstrap 路徑**（`ship-paths.md`「Bootstrap」）：branch-first 與 protection 判定在此皆不適用（沒有 default 可保護），Step 4 摘要須標明「此 push 將決定遠端 default branch」。其餘 `verdict: STOP` 一律停下照訊息處理，**不得**自行當成 bootstrap。否則取腳本的 `ship-path:`——protected（或未知）→ **PR 路徑**（推 feature branch + 必開 PR）；確定無保護 → **仍預設 PR 路徑**（跨 repo 單一形狀，省掉每輪「這個 repo 要不要 PR」的判斷，並留下審查紀錄與可回溯 diff）。**"No protection" is not a reason to skip the PR** —— 只有使用者明說「不用 PR / 只推 branch」才退為直接 push 該 feature branch（escape hatch，不主動勸退）。**兩條路徑都推 feature branch、都不直推 default**（branch-first 無條件）——「直接 push」指**省去開 PR 的步驟、直接 push 該 branch**，不是直推 default。把變更合進 default branch 一律是**使用者**的事（agent 不 merge、不直推 default）。
 5. **Branch-first（無條件，依全域「if on default branch, branch first」）**：目標——**到 Step 5 送出前，當前 branch 一定不是 default branch（也不是 detached HEAD）**，**不論 protection**。已在 feature branch（如 deep-review 結尾）→ 跳過。否則執行：
 
    ```
-   ~/.claude/skills/project/scripts/branch-first.sh <repo> <type>/<slug>
+   <project-scripts>/branch-first.sh <repo> <feature-branch>
    ```
 
-   （ship-state 有印 `branch-first-cmd:` 時整行照抄、填上 type/slug；type 取自變更語意 feat/fix/docs…，slug kebab-case。）情況 A（default/detached 上無誤 commit → `switch -c`，working-tree 變更與 detached commit 跟隨）與情況 B（誤 commit 在本地 default → 救援序列 + porcelain 前後快照驗證）由腳本自動判定；任何 ambiguous（分岔、branch 撞名、無 remote）→ `verdict: STOP` 交回處理，零 mutation。在 default branch 上務必 **commit 之前**先跑。**Do not hand-type the rescue sequence — the script IS the mutation path**（手動 fallback 僅供除錯，見 `ship-paths.md`）。
+   （ship-state 有印 `branch-first-cmd:` 時整行照抄、填上 feature branch；命名先依 target repo contract，
+   沒有規定時才用 `<type>/<kebab-case-slug>`。）情況 A（default/detached 上無誤 commit → `switch -c`，working-tree 變更與 detached commit 跟隨）與情況 B（誤 commit 在本地 default → 救援序列 + porcelain 前後快照驗證）由腳本自動判定；任何 ambiguous（分岔、branch 撞名、無 remote）→ `verdict: STOP` 交回處理，零 mutation。在 default branch 上務必 **commit 之前**先跑。**Do not hand-type the rescue sequence — the script IS the mutation path**（手動 fallback 僅供除錯，見 `ship-paths.md`）。
    > 做完此步，**Step 5 一律推 feature branch，絕不直推 default branch**——即使確定無保護（branch-first 無條件，「無保護→直接 push」推的也是 feature branch，不是 default）。
 6. **Review 痕跡（不出題，取處置）**：取腳本的 `review-residue:` 行決定怎麼做，**不自行比對 commit subject**（權威清單在 deep-review、model 憑印象會漂，誤判就是壓掉使用者自己的歷史）。**Review fix commits always get squashed when they can be** —— 這條不是偏好、不問使用者；決定權只在「壓不壓得掉」：
 
@@ -166,7 +169,7 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 2. 工作完成時寫 `M-*` milestone、從 `STATUS.md` 移除 completed active item；暫停項必須有恢復條件。
    Backlog 新項給 `B-*`；解決／放棄／變成決策時寫對應 history record、保留 `B-*` 關聯後移除原 item。
 3. 同一 work item 的 plan 只修原檔；本次實作真正完成才把狀態改 `implemented`，不得另建 `-v2`／`-final`。
-4. 文檔更新後執行 `python3 ~/.dotfiles/scripts/doc-governance.py --root "$repo" audit --ship`。exit 0 才通過；exit 1 的 findings 必須處置；
+4. 文檔更新後執行 `python3 "<project-scripts>/doc-governance.py" --root "$repo" audit --ship`。exit 0 才通過；exit 1 的 findings 必須處置；
    exit 2 是 BROKEN。兩種非零都設定 doc STOP，但繼續收集其餘摘要。**這是 adopted repo 唯一 doc verdict；
    NEVER 再跑 legacy dossier/backlog detector 來覆蓋它。**
 
@@ -184,20 +187,20 @@ flag 與裸說法**等價**（`--merge` ≡ `merge`），兩者都只是 Step 4 
 - 涉及模組的 `**/CLAUDE.md`（只動受影響的）。
 - 相關 `docs/plans/*.md`（存在時）。
 - 所有更動文檔頂部的 `updated` 日期改為今天（YYYY-MM-DD；STATUS.md 的對應欄位名為「更新日期」）。
-- `$ARGUMENTS` 中（mode 與 repo token 之後的）module 名 → 限縮文檔掃描範圍。
+- normalized invocation arguments 中（mode 與 repo token 之後的）module path → 限縮文檔掃描範圍。
 
 ## Step 3：Adaptive 提交
 
 依 reviewed code 的狀態決定文檔如何「一起提交」。**前提：送出前所有 reviewed code 都必須已 commit**——working tree 不留未 commit 的 code，否則 Step 5 會送出不完整變更集。
 
-- **code 未 commit**（review 在 working tree）：`git add` 程式 + 文檔 → 一個或多個語意 commit（Conventional Commits），code 與其文檔**同 commit**。
-- **code 已 commit**（如 deep-review 已 squash）：文檔另起 `docs: …` commit，**同 branch**（同 PR 一起出）。**不 amend、不重寫已 review 的 commit。**
-- **mixed state**（部分 code 已 commit、部分仍在 working tree——如 Step 1 情況 B 搬移後又改了東西）：**先**把 working-tree 的 code 補成語意 commit（與已 commit 的同 branch），**不可只補 `docs:` commit 就送出、把未 commit 的 code 留在 working tree**；code 全部 commit 後再依「code 已 commit」處理文檔。
+- **code 未 commit**（review 在 working tree）：`git add` 程式 + 文檔 → 一個或多個符合 target repo convention 的語意 commit，code 與其文檔**同 commit**。
+- **code 已 commit**（如 deep-review 已 squash）：文檔另起符合 target repo convention 的 docs commit（沒有規定時用 `docs: …`），**同 branch**（同 PR 一起出）。**不 amend、不重寫已 review 的 commit。**
+- **mixed state**（部分 code 已 commit、部分仍在 working tree——如 Step 1 情況 B 搬移後又改了東西）：**先**把 working-tree 的 code 補成語意 commit（與已 commit 的同 branch），**不可只補文檔 commit 就送出、把未 commit 的 code 留在 working tree**；code 全部 commit 後再依「code 已 commit」處理文檔。
 - 無文檔需更新且 code 已 commit → 本步不產生 commit。
 
 > **與 Step 4 squash 選項的交互**：使用者若在 Step 4 選了「先 squash 再送出」，本步產生的 commit 會被收進那顆 squash commit（reset 目標是 Step 1 記下的邊界，位於本步之下）。這**不違反**上面「不 amend、不重寫已 review 的 commit」——那條護的是**已經過 review 的 code commit**，而本步的 docs/code commit 是本輪剛產生的新物。squash commit 的 message 因此要同時涵蓋「這批 review 修復」與「本輪文檔同步」。
 
-commit message 用 Conventional Commits，附環境指定的 `Co-Authored-By` trailer（以 runtime system prompt 的 Git 區塊為權威，**勿在 skill 寫死 model 名稱/版本**——它每次升 model 就漂移）。
+commit message 以 target repo contract 的格式為優先；只有 repo 沒有 commit 格式規定時，才以 Conventional Commits 作 fallback。附環境指定的 `Co-Authored-By` trailer（以 runtime system prompt 的 Git 區塊為權威，**勿在 skill 寫死 model 名稱/版本**——它每次升 model 就漂移）。
 
 ## Step 4：Ship 摘要 → 確認（critical-op gate）
 
@@ -221,7 +224,7 @@ Ship 摘要：
 
 > **「執行到底」的終點由說法決定，不是一律 merge**：`--merge` 類 → 做完 Merge 最後一哩；**`--pr`／「開 PR」→ 開完 PR 就停**（與路徑 B 選「送出，停在 PR」同一個終點，差別只在沒問你）；`--no-pr` → push 完 branch 就停。
 
-**B. 沒有送出說法** → 用 **`AskUserQuestion`** 收確認，單一題「這批怎麼處理？」：PR 路徑三選項 `送出，停在 PR` ／ `送出並 merge` ／ `取消`；直接 push 與 Bootstrap 路徑無 PR 可 merge，退為 `送出` / `取消`。選了「送出並 merge」＝ explicit merge instruction，**開完 PR 接著做完，不再問第二次**。
+**B. 沒有送出說法** → 用目前 runtime 的 **user-input primitive**（Claude Code：`AskUserQuestion`；Codex：對應的 user-input 工具）收確認，單一題「這批怎麼處理？」：PR 路徑三選項 `送出，停在 PR` ／ `送出並 merge` ／ `取消`；直接 push 與 Bootstrap 路徑無 PR 可 merge，退為 `送出` / `取消`。選了「送出並 merge」＝ explicit merge instruction，**開完 PR 接著做完，不再問第二次**。
 
 > 想連這一題都省掉又不要 merge → 下次用 `--pr`（或說「開 PR」）。
 
@@ -238,13 +241,13 @@ Ship 摘要：
 
 **處置先於送出**：本輪若要套用會改變待送內容的處置（squash、Step 3 的 commit），順序一律是**套用 → 重新 commit → 摘要印的是套用後的結果 → 才 push**。**Never push a commit set that differs from the one the summary displayed.** 含 `fetch` 的處置（stale-branch 清掃）**建議**排在 push 之後（順序清楚）；lease 帶了錨定 SHA 之後它已不是安全前提，見 `ship-paths.md`。
 
-`AskUserQuestion` 不可用（背景 turn／工具被停用）且落在路徑 B → 退回文字編號選項並 **STOP**。
+runtime user-input primitive（Claude Code 的 `AskUserQuestion` 或 Codex 對應工具）不可用（背景 turn／工具被停用）且落在路徑 B → 退回文字編號選項並 **STOP**。
 
 ### 說法覆蓋不了的事實前提（一律停）
 
 `ship-state.sh` 印 `verdict: STOP` → **停下照訊息處理，即使使用者已給說法**。**A ship keyword authorizes HOW to ship, NEVER whether a batch may ship at all.** doc-governance findings／BROKEN 必須產生 `verdict: STOP`；其他來源包含無 remote、非 bootstrap 的 default 解析失敗、以及——
 
-- **`review-terminal:`**：上一場 deep-review 在仍有未修 blocking findings 時終止，且那場涵蓋當前 HEAD（腳本已驗過 ancestry，不必自行判斷）。停下用 `AskUserQuestion` 給兩個選項：`重跑審查`（通過並 squash 後 anchor 自動清除）／`知道了，照送`（PR body 記一筆「未完整審查」）。**anchor 的欄位與指令不要攤給使用者看**——那是實作細節，使用者只需回答這一題。
+- **`review-terminal:`**：上一場 deep-review 在仍有未修 blocking findings 時終止，且那場涵蓋當前 HEAD（腳本已驗過 ancestry，不必自行判斷）。停下用 runtime user-input primitive 給兩個選項：`重跑審查`（通過並 squash 後 anchor 自動清除）／`知道了，照送`（PR body 記一筆「未完整審查」）。**anchor 的欄位與指令不要攤給使用者看**——那是實作細節，使用者只需回答這一題。
   - 例外：使用者說的是**「merge 照送」／「merge 未審完」**（見說法表）→ 已預先放行，不停、照送，PR 仍記一筆。
 
 > 為什麼這條存在：Step 4 從「每批停下確認」改成「說法即授權」之後，原本那道 gate 順帶接住的「這批還沒審完」就沒有別人接了。**拆掉守衛就得補上它接住的東西。**
