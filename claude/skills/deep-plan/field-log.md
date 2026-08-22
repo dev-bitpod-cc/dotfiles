@@ -1,17 +1,19 @@
 # deep-plan field log — 真實使用的累積紀錄
 
+> **狀態：歷史資料，portable v2 runtime 不再自動蒐集。** 新版 deep-plan 不修改本檔、不寫 inbox、
+> 也不在使用者的 plan 植入 ship reminder；這些都超出計畫審查本身的 scope，並會讓任意 target repo
+> session 反向寫入 dotfiles。只有另行啟動、明確授權的 skill-authoring 實驗才可新增資料。
+>
 > **與 `evals.md` 的分工**：`evals.md` 記的是**受控 eval**（有 oracle、有 fixture、可重跑、可比較兩臂）；
 > 本檔記的是**真實使用**（無 oracle、一次性、觀察窗只有當下）。混在一起會讓那份 oracle 檔繼續膨脹，
 > 而且兩者回答的問題不同。同一次執行同時出現在兩邊**不算重複**——`evals.md` 那側記的是 eval fixture
 > 的狀態變更（如「P4 為何不登記」），本檔記的是使用面數據。
 >
-> **本檔不是 oracle**，但仍**不從 `SKILL.md` 連結**——runtime 不需要知道自己被記錄。
+> **本檔不是 oracle**，且仍**不從 `SKILL.md` 連結**——它是歷史／authoring data，不屬於 runtime context。
 >
-> **紀錄怎麼進來（2026-08-20 起）**：執行當下**不寫本檔**，寫 `~/.claude/deep-plan-inbox/`，
-> 由在 dotfiles 工作的 session 開 branch 排空。原因是 `/deep-plan` 從別的 repo 呼叫，
-> 直寫會讓多個 session 同時寫同一棵 working tree——2026-08-20 實地卡死另一個 session 三小時。
-> **收到 inbox 檔時：內容併進本檔或 `evals.md`（依上面的分工），然後刪掉來源檔。**
-> 併的時候要對「會 ship 的 ?/?」那欄存疑——它若不是實作完當下填的，就是猜的，寧可留空。
+> 2026-08-20 曾改用 `~/.claude/deep-plan-inbox/` 間接蒐集，以避免任意 session 直寫 dotfiles；
+> portable v2 已連同 runtime telemetry 一起停用。舊 inbox 若仍存在，只能由 dotfiles 的 skill-authoring
+> 工作在 feature branch 上人工判讀，不代表 runtime 應繼續產生新檔。
 
 ## 為什麼要有這個檔
 
@@ -42,14 +44,8 @@
 
 ## 紀錄紀律
 
-- **寫入時機是 ship 時，不是審完時**——「會 ship 的」要等實作完才答得出來。
-- **觸發要放在 ship 當下讀得到的地方，不是放在本檔**（本檔在 ship 時沒有人會打開——
-  規則不在會被讀到的地方就不生效，同 `claude/skills/handoff/evals.md` H6 首跑的教訓）。
-  ⇒ 走過 `/deep-plan` 的計畫檔末尾一律附一個 ship 提醒區塊。**區塊範本與該做的時機是
-  `claude/skills/deep-plan/SKILL.md`「6. 計畫檔末尾附 ship 提醒區塊」，此處不重述**。
-  ⚠️ **那條規則原本只寫在本檔，2026-08-19 因此實地漏過一次**（krepo-mops-announcement 的計畫
-  在本檔建立一小時後執行，機制已存在卻讀不到）——**同一個教訓在本條自己身上又犯了一次**：
-  本條正確算出「ship 時讀得到」是第二跳，卻漏了「執行時讀得到」是第一跳。
+- 以下模板只供另行授權的 skill-authoring 實驗使用；普通 deep-plan／ship runtime 不讀也不寫。
+- 「會 ship 的」只能在實作完成當下由實驗操作者判斷，不得事後回填。
 
 - **交計畫給使用者時，順帶說跑不跑**：判準是機械的——看計畫的〈連帶〉行有沒有出現
   skill body／`CLAUDE.md`／`AGENTS.md`／`testing-contract.md`／evals／fixture。**這是寫計畫的人

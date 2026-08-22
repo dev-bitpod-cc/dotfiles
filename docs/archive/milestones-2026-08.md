@@ -167,3 +167,9 @@
   - 放棄:只補測試不跑突變(綠可能來自別處提前短路,無法分辨是否真的釘住);把 staged 那格複製到 frozen plan 與 legacy blob 三軸(三者共用同一個索引來源,一條即可釘住,複製只換來三倍執行成本)
   - 重議:刪除軸出現第三種狀態,或 `removed_immutable_findings` 改成逐 class 各自取檔案集合——屆時 staged 那條不再一併涵蓋三個命中點
   - 關聯:B-20260821-debt-29;M-20260821-immutability-removal-axis-closed;tests/test_doc_governance.py
+
+- **M-20260822-portable-deep-plan · 2026-08-22 Claude Code／Codex 共用 deep-plan skill 完成**:deep-plan 已改為單一 portable `SKILL.md` 與 reviewer brief，Codex 以 symlink 共用 Claude 來源並另帶 `agents/openai.yaml` 介面 metadata；Claude Code live forward eval 完成兩個並行 fresh Agents，Codex forward eval 驗過 fresh context、typed findings 與 gate，並把巢狀 runtime 的 parallel-capacity refusal 明列為有證據才可使用的 sequential 例外。雙 runtime validator、xref／diff checks 與全 repo `tests/run.sh` 均通過，最終為 1091 PASS、0 FAIL。
+  - 日期來源:direct
+  - 放棄:維護兩份 runtime-specific workflow；把一般 plan review 當成 fresh-reviewer orchestration；把巢狀 agent 容量限制假報成 unrestricted parallel GREEN
+  - 重議:任一 runtime 的 symlink discovery 或 relative reference 實際失效；或 unrestricted Codex parallel forward eval 出現 workflow RED
+  - 關聯:D-20260822-portable-deep-plan;claude/skills/deep-plan/evals.md;tests/run.sh
