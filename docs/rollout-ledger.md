@@ -27,7 +27,7 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
 ## 計數狀態
 
 - 目標：10 次 qualifying ship，且 canary repo 自己必須貢獻數次 post-cutover ship。
-- 已記錄：6 次。
+- 已記錄：7 次。
 - ⚠️ 採用 commit `9d3e891` 之後、本 ledger 建立之前，dotfiles 已有 2 次 ship（PR 124、125）。兩者的
   first-audit 結果與人工介入分類**無法事後重建**，因此不計入 — 計數從本檔建立後的下一次 ship 起算。
 
@@ -94,3 +94,12 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
     比對零差異，唯一的差異就是那條指標本身。
   - **final audit**：rc=0，`uv run pytest` 677 passed 18 skipped。
   - **surface bytes**：54,306 → 54,339（上限 65,536，未動；always-on 面另由 47,083 降到 26,523）。
+
+- **dotfiles · `docs/fleet-rollout-backlog` · 2026-08-23**
+  - **lifecycle 操作**：新增 backlog item（`B-20260823-fleet-rollout-remaining`）＋ 本筆 ledger。
+    來源是 `/ready4quit` 的 pre-quit flush：**`B-20260822-debt-30` 收掉後就沒有東西在追 rollout 本身**，
+    那條 backlog 是補這個缺。（樣本多樣性：第一筆「只開 backlog item」的 ship。）
+  - **first audit**：rc=0。
+  - **人工介入**：`none`。
+  - **final audit**：rc=0。
+  - **surface bytes**：見 commit（backlog 與 ledger 都不在治理面內，本次治理面不變）。
