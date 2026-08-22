@@ -27,7 +27,7 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
 ## 計數狀態
 
 - 目標：10 次 qualifying ship，且 canary repo 自己必須貢獻數次 post-cutover ship。
-- 已記錄：1 次。
+- 已記錄：2 次。
 - ⚠️ 採用 commit `9d3e891` 之後、本 ledger 建立之前，dotfiles 已有 2 次 ship（PR 124、125）。兩者的
   first-audit 結果與人工介入分類**無法事後重建**，因此不計入 — 計數從本檔建立後的下一次 ship 起算。
 
@@ -43,3 +43,14 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
     判為 lifecycle 的理由是它動的是既有政策的釋壓閥、不是既有內容；壓縮 prose 擠出那 28 bytes 才是 compaction。
   - **final audit**：rc=0（`doc-governance: OK`）。
   - **surface bytes**：64,223 → 66,301（上限 65,536 → 131,072）。
+
+- **krepo-mops-major-news · `chore/adopt-doc-governance` · 2026-08-22**
+  - **lifecycle 操作**：**cutover ship**——採用 repo-local 治理，STATUS.md 的 46 條 entry 遷入
+    history／backlog，新增 `M-20260822-doc-governance-adopted` 與 `B-20260822-claude-md-size`。
+    ⚠️ **不計入 canary 的 post-cutover 樣本**：它是 cutover 本身，不是遷移後的日常 ship。
+  - **first audit**：`FINDINGS × 19`（`--shadow` 基線；含 4 條跨 repo 指標與 9 條遷移工作）。
+  - **人工介入**：`lifecycle`。遷移照 checklist 執行；跨 repo 指標以核心新增的
+    `external_reference_targets` 宣告解決（見 `D-20260822-external-reference-targets`），
+    **未壓縮或改寫任何既有內容**——46 條以 pre/post hash manifest 驗過各恰一個落點。
+  - **final audit**：rc=0（`doc-governance: OK`），該 repo `uv run pytest` 677 passed 18 skipped。
+  - **surface bytes**：n/a（新採用；該 repo 治理面 53,515／65,536）。
