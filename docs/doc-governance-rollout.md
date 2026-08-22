@@ -28,6 +28,14 @@ ISO 日期並據其 `YYYY-MM` 選 shard，標 `日期來源:migration-entry`；�
 `migration-cutover`。每個 shard 先在 EOF 追加一次 `## 事件記錄（event-time）` 再放 records——直接 append 會
 錯誤繼承最後一個 legacy H2。ID 與 heading 由 `record-path` 產生，補齊 `日期來源`／`放棄`／`重議`／`關聯`。
 
+無日期的條目：cutover date 要**寫進 record 標題**（`- **ID** · YYYY-MM-DD 原文…`），只標
+`日期來源:migration-cutover` 不夠——gate 的 event_date 是從標題讀的。
+
+來源節裡不是 entry 的東西（blockquote、粗體群組標題）要各自指定落點：節級 prose 進新 shard 的
+preamble，群組標記進各條 `關聯`。**逐塊數過再搬**，否則它們會靜默併進前一條 entry 的 body。
+
+條目自身已宣告結案（`[x]`／刪除線）的技術債不能留在 governed backlog section——寫成 `M-*` record。
+
 legacy entry 原地不動；其 type/file mismatch 只列資訊，新 schema 只約束 cutover 後的 record。
 evidence layer 與 human guide 不搬。
 
@@ -36,6 +44,11 @@ evidence layer 與 human guide 不搬。
 同一 commit 內把 `STATUS.md` 改成 active-only schema（`status_schema` 的 required／forbidden headings），
 並把指向已搬 section 的 inbound reference 改指新 record 或既有 archive section；無落點的舊節名進
 `xref_section_aliases`。全 repo xref／orphan audit 過了才 commit。
+
+修壞掉的指標前**先確認它是不是拆分殘留**——從母 repo 拆出來的指標會掉 repo 前綴，長得像壞掉的
+本地指標，實際上目標還在母 repo（第一次 rollout 的 6 條裡有 5 條是這種）。目標 heading 帶前導
+emoji 時，節名要連 emoji 一起抄（比對是 startswith）。target repo 若有自己的 doc-path 守門，用**它
+自己的 allowlist 慣例**處理跨 repo 路徑，不要把指標改含糊來讓它過。
 
 ## 4. backlog 與 plan
 
