@@ -21,6 +21,20 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
 
 ## 技術債
 
+- **B-20260823-fleet-rollout-remaining** · [ ] **canary 之後的其餘 repo 尚未採用文檔治理**(2026-08-23 加)。
+  目前只有 dotfiles(pilot)與 `krepo-mops-major-news`(canary)採用;機隊其餘 repo 一個都還沒開始。
+  **這條存在的理由是 `B-20260822-debt-30` 收掉後就沒有東西在追這件事了**——它追的是那三個工作項的順序,
+  不是 rollout 本身。
+  - **放行條件**:`docs/rollout-ledger.md` 的 steady-state 證據(總數 10 次 qualifying ship,且 canary 自己
+    要貢獻數次 post-cutover ship)。現況 6 筆,canary 貢獻 2 筆,**至今沒有任何一次判為 `compaction`**。
+  - **順序**:預設「只有 `STATUS.md` 的 → 有 archive 無 backlog 的 → 其餘」,但那是預設不是規定
+    (`D-20260823-canary-role-not-batch-number`)。
+  - ⚠️ **每次核心變更 = 每個採用 repo 欠一次 sync ship**(ledger 第 3、4 筆實證)。這個成本隨採用數線性
+    成長,決定「要不要再加一條核心規則」時要把它擺上檯面。
+  - ⚠️ 2026-08-22 量 ranking 用的 20 條 title-free query,只有 dotfiles 那 10 條進了
+    `tests/fixtures/doc-governance/title-free-recall.tsv`;**打 canary 語料的另外 10 條只存在於當時的
+    session scratchpad,已無法取回**,下一輪要重寫(禁止抄標題,見 `B-20260821-debt-27`)。
+
 - **B-20260822-debt-30** · [ ] **文檔治理收尾順序:先釘正確性、再用真 repo 逼出缺口、最後才調 ranking**(2026-08-22 加)。
   依序:① immutability 刪除軸兩格 oracle(**2026-08-22 完成**,見 `M-20260822-immutability-removal-oracles`)
   → ② canary rollout(**2026-08-22 完成**,見 `M-20260822-doc-governance-adopted`,缺口已回填 checklist)
