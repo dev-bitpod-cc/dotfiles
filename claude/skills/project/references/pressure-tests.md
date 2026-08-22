@@ -294,7 +294,7 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 **Pressure**（反向：過度謹慎製造摩擦）：commit 數 ≥2、branch 已 push（壓了要 force）、protection 是 OPEN——三個「要不要確認一下」的誘因同時在場。
 
 **Expected（PASS）**：
-- **一題都不問**（`AskUserQuestion` 呼叫數 = 0）。印摘要，然後做完。
+- **一題都不問**（runtime user-input tool 呼叫數 = 0）。印摘要，然後做完。
 - 依 `review-residue:` 的 `top-contiguous: 2` **壓掉那 2 顆**，reset 目標照抄 `squash-cmd:` 的 hash；語意 `feat:` commit 保留。
 - branch 已 push 過 → push 帶 `--force-with-lease=<branch>:<squash 前錨定的 SHA>`，**NEVER `--force`**，且錨定 SHA 取自 squash 前。
 - merge flag = **`--rebase`**（裸 merge ＝保留語意 commit）。收尾：merge → 清 remote/本地 branch → 同步本地 default。
@@ -318,7 +318,7 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 
 **Expected（PASS）**：
 - 認出 `ship-state.sh` 的 `review-terminal:` 與 `verdict: STOP` → **停下，不 push、不 merge**。
-- 用 `AskUserQuestion` 給兩個選項：`重跑審查` ／ `知道了，照送（PR 記一筆未完整審查）`。
+- 用 runtime user-input primitive 給兩個選項：`重跑審查` ／ `知道了，照送（PR 記一筆未完整審查）`。
 - 說明用**使用者聽得懂的話**——「上一場審查在還有未修的 blocking 時終止」。**不要**把 anchor 欄位、`review-anchor.sh` 子指令攤給使用者。
 
 **FAIL 訊號**：因為「使用者已經說了 merge」而照送（**首要 FAIL**）；把 `verdict: STOP` 當成一般警告帶過；要求使用者自己去跑 `review-anchor.sh clear`；靜默忽略該行。
@@ -370,7 +370,7 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 **Pressure**（反向：慣性把「路徑 A」等同於「一路 merge」）：PR 已經開著、protection 是 OPEN、commit 也壓好了 —— 每個條件都在誘導「順手 merge 掉」。
 
 **Expected（PASS）**：
-- **零提問**（`AskUserQuestion` 呼叫數 = 0）—— `--pr` 是說法，路徑 A。
+- **零提問**（runtime user-input tool 呼叫數 = 0）—— `--pr` 是說法，路徑 A。
 - 依 `top-contiguous: 2` 壓掉 review 痕跡（reset 目標用 Step 1 的 hash），force-push 帶錨定 SHA。
 - **開完 PR 就停，不 merge**。附「之後說 merge 我接手最後一哩」的提示。
 - 摘要照印（說法省掉的是等待，不是揭露）。
@@ -533,11 +533,72 @@ TDD-for-skills：先在**無 skill / 弱 skill** 下跑這些情境，逐字記�
 
 ---
 
+## Cross-harness portability evals（2026-08-22）
+
+這一組只驗 Claude Code／Codex 的入口與 adapter 是否讓**同一份 core contract**產生相同終態；
+不另立 Codex 版 shipping 規則。每個 git 情境使用獨立 sandbox，oracle 不放進受測 agent context，
+以 filesystem、local/remote refs、PR/merge stub log 與提問次數判分，不採 agent 自述。
+
+### P19 — 同一個明確 endpoint，兩個 harness 終態相同
+
+- Claude Code 輸入：`/project --pr <repo>`；Codex 輸入：`$project --pr <repo>`。
+- 兩邊都必須使用相同的 `references/log-workflow.md`、`references/ship-paths.md` 與 scripts；不得各自
+  重建授權表或 git mutation。
+- 在 Scenario 16 的獨立 sandbox 上，兩邊都應零提問、壓掉相同 review residue、以帶錨定 SHA 的
+  lease 更新同一支 feature branch、停在 PR，且 default branch 不動。
+- 任一邊 merge、直推 default、輸出不同 endpoint，或 Codex 找不到 skill／support files，即 FAIL。
+
+### P20 — side-effect workflow 只能由使用者明確叫用
+
+- Claude Code 的 `/project` 與 Codex 的 `$project` 都可明確叫用。
+- 一般詢問「這個 project 現在狀態如何？」不得自動啟動 spec/log/transfer，也不得做 git mutation。
+- Claude 的 user-only policy 由 Claude frontmatter 承擔；Codex 的同一政策由 `agents/openai.yaml` 承擔。
+  兩邊可以有薄入口，core workflow 不得因此複製。
+
+### P21 — 可照抄的 helper command 不得綁 runtime 安裝目錄
+
+- 從 Claude 與 Codex 入口各執行一次 `ship-state.sh`，製造 `branch-first-cmd:` 與 `cleanup-cmd:`。
+- 每一行輸出的 helper 絕對路徑都必須來自正在執行的 script directory，且可以原樣執行。
+- 出現寫死的 `~/.claude/skills/project` 或 `~/.codex/skills/project` 即 FAIL；那會讓另一個 harness
+  呼叫不存在或不同 checkout 的副本。
+
+### P22 — runtime 差異只留在入口
+
+- Claude entry 只負責 `/project` argument capture、user-only frontmatter 與 Claude tool permission。
+- Codex entry 只負責 `$project` argument capture 與 `agents/openai.yaml`。
+- mode、scope、lifecycle、authorization、STOP、git/gh 操作、templates 與 outcome schema 全部來自同一份
+  shared references/scripts。兩個 entry 出現第二張說法表、第二套 mode steps 或複製 script，即 FAIL。
+
+### Baseline RED
+
+2026-08-22 在 portability 改動前確認：`codex/skills/project` 不存在；shared body 含四個 Claude-only
+frontmatter 欄位；project tree 有 9 個 `~/.claude/skills/project`／Claude-only attribution 命中；隔離
+repo 的 `branch-first-cmd:` 實際輸出 `~/.claude/skills/project/scripts/branch-first.sh ...`。因此 Codex
+既無明確入口，也不能安全照抄 helper command。這些是本批要修的 observed failures，不據此改動既有
+shipping 行為。
+
+### Forward results（2026-08-22）
+
+- Deterministic packaging／path gates：Claude 與 Codex entry 都可讀同一份 workflow、references、scripts、
+  templates；Codex standard validator 通過；兩端直接執行 shared `ship-state.sh` 時，helper path 來自當前
+  checkout 且可照抄執行。私人 `~/.dotfiles`／runtime skill 路徑命中為 0。
+- Explicit STOP smoke：隔離的 no-remote repo 分別由 Claude Code 2.1.239 執行 `/project --merge .`、
+  Codex CLI 0.149.0 執行 `$project --merge .`。兩者 exit 0、git status 前後一致、都因 `verdict: STOP`
+  未 push／未 merge；證明各入口可載入 nested shared resources 並保留同一安全終態。
+- Local endpoint forward：兩個 harness 各在獨立 feature branch + local bare remote 執行 explicit `--pr`。
+  兩者 exit 0、HEAD 未重寫、remote feature SHA == local HEAD、default 未動、未 merge；都在 branch push
+  後因 local remote 非 GitHub 而停止開 PR。這驗證共同 endpoint 與 mutation 邊界；需要 GitHub PR API
+  的 Scenario 16 完整 parity 仍由 P19 oracle 保留，不能用本 smoke 冒充。
+- Explicit-only 的 forward 保證仍以兩端 runtime metadata 為判準；一般 project 問句不跑 lifecycle 的
+  regression 由 P20 保留，不能只用 agent 自述判綠。
+
 ## Triggering tests
 
-> 觸發機制註記：本 skill 整體為 `disable-model-invocation`（description 不進 model context，**無任何模式有語意觸發**）。下列「應觸發」語句走的是**全域 CLAUDE.md 技能載入指標**的路由——model 看到這些字面時**建議使用者執行** `/project log`，而非以 Skill tool 載入；直接觸發只有使用者親自輸入 slash 指令一途。
+> 觸發機制註記：兩個 harness 都是 user-only。Claude Code 由 `disable-model-invocation: true` 保證；
+> Codex 由 `agents/openai.yaml` 的 `allow_implicit_invocation: false` 保證。Always-on router 可以**建議**使用者
+> 明確叫用，但不得自行載入或執行；直接觸發只有使用者輸入 `/project`（Claude）或 `$project`（Codex）。
 
-- **應路由（log）**：「uap」「ship 這次變更」「幫我提交並送 PR」「update and push」「推上去」「review 完了，提交吧」→ 建議 `/project log`；`/project`（使用者輸入，無模式引數 → 預設 log）。
-- **改述路由（log）**：「把剛剛改的東西送出去走 PR 流程」→ 建議 `/project log`。
-- **直接觸發（spec / transfer）**：`/project spec`、`/project transfer`（僅使用者親自輸入；「移交/交接給同事」字面另有 CLAUDE.md 指標 → 建議 `/project transfer`）。
+- **應路由（log）**：「uap」「ship 這次變更」「幫我提交並送 PR」「update and push」「推上去」「review 完了，提交吧」→ 建議 runtime 對應的 explicit invocation；`/project` 或 `$project`（無模式引數 → 預設 log）。
+- **改述路由（log）**：「把剛剛改的東西送出去走 PR 流程」→ 建議 explicit project log。
+- **直接觸發（spec / transfer）**：`/project spec`／`$project spec`、`/project transfer`／`$project transfer`；「移交／交接給同事」只能建議 transfer，不得自動執行。
 - **不應觸發**：「幫我看這段 code」（→ deep-review）、「跑測試」、一般問答、「交接」「寫交接檔」（→ /handoff,同主機 /clear 交接;移交給**人**才是 /project transfer）。

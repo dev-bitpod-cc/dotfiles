@@ -712,7 +712,7 @@ if [ -n "$scenario7" ] && ! grep -q 'STATUS.md.*關鍵決策.*死路' <<< "$scen
 else
     bad "pressure Scenario 7 缺少正向 anchor，或仍要求新 schema 禁止的 STATUS 歷史節"
 fi
-if grep -q 'STATUS-legacy-template.md' "$ROOT/claude/skills/project/SKILL.md" \
+if grep -q 'STATUS-legacy-template.md' "$ROOT/claude/skills/project/references/workflow.md" \
     && [ -f "$ROOT/claude/templates/STATUS-legacy-template.md" ]; then
     ok "project spec 對 legacy repo 使用 legacy template"
 else
@@ -1839,7 +1839,7 @@ if ! echo "$out" | grep -qE "^  remote: origin$"; then ok "origin/HEAD 不被當
 # remote 側的刪除**一律走 cleanup-stale-branch.sh**（執行當下 ls-remote 重驗 + lease），
 # **絕不退化成裸 `push --delete`**：local 側有 git 自己把關（`-d` 對未併入的 branch 直接拒），
 # remote 側沒有等價保護——偵測後有人推過，裸刪就把那些 commit 從唯一的副本上砍掉。
-if echo "$out" | grep -qE "^  cleanup-cmd: .*cleanup-stale-branch\.sh .+ remote "; then ok "remote 殘留附 cleanup-stale-branch.sh（帶執行當下重驗）"; else bad "remote 殘留缺帶重驗的刪除指令（${out}）"; fi
+if echo "$out" | grep -qE "^  cleanup-cmd: .*cleanup-stale-branch\.sh'? .+ remote "; then ok "remote 殘留附 cleanup-stale-branch.sh（帶執行當下重驗）"; else bad "remote 殘留缺帶重驗的刪除指令（${out}）"; fi
 if echo "$out" | grep -qE "push .*--delete"; then bad "remote 刪除退回裸 push --delete（無 lease、無執行當下重驗）"; else ok "cleanup-cmd 不含裸 push --delete"; fi
 if echo "$out" | grep -qF "remote 'origin/"; then bad "cleanup-cmd 的 remote branch 名未剝 remote 前綴"; else ok "cleanup-cmd 剝除 remote 前綴"; fi
 # expected SHA 必須是該 tracking ref 的當下 tip。給錯就一律 STOP——指令看起來還在、實際上
@@ -1873,8 +1873,7 @@ if ! echo "$out" | grep -qE "^  remote: origin/feat/old-merged"; then ok "當前
 # 為何不只比對字串：上面驗的是「拼出來的樣子」，拼對了仍可能整條跑不動——參數順序、
 # quoting、SHA 位置任一錯都是**靜默失敗**，腳本回 STOP，而 STOP 的長相與「偵測後有人推過」
 # 這個正常保護一模一樣，讀不出是 bug。獨立 fixture（sbe- 前綴），不動上面共用的 sb-work。
-# ⚠ 路徑要換成 $ROOT 下的腳本：輸出裡的 `~/.claude/skills/...` 是**主 checkout** 的 symlink
-# 目標，在 worktree／乾淨 clone 上跑到的是別一份（見 claude/CLAUDE.md 已知地雷最後一條）。
+# helper path 必須由正在執行的 ship-state.sh 自己解析；worktree／乾淨 clone 不得跳去全域安裝副本。
 git init --bare -q "$TMP/sbe-origin.git"
 git init -q -b main "$TMP/sbe-work"
 (cd "$TMP/sbe-work" \
@@ -1883,11 +1882,16 @@ git init -q -b main "$TMP/sbe-work"
     && git switch -qc feat/e2e-merged && git push -qu origin feat/e2e-merged \
     && git switch -q main)
 out="$(SHIP_STATE_GH="$TMP/gh-open" "$SS_SCRIPT" "$TMP/sbe-work")"
-sbe_cmd="$(grep -E '^  cleanup-cmd: .*cleanup-stale-branch\.sh .+ remote ' <<< "$out" | head -1 | sed 's/^  cleanup-cmd: //')"
-sbe_args="${sbe_cmd#*cleanup-stale-branch.sh }"
-if [ -n "$sbe_cmd" ] && [ "$sbe_args" != "$sbe_cmd" ]; then
-    # `$0` 帶路徑、引數維持原樣照抄——腳本路徑本身不是本次要驗的東西，引數拼接才是
-    if bash -c '"$0" '"$sbe_args" "$ROOT/claude/skills/project/scripts/cleanup-stale-branch.sh" >/dev/null 2>&1; then ok "照抄 remote cleanup-cmd 可實際刪除（參數拼接端到端成立）"; else bad "照抄 remote cleanup-cmd 執行失敗（STOP／參數錯，訊號等於廢掉）"; fi
+sbe_cmd="$(grep -E "^  cleanup-cmd: .*cleanup-stale-branch\\.sh'? .+ remote " <<< "$out" | head -1 | sed 's/^  cleanup-cmd: //')"
+if [ -n "$sbe_cmd" ]; then
+    runtime_tilde='~'
+    if grep -qF "$ROOT/claude/skills/project/scripts/cleanup-stale-branch.sh" <<< "$sbe_cmd" \
+        && ! grep -qE "${runtime_tilde}/.+(claude|codex)/skills/project" <<< "$sbe_cmd"; then
+        ok "cleanup-cmd 使用目前 checkout 的 runtime-neutral helper path"
+    else
+        bad "cleanup-cmd 綁到全域／runtime 專屬副本（${sbe_cmd}）"
+    fi
+    if bash -c "$sbe_cmd" >/dev/null 2>&1; then ok "照抄 remote cleanup-cmd 可實際刪除（路徑與參數端到端成立）"; else bad "照抄 remote cleanup-cmd 執行失敗（STOP／路徑／參數錯，訊號等於廢掉）"; fi
     if git -C "$TMP/sbe-work" ls-remote --heads origin feat/e2e-merged 2>/dev/null | grep -q .; then bad "照抄後遠端 branch 仍在（指令實際沒生效）"; else ok "照抄後遠端殘留 branch 確實消失"; fi
 else
     bad "未取得 remote 的 cleanup-cmd（fixture 前提失效）"
@@ -2036,7 +2040,7 @@ git init -q -b main "$TMP/mrb-work"
     && git fetch -q --all)
 make_gh_prlist_stub "$TMP/gh-mrb" deadbeef acme 0
 out="$(SHIP_STATE_GH="$TMP/gh-mrb" "$SS_SCRIPT" "$TMP/mrb-work")"
-mrb_cmds="$(grep -E '^  cleanup-cmd: .*cleanup-stale-branch\.sh ' <<< "${out}")"
+mrb_cmds="$(grep -E "^  cleanup-cmd: .*cleanup-stale-branch\\.sh'? " <<< "${out}")"
 
 # canonical 側不得因本修法被誤傷（它才是唯一該給刪除指令的來源）
 if grep -qE '^  remote: origin/feat/canon-merged' <<< "${out}"; then
@@ -2066,9 +2070,8 @@ else
     mrb_bad=0; mrb_last=""
     while IFS= read -r mrb_line; do
         [ -n "$mrb_line" ] || continue
-        mrb_args="${mrb_line#*cleanup-stale-branch.sh }"
-        # `$0` 帶路徑、引數維持原樣照抄（同 B1 的做法）
-        bash -c '"$0" '"$mrb_args" "$ROOT/claude/skills/project/scripts/cleanup-stale-branch.sh" >/dev/null 2>&1 \
+        mrb_cmd="${mrb_line#  cleanup-cmd: }"
+        bash -c "$mrb_cmd" >/dev/null 2>&1 \
             || { mrb_bad=$((mrb_bad + 1)); mrb_last="$mrb_line"; }
     done <<< "$mrb_cmds"
     if [ "$mrb_bad" -eq 0 ]; then
@@ -3005,6 +3008,48 @@ if grep -q 'fork_turns: "none"' "$DPS_CLAUDE/SKILL.md" \
     && grep -q 'spawn reviewer_a.*spawn reviewer_b.*wait_agent' "$DPS_CLAUDE/SKILL.md"; then
     ok "deep-plan 明列兩個 runtime 的 fresh-context adapter"
 else bad "deep-plan 缺少雙 runtime fresh-context contract"; fi
+
+echo "▶ 12c. project skill 跨 Claude Code／Codex 共用核心"
+PJS_CLAUDE="$ROOT/claude/skills/project"
+PJS_CODEX="$ROOT/codex/skills/project"
+if [ -f "$PJS_CLAUDE/SKILL.md" ] && [ -f "$PJS_CODEX/SKILL.md" ] \
+    && [ "$PJS_CODEX/references" -ef "$PJS_CLAUDE/references" ] \
+    && [ "$PJS_CODEX/scripts" -ef "$PJS_CLAUDE/scripts" ] \
+    && [ "$PJS_CODEX/templates" -ef "$PJS_CLAUDE/templates" ] \
+    && [ "$PJS_CODEX/scripts/doc-governance.py" -ef "$ROOT/scripts/doc-governance.py" ]; then
+    ok "project 兩個薄入口共用 canonical references/scripts/templates"
+else bad "project 跨 runtime 封裝未共用同一核心"; fi
+if grep -q 'references/workflow.md' "$PJS_CLAUDE/SKILL.md" \
+    && grep -q 'references/workflow.md' "$PJS_CODEX/SKILL.md" \
+    && [ -f "$PJS_CODEX/references/workflow.md" ]; then
+    ok "project 兩個入口都載入 shared workflow"
+else bad "project 入口未共同指向 shared workflow"; fi
+pjs_codex_frontmatter="$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$PJS_CODEX/SKILL.md")"
+if ! grep -Eq '^(user-invocable|disable-model-invocation|argument-hint|allowed-tools|context|agent):' <<< "$pjs_codex_frontmatter"; then
+    ok "Codex project frontmatter 無 Claude Code 專屬欄位"
+else bad "Codex project frontmatter 混入 Claude Code 專屬欄位"; fi
+project_sig="\$project"
+if grep -q '^disable-model-invocation: true$' "$PJS_CLAUDE/SKILL.md" \
+    && grep -q '^  allow_implicit_invocation: false$' "$PJS_CODEX/agents/openai.yaml" \
+    && grep -qF "$project_sig" "$PJS_CODEX/agents/openai.yaml"; then
+    ok "project 在兩個 runtime 都是 explicit-only"
+else bad "project 的 explicit-only policy 未跨 runtime 對齊"; fi
+runtime_tilde='~'
+if ! rg -q "${runtime_tilde}/\\.dotfiles|${runtime_tilde}/.+(claude|codex)/skills/project|Generated with \\[Claude Code\\]" \
+    "$PJS_CLAUDE/SKILL.md" "$PJS_CLAUDE/references/workflow.md" \
+    "$PJS_CLAUDE/references/dossier.md" "$PJS_CLAUDE/references/log-workflow.md" \
+    "$PJS_CLAUDE/references/ship-paths.md" \
+    "$PJS_CLAUDE/scripts"; then
+    ok "project runtime core 無私人安裝路徑或產品 attribution 偶合"
+else bad "project runtime core 仍含私人／harness-specific path 或 attribution"; fi
+if grep -q 'repo contract.*優先' "$PJS_CLAUDE/references/log-workflow.md" \
+    && grep -q '沒有.*Conventional Commits.*fallback' "$PJS_CLAUDE/references/log-workflow.md" \
+    && grep -q 'repo contract.*PR title' "$PJS_CLAUDE/references/ship-paths.md" \
+    && ! rg -q 'Step 3 只會產生 `docs:`|<type>/<slug>|type 取自.*feat/fix|commit -m "<type>:|^<type>: <精簡描述>' \
+        "$PJS_CLAUDE/references/log-workflow.md" "$PJS_CLAUDE/references/ship-paths.md" \
+        "$PJS_CLAUDE/scripts/branch-first.sh" "$PJS_CLAUDE/scripts/ship-state.sh"; then
+    ok "project commit／PR title 以 target repo convention 優先"
+else bad "project commit／PR title 未明定 repo convention 優先與 fallback"; fi
 
 echo "▶ 13. handoff-anchor.sh 錨點驗證與生命週期判定"
 HA_SCRIPT="$ROOT/claude/skills/handoff/scripts/handoff-anchor.sh"

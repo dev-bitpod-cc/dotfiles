@@ -1,6 +1,6 @@
 # Ship Paths — git/gh 指令細節
 
-`../SKILL.md`「Log 模式」的 git/gh 實作參考：repo 解析、protection、branch-first、PR／push、PR body 與失敗處理。
+`workflow.md`「Log 模式」的 git/gh 實作參考：repo 解析、protection、branch-first、PR／push、PR body 與失敗處理。
 
 > **Solo repo is not a lighter process.** One-person projects run the SAME shape as a protected-main team repo: branch → commits → review → PR → explicit merge. Never relax branch-first, the PR default, or the explicit-merge rule because "it's just me", "no one else will read this history", or "there's no protection to enforce it". 理由：repo 會移交、會加入新成員，使用者本人也會成為他人 repo 的成員——流程形狀一旦按「一人份」放寬，這些時刻就沒有秩序可交接，也養不出正式流程的手感。**這條只是防守既有規則被合理化侵蝕，不新增任何步驟。**
 
@@ -47,7 +47,7 @@ git -C <repo> symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null   # 如 
 # 1. 照抄 ship-state.sh 的 bootstrap-cmd（repo / remote / branch 已填好）
 git -C <repo> push -u origin <local-default>
 # 2. baseline 建立後重跑偵測：BOOTSTRAP 應已消失，protection / branch-first 回到正常判定
-~/.claude/skills/project/scripts/ship-state.sh <repo>
+<project-scripts>/ship-state.sh <repo>
 ```
 
 - **仍走 Step 4 硬 gate**：摘要須明列「此 push 將決定遠端 default branch = `<branch>`」再等確認。
@@ -105,19 +105,20 @@ protection classic 回 **`Not Found`**（非 `Branch not protected`）常代表 
 
 **情況 A：變更在 working tree（人在 default branch），或在 detached HEAD（含已在其上 commit）**
 ```bash
-git -C <repo> switch -c <type>/<slug>   # working-tree 變更與 detached HEAD 上的 commit 都跟著切過去；default branch 不動
+git -C <repo> switch -c <feature-branch>   # working-tree 變更與 detached HEAD 上的 commit 都跟著切過去；default branch 不動
 ```
 
 **情況 B：變更已誤 commit 在本地 default branch（未 push）**
 ```bash
 # 先用 feature branch 保住 commit，再把 default branch 退回 origin
-git -C <repo> branch <type>/<slug>            # 在當前 HEAD 建 branch（保住 commit）
-git -C <repo> switch <type>/<slug>
+git -C <repo> branch <feature-branch>            # 在當前 HEAD 建 branch（保住 commit）
+git -C <repo> switch <feature-branch>
 git -C <repo> branch -f <default> origin/<default>   # 本地 default 退回 remote（commit 只留在 feature branch）
 # 注意：branch -f 不能對當前 branch 用，故先 switch 到 feature branch 再 -f default
 ```
 
-slug 由變更語意產生（kebab-case，如 `feat/mops-announce-backfill`）。type ∈ feat/fix/refactor/docs/chore/test。
+branch 名先遵循 target repo contract；沒有規定時，slug 由變更語意產生（kebab-case，如
+`feat/mops-announce-backfill`），type ∈ feat/fix/refactor/docs/chore/test。
 
 ## PR 路徑
 
@@ -130,11 +131,12 @@ gh pr view -R "$repo_slug" <feature-branch> --json url,state -q .url 2>/dev/null
 
 # 3. 無既有 PR → 建立（base 預設 default branch）
 gh pr create -R "$repo_slug" --base <default> --head <feature-branch> \
-  --title "<conventional-commit-style title>" \
+  --title "<repo-conformant semantic title>" \
   --body "<見下方模板>"
 ```
 
 - **絕不** push default branch。`gh pr merge` 僅限使用者**明說 merge** 後執行（序列見下方「Merge 最後一哩」），開 PR 當下絕不順手 merge。
+- repo contract 的 commit／PR title 格式優先；沒有規定時，PR title 才沿用主要 Conventional Commit 的 subject。
 - 多個 feature commit → title 取主要語意；body 列各 commit 與變更摘要。
 - **fork repo**（如 `origin` 是 fork、`upstream` 是 canonical）：`gh pr create` 的 `--head` 需 `<owner>:<branch>` 格式、base/head 為不同 repo——**本 skill 不自動處理**（見檔首通則與 `log-workflow.md`「Step 1：逐 repo 狀態 + 流程偵測（先於任何 commit）」）。遇此**停下**由使用者指定 base/head，勿讓 `gh` 觸發互動式 fork/push 流程。
 - **`gh` 不可用 / 未登入時的 PR 路徑**：`git push -u origin <feature-branch>`（推 feature branch 安全、不碰 default）後，因無法 `gh pr create` → **停下**，輸出 branch 名與手動開 PR 的 compare URL。**此時 `repo_slug` 不能靠 `gh repo view`（gh 已不可用），改從 remote URL 解析**（同時吃 SSH 與 HTTPS）：
@@ -187,7 +189,7 @@ git -C <toplevel> reset --soft <腳本給的 hash>
 # 2. 重新 commit。message 要同時涵蓋「這批 review 修復」與「本輪文檔同步」——本輪 Step 3
 #    產生的 commit 位於 reset 目標之上，會一併被收進這顆；不沿用被保留 commit 的 subject。
 #    附環境指定的 Co-Authored-By trailer，同 Step 3 的規則。
-git -C <toplevel> commit -m "<type>: <描述>
+git -C <toplevel> commit -m "<符合 target repo convention 的語意描述>
 
 <Co-Authored-By trailer，取 runtime system prompt 的 Git 區塊>"
 ```
@@ -209,7 +211,7 @@ git -C <toplevel> commit -m "<type>: <描述>
 **無 PR 可 merge 時**（形狀：使用者先前明說「不用 PR」走了 escape hatch，或全新空 repo 剛建 baseline——總之從頭到尾沒開過 PR）：**do NOT guess what "merge" meant.** 先跑 `ship-state.sh` 取當下狀態，再依狀態停下確認：
 
 - `verdict: BOOTSTRAP` → 使用者要的其實是「把東西弄上去」，走上方〈Bootstrap〉節（首推 baseline），這不是 merge。
-- default 已存在、當前在 feature branch、但無 PR → 用 `AskUserQuestion` 給兩個選項：**開 PR 再 merge**（留紀錄，預設建議），或**只把 branch push 上去**由使用者自行合併。
+- default 已存在、當前在 feature branch、但無 PR → 用 runtime user-input primitive 給兩個選項：**開 PR 再 merge**（留紀錄，預設建議），或**只把 branch push 上去**由使用者自行合併。
 - feature branch 尚未 push → 先照 Step 4/5 送出，再回到本節。
 - **"merge" is never permission to push the default branch.** 使用者要的是變更進 default，不是繞過流程進 default。
 
@@ -310,7 +312,7 @@ gh pr checks <PR-number|URL> -R "$repo_slug" --required
 ## PR title / body 模板
 
 ```
-<type>: <精簡描述>
+<符合 target repo convention 的 PR title；無規定時用主要 Conventional Commit subject>
 
 ## 變更摘要
 - <commit 1 語意>
@@ -322,10 +324,10 @@ gh pr checks <PR-number|URL> -R "$repo_slug" --required
 ## Review
 - <若經 /deep-review：貼「第三方審查資訊」commit range + 結論；否則略>
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-> PR body 結尾用上面這行 Claude Code 標註（與 commit 的 `Co-Authored-By` trailer 分工：commit 用 trailer、PR body 用這行）。
+PR body 不自行加入產品 attribution。若目前 runtime 或 repo contract 明定 attribution，再依該權威加入；
+不要把 Claude Code 執行標成 Codex，也不要把 Codex 執行標成 Claude Code。
 
 ## push 失敗處理
 

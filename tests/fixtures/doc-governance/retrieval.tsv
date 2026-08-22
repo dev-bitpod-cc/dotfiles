@@ -13,5 +13,5 @@ WIP snapshot review-anchor squash-cmd tests-baseline	claude/skills/deep-review/r
 ignored dirs alias stale positional files adoption 診斷	docs/backlog.md	B-20260821-debt-26	技術債	backlog
 計畫目標書定義要解什麼，不含解法提案，範圍含全部 dossier 類型	docs/plans/2026-08-20-doc-governance-goals.md	文檔治理 — 目標、現況、問題、困難	file-preamble	plan
 maintenance ceiling correctness ratchet round binary tier	docs/document-governance.md	Surface budget	Surface budget	policy
-執行前必須完整讀取 references/log-workflow.md 並逐步照做	claude/skills/project/SKILL.md	Log 模式	Log 模式	skill
+跨 harness project 收尾前要載入哪個完整 workflow 與 Critical Step 0–5	claude/skills/project/references/workflow.md	Project shared workflow	file-preamble	skill
 先對既有 STATUS.md 做 adopted status audit／schema 確認	claude/evals/doc-governance-evals.md	E7 — Spec 撞名 STATUS	E7 — Spec 撞名 STATUS	eval

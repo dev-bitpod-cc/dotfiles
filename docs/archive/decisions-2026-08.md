@@ -913,3 +913,17 @@
   - 放棄:維護 Claude/Codex 兩份 workflow；在共用 frontmatter 保留 Claude-only 欄位；讓一般 review session 繼續替 skill 蒐集 telemetry
   - 重議:任一 runtime 無法透過 symlink discovery 或 relative reference 載入共用 skill；或出現需要 runtime 專屬 workflow、不能由薄 adapter 表達的 failing behavior eval
   - 關聯:claude/skills/deep-plan/SKILL.md;claude/skills/deep-plan/evals.md;claude/skills/deep-plan/field-log.md;codex/skills/deep-plan
+
+- **D-20260822-portable-project-skill · 2026-08-22 project 採共用核心與雙薄入口**:`project` 的
+  spec／log／transfer lifecycle、授權表、STOP 與 git mutation 只保留在
+  `claude/skills/project/references/`、`scripts/`；Claude Code 與 Codex 各有自己的薄 `SKILL.md`，Codex
+  的 references/scripts 以 symlink 指回 canonical core。理由是 side-effect workflow 必須 explicit-only，
+  但 Claude 要在 SKILL frontmatter 用 `disable-model-invocation`，Codex 的標準 frontmatter 不接受該欄位、
+  改由 `agents/openai.yaml` policy 表達；整包 symlink 會迫使其中一端違反自己的 metadata contract。
+  helper command 由執行中的 script directory 動態產生，不再寫死 `~/.claude`；PR body 也不寫死產品 attribution。
+  target repo 的 doc-governance 先驗 target core，再由 skill directory 的 shared trusted helper 執行；templates 同樣從 shared link 解析。commit、
+  branch 與 PR title 一律以 target repo contract 優先，Conventional 只在無規定時 fallback。
+  - 日期來源:direct
+  - 放棄:複製一份 Codex shipping workflow（會讓 pressure-tested 授權表漂移）；整包 symlink（無法同時滿足兩端 explicit-only metadata）；在 Codex frontmatter 保留 Claude-only 欄位
+  - 重議:任一 runtime 無法追蹤 nested references/scripts symlink；或 behavior eval 證明薄入口不足以正規化 invocation arguments
+  - 關聯:D-20260813-no-codex-project-skill;D-20260822-portable-deep-plan;claude/skills/project/references/pressure-tests.md;codex/skills/project

@@ -45,7 +45,14 @@ MAX_LIST=20  # 每類清單最多列出的行數；只影響顯示，計數仍�
 GH_BIN="${SHIP_STATE_GH:-gh}"
 # doc-governance:trusted-core:start
 SHIP_STATE_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-TRUSTED_DOC_CORE="$SHIP_STATE_DIR/../../../../scripts/doc-governance.py"
+TRUSTED_DOC_CORE="$SHIP_STATE_DIR/doc-governance.py"
+if [ ! -f "$TRUSTED_DOC_CORE" ]; then
+    # Self-hosted worktree / source-copy compatibility: the bundled link may not be present in an
+    # older fixture, but the same repo-relative trusted source still is. Never fall back to target.
+    TRUSTED_DOC_CORE="$SHIP_STATE_DIR/../../../../scripts/doc-governance.py"
+fi
+PROJECT_TEMPLATES_DIR="$(CDPATH='' cd -- "$SHIP_STATE_DIR/../templates" 2>/dev/null && pwd -P)" \
+    || PROJECT_TEMPLATES_DIR="$SHIP_STATE_DIR/../templates"
 # doc-governance:trusted-core:end
 
 # legacy dossier detector 的衛生門檻（單一數值來源；改門檻只改這裡）。
@@ -278,7 +285,7 @@ detect_dossier() {
     local unfenced
     unfenced="$(strip_fences "$f")"
     # dossier 簽章（回流自 clean-room 盲寫版）：雙訊號——「進行中」章節 + 任一 dossier
-    # 專屬章節（legacy schema 見 ~/.dotfiles/claude/templates/STATUS-legacy-template.md）。flag 缺席即被當
+    # 專屬章節（legacy schema 見 project skill 的 shared STATUS-legacy-template.md）。flag 缺席即被當
     # dossier 編輯，誤放行比誤攔截危險（攔截只是停下告知），故：
     # - 章節名須為**標題結尾**（允許裝飾前綴「## ⏳ 進行中」與括號後綴「已完成(里程碑)」），
     #   子字串比對會把「## 進行中的部署」＋「## 已完成的部署」這類領域看板誤認成 dossier
@@ -300,7 +307,7 @@ detect_dossier() {
             grep -qE "^##[[:space:]].*${sec}" <<< "$unfenced" || missing="${missing}${sec} "
         done
         if [ -n "$missing" ]; then
-            echo "dossier-flag: 缺少規範章節：${missing}（legacy 七節模板見 ~/.dotfiles/claude/templates/STATUS-legacy-template.md）——**先確認是不是被誤刪**（尺寸 flag 只管上限、抓不到整節消失），確認是刻意留空則在該節寫一行說明"
+            echo "dossier-flag: 缺少規範章節：${missing}（legacy 七節模板見 ${PROJECT_TEMPLATES_DIR}/STATUS-legacy-template.md）——**先確認是不是被誤刪**（尺寸 flag 只管上限、抓不到整節消失），確認是刻意留空則在該節寫一行說明"
         fi
     fi
     # 收斂建議目標：不是「壓到剛好低於門檻」（見 DOSSIER_TARGET_PCT 註解）
@@ -580,7 +587,7 @@ detect_doc_governance() {
     fi
     if [ ! -f "$TRUSTED_DOC_CORE" ]; then
         echo "doc-governance: BROKEN"
-        echo "doc-flag: trusted core unavailable: ${TRUSTED_DOC_CORE}（修復 ~/.dotfiles checkout 後重跑）"
+        echo "doc-flag: trusted core unavailable: ${TRUSTED_DOC_CORE}（修復 project skill source 後重跑）"
         return 2
     fi
     if cmp -s "$core" "$TRUSTED_DOC_CORE"; then
@@ -594,7 +601,7 @@ detect_doc_governance() {
             runner="$core"
         else
             echo "doc-governance: BROKEN"
-            echo "doc-flag: trusted core mismatch（拒絕執行 target；以 ~/.dotfiles/scripts/doc-governance.py 重新同步 target）"
+            echo "doc-flag: trusted core mismatch（拒絕執行 target；以 project skill 的 trusted doc-governance.py 重新同步 target）"
             return 2
         fi
     fi
@@ -812,7 +819,7 @@ detect_stale_branches() {
             # 重驗負責（殘影／過期快照都會在那裡被擋下），故此處不為它額外連網。
             tip="$(git -C "$repo" rev-parse --verify -q "refs/remotes/${b}" 2>/dev/null)" || tip=""
             if [ -n "$tip" ]; then
-                echo "  cleanup-cmd: ~/.claude/skills/project/scripts/cleanup-stale-branch.sh $(shq "$toplevel") remote $(shq "$name") ${tip}"
+                echo "  cleanup-cmd: $(shq "$SHIP_STATE_DIR/cleanup-stale-branch.sh") $(shq "$toplevel") remote $(shq "$name") ${tip}"
             else
                 # 取不到 tip 就給不出帶重驗的指令。**不退化成裸刪**——沒有 expected SHA 的刪除
                 # 正是這段要消滅的東西，寧可要求人工確認。
@@ -943,7 +950,7 @@ detect_squash_merged_branches() {
         fi
         case "$hits" in
             *local*)  listed="${listed}  local: ${name}（PR #${pr_num}）"$'\n'
-                      listed="${listed}  cleanup-cmd: ~/.claude/skills/project/scripts/cleanup-stale-branch.sh $(shq "$toplevel") local $(shq "$name") ${tip}"$'\n'
+                      listed="${listed}  cleanup-cmd: $(shq "$SHIP_STATE_DIR/cleanup-stale-branch.sh") $(shq "$toplevel") local $(shq "$name") ${tip}"$'\n'
                       n=$((n + 1)) ;;
         esac
         case "$hits" in
@@ -960,7 +967,7 @@ detect_squash_merged_branches() {
                         # 與上方 gh 失敗時「不宣稱 none」同一判準。
                         listed="${listed}  remote: ${remote}/${name}（PR #${pr_num}；**未驗證**——ls-remote 失敗，此行來自本地 tracking 快照）"$'\n'
                     fi
-                    listed="${listed}  cleanup-cmd: ~/.claude/skills/project/scripts/cleanup-stale-branch.sh $(shq "$toplevel") remote $(shq "$name") ${tip}"$'\n'
+                    listed="${listed}  cleanup-cmd: $(shq "$SHIP_STATE_DIR/cleanup-stale-branch.sh") $(shq "$toplevel") remote $(shq "$name") ${tip}"$'\n'
                     n=$((n + 1))
                 fi ;;
         esac
@@ -1114,7 +1121,7 @@ check_repo() {
     if [ "$branch" = "$default" ] && [ "$n_commits" -gt 0 ]; then
         echo "misplaced: WARNING — $n_commits commit 已誤 commit 在本地 ${default}（情況 B——用下行指令救援，勿手打序列、勿 reset --hard）"
         # 印 toplevel 絕對路徑而非呼叫端引數——照抄行可能在另一個 cwd 執行，相對路徑會指錯 repo
-        echo "branch-first-cmd: ~/.claude/skills/project/scripts/branch-first.sh $(shq "$toplevel") <type>/<slug>"
+        echo "branch-first-cmd: $(shq "$SHIP_STATE_DIR/branch-first.sh") $(shq "$toplevel") <feature-branch>"
     fi
 
     # doc-governance:legacy-skip:start
