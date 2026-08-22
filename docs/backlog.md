@@ -28,9 +28,11 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
   文件召回)仍開,但已分成「跨語言」與「權重形狀」兩個子問題,見該條。
   ⚠️ **順序理由**:27/28 打到的正是「不知道標題時找不找得到」,而那是第二個 repo 第一次用才會撞到的面;
   沒有真實 rollout 語料就調 ranking,等於對 dotfiles 自己的語料過擬合。
-  ⚠️ **原 plan §6 的 steady-state rollout gate 已由 `D-20260822-rollout-gate-replacement` 取代**:batch 1 定位為
-  controlled canary,現在即可開始;qualifying ship 記入 `docs/rollout-ledger.md`,batch 2/3 才要求 steady-state
-  證據。月份 shard 正確性不受影響,維持 blocking。(舊敘述以 `git log --merges` 為證據,在 squash merge 下恆為 0,
+  ⚠️ **原 plan §6 的 steady-state rollout gate 已由 `D-20260822-rollout-gate-replacement` 取代**:canary
+  (dotfiles 之後的第一個採用者)可立即開始;qualifying ship 記入 `docs/rollout-ledger.md`,**canary 之後的
+  其餘 repo** 才要求 steady-state 證據。月份 shard 正確性不受影響,維持 blocking。
+  ⚠️ 該記錄以「batch 1」指稱 canary,與 checklist 的形狀批次序是不同軸,已由
+  `D-20260823-canary-role-not-batch-number` 校正——**讀到「batch 1」一律讀作「canary repo」**。(舊敘述以 `git log --merges` 為證據,在 squash merge 下恆為 0,
   已證偽:採用 commit 後實際有 2 次 ship。)
 
 - **B-20260821-debt-27** · [ ] **檢索對程序型文件的語意召回偏弱**。Round 6 以 20 條不複製標題的

@@ -5,7 +5,7 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
 
 # Rollout ledger
 
-文檔治理 batch 2/3 的 steady-state 證據就在這裡累積。**沒記進來的 ship 不算數** — 這份 ledger 存在的理由，
+文檔治理**放行 canary 之後其餘 repo** 所需的 steady-state 證據就在這裡累積。**沒記進來的 ship 不算數** — 這份 ledger 存在的理由，
 正是原門檻「連續 10 次 ship 無人工 compaction」沒有計量器、因此不可數。
 
 ## 記法
@@ -72,7 +72,7 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
 
 - **krepo-mops-major-news · `chore/sync-doc-governance-core` · 2026-08-22**
   - **lifecycle 操作**：**core sync ship**——把 trusted core 同步到上一筆的版本。無文檔變更。
-    ✅ **這是 canary 的第一筆 post-cutover ship**，計入 batch 2/3 需要的樣本。
+    ✅ **這是 canary 的第一筆 post-cutover ship**，計入放行其餘 repo 所需的樣本。
   - **first audit**：`BROKEN（trusted core mismatch）`——由上一筆造成，非該 repo 的問題。
   - **人工介入**：`lifecycle`（照 `ship-state.sh` 訊息重新同步，一個 byte 都沒有自行修改）。
   - **final audit**：rc=0（`doc-governance: OK`）。
