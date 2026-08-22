@@ -174,3 +174,9 @@
   - 放棄:先留著等更多語料再判(留著就是把未經證實的權重塞進計分,下次量測會分不出是誰的貢獻)
   - 重議:第三份語料進來後重跑同一組 query,若 H1 訊號在多個語料上一致為正
   - 關聯:M-20260822-retrieval-source-diversity;B-20260821-debt-27
+
+- **X-20260823-retrieval-idf-and-h3-chunking · 2026-08-23 用 IDF 加權與 H3 分節提升程序型文件召回——三個變體都退步,全數不採用**:針對 `B-20260821-debt-27` 的「權重形狀」子問題試了三條路,以**重新撰寫的** 20 條 title-free query 打兩個語料(dotfiles 10 條 ＋ canary 10 條;上一批同用途 query 已遺失,本批不沿用也無從沿用)。(1)**IDF token 加權**:命中分數改為逐 token 依稀有度計(normalized IDF × 400/40 取代平權 ×200/20)——領域詞在 history shard 裡重複上百次,平權計分讓「標題長且塞滿領域詞」的條目恆勝。(2)**H2＋H3 重新分節**:H3 也成為檢索單位,H2 的 body 隨之切到第一個 H3 為止。(3)**H2 維持整段 ＋ H3 另外追加為條目**(避免 (2) 砍掉 H2 body)。結果:混合 20 題看起來 8 → 7/8/9,但**拆開看是 canary 那半在遮蓋 dotfiles 那半的退步**——dotfiles 10 題的 hit@5 由 **7 退到 4／5／5**,三個變體無一例外;換來的只有 hit@1 由 3 升到 4/4/5,即用召回換精確。變體 (2) 另外直接打破既有 16 列嚴格 oracle(`review-terminal 說法覆蓋不了 STOP AskUserQuestion` 不再回 `Step 4：Ship 摘要`)。三者皆未進版本庫。
+  - 日期來源:direct
+  - 放棄:以混合 20 題的 +1 當作採用理由(逐語料拆開就看得出那是遮蓋,committed ratchet 會紅);把 ratchet 門檻下修來讓變體過關(那是把量測改成能過,不是把檢索改好)
+  - 重議:出現第三份語料且三者在多語料上一致為正;或 title/body 權重的比值本身有獨立證據支持調整
+  - 關聯:B-20260821-debt-27;X-20260822-doc-h1-token-signal;M-20260822-retrieval-source-diversity
