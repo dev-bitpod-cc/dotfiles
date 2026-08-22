@@ -27,7 +27,7 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
 ## 計數狀態
 
 - 目標：10 次 qualifying ship，且 canary repo 自己必須貢獻數次 post-cutover ship。
-- 已記錄：2 次。
+- 已記錄：4 次。
 - ⚠️ 採用 commit `9d3e891` 之後、本 ledger 建立之前，dotfiles 已有 2 次 ship（PR 124、125）。兩者的
   first-audit 結果與人工介入分類**無法事後重建**，因此不計入 — 計數從本檔建立後的下一次 ship 起算。
 
@@ -58,3 +58,22 @@ D-20260822-rollout-gate-replacement；逐 repo 採用程序見 docs/doc-governan
     處置是把它加進該 repo 的 `extend-exclude`（沿用其既有 vendored-file 慣例），**core 一個 byte 沒改**。
     仍判 `lifecycle`：它是採用一個新 repo 的前置設定，不是為了讓 audit 過而動既有內容。
     判準與 checklist 回填見 `D-20260822-vendored-core-lint-exclusion`。
+
+- **dotfiles · `perf/retrieval-diversity-and-recall` · 2026-08-22**
+  - **lifecycle 操作**：核心 ranking 變更（per-file cap）＋ 新增 `M-20260822-retrieval-source-diversity`、
+    `X-20260822-doc-h1-token-signal`＋ 關閉 `B-20260821-debt-28`、改寫 `B-20260821-debt-27`。
+  - **first audit**：rc=0。
+  - **人工介入**：`none`。
+  - **final audit**：rc=0（`doc-governance: OK`），`tests/run.sh` PASS=1098 FAIL=0。
+  - **surface bytes**：68,150 → 68,941（上限 131,072，未動）。
+  - ⚠️ **這次 ship 讓所有採用者的 core 失去同步**：canary 的 `ship-state.sh` 隨即印
+    `doc-governance: BROKEN（trusted core mismatch）`。**核心一改，每個採用 repo 都欠一次 sync ship**
+    ——這是 rollout 的常態成本，不是異常，見下一筆。
+
+- **krepo-mops-major-news · `chore/sync-doc-governance-core` · 2026-08-22**
+  - **lifecycle 操作**：**core sync ship**——把 trusted core 同步到上一筆的版本。無文檔變更。
+    ✅ **這是 canary 的第一筆 post-cutover ship**，計入 batch 2/3 需要的樣本。
+  - **first audit**：`BROKEN（trusted core mismatch）`——由上一筆造成，非該 repo 的問題。
+  - **人工介入**：`lifecycle`（照 `ship-state.sh` 訊息重新同步，一個 byte 都沒有自行修改）。
+  - **final audit**：rc=0（`doc-governance: OK`）。
+  - **surface bytes**：53,515 → 54,306（上限 65,536，未動）。
