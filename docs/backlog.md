@@ -60,7 +60,14 @@ record、保留 B-* 關聯，再移除本檔條目。decision／dead end 不留�
   - **權重形狀**：title 命中 ×200、body ×20，而程序型文件的 section 標題是結構性的
     （「0. 前置」「2. history 遷移」），主題詞只在 body；history 條目的短標題塞滿領域詞，於是恆勝。
   - 已試過並否決：文件 H1 當弱訊號（`X-20260822-doc-h1-token-signal`，淨零）、body 覆蓋率取代全含加分
-    （單獨無增益，疊在 cap 上反而 −1）。
+    （單獨無增益，疊在 cap 上反而 −1）、IDF 加權與兩種 H3 分節（`X-20260823-retrieval-idf-and-h3-chunking`，
+    dotfiles 那半 hit@5 由 7 退到 4/5/5）。
+  ⚠️ **2026-08-23 診斷再收窄一次：主因是分節方式，不是權重比值。** 實測 canary 的
+    「重訊分類判準只有一份」是 **H3**，埋在 H2「MOPS 重訊爬蟲知識」底下；查「分類規則的正本放在哪一份」
+    時，它的 H2 母節排第 26、標題命中數 0——**H2 才是檢索單位，H3 標題只是 body（每命中 ×20 而非 ×200）**。
+    這一格**改排序治不好**，正解在作者面：要被找到的東西放 H2。已寫進 `docs/document-governance.md`。
+  - **下一步候選（未做）**：canary 的 `CLAUDE.md` 有四條陷阱是 H3，值得提為 H2 再量一次——那會是
+    「作者面修正能不能取代 ranking 修正」的第一個直接證據。
   - 現有 ratchet：`tests/fixtures/doc-governance/title-free-recall.tsv`（dotfiles 那 10 條，hit@5 ≥6）。
     **提高門檻只能用新寫的 query 重新量。**
 - **B-20260821-debt-26** · [ ] **文檔治理 Round 3 非阻斷後續**。本批不順手擴張核心：xref 待處理

@@ -11,3 +11,17 @@
 用弱模型測技能時沙盒要怎麼建	claude/evals
 判斷審查是否收斂該看什麼訊號	claude/skills
 開工前的計畫審查什麼時候值得跑	claude/skills/deep-plan
+
+# ── 以下 10 條打的是 krepo-mops-major-news 的語料，**本檔的測試不會跑它們**（跨 repo）。
+# 留在這裡是因為上一批同用途的 query 只存在於 session scratchpad、已經遺失一次。
+# 2026-08-23 量到的基準：baseline hit@5 = 1/10。要用就 clone 該 repo 後手動跑。
+# 排程跑不動時第一步該看哪裡	CLAUDE.md
+# 為什麼不該自己寫入那兩個衍生欄位	CLAUDE.md
+# 這張表的擁有權在哪一次變更裡轉移的	docs/archive/milestones-2026-08.md
+# 爬蟲一分鐘大概能打幾次	docs/mops-crawler-reference.md
+# 補歷史資料的指令怎麼下	docs/runbooks/major-news-ops.md
+# 為什麼不能只靠檔名決定哪些測試要跟著搬	docs/backlog.md
+# 換了資料庫角色之後連不上要查什麼	docs/archive/decisions-2026-08.md
+# 分類規則的正本放在哪一份	CLAUDE.md
+# 現在有哪些事情卡在別人手上	STATUS.md
+# 即時管道上線前要跑哪些檢查	docs/runbooks/major-news-ops.md
